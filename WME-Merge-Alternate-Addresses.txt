@@ -1,0 +1,1088 @@
+// ==UserScript==
+// @name         WME Merge Alternate Addresses
+// @namespace    https://waze.com/
+// @version      1.7.2
+// @description  Applies alternate addresses to selected segments
+// @match        https://www.waze.com/*/editor*
+// @match        https://www.waze.com/editor*
+// @match        https://beta.waze.com/*/editor*
+// @match        https://beta.waze.com/editor*
+// @grant        unsafeWindow
+// @grant        none
+// ==/UserScript==
+
+/* global SDK_INITIALIZED, getWmeSdk */
+
+(() => {
+  "use strict";
+
+  const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+
+  const SCRIPT_ID = "wme-alt-apply-panel-simple-v172";
+  const SCRIPT_NAME = "Alt Apply Panel (Simple)";
+
+  let sdk = null;
+
+  const ROOT_ID = "wmeAltApplyFloatRoot_simple_v172";
+  const STYLE_ID = "wmeAltApplyFloatStyle_simple_v172";
+  const STORAGE_KEY = "WME_ALT_APPLY_FLOAT_STATE_V172";
+
+  const state = {
+    mounted: false,
+
+    minimized: false,
+
+    dragging: false,
+    dragPointerId: null,
+    dragDx: 0,
+    dragDy: 0,
+
+    scheduled: false,
+    lastRender: 0,
+
+    progToken: 0,
+    progActive: false,
+    progValue: 0,
+
+    _savedPos: null,
+    _selSig: "",
+    _labelCache: new Map(),
+    _missingCache: new Map(),
+    _expanded: new Set(),
+
+    _altFeedbackUntil: new Map(), // altId -> { addedUntil:number, removedUntil:number }
+  };
+
+  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+
+  function uniqNums(arr) {
+    const s = new Set();
+    for (const x of arr || []) {
+      const n = Number(x);
+      if (Number.isFinite(n)) s.add(n);
+    }
+    return [...s];
+  }
+
+  function saveUIState() {
+    try {
+      const root = document.getElementById(ROOT_ID);
+      if (!root) return;
+      const rect = root.getBoundingClientRect();
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          minimized: !!state.minimized,
+          pos: {
+            left: root.style.left || null,
+            top: root.style.top || null,
+            right: root.style.right || null,
+            rect: { left: rect.left, top: rect.top },
+          },
+        })
+      );
+    } catch (_) {}
+  }
+
+  function loadUIState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const payload = JSON.parse(raw);
+      if (!payload || typeof payload !== "object") return;
+      state.minimized = !!payload.minimized;
+      state._savedPos = payload.pos || null;
+    } catch (_) {}
+  }
+
+  function scheduleRender() {
+    if (state.scheduled) return;
+    state.scheduled = true;
+    setTimeout(() => {
+      state.scheduled = false;
+      render();
+    }, 70);
+  }
+
+  // -----------------------------
+  // Auto size (height)
+  // -----------------------------
+  function autoSizePanel() {
+    const root = document.getElementById(ROOT_ID);
+    if (!root) return;
+
+    const top = root.querySelector(".waa-top");
+    const body = root.querySelector(".waa-body");
+    if (!top || !body) return;
+
+    if (state.minimized) {
+      root.style.height = "auto";
+      body.style.maxHeight = "0px";
+      body.style.overflow = "hidden";
+      return;
+    }
+
+    body.style.maxHeight = "none";
+    body.style.overflow = "auto";
+
+    const topH = top.getBoundingClientRect().height || 56;
+    const bodyScrollH = body.scrollHeight || 0;
+
+    const maxH = Math.floor(window.innerHeight * 0.78);
+    const minH = 140;
+    const desired = clamp(Math.ceil(topH + bodyScrollH), minH, maxH);
+
+    root.style.height = `${desired}px`;
+
+    const bodyMax = clamp(desired - topH, 80, maxH - topH);
+    body.style.maxHeight = `${bodyMax}px`;
+    body.style.overflow = bodyScrollH > bodyMax + 6 ? "auto" : "hidden";
+  }
+
+  // -----------------------------
+  // SDK access
+  // -----------------------------
+  function getSelectionSegmentIds() {
+    try {
+      const sel = sdk.Editing.getSelection();
+      if (!sel) return [];
+      const ids = sel.ids ?? sel.objectIds ?? sel.selection?.ids ?? [];
+      const t = String(sel.type ?? sel.objectType ?? sel.typeName ?? "").toLowerCase();
+      if (t && !t.includes("segment") && !t.includes("road")) return [];
+      return Array.isArray(ids) ? ids.map(Number).filter(Number.isFinite) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function canEditSegment(segId) {
+    try {
+      return !!sdk.DataModel.Segments.hasPermissions({ segmentId: segId });
+    } catch {
+      return false;
+    }
+  }
+
+  function getAltIdsForSegment(segId) {
+    const { DataModel } = sdk;
+
+    const seg = DataModel.Segments.getById({ segmentId: segId });
+    if (seg && Array.isArray(seg.alternateStreetIds)) return uniqNums(seg.alternateStreetIds);
+
+    const addr = DataModel.Segments.getAddress?.({ segmentId: segId });
+    const alt = addr?.altStreets;
+    if (Array.isArray(alt)) {
+      return uniqNums(
+        alt
+          .map((a) => a?.street?.id ?? a?.streetId ?? a?.id)
+          .map(Number)
+          .filter(Number.isFinite)
+      );
+    }
+    return [];
+  }
+
+  function getPrimaryStreetId(segId) {
+    const { DataModel } = sdk;
+
+    const seg = DataModel.Segments.getById({ segmentId: segId });
+    if (seg && Number.isFinite(Number(seg.primaryStreetId))) return Number(seg.primaryStreetId);
+
+    const addr = DataModel.Segments.getAddress?.({ segmentId: segId });
+    const id = addr?.street?.id ?? addr?.streetId ?? addr?.id;
+    return Number.isFinite(Number(id)) ? Number(id) : null;
+  }
+
+  function getStreetMeta(streetId) {
+    const sid = Number(streetId);
+    if (!Number.isFinite(sid)) return { name: `#${streetId}`, city: "No city" };
+
+    const cached = state._labelCache.get(sid);
+    if (cached) return cached;
+
+    const { DataModel } = sdk;
+    const st = DataModel.Streets.getById({ streetId: sid });
+
+    let name = `#${sid}`;
+    let city = "No city";
+
+    if (st) {
+      name = (st.name ?? "").trim() || "(Unnamed)";
+      const cityName = st.cityId ? (DataModel.Cities.getById({ cityId: st.cityId })?.name ?? "") : "";
+      city = (cityName || "No city").trim();
+    }
+
+    const meta = { name, city };
+    state._labelCache.set(sid, meta);
+    return meta;
+  }
+
+  function getAltUnionSummary(segmentIds) {
+    const ids = segmentIds || [];
+    const map = new Map(); // streetId -> presentCount
+
+    for (const segId of ids) {
+      const altIds = getAltIdsForSegment(segId);
+      const uniq = new Set(altIds);
+      for (const streetId of uniq) {
+        const sid = Number(streetId);
+        if (!Number.isFinite(sid)) continue;
+        map.set(sid, (map.get(sid) || 0) + 1);
+      }
+    }
+
+    const total = ids.length;
+    const out = [];
+    for (const [streetId, present] of map.entries()) {
+      out.push({
+        streetId,
+        countPresent: present,
+        countMissing: Math.max(0, total - present),
+        meta: getStreetMeta(streetId),
+      });
+    }
+
+    out.sort((a, b) => {
+      if (b.countPresent !== a.countPresent) return b.countPresent - a.countPresent;
+      return (a.meta?.name ?? "").localeCompare((b.meta?.name ?? ""), undefined, { sensitivity: "base" });
+    });
+
+    return out;
+  }
+
+  function buildMissingSegmentsForAlt(altId, selectionIds) {
+    const sid = Number(altId);
+    if (!Number.isFinite(sid)) return [];
+
+    const sig = state._selSig || selectionIds.join(",");
+    const key = `${sig}::${sid}`;
+    const cached = state._missingCache.get(key);
+    if (cached) return cached;
+
+    const missing = [];
+    for (let i = 0; i < selectionIds.length; i++) {
+      const segId = selectionIds[i];
+      const altIds = getAltIdsForSegment(segId);
+      if (altIds.includes(sid)) continue;
+
+      const primaryId = getPrimaryStreetId(segId);
+      const primaryMeta = Number.isFinite(primaryId)
+        ? getStreetMeta(primaryId)
+        : { name: "(No primary)", city: "No city" };
+
+      missing.push({ order: i + 1, primaryMeta });
+    }
+
+    state._missingCache.set(key, missing);
+    return missing;
+  }
+
+  function toggleExpand(altId) {
+    const sid = Number(altId);
+    if (!Number.isFinite(sid)) return;
+    if (state._expanded.has(sid)) state._expanded.delete(sid);
+    else state._expanded.add(sid);
+    scheduleRender();
+  }
+
+  // -----------------------------
+  // Progress
+  // -----------------------------
+  function setProgress(value, active) {
+    state.progValue = clamp(Number(value) || 0, 0, 100);
+    state.progActive = !!active;
+
+    const root = document.getElementById(ROOT_ID);
+    const bar = root?._refs?.progBar;
+    const wrap = root?._refs?.progWrap;
+    if (!bar || !wrap) return;
+
+    wrap.classList.toggle("active", state.progActive);
+    bar.style.width = `${state.progValue}%`;
+  }
+
+  function startProgress() {
+    state.progToken++;
+    const token = state.progToken;
+
+    setProgress(0, true);
+
+    let v = 0;
+    const t = setInterval(() => {
+      if (token !== state.progToken) return clearInterval(t);
+      v = v + (85 - v) * 0.18 + 2;
+      v = clamp(v, 0, 88);
+      setProgress(v, true);
+    }, 80);
+
+    return {
+      done: () => {
+        if (token !== state.progToken) return;
+        clearInterval(t);
+        setProgress(100, true);
+        setTimeout(() => {
+          if (token !== state.progToken) return;
+          setProgress(0, false);
+        }, 560);
+      },
+      fail: () => {
+        if (token !== state.progToken) return;
+        clearInterval(t);
+        setProgress(100, true);
+        setTimeout(() => {
+          if (token !== state.progToken) return;
+          setProgress(0, false);
+        }, 780);
+      },
+    };
+  }
+
+  // -----------------------------
+  // Actions
+  // -----------------------------
+  function setAltFeedback(altId, type) {
+    const sid = Number(altId);
+    if (!Number.isFinite(sid)) return;
+
+    const now = Date.now();
+    const entry = state._altFeedbackUntil.get(sid) || { addedUntil: 0, removedUntil: 0 };
+    if (type === "added") entry.addedUntil = now + 1400;
+    if (type === "removed") entry.removedUntil = now + 1400;
+    state._altFeedbackUntil.set(sid, entry);
+  }
+
+  function getAltButtonLabel(altId, kind, defaultText) {
+    const sid = Number(altId);
+    const entry = state._altFeedbackUntil.get(sid);
+    const now = Date.now();
+    if (!entry) return defaultText;
+    if (kind === "add" && entry.addedUntil > now) return "Added";
+    if (kind === "remove" && entry.removedUntil > now) return "Removed";
+    return defaultText;
+  }
+
+  async function addToMissing(altId) {
+    const prog = startProgress();
+
+    if (!sdk.Editing.isEditingAllowed()) {
+      prog.fail();
+      return;
+    }
+
+    const ids = getSelectionSegmentIds();
+    if (!ids.length) {
+      prog.fail();
+      return;
+    }
+
+    const sid = Number(altId);
+    if (!Number.isFinite(sid)) {
+      prog.fail();
+      return;
+    }
+
+    for (const segId of ids) {
+      if (!canEditSegment(segId)) continue;
+
+      const primaryId = getPrimaryStreetId(segId);
+      if (Number.isFinite(primaryId) && Number(primaryId) === sid) continue;
+
+      const currentAlt = getAltIdsForSegment(segId);
+      if (currentAlt.includes(sid)) continue;
+
+      sdk.DataModel.Segments.updateAddress({
+        segmentId: segId,
+        alternateStreetIds: [...currentAlt, sid],
+      });
+    }
+
+    setAltFeedback(sid, "added");
+    state._missingCache.clear();
+    prog.done();
+    scheduleRender();
+    setTimeout(() => scheduleRender(), 1600);
+    setTimeout(() => autoSizePanel(), 0);
+  }
+
+  async function removeAlternate(altId) {
+    const prog = startProgress();
+
+    if (!sdk.Editing.isEditingAllowed()) {
+      prog.fail();
+      return;
+    }
+
+    const ids = getSelectionSegmentIds();
+    if (!ids.length) {
+      prog.fail();
+      return;
+    }
+
+    const sid = Number(altId);
+    if (!Number.isFinite(sid)) {
+      prog.fail();
+      return;
+    }
+
+    for (const segId of ids) {
+      if (!canEditSegment(segId)) continue;
+
+      const currentAlt = getAltIdsForSegment(segId);
+      if (!currentAlt.includes(sid)) continue;
+
+      sdk.DataModel.Segments.updateAddress({
+        segmentId: segId,
+        alternateStreetIds: currentAlt.filter((x) => x !== sid),
+      });
+    }
+
+    setAltFeedback(sid, "removed");
+    state._missingCache.clear();
+    prog.done();
+    scheduleRender();
+    setTimeout(() => scheduleRender(), 1600);
+    setTimeout(() => autoSizePanel(), 0);
+  }
+
+  // -----------------------------
+  // UI
+  // -----------------------------
+  function ensureStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+
+    const st = document.createElement("style");
+    st.id = STYLE_ID;
+    st.textContent = `
+#${ROOT_ID}{
+  position: fixed;
+  top: 84px;
+  right: 18px;
+  width: 380px;
+  z-index: 999999;
+  font: 13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;
+  color: rgba(20,20,24,.92);
+}
+#${ROOT_ID} *{ box-sizing: border-box; }
+
+.waa-panel{
+  width:100%;
+  background: rgba(255,255,255,.76);
+  border: 1px solid rgba(0,0,0,.10);
+  border-radius: 18px;
+  box-shadow: 0 18px 48px rgba(0,0,0,.18);
+  overflow: hidden;
+  display:flex;
+  flex-direction:column;
+  backdrop-filter: blur(16px) saturate(1.25);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+}
+
+.waa-top{
+  padding: 12px 12px 1px;
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  background: rgba(255,255,255,.54);
+  cursor: grab;
+}
+.waa-toprow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+}
+.waa-title{
+  font-weight: 950;
+  letter-spacing: .3px;
+  font-size: 12px;
+  color: rgba(20,20,24,.78);
+}
+.waa-actions{ display:flex; align-items:center; }
+.waa-iconTop{
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.10);
+  background: rgba(255,255,255,.70);
+  cursor: pointer;
+  font-weight: 950;
+  color: rgba(20,20,24,.75);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.waa-iconTop:hover{ background: rgba(255,255,255,.88); }
+.waa-iconTop:active{ transform: translateY(1px); }
+
+.waa-progWrap{
+  margin-top: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.08);
+  overflow:hidden;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.waa-progWrap.active{ opacity: 1; transform: translateY(0); }
+.waa-progBar{
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(0,160,255,.60), rgba(0,120,255,.55), rgba(0,160,255,.60));
+  box-shadow: 0 8px 20px rgba(0,160,255,.25);
+  transition: width .16s ease;
+}
+
+#${ROOT_ID}.dragging .waa-top{ cursor: grabbing; }
+
+.waa-body{
+  padding: 10px 12px 8px;
+  overflow: auto;
+}
+
+/* when 0 segments: make the message not create a big bottom gap */
+.waa-empty{
+  padding: 6px 2px 0px;   /* <- key: bottom = 0 */
+  margin: 0;              /* <- ensure no extra */
+  font-size: 12px;
+  color: rgba(20,20,24,.55);
+}
+
+.waa-section-title{
+  font-weight: 950;
+  color: rgba(20,20,24,.70);
+  margin: 4px 0 12px;      /* more top gap */
+  padding-top: 2px;        /* tiny breathing room */
+  letter-spacing: .2px;
+}
+
+.waa-card{
+  border: 1px solid rgba(0,0,0,.10);
+  border-radius: 14px;
+  background: rgba(255,255,255,.78);
+  box-shadow: 0 10px 22px rgba(0,0,0,.06);
+  overflow: hidden;
+}
+.waa-card + .waa-card{ margin-top: 10px; }
+
+.waa-cardMain{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 12px;
+  padding: 12px;
+}
+
+.waa-rowtext{
+  min-width: 0;
+  display:flex;
+  flex-direction:column;
+  gap: 6px;
+}
+.waa-street{
+  font-weight: 900;
+  color: rgba(20,20,24,.82);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.waa-city{
+  font-size: 12px;
+  color: rgba(20,20,24,.52);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.waa-chips{ display:flex; gap: 8px; flex-wrap: wrap; }
+.waa-chip{
+  font-weight: 950;
+  font-size: 11px;
+  color: rgba(20,20,24,.70);
+  border: 1px solid rgba(0,0,0,.10);
+  background: rgba(255,255,255,.58);
+  padding: 4px 9px;
+  border-radius: 999px;
+  box-shadow: 0 10px 18px rgba(0,0,0,.06);
+  user-select:none;
+}
+.waa-chip.miss{
+  border-color: rgba(255,120,0,.22);
+  background: rgba(255,120,0,.09);
+  color: rgba(140,70,0,.92);
+  cursor: pointer;
+}
+.waa-chip.miss:hover{ background: rgba(255,120,0,.12); }
+
+.waa-btnCol{
+  display:flex;
+  flex-direction:column;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+.waa-act{
+  border: 1px solid rgba(0,160,255,.26);
+  background: rgba(0,160,255,.11);
+  color: rgba(0,85,150,.92);
+  padding: 9px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 950;
+  font-size: 12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width: 138px;
+  box-shadow: 0 10px 22px rgba(0,0,0,.06);
+}
+.waa-act:hover{ background: rgba(0,160,255,.14); }
+.waa-act:active{ transform: translateY(1px); }
+.waa-act[disabled]{ opacity:.35; cursor:not-allowed; transform:none; }
+
+.waa-remove{
+  border-color: rgba(255,120,0,.22);
+  background: rgba(255,120,0,.09);
+  color: rgba(140,70,0,.92);
+}
+.waa-remove:hover{ background: rgba(255,120,0,.12); }
+
+.waa-expandAttached{
+  border-top: 1px solid rgba(255,120,0,.22);
+  background: rgba(255,120,0,.10);
+}
+.waa-expandHead{
+  padding: 10px 12px 8px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+}
+.waa-expandHeadTitle{
+  min-width: 0;
+  font-weight: 950;
+  color: rgba(140,70,0,.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.waa-expandClose{
+  flex: 0 0 auto;
+  border: 1px solid rgba(255,120,0,.22);
+  background: rgba(255,255,255,.58);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-weight: 950;
+  font-size: 12px;
+  cursor: pointer;
+  color: rgba(140,70,0,.92);
+}
+.waa-expandClose:hover{ background: rgba(255,255,255,.82); }
+
+.waa-missItem{
+  padding: 9px 12px;
+  border-top: 1px solid rgba(255,120,0,.18);
+  display:flex;
+  align-items:flex-start;
+  gap: 8px;
+}
+.waa-missBadge{
+  flex: 0 0 auto;
+  font-weight: 950;
+  font-size: 11px;
+  color: rgba(140,70,0,.92);
+  border: 1px solid rgba(255,120,0,.22);
+  background: rgba(255,255,255,.58);
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+.waa-missText{
+  min-width: 0;
+  display:flex;
+  flex-direction:column;
+  gap: 2px;
+}
+.waa-missPrimary{
+  font-weight: 950;
+  color: rgba(140,70,0,.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.waa-missCity{
+  font-size: 12px;
+  color: rgba(140,70,0,.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Scrollbar */
+#${ROOT_ID} .waa-body::-webkit-scrollbar{ width: 10px; }
+#${ROOT_ID} .waa-body::-webkit-scrollbar-track{ background: transparent; }
+#${ROOT_ID} .waa-body::-webkit-scrollbar-thumb{
+  background: rgba(0,0,0,.14);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+#${ROOT_ID} .waa-body::-webkit-scrollbar-thumb:hover{
+  background: rgba(0,0,0,.22);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* Minimized */
+#${ROOT_ID}.minimized{ height: auto !important; width: 380px; }
+#${ROOT_ID}.minimized .waa-body{ display:none; }
+`;
+    document.head.appendChild(st);
+  }
+
+  function applySavedPosition(root) {
+    const pos = state._savedPos;
+    if (!pos) return;
+    if (pos.left) {
+      root.style.left = pos.left;
+      root.style.top = pos.top || "84px";
+      root.style.right = "auto";
+      return;
+    }
+    if (pos.right) root.style.right = pos.right;
+    if (pos.top) root.style.top = pos.top;
+  }
+
+  function mount() {
+    document.getElementById(ROOT_ID)?.remove();
+    ensureStyle();
+
+    const root = document.createElement("div");
+    root.id = ROOT_ID;
+
+    const panel = document.createElement("div");
+    panel.className = "waa-panel";
+
+    const top = document.createElement("div");
+    top.className = "waa-top";
+
+    const topRow = document.createElement("div");
+    topRow.className = "waa-toprow";
+
+    const title = document.createElement("div");
+    title.className = "waa-title";
+    title.textContent = "0 SEGMENTS SELECTED";
+
+    const actions = document.createElement("div");
+    actions.className = "waa-actions";
+
+    const minimizeBtn = document.createElement("button");
+    minimizeBtn.className = "waa-iconTop";
+    minimizeBtn.type = "button";
+    minimizeBtn.title = "Minimize / Restore";
+    minimizeBtn.textContent = "—";
+    minimizeBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      state.minimized = !state.minimized;
+      root.classList.toggle("minimized", state.minimized);
+      minimizeBtn.textContent = state.minimized ? "▢" : "—";
+      saveUIState();
+      setTimeout(() => autoSizePanel(), 0);
+    });
+
+    actions.append(minimizeBtn);
+    topRow.append(title, actions);
+
+    const progWrap = document.createElement("div");
+    progWrap.className = "waa-progWrap";
+    const progBar = document.createElement("div");
+    progBar.className = "waa-progBar";
+    progWrap.append(progBar);
+
+    top.append(topRow, progWrap);
+
+    const body = document.createElement("div");
+    body.className = "waa-body";
+
+    root._refs = { title, body, progWrap, progBar, minimizeBtn };
+
+    panel.append(top, body);
+    root.append(panel);
+    document.body.appendChild(root);
+
+    applySavedPosition(root);
+
+    root.classList.toggle("minimized", !!state.minimized);
+    minimizeBtn.textContent = state.minimized ? "▢" : "—";
+
+    // Dragging
+    top.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("button")) return;
+      const rect = root.getBoundingClientRect();
+      state.dragging = true;
+      state.dragPointerId = e.pointerId;
+      state.dragDx = e.clientX - rect.left;
+      state.dragDy = e.clientY - rect.top;
+      root.classList.add("dragging");
+      root.setPointerCapture?.(e.pointerId);
+      e.preventDefault();
+    });
+
+    root.addEventListener("pointermove", (e) => {
+      if (!state.dragging || e.pointerId !== state.dragPointerId) return;
+
+      const rect = root.getBoundingClientRect();
+      const w = rect.width || 380;
+      const h = rect.height || 220;
+
+      let left = e.clientX - state.dragDx;
+      let topPx = e.clientY - state.dragDy;
+
+      left = clamp(left, 8, window.innerWidth - w - 8);
+      topPx = clamp(topPx, 8, window.innerHeight - h - 8);
+
+      root.style.left = `${left}px`;
+      root.style.top = `${topPx}px`;
+      root.style.right = "auto";
+      e.preventDefault();
+    });
+
+    root.addEventListener("pointerup", (e) => {
+      if (state.dragging && e.pointerId === state.dragPointerId) {
+        state.dragging = false;
+        state.dragPointerId = null;
+        root.classList.remove("dragging");
+        saveUIState();
+      }
+    });
+
+    root.addEventListener("pointercancel", () => {
+      state.dragging = false;
+      state.dragPointerId = null;
+      root.classList.remove("dragging");
+      saveUIState();
+    });
+
+    window.addEventListener("resize", () => autoSizePanel(), { passive: true });
+
+    state.mounted = true;
+    render();
+  }
+
+  function renderAttachedMissingSegments(altId, selectionIds, parentCard) {
+    const missing = buildMissingSegmentsForAlt(altId, selectionIds);
+
+    const exp = document.createElement("div");
+    exp.className = "waa-expandAttached";
+
+    const head = document.createElement("div");
+    head.className = "waa-expandHead";
+
+    const title = document.createElement("div");
+    title.className = "waa-expandHeadTitle";
+    title.textContent = `Missing on ${missing.length} segment${missing.length === 1 ? "" : "s"}`;
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "waa-expandClose";
+    close.textContent = "Close";
+    close.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleExpand(altId);
+    });
+
+    head.append(title, close);
+    exp.appendChild(head);
+
+    for (const m of missing) {
+      const it = document.createElement("div");
+      it.className = "waa-missItem";
+
+      const badge = document.createElement("span");
+      badge.className = "waa-missBadge";
+      badge.textContent = `#${m.order}`;
+
+      const txt = document.createElement("div");
+      txt.className = "waa-missText";
+
+      const prim = document.createElement("div");
+      prim.className = "waa-missPrimary";
+      prim.textContent = m.primaryMeta?.name ?? "(No primary)";
+
+      const city = document.createElement("div");
+      city.className = "waa-missCity";
+      city.textContent = m.primaryMeta?.city ?? "No city";
+
+      txt.append(prim, city);
+      it.append(badge, txt);
+      exp.appendChild(it);
+    }
+
+    parentCard.appendChild(exp);
+  }
+
+  function render() {
+    if (!state.mounted) return;
+
+    const root = document.getElementById(ROOT_ID);
+    if (!root || !root._refs) return;
+
+    const now = Date.now();
+    if (now - state.lastRender < 35) return;
+    state.lastRender = now;
+
+    const { title, body } = root._refs;
+
+    const ids = getSelectionSegmentIds();
+    const n = ids.length;
+
+    const sig = ids.join(",");
+    if (sig !== state._selSig) {
+      state._selSig = sig;
+      state._missingCache.clear();
+      state._expanded.clear();
+    }
+
+    title.textContent = `${n} SEGMENTS SELECTED`;
+
+    if (!state.minimized) {
+      body.innerHTML = "";
+
+      if (n < 1) {
+        const msg = document.createElement("div");
+        msg.className = "waa-empty";
+        msg.textContent = "Select segments to see alternate addresses.";
+        body.append(msg);
+      } else {
+        const secTitle = document.createElement("div");
+        secTitle.className = "waa-section-title";
+        secTitle.textContent = "Alternate addresses in selection";
+        body.append(secTitle);
+
+        const union = getAltUnionSummary(ids);
+
+        if (!union.length) {
+          const empty = document.createElement("div");
+          empty.className = "waa-empty";
+          empty.textContent = "No alternate addresses found in the selected segments.";
+          body.append(empty);
+        } else {
+          for (const item of union) {
+            const altId = item.streetId;
+            const meta = item.meta;
+
+            const card = document.createElement("div");
+            card.className = "waa-card";
+
+            const main = document.createElement("div");
+            main.className = "waa-cardMain";
+
+            const textWrap = document.createElement("div");
+            textWrap.className = "waa-rowtext";
+
+            const street = document.createElement("div");
+            street.className = "waa-street";
+            street.textContent = meta.name;
+
+            const chips = document.createElement("div");
+            chips.className = "waa-chips";
+
+            const present = document.createElement("span");
+            present.className = "waa-chip";
+            present.textContent = `Present in ${item.countPresent}/${n}`;
+            chips.appendChild(present);
+
+            const miss = document.createElement("span");
+            miss.className = "waa-chip miss";
+            miss.textContent = `Missing in ${item.countMissing}`;
+            miss.style.opacity = item.countMissing > 0 ? "1" : ".55";
+            miss.style.cursor = item.countMissing > 0 ? "pointer" : "default";
+            miss.title = item.countMissing > 0 ? "Click to expand missing segments" : "Nothing missing";
+            miss.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (item.countMissing <= 0) return;
+              toggleExpand(altId);
+            });
+            chips.appendChild(miss);
+
+            const city = document.createElement("div");
+            city.className = "waa-city";
+            city.textContent = meta.city;
+
+            textWrap.append(street, chips, city);
+
+            const btnCol = document.createElement("div");
+            btnCol.className = "waa-btnCol";
+
+            const addBtn = document.createElement("button");
+            addBtn.type = "button";
+            addBtn.className = "waa-act";
+            addBtn.textContent = getAltButtonLabel(altId, "add", "Add to missing");
+            addBtn.disabled = addBtn.textContent === "Added" || item.countMissing === 0;
+            addBtn.addEventListener("click", (e) => {
+              e.preventDefault();
+              addToMissing(altId);
+              setAltFeedback(altId, "added");
+              scheduleRender();
+              setTimeout(() => scheduleRender(), 1600);
+            });
+
+            const removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.className = "waa-act waa-remove";
+            removeBtn.textContent = getAltButtonLabel(altId, "remove", "Remove alternate");
+            removeBtn.disabled = removeBtn.textContent === "Removed" || item.countPresent === 0;
+            removeBtn.addEventListener("click", (e) => {
+              e.preventDefault();
+              removeAlternate(altId);
+              setAltFeedback(altId, "removed");
+              scheduleRender();
+              setTimeout(() => scheduleRender(), 1600);
+            });
+
+            btnCol.append(addBtn, removeBtn);
+
+            main.append(textWrap, btnCol);
+            card.appendChild(main);
+
+            if (state._expanded.has(Number(altId)) && item.countMissing > 0) {
+              renderAttachedMissingSegments(altId, ids, card);
+            }
+
+            body.appendChild(card);
+          }
+        }
+      }
+    }
+
+    setTimeout(() => autoSizePanel(), 0);
+  }
+
+  function boot() {
+    if (sdk) return;
+
+    sdk = getWmeSdk({ scriptId: SCRIPT_ID, scriptName: SCRIPT_NAME });
+
+    sdk.Events.once({ eventName: "wme-ready" }).then(() => {
+      loadUIState();
+      mount();
+
+      try {
+        sdk.Events.on({ eventName: "wme-selection-changed", eventHandler: () => scheduleRender() });
+      } catch (_) {}
+      try {
+        sdk.Events.on({ eventName: "wme-data-model-changed", eventHandler: () => scheduleRender() });
+      } catch (_) {}
+
+      setTimeout(() => autoSizePanel(), 0);
+    });
+  }
+
+  function waitForSdk() {
+    if (typeof SDK_INITIALIZED === "undefined") return setTimeout(waitForSdk, 400);
+    UW.SDK_INITIALIZED.then(boot);
+  }
+
+  waitForSdk();
+})();
