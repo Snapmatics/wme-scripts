@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Merge Alternate Addresses
 // @namespace    https://waze.com/
-// @version      1.9.4
+// @version      1.9.6
 // @author       GreekCaptain
 // @description  Applies alternate addresses to selected segments
 // @match        https://www.waze.com/*/editor*
@@ -10,8 +10,6 @@
 // @match        https://beta.waze.com/editor*
 // @grant        unsafeWindow
 // @icon         data:image/png;base64,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
-// @require      https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
-// @require      https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js
 // ==/UserScript==
 (() => {
   "use strict";
@@ -27,7 +25,6 @@
 
 
   const LAUNCHER_LOGO_DATA_URI = "data:image/png;base64,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";
-
   function launcherLogoMarkup() {
     // Use the script logo for the minimized launcher icon
     return `<img class="waa-launcherLogo" src="${LAUNCHER_LOGO_DATA_URI}" alt="MA" />`;
@@ -471,20 +468,6 @@
     const meta = getStreetMeta(sid);
 
     state.lastOp = { type, altId: sid, count: n, ts: Date.now() };
-
-    // For PDF logging / download prompt
-    state.lastLog = {
-      ts: Date.now(),
-      type,
-      altId: sid,
-      altName: meta?.name || `#${sid}`,
-      cityName: meta?.cityName || "No City",
-      count: n,
-      segments: ids.length ? ids : null,
-    };
-
-    // Show notification with "Download changes (Log)"
-    showDownloadLogNotice();
   }
 
 
@@ -519,183 +502,8 @@
     return false;
   }
 
-  // -----------------------------
-  // Change Log → PDF Download
-  // -----------------------------
-  function showDownloadLogNotice() {
-    const log = state.lastLog;
-    if (!log || !log.count) return;
-
-    // Remove existing notice
-    try { document.getElementById("waaLogToast").remove(); } catch {}
-
-    const wrap = document.createElement("div");
-    wrap.id = "waaLogToast";
-    wrap.className = "waa-logToast";
-
-    const msg = document.createElement("div");
-    msg.className = "waa-logToastMsg";
-    msg.textContent = "Changes saved.";
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "waa-logToastBtn";
-    btn.textContent = "Download changes (Log)";
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      generatePdfLog(log);
-    });
-
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "waa-logToastX";
-    close.textContent = "×";
-    close.addEventListener("click", (e) => {
-      e.preventDefault();
-      wrap.remove();
-    });
-
-    wrap.append(msg, btn, close);
-    document.body.appendChild(wrap);
-
-    // Auto dismiss
-    setTimeout(() => {
-      if (!wrap.isConnected) return;
-      wrap.classList.add("waa-hide");
-      setTimeout(() => wrap.remove(), 220);
-    }, 12000);
-  }
-
-  function getJsPdfCtor() {
-    // jsPDF UMD usually exposes window.jspdf.jsPDF
-    const w = UW;
-    if (w?.jspdf?.jsPDF) return w.jspdf.jsPDF;
-    if (typeof jspdf !== "undefined" && jspdf?.jsPDF) return jspdf.jsPDF;
-    if (w?.jsPDF) return w.jsPDF;
-    return null;
-  }
-
-  function formatTs(ts) {
-    try {
-      const d = new Date(ts);
-      const pad = (n) => String(n).padStart(2, "0");
-      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    } catch {
-      return "";
-    }
-  }
-
-  function safeFileTs(ts) {
-    try {
-      const d = new Date(ts);
-      const pad = (n) => String(n).padStart(2, "0");
-      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-    } catch {
-      return String(Date.now());
-    }
-  }
-
-  function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  }
-
-  function generatePdfLog(log) {
-    const JsPDF = getJsPdfCtor();
-    if (!JsPDF) {
-      alert("PDF library not loaded. Try reloading WME.");
-      return;
-    }
-
-    const doc = new JsPDF({ unit: "pt", format: "a4" });
-    const pageW = doc.internal.pageSize.getWidth();
-    const margin = 44;
-
-    // Header
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text("Alternate Address Changes Log", margin, 58);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.text(`Created: ${formatTs(log.ts)}`, margin, 78);
-
-    const actionLabel =
-      log.type === "add" ? "Added alternate to segments" :
-      log.type === "remove" ? "Removed alternate from segments" :
-      log.type === "remove-one" ? "Removed alternate from one segment" :
-      String(log.type || "Change");
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text(actionLabel, margin, 104);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.text(`Alternate: ${log.altName}`, margin, 124);
-    doc.text(`City: ${log.cityName || "No City"}`, margin, 140);
-    doc.text(`Segments changed: ${log.count}`, margin, 156);
-
-    // Table data
-    const rows = [];
-    const segs = Array.isArray(log.segments) ? log.segments : [];
-    const changeText =
-      log.type === "add" ? "Added alternate" :
-      log.type === "remove" || log.type === "remove-one" ? "Removed alternate" :
-      "Changed";
-
-    for (const sid of segs) {
-      rows.push([
-        String(sid),
-        `${changeText}
-${log.altName}
-${log.cityName || "No City"}`
-      ]);
-    }
-
-    const startY = 182;
-
-    if (typeof doc.autoTable === "function") {
-      doc.autoTable({
-        startY,
-        head: [["Segment", "Change"]],
-        body: rows.length ? rows : [["—", "No segment list available"]],
-        margin: { left: margin, right: margin },
-        styles: { font: "helvetica", fontSize: 10, cellPadding: 8, valign: "top" },
-        headStyles: { fontStyle: "bold" },
-        columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: pageW - margin*2 - 90 } },
-      });
-    } else {
-      // Fallback rendering if autoTable didn't load
-      doc.setFont("helvetica", "bold"); doc.setFontSize(11);
-      doc.text("Segment", margin, startY);
-      doc.text("Change", margin + 100, startY);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(10);
-      let y = startY + 18;
-      for (const r of rows.slice(0, 40)) {
-        doc.text(r[0], margin, y);
-        doc.text(doc.splitTextToSize(r[1], pageW - margin*2 - 100), margin + 100, y);
-        y += 52;
-        if (y > 760) break;
-      }
-    }
-
-    // Footer
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text("Generated by WME Merge Alternate Addresses", margin, 820);
-
-    const blob = doc.output("blob");
-    downloadBlob(blob, `WME_AltAddress_Log_${safeFileTs(log.ts)}.pdf`);
-  }
-
+  
+  // (PDF log + save notification removed)
 
   function handleUndo() {
     const op = state.lastOp;
