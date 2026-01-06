@@ -33,3 +33,7 @@ This userscript adds a modern floating panel that:
 - **Auto-expand** when you select multiple segments that already contain alternates (so you don’t miss it).
 - Performance-friendly list rendering (shows a limited number of rows by default with a “show more/less” toggle).
 - Remembers panel state/position (local storage).
+
+
+<img width="1301" height="703" alt="Screenshot 2026-01-06 184140" src="https://github.com/user-attachments/assets/dab3b6a6-7b34-4f2c-ae9f-6c3d406bf9e8" />
+<img width="1343" height="740" alt="Screenshot 2026-01-06 184246" src="https://github.com/user-attachments/assets/46844348-5d80-4e38-985f-fc31d40f6622" />
