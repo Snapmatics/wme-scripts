@@ -172,4 +172,120 @@
     document.body.appendChild(root);
 
     // drag handle (simple)
-    let dragging = false
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    const hdr = root.querySelector('.hdr');
+    hdr.style.cursor = 'grab';
+
+    hdr.addEventListener('mousedown', (e) => {
+      dragging = true;
+      hdr.style.cursor = 'grabbing';
+      sx = e.clientX; sy = e.clientY;
+      const rect = root.getBoundingClientRect();
+      ox = rect.left; oy = rect.top;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - sx;
+      const dy = e.clientY - sy;
+      root.style.left = `${ox + dx}px`;
+      root.style.top = `${oy + dy}px`;
+      root.style.right = 'auto';
+    });
+    window.addEventListener('mouseup', () => {
+      dragging = false;
+      hdr.style.cursor = 'grab';
+    });
+
+    root.querySelector(`#${SCRIPT_ID}-min`).addEventListener('click', () => {
+      root.classList.toggle('min');
+    });
+  }
+
+  function setStatus(text) {
+    const el = document.getElementById(`${SCRIPT_ID}-status`);
+    if (el) el.textContent = text;
+  }
+
+  function setOut(text) {
+    const el = document.getElementById(`${SCRIPT_ID}-out`);
+    if (el) el.textContent = text;
+  }
+
+  function tryGetMap() {
+    // WME internal map object is usually W.map (OpenLayers)
+    if (window.W && W.map && typeof W.map.getCenter === 'function') return W.map;
+    return null;
+  }
+
+  function getCenterAndZoom(map) {
+    const c = map.getCenter();
+    const z = map.getZoom?.() ?? null;
+
+    // OpenLayers LonLat -> lon/lat
+    const lon = c?.lon;
+    const lat = c?.lat;
+
+    return { lat, lon, zoom: z };
+  }
+
+  function makePermalink({ lat, lon, zoom }) {
+    // This permalink pattern is common; WME sometimes uses different params, but this works as a baseline.
+    // If WME changes, adjust here.
+    const z = zoom ?? 5;
+    return `${location.origin}${location.pathname}?zoomLevel=${encodeURIComponent(z)}&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`;
+  }
+
+  async function wireButtons() {
+    const coordsBtn = document.getElementById(`${SCRIPT_ID}-coords`);
+    const plinkBtn = document.getElementById(`${SCRIPT_ID}-plink`);
+
+    coordsBtn?.addEventListener('click', async () => {
+      const map = tryGetMap();
+      if (!map) return setOut('Map not available yet.');
+
+      const { lat, lon, zoom } = getCenterAndZoom(map);
+      const text = `Center:\nlat: ${lat}\nlon: ${lon}\nzoom: ${zoom}`;
+      const ok = await copyToClipboard(text);
+      setStatus(ok ? 'Copied' : 'Copy failed');
+      setOut(text);
+    });
+
+    plinkBtn?.addEventListener('click', async () => {
+      const map = tryGetMap();
+      if (!map) return setOut('Map not available yet.');
+
+      const data = getCenterAndZoom(map);
+      const link = makePermalink(data);
+      const ok = await copyToClipboard(link);
+      setStatus(ok ? 'Copied' : 'Copy failed');
+      setOut(link);
+    });
+  }
+
+  async function init() {
+    injectStyles();
+    buildUI();
+    await wireButtons();
+
+    setStatus('Loading…');
+    setOut('Waiting for WME map object (W.map)…');
+
+    await waitFor(() => !!tryGetMap(), { name: 'W.map' });
+
+    const map = tryGetMap();
+    const data = getCenterAndZoom(map);
+    setStatus('Ready');
+    setOut(`Map ready.\nlat: ${data.lat}\nlon: ${data.lon}\nzoom: ${data.zoom}`);
+
+    log('Initialized OK');
+  }
+
+  init().catch((e) => {
+    log('Init failed:', e);
+    injectStyles();
+    buildUI();
+    setStatus('Error');
+    setOut(`Init failed:\n${e?.message || e}`);
+  });
+})();
