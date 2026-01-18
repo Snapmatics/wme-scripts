@@ -41,6 +41,7 @@
     const state = {
         mounted: false,
         minimized: false,
+        uiAnimating: false,
         dragging: false,
         dragPointerId: null,
         dragDx: 0,
@@ -131,11 +132,12 @@
     function scheduleRender() {
         if (state.scheduled) return;
         state.scheduled = true;
-        setTimeout(() => {
+        raf(() => {
             state.scheduled = false;
             render();
-        }, 90);
+        });
     }
+
 
     function scheduleAutoSize() {
         if (state.sizeScheduled) return;
@@ -147,15 +149,16 @@
     }
 
     function autoSizePanel() {
-        const root = document.getElementById(ROOT_ID);
-        if (!root) return;
+        const root = state.uiRoot || document.getElementById(ROOT_ID);
+        if (!root || !root._refs) return;
 
-        const top = root.querySelector(".waa-top");
-        const body = root.querySelector(".waa-body");
+        if (state.uiAnimating) return;
+
+        const top = root._refs.topEl || root.querySelector(".waa-top");
+        const body = root._refs.body;
         if (!top || !body) return;
 
         if (state.minimized) {
-            // keep a true compact icon footprint
             root.style.height = "56px";
             body.style.maxHeight = "0px";
             body.style.overflow = "hidden";
@@ -676,6 +679,8 @@
   width: 396px;
   z-index: 999999;
 
+  transition: width .22s var(--waa-ease), height .22s var(--waa-ease);
+
   font-family: ui-sans-serif, system-ui, "Inter", "Roboto", "Helvetica Neue", Arial, sans-serif;
   font-size: 13.1px;
   line-height: 1.30;
@@ -720,16 +725,20 @@
   place-items:center;
   cursor:pointer;
   user-select:none;
+  position:absolute;
+  top:0;
+  left:0;
+  z-index:2;
 
-  /* match panel vibe */
+  /* match panel vibe (neutral glass, more white) */
   background:
     radial-gradient(120% 140% at 12% -10%,
-      rgba(40,140,255,.26) 0%,
-      rgba(255,255,255,.62) 46%,
-      rgba(255,255,255,.44) 100%
+      rgba(255,255,255,.68) 0%,
+      rgba(255,255,255,.50) 52%,
+      rgba(255,255,255,.36) 100%
     ),
-    linear-gradient(135deg, rgba(255,255,255,.54), rgba(235,248,255,.30));
-  box-shadow: 0 18px 44px var(--waa-shadow), 0 12px 36px var(--waa-shadow-blue);
+    linear-gradient(135deg, rgba(255,255,255,.46), rgba(255,255,255,.28));
+  box-shadow: 0 18px 44px var(--waa-shadow), 0 12px 36px rgba(0,0,0,.06);
   backdrop-filter: blur(28px) saturate(1.45);
   -webkit-backdrop-filter: blur(28px) saturate(1.45);
 
@@ -738,24 +747,60 @@
 .waa-launcher svg, .waa-launcher img{ width:34px; height:34px; opacity:.95; }
 .waa-launcherLogo{ display:block; border-radius:7px; }
 
+/* iOS-like notification badge for minimized launcher */
+.waa-notifBadge {
+    position: absolute;
+    top: 5px;
+    left: 30px;
+    transform: translate(50%, -50%);
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    box-sizing: border-box;
+    background: rgb(249 96 87 / 98%);
+    color: rgba(255, 255, 255, 1);
+    font-size: 12px;
+    font-weight: 650;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Arial, sans-serif;
+    letter-spacing: 0px;
+    display: grid;
+    place-items: center;
+    line-height: 1.4;
+    text-align: center;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, .18);
+    pointer-events: none;
+}
+
+.waa-notifBadge.waa-notifBadge--wide{
+  width:auto; /* pill for 2+ digits */
+  min-width:20px;
+  padding:0 6px;
+}
+
 @keyframes waaLauncherPop{
   0%{ opacity:0; transform: scale(.92); filter: blur(3px); }
   100%{ opacity:1; transform: scale(1); filter: blur(0); }
 }
-.waa-launcher.waa-pop{ animation: waaLauncherPop .22s var(--waa-ease) both; }
+.waa-launcher.waa-pop{ animation: waaLauncherPop .28s var(--waa-ease) both; }
 
 @keyframes waaLauncherShrink{
   0%{ opacity:1; transform: scale(1); }
   100%{ opacity:0; transform: scale(.92); }
 }
-.waa-launcher.waa-shrink{ animation: waaLauncherShrink .16s var(--waa-ease) both; }
+.waa-launcher.waa-shrink{ animation: waaLauncherShrink .22s var(--waa-ease) both; }
+
+/* Smoother minimize/expand */
+.waa-launcher.waa-enter{ opacity:0; transform: scale(.92); filter: blur(3px); }
+.waa-panel{ transition: opacity .22s var(--waa-ease), transform .22s var(--waa-ease), filter .22s var(--waa-ease); }
+.waa-panel.waa-close{ opacity:0; transform: translateY(10px) scale(.985); filter: blur(2px); pointer-events:none; }
+
 
 
 /* Mount animation */
 #${ROOT_ID}{ opacity:0; transform: translateY(10px) scale(.985); }
 #${ROOT_ID}.waa-in{
   opacity:1; transform: translateY(0) scale(1);
-  transition: opacity .45s var(--waa-ease), transform .45s var(--waa-ease);
+  transition: opacity .45s var(--waa-ease), transform .45s var(--waa-ease), width .22s var(--waa-ease), height .22s var(--waa-ease);
 }
 
 .waa-panel{
@@ -765,15 +810,15 @@
   display:flex;
   flex-direction:column;
 
-  /* Glassy + readable (same palette) */
+  /* Glassy + readable (less see-through, more white) */
   background:
     radial-gradient(120% 140% at 12% -10%,
-      rgba(40,140,255,.22) 0%,
-      rgba(255,255,255,.74) 45%,
-      rgba(255,255,255,.64) 100%),
+      rgba(255,255,255,.68) 0%,
+      rgba(255,255,255,.50) 52%,
+      rgba(255,255,255,.36) 100%),
     linear-gradient(135deg,
-      rgba(255,255,255,.64),
-      rgba(235,248,255,.46));
+      rgba(255,255,255,.44),
+      rgba(255,255,255,.26));
 
   /* no solid border around the panel */
   border: none;
@@ -808,10 +853,10 @@
 
   /* softer sheen to avoid right-edge banding */
   background: radial-gradient(140% 70% at 25% 0%,
-    rgba(255,255,255,.42) 0%,
-    rgba(255,255,255,.12) 32%,
-    rgba(40,140,255,.08) 52%,
-    rgba(255,255,255,0) 72%);
+    rgba(255,255,255,.34) 0%,
+    rgba(255,255,255,.10) 34%,
+    rgba(255,255,255,.06) 56%,
+    rgba(255,255,255,0) 76%);
   opacity:.32;
   mix-blend-mode: normal;
 }
@@ -820,13 +865,13 @@
   content:"";
   position:absolute;
   top:0; right:0; bottom:0;
-  width:14px;
+  width:16px;
   pointer-events:none;
 
   /* hides Chrome backdrop-filter seam near the right edge */
   background: linear-gradient(to left,
-    rgba(255,255,255,.22) 0%,
-    rgba(255,255,255,.08) 45%,
+    rgba(255,255,255,.30) 0%,
+    rgba(255,255,255,.12) 45%,
     rgba(255,255,255,0) 100%);
 }
 @keyframes waaSheen{ 0%,100%{transform:translateX(-18%);opacity:.48} 50%{transform:translateX(8%);opacity:.64} }
@@ -843,7 +888,7 @@
     height: 60px;
     display: flex;
     align-items: center;
-    background: linear-gradient(90deg, rgb(187 219 255 / 20%) 0%, rgb(36 104 186 / 0%) 44%, rgb(160 215 255 / 0%) 100%);
+    background: rgba(255,255,255,.10);
     cursor: grab;
 }
 #${ROOT_ID}.dragging .waa-top{ cursor:grabbing; }
@@ -1191,7 +1236,7 @@
 }
 .waa-mini svg{ width:16px; height:16px; opacity:.86; }
 
-#${ROOT_ID}.minimized{ height:auto!important; width:396px; }
+/* Minimized sizing is defined earlier; only hide body here. */
 #${ROOT_ID}.minimized .waa-body{ display:none; }
 `;
       document.head.appendChild(st);
@@ -1489,27 +1534,6 @@
         minimizeBtn.type = "button";
         minimizeBtn.title = "Minimize / Restore";
         minimizeBtn.textContent = "—";
-        minimizeBtn.addEventListener("click", (e) => {
-            e.preventDefault();
-            state.minimized = !state.minimized;
-            root.classList.toggle("minimized", state.minimized);
-            minimizeBtn.textContent = state.minimized ? "▢" : "—";
-            // switch views
-            panel.style.display = state.minimized ? "none" : "flex";
-            launcher.style.display = state.minimized ? "grid" : "none";
-            if (state.minimized) {
-                launcher.classList.remove("waa-shrink");
-                launcher.classList.remove("waa-pop");
-                void launcher.offsetWidth;
-                launcher.classList.add("waa-pop");
-            } else {
-                launcher.classList.remove("waa-pop");
-                launcher.classList.remove("waa-shrink");
-                scheduleRender();
-            }
-            saveUIState();
-            scheduleAutoSize();
-        });
 
         actions.append(minimizeBtn);
         topRow.append(scriptNameEl, actions);
@@ -1539,6 +1563,11 @@
         launcher.title = "Expand";
         launcher.innerHTML = launcherLogoMarkup();
 
+        const badge = document.createElement("div");
+        badge.className = "waa-notifBadge";
+        badge.style.display = "none";
+        launcher.appendChild(badge);
+
         const undo = document.createElement("div");
         undo.className = "waa-undo";
         undo.style.display = "none";
@@ -1555,20 +1584,103 @@
         undo.append(undoText, undoBtn);
 
         body.append(empty, undo, secTitle, secMeta, list);
-        root._refs = { body, minimizeBtn, empty, undo, undoText, secTitle, secMeta, list, panel, launcher };
+        root._refs = { topEl: top, body, minimizeBtn, empty, undo, undoText, secTitle, secMeta, list, panel, launcher, badge };
 
         panel.append(top, body);
         root.append(panel, launcher);
 
+
+        let uiAnimating = false;
+        const UI_ANIM_MS = 220;
+
+        function setMinimized(next) {
+            if (uiAnimating || next === state.minimized) return;
+            uiAnimating = true;
+            state.uiAnimating = true;
+
+            const finish = () => {
+                uiAnimating = false;
+                state.uiAnimating = false;
+                saveUIState();
+                scheduleAutoSize();
+                if (!state.minimized) scheduleRender();
+            };
+
+            if (next) {
+                state.minimized = true;
+                minimizeBtn.textContent = "▢";
+
+                // launcher in
+                launcher.style.display = "grid";
+                launcher.classList.remove("waa-shrink", "waa-pop");
+                launcher.classList.add("waa-enter");
+
+                // panel out
+                panel.style.display = "flex";
+                panel.classList.remove("waa-open");
+                panel.classList.remove("waa-close");
+                void panel.offsetWidth;
+                panel.classList.add("waa-close");
+
+                raf(() => {
+                    launcher.classList.remove("waa-enter");
+                    launcher.classList.remove("waa-pop");
+                    void launcher.offsetWidth;
+                    launcher.classList.add("waa-pop");
+                });
+
+                setTimeout(() => {
+                    panel.style.display = "none";
+                    root.classList.add("minimized");
+                    finish();
+                }, UI_ANIM_MS);
+
+            } else {
+                state.minimized = false;
+                root.classList.remove("minimized");
+                minimizeBtn.textContent = "—";
+
+                // panel in
+                panel.style.display = "flex";
+                panel.classList.add("waa-close");
+                raf(() => panel.classList.remove("waa-close"));
+
+                // launcher out
+                launcher.classList.remove("waa-pop", "waa-enter");
+                launcher.classList.remove("waa-shrink");
+                void launcher.offsetWidth;
+                launcher.classList.add("waa-shrink");
+
+                setTimeout(() => {
+                    launcher.style.display = "none";
+                    launcher.classList.remove("waa-shrink");
+                    finish();
+                }, UI_ANIM_MS);
+            }
+        }
+        
+        minimizeBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            setMinimized(!state.minimized);
+        });
+
+
         // initial minimized visibility
+        panel.classList.remove("waa-close");
         panel.style.display = state.minimized ? "none" : "flex";
         launcher.style.display = state.minimized ? "grid" : "none";
         if (state.minimized) {
-            launcher.classList.remove("waa-pop");
+            root.classList.add("minimized");
+            launcher.classList.remove("waa-pop", "waa-shrink");
             void launcher.offsetWidth;
             launcher.classList.add("waa-pop");
+        } else {
+            root.classList.remove("minimized");
         }
         document.body.appendChild(root);
+
+        state.uiRoot = root;
+        state.rootEl = root;
 
         applySavedPosition(root);
         root.classList.toggle("minimized", !!state.minimized);
@@ -1638,27 +1750,7 @@
 
                 // If we were minimized and this was a click (not a drag), expand.
                 if (state.minimized && fromLauncher && wasClick) {
-                    launcher.classList.remove("waa-pop");
-                    launcher.classList.add("waa-shrink");
-                    setTimeout(() => {
-                        state.minimized = false;
-                        state.dragMoved = false;
-                        state.dragFromLauncher = false;
-
-                        root.classList.remove("minimized");
-                        panel.style.display = "flex";
-                        launcher.style.display = "none";
-                        minimizeBtn.textContent = "—";
-
-                        // Smooth open animation
-                        panel.classList.remove("waa-open");
-                        void panel.offsetWidth;
-                        panel.classList.add("waa-open");
-
-                        saveUIState();
-                        scheduleRender();
-                        scheduleAutoSize();
-                    }, 140);
+                    setMinimized(false);
                 } else {
                     state.dragMoved = false;
                     state.dragFromLauncher = false;
@@ -1728,35 +1820,32 @@
         const sig = ids.join(",");
         if (sig !== state.selSig) resetSelectionCaches(sig, ids);
 
-        // Auto-expand when minimized and at least 2 selected segments already have alternates
-        if (state.minimized && n >= 2) {
+        // When minimized: do NOT auto-open.
+        // Instead show an iOS-like badge when >=2 selected segments already have alternates.
+        if (state.minimized) {
+            const badge = root._refs.badge;
             let withAlts = 0;
-            for (const segId of ids) {
-                const alts = getAltIdsForSegment(segId);
-                if (alts && alts.length) withAlts++;
-                if (withAlts >= 2) break;
-            }
-            if (withAlts >= 2 && !state.dragging) {
-                const { panel, launcher, minimizeBtn } = root._refs;
-                state.minimized = false;
-                root.classList.remove("minimized");
-                if (panel) panel.style.display = "flex";
-                if (launcher) launcher.style.display = "none";
-                if (minimizeBtn) minimizeBtn.textContent = "—";
-
-                // Smooth open animation
-                if (panel) {
-                    panel.classList.remove("waa-open");
-                    void panel.offsetWidth;
-                    panel.classList.add("waa-open");
+            if (n >= 2) {
+                for (const segId of ids) {
+                    const alts = getAltIdsForSegment(segId);
+                    if (alts && alts.length) withAlts++;
                 }
-
-                saveUIState();
-                // continue rendering content now that we're expanded
             }
+            if (badge) {
+                if (withAlts >= 2) {
+                    badge.textContent = withAlts > 99 ? "99+" : String(withAlts);
+                    badge.classList.toggle("waa-notifBadge--wide", String(badge.textContent).length > 1);
+                    badge.style.display = "block";
+                } else {
+                    badge.classList.remove("waa-notifBadge--wide");
+                    badge.style.display = "none";
+                }
+            }
+            return;
         }
 
-        if (state.minimized) return;
+        // ensure badge is off when expanded
+        if (root._refs.badge) root._refs.badge.style.display = "none";
 
         // Last operation (Undo safety net)
         if (state.lastOp && state.lastOp.undone && now - state.lastOp.ts > 2600) state.lastOp = null;
@@ -1859,7 +1948,6 @@
             loadUIState();
             mount();
 
-            // Lean: selection change is the only global refresh trigger
             try {
                 sdk.Events.on({
                     eventName: "wme-selection-changed",
