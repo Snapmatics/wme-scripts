@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Merge Alternate Addresses
 // @namespace    https://waze.com/
-// @version      0.2.0
+// @version      0.3.0
 // @author       GreekCaptain
 // @description  Applies alternate addresses to selected segments
 // @match        https://www.waze.com/*/editor*
@@ -70,6 +70,9 @@
         expandedShowAll: new Map(), // altId -> bool
 
         feedbackUntil: new Map(),
+
+        // Last operation safety net
+        lastOp: null, // { type, altId, count, ts }
 
         savedPos: null,
         cardMap: new Map(),
@@ -459,6 +462,19 @@
     }
 
 
+    function recordLastOp(type, altId, count, segIds) {
+        const n = Number(count);
+        const sid = Number(altId);
+        if (!Number.isFinite(n) || n <= 0) return;
+        if (!Number.isFinite(sid)) return;
+
+        const ids = Array.isArray(segIds) ? segIds.map(Number).filter(Number.isFinite) : [];
+        const meta = getStreetMeta(sid);
+
+        state.lastOp = { type, altId: sid, count: n, ts: Date.now() };
+    }
+
+
     async function addToMissing(altId) {
         if (!sdk.Editing.isEditingAllowed()) return;
 
@@ -487,6 +503,9 @@
             changed++;
             changedSegs.push(segId);
         }
+
+        recordLastOp("add", sid, changed, changedSegs);
+
         setAltFeedback(sid, "added");
         markDataDirty();
         scheduleRender();
@@ -518,6 +537,9 @@
             changed++;
             changedSegs.push(segId);
         }
+
+        recordLastOp("remove", sid, changed, changedSegs);
+
         setAltFeedback(sid, "removed");
         markDataDirty();
         scheduleRender();
@@ -539,6 +561,9 @@
             segmentId: id,
             alternateStreetIds: currentAlt.filter((x) => x !== sid),
         });
+
+        recordLastOp("remove-one", sid, 1, [id]);
+
         markDataDirty();
         scheduleRender();
     }
@@ -615,7 +640,7 @@
   color: rgba(18,24,38,.92);
 
   --waa-shadow: rgba(0,0,0,.14);
-  --waa-shadow-blue: rgba(40,140,255,.18);
+  --waa-shadow-blue: rgba(0,0,0,.06);
 
   --waa-orange-stroke: rgba(255,140,0,.28);
   --waa-orange-bg: rgba(255,140,0,.12);
@@ -648,35 +673,28 @@
   cursor:pointer;
   user-select:none;
 
-  /* match panel vibe */
+  position:absolute;
+  top:0;
+  left:0;
+  z-index:2;
+
+  /* neutral glass (no blue gradient) */
   background:
     radial-gradient(120% 140% at 12% -10%,
-      rgba(40,140,255,.26) 0%,
-      rgba(255,255,255,.62) 46%,
-      rgba(255,255,255,.44) 100%
+      rgba(255,255,255,.52) 0%,
+      rgba(255,255,255,.34) 52%,
+      rgba(255,255,255,.22) 100%
     ),
-    linear-gradient(135deg, rgba(255,255,255,.54), rgba(235,248,255,.30));
-  box-shadow: 0 18px 44px var(--waa-shadow), 0 12px 36px var(--waa-shadow-blue);
-  backdrop-filter: blur(28px) saturate(1.45);
-  -webkit-backdrop-filter: blur(28px) saturate(1.45);
+    linear-gradient(135deg, rgba(255,255,255,.30), rgba(255,255,255,.18));
+
+  box-shadow: 0 18px 44px var(--waa-shadow), 0 12px 36px rgba(0,0,0,.05);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
 
   transform: translateZ(0);
 }
 .waa-launcher svg, .waa-launcher img{ width:34px; height:34px; opacity:.95; }
 .waa-launcherLogo{ display:block; border-radius:7px; }
-
-@keyframes waaLauncherPop{
-  0%{ opacity:0; transform: scale(.92); filter: blur(3px); }
-  100%{ opacity:1; transform: scale(1); filter: blur(0); }
-}
-.waa-launcher.waa-pop{ animation: waaLauncherPop .22s var(--waa-ease) both; }
-
-@keyframes waaLauncherShrink{
-  0%{ opacity:1; transform: scale(1); }
-  100%{ opacity:0; transform: scale(.92); }
-}
-.waa-launcher.waa-shrink{ animation: waaLauncherShrink .16s var(--waa-ease) both; }
-
 
 .waa-notifBadge {
     position: absolute;
@@ -701,7 +719,23 @@
     pointer-events: none;
 }
 
+.waa-notifBadge.waa-notifBadge--wide{
+  width:auto;
+  min-width:20px;
+  padding:0 6px;
+}
 
+@keyframes waaLauncherPop{
+  0%{ opacity:0; transform: scale(.92); filter: blur(3px); }
+  100%{ opacity:1; transform: scale(1); filter: blur(0); }
+}
+.waa-launcher.waa-pop{ animation: waaLauncherPop .22s var(--waa-ease) both; }
+
+@keyframes waaLauncherShrink{
+  0%{ opacity:1; transform: scale(1); }
+  100%{ opacity:0; transform: scale(.92); }
+}
+.waa-launcher.waa-shrink{ animation: waaLauncherShrink .16s var(--waa-ease) both; }
 
 
 /* Mount animation */
@@ -718,25 +752,25 @@
   display:flex;
   flex-direction:column;
 
-  /* Glassy + readable (same palette) */
+  /* Glassy + readable (neutral, more see-through) */
   background:
     radial-gradient(120% 140% at 12% -10%,
-      rgba(40,140,255,.22) 0%,
-      rgba(255,255,255,.74) 45%,
-      rgba(255,255,255,.64) 100%),
+      rgba(255,255,255,.50) 0%,
+      rgba(255,255,255,.30) 52%,
+      rgba(255,255,255,.18) 100%),
     linear-gradient(135deg,
-      rgba(255,255,255,.64),
-      rgba(235,248,255,.46));
+      rgba(255,255,255,.26),
+      rgba(255,255,255,.14));
 
   /* no solid border around the panel */
   border: none;
 
   /* shadow biased left so it won't clip on the right edge */
-  box-shadow: -10px 22px 58px var(--waa-shadow), -8px 14px 46px var(--waa-shadow-blue);
+  box-shadow: -10px 22px 58px var(--waa-shadow), -8px 14px 46px rgba(0,0,0,.06);
 
   /* blur */
-  backdrop-filter: blur(20px) saturate(1.22);
-  -webkit-backdrop-filter: blur(20px) saturate(1.22);
+  backdrop-filter: blur(20px) saturate(1.18);
+  -webkit-backdrop-filter: blur(20px) saturate(1.18);
 
   position:relative;
   transform: translateZ(0);
@@ -763,7 +797,7 @@
   background: radial-gradient(140% 70% at 25% 0%,
     rgba(255,255,255,.42) 0%,
     rgba(255,255,255,.12) 32%,
-    rgba(40,140,255,.08) 52%,
+    rgba(255,255,255,.08) 52%,
     rgba(255,255,255,0) 72%);
   opacity:.32;
   mix-blend-mode: normal;
@@ -796,7 +830,7 @@
     height: 60px;
     display: flex;
     align-items: center;
-    background: linear-gradient(90deg, rgb(187 219 255 / 20%) 0%, rgb(36 104 186 / 0%) 44%, rgb(160 215 255 / 0%) 100%);
+    background: rgba(255, 255, 255, .10);
     cursor: grab;
 }
 #${ROOT_ID}.dragging .waa-top{ cursor:grabbing; }
@@ -827,12 +861,11 @@
 }
 .waa-iconTop:active{ transform: translateY(1px) scale(.985); }
 
-/* ✅ Modern scrollbar */
-.waa-body{
-  padding:12px 12px 10px;
-  overflow:auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(18,24,38,.28) rgba(255,255,255,0);
+.waa-body {
+    padding: 12px 12px 10px;
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(18, 24, 38, .28) rgba(255, 255, 255, 0);
 }
 .waa-body::-webkit-scrollbar{ width: 10px; }
 .waa-body::-webkit-scrollbar-track{
@@ -1103,11 +1136,9 @@
 }
 .waa-mini svg{ width:16px; height:16px; opacity:.86; }
 
-#${ROOT_ID}.minimized{ height:auto!important; width:396px; }
-#${ROOT_ID}.minimized .waa-body{ display:none; }
 `;
-      document.head.appendChild(st);
-  }
+        document.head.appendChild(st);
+    }
 
     function applySavedPosition(root) {
         const pos = state.savedPos;
@@ -1127,14 +1158,14 @@
 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
   <path fill="currentColor" d="M11 2h2v2.06a8.01 8.01 0 0 1 6.94 6.94H22v2h-2.06A8.01 8.01 0 0 1 13 19.94V22h-2v-2.06A8.01 8.01 0 0 1 4.06 13H2v-2h2.06A8.01 8.01 0 0 1 11 4.06V2Zm1 4a6 6 0 1 0 0 12a6 6 0 0 0 0-12Zm0 3a3 3 0 1 1 0 6a3 3 0 0 1 0-6Z"/>
 </svg>`;
-  }
+    }
 
     function iconRemoveSvg() {
         return `
 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
   <path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2Zm1 6h2v10h-2V9Zm4 0h2v10h-2V9ZM7 9h2v10H7V9Z"/>
 </svg>`;
-  }
+    }
 
     function renderExpanded(cardRefs, altId, mode, selectionIds) {
         const fullList = getSegListForAlt(mode, altId, selectionIds);
@@ -1148,108 +1179,108 @@
               mode === "present"
         ? `Present on ${total} segment${total === 1 ? "" : "s"}`
         : `Missing on ${total} segment${total === 1 ? "" : "s"}`;
-      const title = capped ? `${titlePrefix} (showing ${EXPAND_CAP})` : titlePrefix;
+        const title = capped ? `${titlePrefix} (showing ${EXPAND_CAP})` : titlePrefix;
 
-      let wrap = cardRefs.expandWrap;
-      if (!wrap) {
-          wrap = document.createElement("div");
-          wrap.className = "waa-expandAttached";
+        let wrap = cardRefs.expandWrap;
+        if (!wrap) {
+            wrap = document.createElement("div");
+            wrap.className = "waa-expandAttached";
 
-          const head = document.createElement("div");
-          head.className = "waa-expandHead";
+            const head = document.createElement("div");
+            head.className = "waa-expandHead";
 
-          const t = document.createElement("div");
-          t.className = "waa-expandHeadTitle";
+            const t = document.createElement("div");
+            t.className = "waa-expandHeadTitle";
 
-          const btns = document.createElement("div");
-          btns.className = "waa-expandHeadBtns";
+            const btns = document.createElement("div");
+            btns.className = "waa-expandHeadBtns";
 
-          const showBtn = document.createElement("button");
-          showBtn.type = "button";
-          showBtn.className = "waa-expandBtn";
-          showBtn.setAttribute("data-action", "toggle-showall");
-          showBtn.setAttribute("data-alt-id", String(Number(altId)));
+            const showBtn = document.createElement("button");
+            showBtn.type = "button";
+            showBtn.className = "waa-expandBtn";
+            showBtn.setAttribute("data-action", "toggle-showall");
+            showBtn.setAttribute("data-alt-id", String(Number(altId)));
 
-          const close = document.createElement("button");
-          close.type = "button";
-          close.className = "waa-expandBtn";
-          close.textContent = "Close";
-          close.setAttribute("data-action", "close-expand");
-          close.setAttribute("data-alt-id", String(Number(altId)));
+            const close = document.createElement("button");
+            close.type = "button";
+            close.className = "waa-expandBtn";
+            close.textContent = "Close";
+            close.setAttribute("data-action", "close-expand");
+            close.setAttribute("data-alt-id", String(Number(altId)));
 
-          btns.append(showBtn, close);
-          head.append(t, btns);
-          wrap.append(head);
+            btns.append(showBtn, close);
+            head.append(t, btns);
+            wrap.append(head);
 
-          cardRefs.expandWrap = wrap;
-          cardRefs.expandTitle = t;
-          cardRefs.expandShowBtn = showBtn;
-      }
+            cardRefs.expandWrap = wrap;
+            cardRefs.expandTitle = t;
+            cardRefs.expandShowBtn = showBtn;
+        }
 
-      wrap.className = "waa-expandAttached " + (mode === "missing" ? "waa-expand-missing" : "waa-expand-present");
+        wrap.className = "waa-expandAttached " + (mode === "missing" ? "waa-expand-missing" : "waa-expand-present");
 
-      cardRefs.expandTitle.textContent = title;
+        cardRefs.expandTitle.textContent = title;
 
-      if (total > EXPAND_CAP) {
-          cardRefs.expandShowBtn.style.display = "inline-flex";
-          cardRefs.expandShowBtn.textContent = showAll ? "Show less" : "Show all";
-      } else {
-          cardRefs.expandShowBtn.style.display = "none";
-      }
+        if (total > EXPAND_CAP) {
+            cardRefs.expandShowBtn.style.display = "inline-flex";
+            cardRefs.expandShowBtn.textContent = showAll ? "Show less" : "Show all";
+        } else {
+            cardRefs.expandShowBtn.style.display = "none";
+        }
 
-      while (wrap.children.length > 1) wrap.removeChild(wrap.lastChild);
+        while (wrap.children.length > 1) wrap.removeChild(wrap.lastChild);
 
-      const isPresentMode = mode === "present";
-      const targetSvg = iconTargetSvg();
-      const removeSvg = iconRemoveSvg();
+        const isPresentMode = mode === "present";
+        const targetSvg = iconTargetSvg();
+        const removeSvg = iconRemoveSvg();
 
-      for (let idx = 0; idx < list.length; idx++) {
-          const it = list[idx];
+        for (let idx = 0; idx < list.length; idx++) {
+            const it = list[idx];
 
-          const row = document.createElement("div");
-          row.className = "waa-row waa-rowIn";
-          row.style.animationDelay = `${Math.min(160, idx * 14)}ms`;
+            const row = document.createElement("div");
+            row.className = "waa-row waa-rowIn";
+            row.style.animationDelay = `${Math.min(160, idx * 14)}ms`;
 
-          const badge = document.createElement("span");
-          badge.className = "waa-badge";
-          badge.textContent = `#${it.order}`;
+            const badge = document.createElement("span");
+            badge.className = "waa-badge";
+            badge.textContent = `#${it.order}`;
 
-          const prim = document.createElement("div");
-          prim.className = "waa-primary";
-          prim.textContent = it.primaryName || "(No primary)";
+            const prim = document.createElement("div");
+            prim.className = "waa-primary";
+            prim.textContent = it.primaryName || "(No primary)";
 
-          row.append(badge, prim);
+            row.append(badge, prim);
 
-          if (isPresentMode) {
-              const btns = document.createElement("div");
-              btns.className = "waa-rowBtns";
+            if (isPresentMode) {
+                const btns = document.createElement("div");
+                btns.className = "waa-rowBtns";
 
-              const zoomBtn = document.createElement("button");
-              zoomBtn.type = "button";
-              zoomBtn.className = "waa-mini";
-              zoomBtn.title = "Zoom to this segment";
-              zoomBtn.setAttribute("data-action", "zoom-seg");
-              zoomBtn.setAttribute("data-seg-id", String(it.segId));
-              zoomBtn.innerHTML = targetSvg;
+                const zoomBtn = document.createElement("button");
+                zoomBtn.type = "button";
+                zoomBtn.className = "waa-mini";
+                zoomBtn.title = "Zoom to this segment";
+                zoomBtn.setAttribute("data-action", "zoom-seg");
+                zoomBtn.setAttribute("data-seg-id", String(it.segId));
+                zoomBtn.innerHTML = targetSvg;
 
-              const rmBtn = document.createElement("button");
-              rmBtn.type = "button";
-              rmBtn.className = "waa-mini danger";
-              rmBtn.title = "Remove this alternate from this segment only";
-              rmBtn.setAttribute("data-action", "remove-one");
-              rmBtn.setAttribute("data-alt-id", String(Number(altId)));
-              rmBtn.setAttribute("data-seg-id", String(it.segId));
-              rmBtn.innerHTML = removeSvg;
+                const rmBtn = document.createElement("button");
+                rmBtn.type = "button";
+                rmBtn.className = "waa-mini danger";
+                rmBtn.title = "Remove this alternate from this segment only";
+                rmBtn.setAttribute("data-action", "remove-one");
+                rmBtn.setAttribute("data-alt-id", String(Number(altId)));
+                rmBtn.setAttribute("data-seg-id", String(it.segId));
+                rmBtn.innerHTML = removeSvg;
 
-              btns.append(zoomBtn, rmBtn);
-              row.append(btns);
-          }
+                btns.append(zoomBtn, rmBtn);
+                row.append(btns);
+            }
 
-          wrap.append(row);
-      }
+            wrap.append(row);
+        }
 
-      return wrap;
-  }
+        return wrap;
+    }
 
     function createCard(item, n) {
         const altId = Number(item.streetId);
@@ -1450,12 +1481,10 @@
         launcher.className = "waa-launcher";
         launcher.title = "Expand";
         launcher.innerHTML = launcherLogoMarkup();
-
         const badge = document.createElement("div");
         badge.className = "waa-notifBadge";
         badge.style.display = "none";
         launcher.appendChild(badge);
-
         body.append(empty, secTitle, secMeta, list);
         root._refs = { body, minimizeBtn, empty, secTitle, secMeta, list, panel, launcher, badge };
 
@@ -1597,6 +1626,7 @@
             }
             if (action === "toggle-showall") return void toggleShowAll(altId);
             if (action === "close-expand") return void setExpandMode(altId, null);
+
             if (action === "add") return void addToMissing(altId);
             if (action === "remove") return void removeAlternate(altId);
 
@@ -1620,31 +1650,37 @@
         if (now - state.lastRender < 50) return;
         state.lastRender = now;
 
-        const { empty, secTitle, secMeta, list } = root._refs;
+        const { empty, undoText, secTitle, secMeta, list } = root._refs;
 
         const ids = getSelectionSegmentIds();
         const n = ids.length;
 
         const sig = ids.join(",");
         if (sig !== state.selSig) resetSelectionCaches(sig, ids);
-        // When minimized: do not auto-open. Show badge when >=2 selected segments already have alternates.
+        // When minimized: never auto-open. Instead, show an iOS-like badge when
+        // 2+ selected segments already have alternate addresses.
         if (state.minimized) {
-            const badge = root._refs.badge;
+            const { launcher, badge } = root._refs;
             let withAlts = 0;
             if (n >= 2) {
                 for (const segId of ids) {
                     const alts = getAltIdsForSegment(segId);
                     if (alts && alts.length) withAlts++;
+                    if (withAlts >= 99) break;
                 }
             }
             if (badge) {
-                if (withAlts >= 2) {
-                    badge.textContent = withAlts > 99 ? "99+" : String(withAlts);
+                if (n >= 2 && withAlts >= 2) {
+                    const t = withAlts > 99 ? "99+" : String(withAlts);
+                    badge.textContent = t;
+                    badge.classList.toggle("waa-notifBadge--wide", t.length > 1);
                     badge.style.display = "grid";
                 } else {
                     badge.style.display = "none";
+                    badge.classList.remove("waa-notifBadge--wide");
                 }
             }
+            if (launcher) launcher.style.display = "grid";
             return;
         }
 
