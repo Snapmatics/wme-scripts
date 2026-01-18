@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Merge Alternate Addresses
 // @namespace    https://waze.com/
-// @version      0.1
+// @version      0.2.0
 // @author       GreekCaptain
 // @description  Applies alternate addresses to selected segments
 // @match        https://www.waze.com/*/editor*
@@ -42,7 +42,6 @@
     const state = {
         mounted: false,
         minimized: false,
-        uiAnimating: false,
         dragging: false,
         dragPointerId: null,
         dragDx: 0,
@@ -71,9 +70,6 @@
         expandedShowAll: new Map(), // altId -> bool
 
         feedbackUntil: new Map(),
-
-        // Last operation safety net
-        lastOp: null, // { type, altId, count, ts }
 
         savedPos: null,
         cardMap: new Map(),
@@ -133,12 +129,11 @@
     function scheduleRender() {
         if (state.scheduled) return;
         state.scheduled = true;
-        raf(() => {
+        setTimeout(() => {
             state.scheduled = false;
             render();
-        });
+        }, 90);
     }
-
 
     function scheduleAutoSize() {
         if (state.sizeScheduled) return;
@@ -150,17 +145,18 @@
     }
 
     function autoSizePanel() {
-        const root = state.uiRoot || document.getElementById(ROOT_ID);
-        if (!root || !root._refs) return;
+        const root = document.getElementById(ROOT_ID);
+        if (!root) return;
 
-        if (state.uiAnimating) return;
-
-        const top = root._refs.topEl || root.querySelector(".waa-top");
-        const body = root._refs.body;
+        const top = root.querySelector(".waa-top");
+        const body = root.querySelector(".waa-body");
         if (!top || !body) return;
 
         if (state.minimized) {
-            // Keep last computed dimensions while minimized (prevents weird partial-open accordion effect).
+            // keep a true compact icon footprint
+            root.style.height = "56px";
+            body.style.maxHeight = "0px";
+            body.style.overflow = "hidden";
             return;
         }
 
@@ -175,7 +171,6 @@
         const desired = clamp(Math.ceil(topH + bodyScrollH), minH, maxH);
 
         root.style.height = `${desired}px`;
-        state.lastExpandedHeight = desired;
 
         const bodyMax = clamp(desired - topH, 70, maxH - topH);
         body.style.maxHeight = `${bodyMax}px`;
@@ -464,68 +459,6 @@
     }
 
 
-    function recordLastOp(type, altId, count, segIds) {
-        const n = Number(count);
-        const sid = Number(altId);
-        if (!Number.isFinite(n) || n <= 0) return;
-        if (!Number.isFinite(sid)) return;
-
-        const ids = Array.isArray(segIds) ? segIds.map(Number).filter(Number.isFinite) : [];
-        const meta = getStreetMeta(sid);
-
-        state.lastOp = { type, altId: sid, count: n, ts: Date.now() };
-    }
-
-
-    function getLastOpText() {
-        const op = state.lastOp;
-        if (!op) return "";
-
-        if (op.noApi) return "Undo not available via script — use Ctrl+Z in WME.";
-        if (op.undone) return "Undid last change.";
-
-        const name = getStreetMeta(op.altId).name;
-        const n = op.count;
-
-        if (op.type === "add") return `Added “${name}” to ${n} segment${n === 1 ? "" : "s"}.`;
-        if (op.type === "remove") return `Removed “${name}” from ${n} segment${n === 1 ? "" : "s"}.`;
-        if (op.type === "remove-one") return `Removed “${name}” from 1 segment.`;
-        return "";
-    }
-
-    function tryUndo() {
-        // Prefer WME internal action manager if available (most reliable)
-        try {
-            const W = UW.W;
-            const am = W?.actionManager || W?.model?.actionManager || null;
-            if (am?.undo) {
-                am.undo();
-                return true;
-            }
-        } catch {}
-
-        // If no internal undo API is available, user can still Ctrl+Z inside WME
-        return false;
-    }
-
-
-    // (PDF log + save notification removed)
-
-    function handleUndo() {
-        const op = state.lastOp;
-
-        const ok = tryUndo();
-        if (ok) {
-            if (op) state.lastOp = { ...op, undone: true, noApi: false, ts: Date.now() };
-        } else {
-            if (op) state.lastOp = { ...op, noApi: true, undone: false, ts: Date.now() };
-        }
-
-        markDataDirty();
-        scheduleRender();
-    }
-
-
     async function addToMissing(altId) {
         if (!sdk.Editing.isEditingAllowed()) return;
 
@@ -554,9 +487,6 @@
             changed++;
             changedSegs.push(segId);
         }
-
-        recordLastOp("add", sid, changed, changedSegs);
-
         setAltFeedback(sid, "added");
         markDataDirty();
         scheduleRender();
@@ -588,9 +518,6 @@
             changed++;
             changedSegs.push(segId);
         }
-
-        recordLastOp("remove", sid, changed, changedSegs);
-
         setAltFeedback(sid, "removed");
         markDataDirty();
         scheduleRender();
@@ -612,9 +539,6 @@
             segmentId: id,
             alternateStreetIds: currentAlt.filter((x) => x !== sid),
         });
-
-        recordLastOp("remove-one", sid, 1, [id]);
-
         markDataDirty();
         scheduleRender();
     }
@@ -679,8 +603,6 @@
   width: 396px;
   z-index: 999999;
 
-  transition: width .22s var(--waa-ease), height .22s var(--waa-ease);
-
   font-family: ui-sans-serif, system-ui, "Inter", "Roboto", "Helvetica Neue", Arial, sans-serif;
   font-size: 13.1px;
   line-height: 1.30;
@@ -714,10 +636,9 @@
 
 /* Minimized launcher mode */
 #${ROOT_ID}.minimized{
-  /* keep panel dimensions stable to avoid jumpy / weird expand */
-  pointer-events:none;
+  width: 56px !important;
+  height: 56px !important;
 }
-#${ROOT_ID}.minimized .waa-launcher{ pointer-events:auto; }
 .waa-launcher{
   width:56px;
   height:56px;
@@ -726,20 +647,16 @@
   place-items:center;
   cursor:pointer;
   user-select:none;
-  position:absolute;
-  top:0;
-  left:0;
-  z-index:2;
 
-  /* match panel vibe (neutral glass, more white) */
+  /* match panel vibe */
   background:
     radial-gradient(120% 140% at 12% -10%,
-      rgba(255,255,255,.68) 0%,
-      rgba(255,255,255,.50) 52%,
-      rgba(255,255,255,.36) 100%
+      rgba(40,140,255,.26) 0%,
+      rgba(255,255,255,.62) 46%,
+      rgba(255,255,255,.44) 100%
     ),
-    linear-gradient(135deg, rgba(255,255,255,.46), rgba(255,255,255,.28));
-  box-shadow: 0 18px 44px var(--waa-shadow), 0 12px 36px rgba(0,0,0,.06);
+    linear-gradient(135deg, rgba(255,255,255,.54), rgba(235,248,255,.30));
+  box-shadow: 0 18px 44px var(--waa-shadow), 0 12px 36px var(--waa-shadow-blue);
   backdrop-filter: blur(28px) saturate(1.45);
   -webkit-backdrop-filter: blur(28px) saturate(1.45);
 
@@ -748,7 +665,19 @@
 .waa-launcher svg, .waa-launcher img{ width:34px; height:34px; opacity:.95; }
 .waa-launcherLogo{ display:block; border-radius:7px; }
 
-/* iOS-like notification badge for minimized launcher */
+@keyframes waaLauncherPop{
+  0%{ opacity:0; transform: scale(.92); filter: blur(3px); }
+  100%{ opacity:1; transform: scale(1); filter: blur(0); }
+}
+.waa-launcher.waa-pop{ animation: waaLauncherPop .22s var(--waa-ease) both; }
+
+@keyframes waaLauncherShrink{
+  0%{ opacity:1; transform: scale(1); }
+  100%{ opacity:0; transform: scale(.92); }
+}
+.waa-launcher.waa-shrink{ animation: waaLauncherShrink .16s var(--waa-ease) both; }
+
+
 .waa-notifBadge {
     position: absolute;
     top: 5px;
@@ -772,30 +701,6 @@
     pointer-events: none;
 }
 
-.waa-notifBadge.waa-notifBadge--wide{
-  width:auto; /* pill for 2+ digits */
-  min-width:20px;
-  padding:0 6px;
-}
-
-@keyframes waaLauncherPop{
-  0%{ opacity:0; transform: scale(.92); filter: blur(3px); }
-  100%{ opacity:1; transform: scale(1); filter: blur(0); }
-}
-.waa-launcher.waa-pop{ animation: waaLauncherPop .28s var(--waa-ease) both; }
-
-@keyframes waaLauncherShrink{
-  0%{ opacity:1; transform: scale(1); }
-  100%{ opacity:0; transform: scale(.92); }
-}
-.waa-launcher.waa-shrink{ animation: waaLauncherShrink .22s var(--waa-ease) both; }
-
-/* Smoother minimize/expand */
-.waa-launcher.waa-enter{ opacity:0; transform: scale(.92); filter: blur(3px); }
-.waa-panel{ transition: opacity .22s var(--waa-ease), transform .22s var(--waa-ease), filter .22s var(--waa-ease); }
-.waa-panel.waa-close{ opacity:0; transform: translateY(10px) scale(.985); filter: blur(2px); pointer-events:none; }
-
-.waa-panel.waa-hidden{ visibility:hidden; }
 
 
 
@@ -803,7 +708,7 @@
 #${ROOT_ID}{ opacity:0; transform: translateY(10px) scale(.985); }
 #${ROOT_ID}.waa-in{
   opacity:1; transform: translateY(0) scale(1);
-  transition: opacity .45s var(--waa-ease), transform .45s var(--waa-ease), width .22s var(--waa-ease), height .22s var(--waa-ease);
+  transition: opacity .45s var(--waa-ease), transform .45s var(--waa-ease);
 }
 
 .waa-panel{
@@ -813,15 +718,15 @@
   display:flex;
   flex-direction:column;
 
-  /* Glassy + readable (less see-through, more white) */
+  /* Glassy + readable (same palette) */
   background:
     radial-gradient(120% 140% at 12% -10%,
-      rgba(255,255,255,.68) 0%,
-      rgba(255,255,255,.50) 52%,
-      rgba(255,255,255,.36) 100%),
+      rgba(40,140,255,.22) 0%,
+      rgba(255,255,255,.74) 45%,
+      rgba(255,255,255,.64) 100%),
     linear-gradient(135deg,
-      rgba(255,255,255,.44),
-      rgba(255,255,255,.26));
+      rgba(255,255,255,.64),
+      rgba(235,248,255,.46));
 
   /* no solid border around the panel */
   border: none;
@@ -856,10 +761,10 @@
 
   /* softer sheen to avoid right-edge banding */
   background: radial-gradient(140% 70% at 25% 0%,
-    rgba(255,255,255,.34) 0%,
-    rgba(255,255,255,.10) 34%,
-    rgba(255,255,255,.06) 56%,
-    rgba(255,255,255,0) 76%);
+    rgba(255,255,255,.42) 0%,
+    rgba(255,255,255,.12) 32%,
+    rgba(40,140,255,.08) 52%,
+    rgba(255,255,255,0) 72%);
   opacity:.32;
   mix-blend-mode: normal;
 }
@@ -868,13 +773,13 @@
   content:"";
   position:absolute;
   top:0; right:0; bottom:0;
-  width:16px;
+  width:14px;
   pointer-events:none;
 
   /* hides Chrome backdrop-filter seam near the right edge */
   background: linear-gradient(to left,
-    rgba(255,255,255,.30) 0%,
-    rgba(255,255,255,.12) 45%,
+    rgba(255,255,255,.22) 0%,
+    rgba(255,255,255,.08) 45%,
     rgba(255,255,255,0) 100%);
 }
 @keyframes waaSheen{ 0%,100%{transform:translateX(-18%);opacity:.48} 50%{transform:translateX(8%);opacity:.64} }
@@ -891,7 +796,7 @@
     height: 60px;
     display: flex;
     align-items: center;
-    background: rgba(255,255,255,.10);
+    background: linear-gradient(90deg, rgb(187 219 255 / 20%) 0%, rgb(36 104 186 / 0%) 44%, rgb(160 215 255 / 0%) 100%);
     cursor: grab;
 }
 #${ROOT_ID}.dragging .waa-top{ cursor:grabbing; }
@@ -948,47 +853,6 @@
 
 .waa-empty{ height:46px; display:flex; align-items:center; padding:0 2px; margin:0; font-size:12px; color: rgba(18,24,38,.56); }
 
-.waa-undo{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  padding: 9px 10px;
-  margin: 0 0 8px;
-  border-radius: 14px;
-  background: rgba(255,255,255,.58);
-  box-shadow: 0 10px 22px rgba(0,0,0,.06), 0 12px 28px rgba(40,140,255,.10);
-}
-.waa-undoText{
-  min-width:0;
-  flex: 1 1 auto;
-  font-size: 11.8px;
-  color: rgba(18,24,38,.70);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.waa-undoBtn{
-  flex: 0 0 auto;
-  height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 0;
-  cursor: pointer;
-  font-weight: 860;
-  font-size: 11.6px;
-  letter-spacing: .12px;
-  color: rgba(18,24,38,.78);
-  background: rgba(255,255,255,.70);
-  box-shadow: 0 10px 18px rgba(0,0,0,.06);
-  transition: transform .22s var(--waa-ease), background .22s var(--waa-ease), box-shadow .22s var(--waa-ease);
-}
-.waa-undoBtn:hover{
-  background: rgba(255,255,255,.90);
-  box-shadow: 0 14px 28px rgba(0,0,0,.08), 0 14px 34px rgba(40,140,255,.10);
-  transform: translateY(-1px);
-}
-.waa-undoBtn:active{ transform: translateY(1px) scale(.985); }
 
 
 .waa-section-title{
@@ -1239,6 +1103,8 @@
 }
 .waa-mini svg{ width:16px; height:16px; opacity:.86; }
 
+#${ROOT_ID}.minimized{ height:auto!important; width:396px; }
+#${ROOT_ID}.minimized .waa-body{ display:none; }
 `;
       document.head.appendChild(st);
   }
@@ -1535,6 +1401,27 @@
         minimizeBtn.type = "button";
         minimizeBtn.title = "Minimize / Restore";
         minimizeBtn.textContent = "—";
+        minimizeBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            state.minimized = !state.minimized;
+            root.classList.toggle("minimized", state.minimized);
+            minimizeBtn.textContent = state.minimized ? "▢" : "—";
+            // switch views
+            panel.style.display = state.minimized ? "none" : "flex";
+            launcher.style.display = state.minimized ? "grid" : "none";
+            if (state.minimized) {
+                launcher.classList.remove("waa-shrink");
+                launcher.classList.remove("waa-pop");
+                void launcher.offsetWidth;
+                launcher.classList.add("waa-pop");
+            } else {
+                launcher.classList.remove("waa-pop");
+                launcher.classList.remove("waa-shrink");
+                scheduleRender();
+            }
+            saveUIState();
+            scheduleAutoSize();
+        });
 
         actions.append(minimizeBtn);
         topRow.append(scriptNameEl, actions);
@@ -1569,130 +1456,21 @@
         badge.style.display = "none";
         launcher.appendChild(badge);
 
-        const undo = document.createElement("div");
-        undo.className = "waa-undo";
-        undo.style.display = "none";
-
-        const undoText = document.createElement("div");
-        undoText.className = "waa-undoText";
-
-        const undoBtn = document.createElement("button");
-        undoBtn.type = "button";
-        undoBtn.className = "waa-undoBtn";
-        undoBtn.textContent = "Undo";
-        undoBtn.setAttribute("data-action", "undo");
-
-        undo.append(undoText, undoBtn);
-
-        body.append(empty, undo, secTitle, secMeta, list);
-        root._refs = { topEl: top, body, minimizeBtn, empty, undo, undoText, secTitle, secMeta, list, panel, launcher, badge };
+        body.append(empty, secTitle, secMeta, list);
+        root._refs = { body, minimizeBtn, empty, secTitle, secMeta, list, panel, launcher, badge };
 
         panel.append(top, body);
         root.append(panel, launcher);
 
-
-        let uiAnimating = false;
-        const UI_ANIM_MS = 220;
-
-        function setMinimized(next) {
-            if (uiAnimating || next === state.minimized) return;
-            uiAnimating = true;
-            state.uiAnimating = true;
-
-            const finish = () => {
-                uiAnimating = false;
-                state.uiAnimating = false;
-                saveUIState();
-                scheduleAutoSize();
-                if (!state.minimized) scheduleRender();
-            };
-
-            if (next) {
-                state.minimized = true;
-                root.classList.add("minimized");
-                minimizeBtn.textContent = "▢";
-
-                // launcher in
-                launcher.style.display = "grid";
-                launcher.classList.remove("waa-shrink", "waa-pop", "waa-enter");
-                launcher.classList.add("waa-enter");
-
-                // panel out (keep it in DOM to preserve size; visibility toggled after transition)
-                panel.classList.remove("waa-hidden");
-                panel.classList.remove("waa-open");
-                panel.classList.remove("waa-close");
-                void panel.offsetWidth;
-                panel.classList.add("waa-close");
-
-                raf(() => {
-                    launcher.classList.remove("waa-enter");
-                    void launcher.offsetWidth;
-                    launcher.classList.add("waa-pop");
-                });
-
-                setTimeout(() => {
-                    panel.classList.add("waa-hidden");
-                    finish();
-                }, UI_ANIM_MS);
-
-            } else {
-                state.minimized = false;
-                root.classList.remove("minimized");
-                minimizeBtn.textContent = "—";
-
-                // panel in
-                panel.classList.remove("waa-hidden");
-                panel.classList.add("waa-close");
-
-                // Update content + sizing while the panel is still visually hidden (opacity 0),
-                // to avoid the 'header-only then accordion' effect on expand.
-                try {
-                    const prevAnim = state.uiAnimating;
-                    state.uiAnimating = false;
-                    render();
-                    autoSizePanel();
-                    state.uiAnimating = prevAnim;
-                } catch {}
-
-                raf(() => panel.classList.remove("waa-close"));
-
-                // launcher out
-                launcher.classList.remove("waa-pop", "waa-enter", "waa-shrink");
-                void launcher.offsetWidth;
-                launcher.classList.add("waa-shrink");
-
-                setTimeout(() => {
-                    launcher.style.display = "none";
-                    launcher.classList.remove("waa-shrink");
-                    finish();
-                }, UI_ANIM_MS);
-            }
-        }
-        
-        minimizeBtn.addEventListener("click", (e) => {
-            e.preventDefault();
-            setMinimized(!state.minimized);
-        });
-
-
         // initial minimized visibility
-        panel.style.display = "flex";
-        panel.classList.remove("waa-open");
-        panel.classList.toggle("waa-close", !!state.minimized);
-        panel.classList.toggle("waa-hidden", !!state.minimized);
-
+        panel.style.display = state.minimized ? "none" : "flex";
         launcher.style.display = state.minimized ? "grid" : "none";
-        root.classList.toggle("minimized", !!state.minimized);
-
         if (state.minimized) {
-            launcher.classList.remove("waa-shrink", "waa-enter");
+            launcher.classList.remove("waa-pop");
             void launcher.offsetWidth;
             launcher.classList.add("waa-pop");
         }
         document.body.appendChild(root);
-
-        state.uiRoot = root;
-        state.rootEl = root;
 
         applySavedPosition(root);
         root.classList.toggle("minimized", !!state.minimized);
@@ -1762,7 +1540,27 @@
 
                 // If we were minimized and this was a click (not a drag), expand.
                 if (state.minimized && fromLauncher && wasClick) {
-                    setMinimized(false);
+                    launcher.classList.remove("waa-pop");
+                    launcher.classList.add("waa-shrink");
+                    setTimeout(() => {
+                        state.minimized = false;
+                        state.dragMoved = false;
+                        state.dragFromLauncher = false;
+
+                        root.classList.remove("minimized");
+                        panel.style.display = "flex";
+                        launcher.style.display = "none";
+                        minimizeBtn.textContent = "—";
+
+                        // Smooth open animation
+                        panel.classList.remove("waa-open");
+                        void panel.offsetWidth;
+                        panel.classList.add("waa-open");
+
+                        saveUIState();
+                        scheduleRender();
+                        scheduleAutoSize();
+                    }, 140);
                 } else {
                     state.dragMoved = false;
                     state.dragFromLauncher = false;
@@ -1799,8 +1597,6 @@
             }
             if (action === "toggle-showall") return void toggleShowAll(altId);
             if (action === "close-expand") return void setExpandMode(altId, null);
-            if (action === "undo") return void handleUndo();
-
             if (action === "add") return void addToMissing(altId);
             if (action === "remove") return void removeAlternate(altId);
 
@@ -1824,16 +1620,14 @@
         if (now - state.lastRender < 50) return;
         state.lastRender = now;
 
-        const { empty, undo, undoText, secTitle, secMeta, list } = root._refs;
+        const { empty, secTitle, secMeta, list } = root._refs;
 
         const ids = getSelectionSegmentIds();
         const n = ids.length;
 
         const sig = ids.join(",");
         if (sig !== state.selSig) resetSelectionCaches(sig, ids);
-
-        // When minimized: do NOT auto-open.
-        // Instead show an iOS-like badge when >=2 selected segments already have alternates.
+        // When minimized: do not auto-open. Show badge when >=2 selected segments already have alternates.
         if (state.minimized) {
             const badge = root._refs.badge;
             let withAlts = 0;
@@ -1846,34 +1640,13 @@
             if (badge) {
                 if (withAlts >= 2) {
                     badge.textContent = withAlts > 99 ? "99+" : String(withAlts);
-                    badge.classList.toggle("waa-notifBadge--wide", String(badge.textContent).length > 1);
-                    badge.style.display = "block";
+                    badge.style.display = "grid";
                 } else {
-                    badge.classList.remove("waa-notifBadge--wide");
                     badge.style.display = "none";
                 }
             }
             return;
         }
-
-        // ensure badge is off when expanded
-        if (root._refs.badge) root._refs.badge.style.display = "none";
-
-        // Last operation (Undo safety net)
-        if (state.lastOp && state.lastOp.undone && now - state.lastOp.ts > 2600) state.lastOp = null;
-
-        const opText = getLastOpText();
-        const opFresh = state.lastOp && now - state.lastOp.ts < 120000 && opText;
-
-        if (undo && undoText) {
-            if (opFresh) {
-                undoText.textContent = opText;
-                undo.style.display = "flex";
-            } else {
-                undo.style.display = "none";
-            }
-        }
-
 
         if (n < 1) {
             empty.textContent = "Select at least 2 segments to merge alternate addresses.";
@@ -1960,6 +1733,7 @@
             loadUIState();
             mount();
 
+            // Lean: selection change is the only global refresh trigger
             try {
                 sdk.Events.on({
                     eventName: "wme-selection-changed",
@@ -1978,8 +1752,3 @@
 
     waitForSdk();
 })();
-
-
-
-
-
