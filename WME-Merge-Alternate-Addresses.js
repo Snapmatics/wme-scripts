@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Merge Alternate Addresses
 // @namespace    https://waze.com/
-// @version      2.0.0
+// @version      2.1.0
 // @author       GreekCaptain
 // @description  Applies alternate addresses to selected segments
 // @match        https://www.waze.com/*/editor*
@@ -1966,5 +1966,6 @@
 
     waitForSdk();
 })();
+
 
 
