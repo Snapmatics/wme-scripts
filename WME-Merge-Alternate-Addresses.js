@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Merge Alternate Addresses
 // @namespace    https://waze.com/
-// @version      2.1.0
+// @version      2.1.1
 // @author       GreekCaptain
 // @description  Applies alternate addresses to selected segments
 // @match        https://www.waze.com/*/editor*
@@ -159,9 +159,7 @@
         if (!top || !body) return;
 
         if (state.minimized) {
-            root.style.height = "56px";
-            body.style.maxHeight = "0px";
-            body.style.overflow = "hidden";
+            // Keep last computed dimensions while minimized (prevents weird partial-open accordion effect).
             return;
         }
 
@@ -176,6 +174,7 @@
         const desired = clamp(Math.ceil(topH + bodyScrollH), minH, maxH);
 
         root.style.height = `${desired}px`;
+        state.lastExpandedHeight = desired;
 
         const bodyMax = clamp(desired - topH, 70, maxH - topH);
         body.style.maxHeight = `${bodyMax}px`;
@@ -714,9 +713,10 @@
 
 /* Minimized launcher mode */
 #${ROOT_ID}.minimized{
-  width: 56px !important;
-  height: 56px !important;
+  /* keep panel dimensions stable to avoid jumpy / weird expand */
+  pointer-events:none;
 }
+#${ROOT_ID}.minimized .waa-launcher{ pointer-events:auto; }
 .waa-launcher{
   width:56px;
   height:56px;
@@ -793,6 +793,8 @@
 .waa-launcher.waa-enter{ opacity:0; transform: scale(.92); filter: blur(3px); }
 .waa-panel{ transition: opacity .22s var(--waa-ease), transform .22s var(--waa-ease), filter .22s var(--waa-ease); }
 .waa-panel.waa-close{ opacity:0; transform: translateY(10px) scale(.985); filter: blur(2px); pointer-events:none; }
+
+.waa-panel.waa-hidden{ visibility:hidden; }
 
 
 
@@ -1236,8 +1238,6 @@
 }
 .waa-mini svg{ width:16px; height:16px; opacity:.86; }
 
-/* Minimized sizing is defined earlier; only hide body here. */
-#${ROOT_ID}.minimized .waa-body{ display:none; }
 `;
       document.head.appendChild(st);
   }
@@ -1608,15 +1608,16 @@
 
             if (next) {
                 state.minimized = true;
+                root.classList.add("minimized");
                 minimizeBtn.textContent = "▢";
 
                 // launcher in
                 launcher.style.display = "grid";
-                launcher.classList.remove("waa-shrink", "waa-pop");
+                launcher.classList.remove("waa-shrink", "waa-pop", "waa-enter");
                 launcher.classList.add("waa-enter");
 
-                // panel out
-                panel.style.display = "flex";
+                // panel out (keep it in DOM to preserve size; visibility toggled after transition)
+                panel.classList.remove("waa-hidden");
                 panel.classList.remove("waa-open");
                 panel.classList.remove("waa-close");
                 void panel.offsetWidth;
@@ -1624,14 +1625,12 @@
 
                 raf(() => {
                     launcher.classList.remove("waa-enter");
-                    launcher.classList.remove("waa-pop");
                     void launcher.offsetWidth;
                     launcher.classList.add("waa-pop");
                 });
 
                 setTimeout(() => {
-                    panel.style.display = "none";
-                    root.classList.add("minimized");
+                    panel.classList.add("waa-hidden");
                     finish();
                 }, UI_ANIM_MS);
 
@@ -1641,13 +1640,23 @@
                 minimizeBtn.textContent = "—";
 
                 // panel in
-                panel.style.display = "flex";
+                panel.classList.remove("waa-hidden");
                 panel.classList.add("waa-close");
+
+                // Update content + sizing while the panel is still visually hidden (opacity 0),
+                // to avoid the 'header-only then accordion' effect on expand.
+                try {
+                    const prevAnim = state.uiAnimating;
+                    state.uiAnimating = false;
+                    render();
+                    autoSizePanel();
+                    state.uiAnimating = prevAnim;
+                } catch {}
+
                 raf(() => panel.classList.remove("waa-close"));
 
                 // launcher out
-                launcher.classList.remove("waa-pop", "waa-enter");
-                launcher.classList.remove("waa-shrink");
+                launcher.classList.remove("waa-pop", "waa-enter", "waa-shrink");
                 void launcher.offsetWidth;
                 launcher.classList.add("waa-shrink");
 
@@ -1666,16 +1675,18 @@
 
 
         // initial minimized visibility
-        panel.classList.remove("waa-close");
-        panel.style.display = state.minimized ? "none" : "flex";
+        panel.style.display = "flex";
+        panel.classList.remove("waa-open");
+        panel.classList.toggle("waa-close", !!state.minimized);
+        panel.classList.toggle("waa-hidden", !!state.minimized);
+
         launcher.style.display = state.minimized ? "grid" : "none";
+        root.classList.toggle("minimized", !!state.minimized);
+
         if (state.minimized) {
-            root.classList.add("minimized");
-            launcher.classList.remove("waa-pop", "waa-shrink");
+            launcher.classList.remove("waa-shrink", "waa-enter");
             void launcher.offsetWidth;
             launcher.classList.add("waa-pop");
-        } else {
-            root.classList.remove("minimized");
         }
         document.body.appendChild(root);
 
@@ -1966,6 +1977,5 @@
 
     waitForSdk();
 })();
-
 
 
