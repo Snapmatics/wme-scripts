@@ -9,6 +9,7 @@
 // @match        https://beta.waze.com/*/editor*
 // @match        https://beta.waze.com/editor*
 // @grant        unsafeWindow
+// @license      MIT
 // @updateURL    https://raw.githubusercontent.com/Snapmatics/wme-scripts/main/WME-Merge-Alternate-Addresses.js
 // @downloadURL  https://raw.githubusercontent.com/Snapmatics/wme-scripts/main/WME-Merge-Alternate-Addresses.js
 // @homepageURL  https://github.com/Snapmatics/wme-scripts
@@ -1977,5 +1978,6 @@
 
     waitForSdk();
 })();
+
 
 
