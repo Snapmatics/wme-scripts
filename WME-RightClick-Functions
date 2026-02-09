@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - RightClick Functions
 // @author       GreekCaptain
-// @version      1.0.1
+// @version      1.0.2
 // @description  Right-click functionality
 // @match        https://www.waze.com/*/editor*
 // @match        https://www.waze.com/editor*
@@ -24,13 +24,10 @@
   const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   const SCRIPT_ID = "wme-rightclick-functions";
   const SCRIPT_NAME = "WME - RightClick Functions";
-  const SCRIPT_VERSION = "1.0.0";
+  const SCRIPT_VERSION = "1.0.2";
   const CHANGELOG_SEEN_KEY = `${SCRIPT_ID}:changelogSeenVersion:v2`;
   const CHANGELOG_ITEMS = [
-    "New: Pin Reminders, Jump & Search now supports Google Maps links",
-    "Updated: Menu Options & Icons",
-    "Removed: Zoom To; Direction; Copy to Clipboard; option descriptions.",
-    "Renamed: Lat, Lon → Coordinates.",
+    "New: Visual and accesibility changes",
   ];
 
 
@@ -59,6 +56,20 @@
   const PIN_BUBBLE_POS_KEY = `${SCRIPT_ID}:pinsBubblePos:v1`;
   const PIN_MINIMIZE_MODE_KEY = `${SCRIPT_ID}:pinsMinimizeMode:v1`;
   const PIN_PANEL_MINIMIZED_KEY = `${SCRIPT_ID}:pinsPanelMinimized:v1`;
+
+  // --- Pin name validation ---
+  const PIN_NAME_MAX = 28;
+  function validatePinName(name, fallback) {
+    const s = String(name ?? "").trim();
+    const val = s || String(fallback ?? "").trim() || "Pinned place";
+    if (!val) return { ok: false, value: "", len: 0, msg: "Pin name can't be empty." };
+    if (val.length > PIN_NAME_MAX) {
+      return { ok: false, value: val, len: val.length, msg: `Pin name is ${val.length} chars. Max is ${PIN_NAME_MAX}. Rename it.` };
+    }
+    return { ok: true, value: val, len: val.length, msg: "" };
+  }
+
+
 
 
   let _pinsMem = null;
@@ -537,6 +548,7 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
     jump: svg(`<path d="M10 16a6 6 0 1 1 4.47-2.01l4.27 4.28-1.41 1.41-4.28-4.27A5.98 5.98 0 0 1 10 16zm0-2a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>`),
     refresh: svg(`<path d="M17.65 6.35A7.95 7.95 0 0 0 12 4V1L7 6l5 5V7c2.76 0 5 2.24 5 5a5 5 0 0 1-8.66 3.54l-1.42 1.42A6.98 6.98 0 0 0 19 12c0-2.21-.9-4.21-2.35-5.65z"/>`),
     gear: svg(`<path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2 .7a7.9 7.9 0 0 1-.6 1.5l1.2 1.8-1.8 1.8-1.8-1.2a7.9 7.9 0 0 1-1.5.6L13 21h-2l-.7-2a7.9 7.9 0 0 1-1.5-.6l-1.8 1.2-1.8-1.8 1.2-1.8a7.9 7.9 0 0 1-.6-1.5L3 13v-2l2-.7a7.9 7.9 0 0 1 .6-1.5L4.4 7l1.8-1.8 1.8 1.2a7.9 7.9 0 0 1 1.5-.6L11 3h2l.7 2a7.9 7.9 0 0 1 1.5.6l1.8-1.2L20 7l-1.2 1.8c.25.48.46.98.6 1.5L21 11v2z"/>`),
+    properties: svg(`<path d="M4 7h10v2H4V7zm0 8h10v2H4v-2zm12-9h4v2h-4V6zm0 8h4v2h-4v-2z"/><path d="M14 6h2v6h-2V6zm-6 4h2v10H8V10zm10-3h2v10h-2V7z"/>`),
     ext: svg(`<path d="M14 3h7v7h-2V6.4l-9.3 9.3-1.4-1.4L17.6 5H14V3z"/><path d="M5 5h6v2H7v10h10v-4h2v6H5V5z"/>`),
     grip: svg(`<path d="M9 6h2v2H9V6zm4 0h2v2h-2V6zM9 10h2v2H9v-2zm4 0h2v2h-2v-2zM9 14h2v2H9v-2zm4 0h2v2h-2v-2z"/>`),
     trash: svg(`<path d="M9 3h6l1 2h5v2H3V5h5l1-2zm1 6h2v10h-2V9zm4 0h2v10h-2V9zM7 9h2v10H7V9z"/>`),
@@ -597,7 +609,7 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcNoticeTitle{font-weight:900;font-size:12px;letter-spacing:.22px;text-transform:uppercase;margin-bottom:6px;opacity:.80;}
       .wmeRcNoticeMsg{font-size:16px;font-weight:900;letter-spacing:.15px;opacity:.98;margin-bottom:6px;line-height:1.15;white-space:normal;word-break:break-word;}
       .wmeRcNoticeNote{font-size:13px;opacity:.95;margin-top:2px;margin-bottom:10px;white-space:normal;word-break:break-word;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:8px 10px;}
-      .wmeRcNoticeActions{display:flex;gap:8px;justify-content:flex-end;}
+      .wmeRcNoticeActions{display:flex;gap:8px;justify-content:flex-start;}
       .wmeRcNoticeBtn{
   appearance:none;
   display:flex;align-items:center;justify-content:center;line-height:1;
@@ -821,7 +833,7 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcModalTitle .wmeRcI{width:18px;height:18px;}
       .wmeRcModalTitle .wmeRcI svg{width:18px;height:18px;}
       .wmeRcModalBody{padding:12px;display:flex;flex-direction:column;gap:10px;}
-      .wmeRcHint{opacity:.68;font-size:12px;letter-spacing:.1px;}
+      .wmeRcHint{opacity:.68;font-size:13px;letter-spacing:.1px;}
 
       .wmeRcSwitchLabelWrap{display:flex;align-items:center;gap:8px;}
 
@@ -842,6 +854,34 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcModalBtn:active{background:rgba(255,255,255,.14);transform:translate3d(0,0,0);}
       .wmeRcModalBtn.primary{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.16);box-shadow:0 0 0 4px rgba(255,255,255,.06);font-weight:700;}
       .wmeRcModalBtn.danger{border-color:rgba(255,75,75,.35);background:rgba(255,75,75,.12);}
+      /* Pins Manager Lightbox */
+      .wmeRcModal.wmeRcLightbox{width:min(980px,calc(100vw - 24px));height:min(720px,calc(100vh - 24px));}
+      .wmeRcLightbox .wmeRcModalBody{padding:0;display:flex;flex-direction:row;gap:0;height:100%;}
+      .wmeRcPmLeft{width:280px;max-width:42vw;border-right:1px solid rgba(255,255,255,.10);padding:12px;display:flex;flex-direction:column;gap:10px;}
+      .wmeRcPmRight{flex:1;min-width:0;padding:12px;display:flex;flex-direction:column;gap:10px;}
+      .wmeRcPmHdrRow{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+      .wmeRcPmSearch{width:100%;}
+      .wmeRcPmList{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) rgba(255,255,255,.06);}
+      .wmeRcPmList::-webkit-scrollbar{width:10px;}
+      .wmeRcPmList::-webkit-scrollbar-track{background:rgba(255,255,255,.06);}
+      .wmeRcPmList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:10px;border:2px solid rgba(0,0,0,0);background-clip:padding-box;}
+      .wmeRcPmCard{position:relative;padding:10px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;transition:.16s ease;}
+      .wmeRcPmCard:hover{background:rgba(255,255,255,.07);transform:translate3d(0,-1px,0);}
+      .wmeRcPmCard.on{background:rgba(255,255,255,.10);border-color:rgba(255,255,255,.18);}
+      .wmeRcPmCardLeft{display:flex;flex-direction:column;gap:2px;min-width:0;}
+      .wmeRcPmCardTitle{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .wmeRcPmCardSub{font-size:12px;opacity:.70;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .wmeRcPmCardBtns{display:flex;gap:6px;align-items:center;flex:0 0 auto;}
+      .wmeRcPmTiny{width:28px;height:28px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.16s ease;}
+      .wmeRcPmTiny:hover{background:rgba(255,255,255,.10);transform:translate3d(0,-1px,0);}
+      .wmeRcPmTiny:active{background:rgba(255,255,255,.14);transform:translate3d(0,0,0);}
+      .wmeRcPmRow{padding:10px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:space-between;gap:10px;}
+      .wmeRcPmRowLeft{display:flex;flex-direction:column;gap:2px;min-width:0;}
+      .wmeRcPmRowTitle{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+      .wmeRcPmRowSub{font-size:12px;opacity:.70;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .wmeRcPmRowBtns{display:flex;gap:6px;align-items:center;flex:0 0 auto;}
+      .wmeRcPmSelect{min-width:160px;max-width:220px;}
+
       .wmeRcWizardHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
       .wmeRcWizardHdrLeft{display:flex;flex-direction:column;gap:2px;min-width:0;}
       .wmeRcWizardTitle{font-weight:900;letter-spacing:.2px;}
@@ -1367,7 +1407,19 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
       }
       .wmeRcPinLeft{cursor:grab;}
       .wmeRcPinRow.dragging .wmeRcPinLeft{cursor:grabbing;}
-      .wmeRcPinBtns{cursor:default;}
+      .wmeRcPinBtns{
+        cursor:default;
+        display:flex;
+        align-items:center;
+        justify-content:flex-end;
+        gap:6px;
+        position:relative;
+        width:28px;
+        height:28px;
+        flex:0 0 auto;
+        transition:width .22s cubic-bezier(.2,.9,.2,1);
+      }
+      .wmeRcPinRow:hover .wmeRcPinBtns{width:160px;}
 
       .wmeRcPinCountdown.bell{display:inline-flex; align-items:center; gap:6px; animation:wmeRcBellPulse 1.2s ease-in-out infinite;}
       @keyframes wmeRcBellPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.08);}}
@@ -1578,7 +1630,7 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
       .wmeRcPinRow::after{
         content:"";
         position:absolute;left:0;top:0;bottom:0;
-        width:96px;
+        width:200px;
         background:linear-gradient(90deg,
           rgba(var(--pinRGB,60,140,255),.26) 0%,
           rgba(var(--pinRGB,60,140,255),.12) 35%,
@@ -1589,17 +1641,30 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
 
       .wmeRcPinRow:hover{background:rgba(255,255,255,.11);}
       .wmeRcPinRow:hover .wmeRcPinLeft{transform:translateX(6px);}
-      .wmeRcPinRow:hover::before{width:9px;}
+      .wmeRcPinRow:hover::before{width:5px;}
       .wmeRcPinRow:active{background:rgba(255,255,255,.14);}
       .wmeRcPinLeft{display:flex;flex-direction:column;gap:2px;min-width:0;transition:transform .18s cubic-bezier(.2,.8,.2,1);}
       .wmeRcPinName{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
       .wmeRcPinSub{font-size:10.5px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
+      .wmeRcPinBadName{
+        display:inline-flex;align-items:center;justify-content:center;
+        height:16px;padding:0 7px;border-radius:999px;
+        font-size:10.5px;font-weight:950;letter-spacing:.12px;
+        color:rgba(255,95,95,.95);
+        border:1px solid rgba(255,95,95,.28);
+        background:rgba(255,70,70,.10);
+        width:fit-content;
+        margin-bottom:4px;
+      }
+      .wmeRcPinNeedsRename .wmeRcPinName{color:rgba(255,210,210,.98);}
+
       .wmeRcTooltip{position:fixed;z-index:2147483647;pointer-events:none;opacity:0;transform:translateY(-6px) scale(.98);transition:opacity .14s ease, transform .14s ease;max-width:min(520px,calc(100vw - 24px));
         padding:8px 10px;border-radius:12px;background:rgba(16,16,18,.72);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(16px);
         color:#fff;font:500 12px/1.15 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:.2px;box-shadow:0 18px 34px rgba(0,0,0,.38);}
       .wmeRcTooltip.show{opacity:1;transform:translateY(0) scale(1);}
-      .wmeRcPinBtns{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+      .wmeRcPinBtns{display:flex;align-items:center;gap:6px;flex:0 0 auto;position:relative;justify-content:flex-end;width:34px;transition:width .22s cubic-bezier(.2,.9,.2,1);overflow:visible;}
+      .wmeRcPinRow:hover .wmeRcPinBtns{width:160px;}
 
       .wmeRcPinDrag{width:26px;height:26px;border-radius:10px;border:1px solid rgba(255,255,255,.14);
         background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;cursor:grab;flex:0 0 auto;
@@ -1633,8 +1698,40 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
       .wmeRcPinBtnEye:active{transform:none;}
       .wmeRcPinBtn .wmeRcI{width:16px;height:16px;display:flex;align-items:center;justify-content:center;}
       .wmeRcPinBtn svg{width:16px;height:16px;}
-      .wmeRcPinBtnHoverOnly{opacity:0;pointer-events:none;transform:translate3d(0,1px,0);transition:opacity .14s ease,transform .14s ease,background .16s ease,box-shadow .16s ease,border-color .16s ease;}
-      .wmeRcPinRow:hover .wmeRcPinBtnHoverOnly{opacity:1;pointer-events:auto;transform:translate3d(0,0,0);}
+      .wmeRcPinBtnHoverOnly{
+  z-index:2;
+  opacity:0;
+  pointer-events:none;
+  position:absolute;
+  top:0;
+  transform:translate3d(10px,0,0) scale(.98);
+  transition:
+    opacity .16s ease,
+    transform .22s cubic-bezier(.2,.9,.2,1),
+    background .16s ease,
+    box-shadow .16s ease,
+    border-color .16s ease;
+}
+
+.wmeRcPinRow:hover .wmeRcPinBtnHoverOnly{
+  opacity:1;
+  pointer-events:auto;
+  transform:translate3d(0,0,0) scale(1);
+}
+
+.wmeRcPinBtnEye{right:102px;}
+.wmeRcPinBtnEdit{right:68px;}
+.wmeRcPinBtnTrash{right:34px;}
+
+.wmeRcPinBtnBell{
+  position:absolute;
+  right:0;
+  top:0;
+  z-index:3;
+  will-change:transform;
+}
+
+.wmeRcPinRow:hover .wmeRcPinBtnHoverOnly.wmeRcPinBtnTrash{transition-delay:65ms;}
       .wmeRcPinBtnEye.isHidden::after{content:"";position:absolute;left:6px;right:6px;top:50%;height:2px;background:rgba(255,255,255,.92);transform:translateY(-50%) rotate(-32deg);border-radius:99px;box-shadow:0 2px 10px rgba(0,0,0,.35);opacity:.95;pointer-events:none;}
 
       .wmeRcPinRow.dragging{opacity:.55;}
@@ -4454,9 +4551,9 @@ titleWrap.addEventListener("mouseup", _onPinsTitleUp, true);
 });
 
   rightWrap.appendChild(countEl);
-  rightWrap.appendChild(collapseBtn);
   rightWrap.appendChild(addGroupBtn);
   rightWrap.appendChild(settingsBtn);
+  rightWrap.appendChild(collapseBtn);
 
   hdr.appendChild(titleWrap);
   hdr.appendChild(rightWrap);
@@ -4598,6 +4695,12 @@ titleWrap.addEventListener("mouseup", _onPinsTitleUp, true);
     name.className = "wmeRcPinName";
     name.textContent = pin.name || "Pinned place";
 
+    const _pn = String(pin && pin.name ? pin.name : "");
+    const _needsRename = (_pn.trim().length > PIN_NAME_MAX);
+    if (_needsRename) {
+      try { row.classList.add("wmeRcPinNeedsRename"); } catch {}
+    }
+
     name.addEventListener("mouseenter", () => {
       try {
         if ((name.scrollWidth || 0) > (name.clientWidth || 0) + 2) {
@@ -4613,6 +4716,11 @@ titleWrap.addEventListener("mouseup", _onPinsTitleUp, true);
 
     const cdLine = document.createElement("div");
     cdLine.className = "wmeRcPinCountdownLine";
+
+    const bad = document.createElement("span");
+    bad.className = "wmeRcPinBadName";
+    bad.textContent = "Rename";
+    if (!_needsRename) bad.style.display = "none";
 
     const cdSpan = document.createElement("span");
     cdSpan.className = "wmeRcPinCountdownBadge";
@@ -4649,6 +4757,7 @@ cdSpan.addEventListener("click", (e) => {
             return false;
           });
 cdLine.appendChild(cdSpan);
+    try { sub.insertBefore(bad, cdLine); } catch { try { sub.appendChild(bad); } catch {} }
     sub.appendChild(cdLine);
 
     if (!pin.reminderAt || pin.reminderDone) cdLine.style.display = "none";
@@ -4678,11 +4787,18 @@ cdLine.appendChild(cdSpan);
     if (pin.hideOnMap === true) eyeBtn.classList.add("isHidden");
     btns.appendChild(eyeBtn);
 
-    btns.appendChild(mkBtn(ICONS.bell, "Set reminder", () => openReminderModal(pin.id)));
-    btns.appendChild(mkBtn(ICONS.edit, "Edit", () => openRenamePinModal(pin.id)));
-    btns.appendChild(mkBtn(ICONS.trash, "Remove", () => confirmRemovePin(pin.id)));
+    const editBtn = mkBtn(ICONS.edit, "Edit", () => openRenamePinModal(pin.id));
+    editBtn.classList.add("wmeRcPinBtnHoverOnly","wmeRcPinBtnEdit");
+    btns.appendChild(editBtn);
 
-    const beginReorder = (ev) => {
+    const trashBtn = mkBtn(ICONS.trash, "Remove", () => confirmRemovePin(pin.id));
+    trashBtn.classList.add("wmeRcPinBtnHoverOnly","wmeRcPinBtnTrash");
+    btns.appendChild(trashBtn);
+
+    const bellBtn = mkBtn(ICONS.bell, "Set reminder", () => openReminderModal(pin.id));
+    bellBtn.classList.add("wmeRcPinBtnBell");
+    btns.appendChild(bellBtn);
+const beginReorder = (ev) => {
       try {
         if (!ev || (ev.button != null && ev.button !== 0)) return;
         ev.preventDefault(); ev.stopPropagation();
@@ -5073,6 +5189,7 @@ row.addEventListener("pointerdown", (ev) => {
             if (Math.abs(dx) <= 6 && Math.abs(dy) <= 6) {
               try { up.preventDefault(); up.stopPropagation(); } catch {}
               try { if (row.classList.contains("dragging")) return; } catch {}
+              if (_needsRename) { toast(`Rename this pin (max ${PIN_NAME_MAX} chars)`); try { openRenamePinModal(pin.id); } catch {} return; }
               jumpToPin(pin);
             }
           } catch {}
@@ -5502,7 +5619,7 @@ function openRenamePinModal(pinId) {
       inp.className = "wmeRcInput";
       inp.placeholder = "Name…";
       inp.value = pin.name || "";
-      const pinNameLimitMsg = attachMaxLen(inp, 32);
+      const pinNameLimitMsg = attachMaxLen(inp, 28);
 
       const hint = document.createElement("div");
       hint.className = "wmeRcHint";
@@ -6312,7 +6429,9 @@ visChk.checked = !(pin.hideOnMap === true);
       btnSave.className = "wmeRcModalBtn primary";
       btnSave.textContent = "Save";
       btnSave.addEventListener("click", () => {
-        const name = String(inp.value || "").trim() || "Pinned place";
+        const v = validatePinName(inp.value, "Pinned place");
+        if (!v.ok) { toast(v.msg); try { inp.focus(); inp.select(); } catch {} return; }
+        const name = v.value;
         updatePin(pinId, { name, color: chosenColor, groupId: chosenGroupId, hideOnMap: !((visChk && visChk.checked)) });
         try { setLastGroup(chosenGroupId); } catch {}
         toast("Pin renamed");
@@ -7143,6 +7262,334 @@ const actions = document.createElement("div");
       body.appendChild(posRow);
       body.appendChild(actions);
     },
+  });
+}
+
+function openPinsManagerLightbox() {
+  try { ensureCSS(); } catch {}
+  openModal({
+    title: "Pins manager",
+    iconSvg: ICONS.properties || ICONS.tools,
+    bodyBuilder: ({ body, close, modal }) => {
+      try { modal.classList.add("wmeRcLightbox"); } catch {}
+      const groups = () => loadPinGroups();
+      const pins = () => loadPins();
+
+      let selGid = normalizeGroupId(getSelectedPinsGroupId() || "default");
+      let qFolders = "";
+      let qPins = "";
+
+      const root = document.createElement("div");
+      root.style.width = "100%";
+      root.style.height = "100%";
+      root.style.display = "flex";
+      root.style.flexDirection = "row";
+      root.style.gap = "0";
+      root.style.minHeight = "0";
+
+      const left = document.createElement("div");
+      left.className = "wmeRcPmLeft";
+
+      const right = document.createElement("div");
+      right.className = "wmeRcPmRight";
+
+      // ----- Left: folders -----
+      const leftHdr = document.createElement("div");
+      leftHdr.className = "wmeRcPmHdrRow";
+
+      const leftTitle = document.createElement("div");
+      leftTitle.style.fontWeight = "900";
+      leftTitle.style.letterSpacing = ".2px";
+      leftTitle.textContent = "Folders";
+
+      const addFolderBtn = document.createElement("div");
+      addFolderBtn.className = "wmeRcPmTiny";
+      addFolderBtn.title = "Add folder";
+      addFolderBtn.innerHTML = `<span class="wmeRcI">${ICONS.folderPlus}</span>`;
+      addFolderBtn.addEventListener("click", (ev) => {
+        try { ev.preventDefault(); ev.stopPropagation(); } catch {}
+        openGroupNameModal({
+          title: "New folder",
+          placeholder: "Name",
+          okText: "Create",
+          onSubmit: (name, emoji) => {
+            const gs = groups();
+            const id = `g-${_uid()}`;
+            gs.push({ id, name, emoji: (typeof emoji === "string") ? emoji : "" });
+            savePinGroups(gs);
+            selGid = id;
+            try { setSelectedPinsGroupId(id); } catch {}
+            render();
+          }
+        });
+      });
+
+      leftHdr.appendChild(leftTitle);
+      leftHdr.appendChild(addFolderBtn);
+
+      const folderSearch = document.createElement("input");
+      folderSearch.className = "wmeRcInput wmeRcPmSearch";
+      folderSearch.placeholder = "Search folders…";
+      folderSearch.addEventListener("input", () => { qFolders = String(folderSearch.value || "").trim().toLowerCase(); renderFolders(); });
+
+      const folderList = document.createElement("div");
+      folderList.className = "wmeRcPmList";
+
+      left.appendChild(leftHdr);
+      left.appendChild(folderSearch);
+      left.appendChild(folderList);
+
+      // ----- Right: pins -----
+      const rightHdr = document.createElement("div");
+      rightHdr.className = "wmeRcPmHdrRow";
+
+      const rightTitle = document.createElement("div");
+      rightTitle.style.fontWeight = "900";
+      rightTitle.style.letterSpacing = ".2px";
+      rightTitle.textContent = "Pins";
+
+      const pinSearch = document.createElement("input");
+      pinSearch.className = "wmeRcInput wmeRcPmSearch";
+      pinSearch.placeholder = "Search pins…";
+      pinSearch.addEventListener("input", () => { qPins = String(pinSearch.value || "").trim().toLowerCase(); renderPins(); });
+
+      const pinsList = document.createElement("div");
+      pinsList.className = "wmeRcPmList";
+
+      right.appendChild(rightHdr);
+      right.appendChild(pinSearch);
+      right.appendChild(pinsList);
+
+      root.appendChild(left);
+      root.appendChild(right);
+      body.appendChild(root);
+
+      function getGroupMeta(gid) {
+        gid = normalizeGroupId(gid || "default");
+        if (gid === "default") return { id: "default", name: "General", emoji: "" };
+        const g = groups().find(x => x && x.id === gid);
+        return g || { id: gid, name: "Folder", emoji: "" };
+      }
+
+      function countPinsInGroup(gid) {
+        gid = normalizeGroupId(gid || "default");
+        let c = 0;
+        for (const p of pins()) if (normalizeGroupId(p.groupId || "default") === gid) c++;
+        return c;
+      }
+
+      function mkTiny(icon, title, onClick) {
+        const b = document.createElement("div");
+        b.className = "wmeRcPmTiny";
+        b.title = title;
+        b.innerHTML = `<span class="wmeRcI">${icon}</span>`;
+        b.addEventListener("click", (ev) => { try { ev.preventDefault(); ev.stopPropagation(); } catch {} onClick && onClick(); });
+        return b;
+      }
+
+      function renderFolders() {
+        folderList.innerHTML = "";
+        const gs = groups();
+
+        // Default folder first
+        const allFolderIds = ["default", ...gs.map(g => g.id)];
+
+        for (const gid0 of allFolderIds) {
+          const meta = getGroupMeta(gid0);
+          const nm = (meta.emoji ? (meta.emoji + " ") : "") + String(meta.name || "");
+          const c = countPinsInGroup(gid0);
+
+          if (qFolders) {
+            const hay = (String(meta.name || "") + " " + String(meta.emoji || "")).toLowerCase();
+            if (!hay.includes(qFolders)) continue;
+          }
+
+          const card = document.createElement("div");
+          card.className = "wmeRcPmCard" + (normalizeGroupId(gid0) === normalizeGroupId(selGid) ? " on" : "");
+          card.addEventListener("click", () => {
+            selGid = normalizeGroupId(gid0);
+            try { setSelectedPinsGroupId(selGid); } catch {}
+            render();
+          });
+
+          const l = document.createElement("div");
+          l.className = "wmeRcPmCardLeft";
+
+          const t = document.createElement("div");
+          t.className = "wmeRcPmCardTitle";
+          t.textContent = nm || "Folder";
+
+          const s = document.createElement("div");
+          s.className = "wmeRcPmCardSub";
+          s.textContent = `${c} pin${c === 1 ? "" : "s"}`;
+
+          l.appendChild(t);
+          l.appendChild(s);
+
+          const btns = document.createElement("div");
+          btns.className = "wmeRcPmCardBtns";
+
+          // Rename (not for default)
+          if (gid0 !== "default") {
+            btns.appendChild(mkTiny(ICONS.edit, "Rename folder", () => {
+              const g = gs.find(x => x && x.id === gid0);
+              openGroupNameModal({
+                title: "Rename folder",
+                placeholder: "Name",
+                okText: "Save",
+                initial: g ? g.name : "",
+                initialEmoji: g ? (g.emoji || "") : "",
+                onSubmit: (name, emoji) => {
+                  const arr = groups();
+                  const gg = arr.find(x => x && x.id === gid0);
+                  if (gg) { gg.name = name; gg.emoji = (typeof emoji === "string") ? emoji : ""; }
+                  savePinGroups(arr);
+                  render();
+                }
+              });
+            }));
+            btns.appendChild(mkTiny(ICONS.trash, "Remove folder", () => {
+              openRemoveFolderModal(gid0);
+              // openRemoveFolderModal triggers re-render via existing flows; also refresh after a tick
+              setTimeout(() => { try { render(); } catch {} }, 250);
+            }));
+          } else {
+            btns.appendChild(mkTiny(ICONS.trash, "Clear pins in General", () => {
+              const c = countPinsInGroup("default");
+              openClearDefaultFolderPinsModal({
+                folderName: "General",
+                count: c,
+                onConfirm: () => {
+                  const all = pins().filter(p => normalizeGroupId(p.groupId || "default") !== "default");
+                  savePins(all);
+                  render();
+                  try { renderPinsPanel(); } catch {}
+                  try { renderPinsMarkers(); } catch {}
+                }
+              });
+            }));
+          }
+
+          card.appendChild(l);
+          card.appendChild(btns);
+          folderList.appendChild(card);
+        }
+      }
+
+      function renderPins() {
+        pinsList.innerHTML = "";
+        const gid = normalizeGroupId(selGid || "default");
+        const meta = getGroupMeta(gid);
+
+        // Header: folder name + quick actions
+        rightHdr.innerHTML = "";
+        const title = document.createElement("div");
+        title.style.fontWeight = "900";
+        title.style.letterSpacing = ".2px";
+        title.textContent = `Pins — ${meta.emoji ? (meta.emoji + " ") : ""}${meta.name || "General"}`;
+
+        const hdrBtns = document.createElement("div");
+        hdrBtns.style.display = "flex";
+        hdrBtns.style.gap = "8px";
+        hdrBtns.style.alignItems = "center";
+
+        const closeBtn = mkTiny(ICONS.chevDown, "Close", () => close());
+        // make it an X-like feel by rotating chevron
+        try { closeBtn.querySelector("svg").style.transform = "rotate(90deg)"; } catch {}
+
+        hdrBtns.appendChild(closeBtn);
+
+        rightHdr.appendChild(title);
+        rightHdr.appendChild(hdrBtns);
+
+        const gs = groups();
+        const folderOptions = [{ id: "default", name: "General", emoji: "" }, ...gs.map(g => ({ id: g.id, name: g.name, emoji: g.emoji || "" }))];
+
+        const list = pins().filter(p => normalizeGroupId(p.groupId || "default") === gid);
+
+        const q = qPins;
+        const filtered = q ? list.filter(p => String(p.name || "").toLowerCase().includes(q)) : list;
+
+        if (!filtered.length) {
+          const empty = document.createElement("div");
+          empty.className = "wmeRcHint";
+          empty.style.opacity = ".8";
+          empty.textContent = q ? "No pins match your search." : "No pins in this folder.";
+          pinsList.appendChild(empty);
+          return;
+        }
+
+        for (const p of filtered) {
+          const row = document.createElement("div");
+          row.className = "wmeRcPmRow";
+
+          const l = document.createElement("div");
+          l.className = "wmeRcPmRowLeft";
+
+          const t = document.createElement("div");
+          t.className = "wmeRcPmRowTitle";
+          t.textContent = String(p.name || "Pin");
+
+          const sub = document.createElement("div");
+          sub.className = "wmeRcPmRowSub";
+          const lat = (Number(p.lat) || 0).toFixed(6);
+          const lon = (Number(p.lon) || 0).toFixed(6);
+          sub.textContent = `${lat}, ${lon}`;
+
+          l.appendChild(t);
+          l.appendChild(sub);
+
+          const btns = document.createElement("div");
+          btns.className = "wmeRcPmRowBtns";
+
+          // Move to folder (select)
+          const sel = document.createElement("select");
+          sel.className = "wmeRcSelect wmeRcPmSelect";
+          for (const fo of folderOptions) {
+            const o = document.createElement("option");
+            o.value = fo.id;
+            o.textContent = (fo.emoji ? (fo.emoji + " ") : "") + String(fo.name || (fo.id === "default" ? "General" : "Folder"));
+            if (normalizeGroupId(p.groupId || "default") === normalizeGroupId(fo.id)) o.selected = true;
+            sel.appendChild(o);
+          }
+          sel.addEventListener("change", () => {
+            const to = normalizeGroupId(sel.value || "default");
+            updatePin(p.id, { groupId: to });
+            // stay on current folder view; just refresh
+            render();
+            try { renderPinsPanel(); } catch {}
+            try { renderPinsMarkers(); } catch {}
+          });
+
+          btns.appendChild(sel);
+
+          btns.appendChild(mkTiny(ICONS.edit, "Rename pin", () => {
+            openRenamePinModal(p.id);
+            setTimeout(() => { try { render(); } catch {} }, 250);
+          }));
+
+          btns.appendChild(mkTiny(ICONS.trash, "Remove pin", () => {
+            confirmRemovePin(p.id);
+            setTimeout(() => { try { render(); } catch {} }, 250);
+          }));
+
+          row.appendChild(l);
+          row.appendChild(btns);
+          pinsList.appendChild(row);
+        }
+      }
+
+      function render() {
+        // if selected folder removed, fall back
+        const gid = normalizeGroupId(selGid || "default");
+        const exists = gid === "default" || groups().some(g => g && g.id === gid);
+        if (!exists) selGid = "default";
+        renderFolders();
+        renderPins();
+      }
+
+      render();
+    }
   });
 }
 
@@ -9832,7 +10279,9 @@ setColor(chosenColor);
       btnPin.className = "wmeRcModalBtn primary";
       btnPin.textContent = "Pin";
       btnPin.addEventListener("click", async () => {
-        const name = String(nameInp.value || "").trim() || fallbackName;
+        const v = validatePinName(nameInp.value, fallbackName);
+        if (!v.ok) { toast(v.msg); try { nameInp.focus(); nameInp.select(); } catch {} return; }
+        const name = v.value;
         const reminderAt = null;
 
         const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
