@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WME - RightClick Functions
 // @author       GreekCaptain
-// @version      1.0.2
-// @description  Right-click functionality
+// @version      1.0.3
+// @description  Right-click functionality which changes the existing context-menu and adds pin reminders
 // @match        https://www.waze.com/*/editor*
 // @match        https://www.waze.com/editor*
 // @match        https://beta.waze.com/*/editor*
@@ -12,11 +12,12 @@
 // @grant        GM_xmlhttpRequest
 // @connect      w-tools.org
 // @require      https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
-// @downloadURL  https://update.greasyfork.org/scripts/563177/WME%20-%20RightClick%20Functions.user.js
-// @updateURL    https://update.greasyfork.org/scripts/563177/WME%20-%20RightClick%20Functions.user.js
 // @icon         data:image/png;base64,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
 // @run-at       document-start
 // @license      MIT
+// @namespace https://greasyfork.org/users/1561762
+// @downloadURL https://update.greasyfork.org/scripts/563177/WME%20-%20RightClick%20Functions.user.js
+// @updateURL https://update.greasyfork.org/scripts/563177/WME%20-%20RightClick%20Functions.meta.js
 // ==/UserScript==
 
 (() => {
@@ -25,10 +26,13 @@
   const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   const SCRIPT_ID = "wme-rightclick-functions";
   const SCRIPT_NAME = "WME - RightClick Functions";
-  const SCRIPT_VERSION = "1.0.2";
+  const SCRIPT_VERSION = "1.0.3";
   const CHANGELOG_SEEN_KEY = `${SCRIPT_ID}:changelogSeenVersion:v2`;
   const CHANGELOG_ITEMS = [
     "New: Visual and accesibility changes",
+    "New: Exported API for third-party context menu providers (coming soon)",
+    "New: Settings to change the order of the native context-menu actions in the 'Scripts' tab",
+    "Fixed: The zoomed-out bubble didn’t show all pins in view when clicked",
   ];
 
 
@@ -41,6 +45,725 @@
   let sdk = null;
   let enabled = true;
   let lastLonLat = null;
+
+  const EXT_MENU_CONTEXTS = Object.freeze(["map", "segment", "place"]);
+  const extMenuProviders = { map: new Map(), segment: new Map(), place: new Map() };
+
+  function normalizeExtMenuContextType(type) {
+    const k = String(type || "").trim().toLowerCase();
+    return EXT_MENU_CONTEXTS.includes(k) ? k : "";
+  }
+
+  function cloneLonLat(ll) {
+    if (!ll || !Number.isFinite(ll.lat) || !Number.isFinite(ll.lon)) return null;
+    return { lat: Number(ll.lat), lon: Number(ll.lon) };
+  }
+
+  function cloneNumArray(arr) {
+    return Array.isArray(arr) ? arr.map(v => Number(v)).filter(Number.isFinite) : [];
+  }
+
+  function buildExtMenuContext(type, spec = {}) {
+    const ctxType = normalizeExtMenuContextType(type);
+    const lonLat = cloneLonLat(spec.lonLat || spec.ll || lastLonLat);
+    const segmentIds = cloneNumArray(spec.segmentIds);
+    const placeIds = cloneNumArray(spec.placeIds);
+    const out = {
+      type: ctxType || String(type || ""),
+      lonLat,
+      segmentIds,
+      placeIds,
+      sdk: sdk || null,
+      lastLonLat: cloneLonLat(lastLonLat),
+      selection: {
+        segmentIds,
+        placeIds,
+      },
+    };
+    if (Number.isFinite(spec.clientX)) out.clientX = Number(spec.clientX);
+    if (Number.isFinite(spec.clientY)) out.clientY = Number(spec.clientY);
+    if (spec.placeInfo && typeof spec.placeInfo === "object") {
+      out.placeInfo = {
+        has: !!spec.placeInfo.has,
+        ids: cloneNumArray(spec.placeInfo.ids),
+      };
+    }
+    return Object.freeze(out);
+  }
+
+  function sanitizeExtMenuItems(items, providerId) {
+    if (!Array.isArray(items)) return [];
+    const out = [];
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      if (item.type === "sep") {
+        out.push({ type: "sep" });
+        continue;
+      }
+      if (typeof item.label !== "string" || !item.label.trim()) continue;
+
+      const clean = {
+        label: item.label,
+      };
+
+      if (item.sub != null) clean.sub = String(item.sub);
+      if (item.disabled != null) clean.disabled = !!item.disabled;
+      if (item.submenu != null) clean.submenu = !!item.submenu;
+      if (item.submenuKind != null) clean.submenuKind = String(item.submenuKind);
+      if (item.submenuHeaderLeft != null) clean.submenuHeaderLeft = String(item.submenuHeaderLeft);
+      if (item.submenuHeaderRight != null) clean.submenuHeaderRight = String(item.submenuHeaderRight);
+      if (typeof item.onClick === "function") clean.onClick = item.onClick;
+      if (typeof item.getSubmenuItems === "function") clean.getSubmenuItems = item.getSubmenuItems;
+      if (item.rightButton && typeof item.rightButton === "object" && typeof item.rightButton.onClick === "function") {
+        clean.rightButton = {
+          label: String(item.rightButton.label || ""),
+          onClick: item.rightButton.onClick,
+        };
+      }
+      if (item.iconButton && typeof item.iconButton === "object" && typeof item.iconButton.onClick === "function") {
+        clean.iconButton = {
+          html: String(item.iconButton.html || ""),
+          title: String(item.iconButton.title || ""),
+          onClick: item.iconButton.onClick,
+        };
+      }
+      clean._providerId = providerId;
+      out.push(clean);
+    }
+    return out;
+  }
+
+  function getExternalMenuItems(type, ctx) {
+    const ctxType = normalizeExtMenuContextType(type);
+    if (!ctxType) return [];
+    const bucket = extMenuProviders[ctxType];
+    if (!bucket || !bucket.size) return [];
+    const out = [];
+    for (const [providerId, providerFn] of bucket.entries()) {
+      try {
+        if (!isExtensionEnabled(providerId)) continue;
+        const items = providerFn(ctx);
+        const cleanItems = sanitizeExtMenuItems(items, providerId);
+        if (!cleanItems.length) continue;
+        if (out.length && out[out.length - 1]?.type !== "sep") out.push({ type: "sep" });
+        out.push(...cleanItems);
+      } catch (e) {
+        console.error(`[${SCRIPT_NAME}] external provider failed: ${providerId}`, e);
+      }
+    }
+    while (out.length && out[0]?.type === "sep") out.shift();
+    while (out.length && out[out.length - 1]?.type === "sep") out.pop();
+    return out;
+  }
+
+  function buildExtensionsMenuItem(type, ctx) {
+    const extItems = getExternalMenuItems(type, ctx);
+    if (!extItems.length) return null;
+    return {
+      label: withIcon(ICONS.more, "Extensions"),
+      sub: `${listMenuProviders(type).length} provider${listMenuProviders(type).length === 1 ? "" : "s"}`,
+      submenu: true,
+      submenuKind: "extensions",
+      submenuHeaderLeft: "Extensions",
+      submenuHeaderRight: "Third-party",
+      getSubmenuItems: () => getExternalMenuItems(type, ctx),
+    };
+  }
+
+  function registerMenuProvider(type, providerId, providerFn) {
+    const ctxType = normalizeExtMenuContextType(type);
+    if (!ctxType) throw new Error(`Unsupported context type: ${type}`);
+    const id = String(providerId || "").trim();
+    if (!id) throw new Error("providerId is required");
+    if (typeof providerFn !== "function") throw new Error("providerFn must be a function");
+    extMenuProviders[ctxType].set(id, providerFn);
+    try { refreshSidebarTabContent(); } catch {}
+    return id;
+  }
+
+  function unregisterMenuProvider(type, providerId) {
+    const ctxType = normalizeExtMenuContextType(type);
+    if (!ctxType) return false;
+    const ok = extMenuProviders[ctxType].delete(String(providerId || "").trim());
+    try { refreshSidebarTabContent(); } catch {}
+    return ok;
+  }
+
+  function listMenuProviders(type) {
+    const ctxType = normalizeExtMenuContextType(type);
+    if (!ctxType) return [];
+    return Array.from(extMenuProviders[ctxType].keys());
+  }
+
+
+  const NATIVE_MENU_SETTINGS_KEY = `${SCRIPT_ID}:nativeMenuSettings:v1`;
+  const EXTENSION_SETTINGS_KEY = `${SCRIPT_ID}:extensionSettings:v1`;
+
+  function loadExtensionSettings() {
+    try {
+      const raw = localStorage.getItem(EXTENSION_SETTINGS_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      const disabled = parsed && typeof parsed === "object" && parsed.disabled && typeof parsed.disabled === "object" ? parsed.disabled : {};
+      return { disabled: { ...disabled } };
+    } catch {
+      return { disabled: {} };
+    }
+  }
+
+  function saveExtensionSettings(cfg) {
+    try { localStorage.setItem(EXTENSION_SETTINGS_KEY, JSON.stringify({ disabled: { ...(cfg?.disabled || {}) } })); } catch {}
+  }
+
+  function isExtensionEnabled(providerId) {
+    const id = String(providerId || "").trim();
+    if (!id) return true;
+    const cfg = loadExtensionSettings();
+    return cfg.disabled[id] !== true;
+  }
+
+  function setExtensionEnabled(providerId, enabled) {
+    const id = String(providerId || "").trim();
+    if (!id) return;
+    const cfg = loadExtensionSettings();
+    cfg.disabled[id] = !enabled;
+    if (cfg.disabled[id] !== true) delete cfg.disabled[id];
+    saveExtensionSettings(cfg);
+  }
+
+  function getAllRegisteredExtensionProviders() {
+    const ids = new Set();
+    for (const t of Object.keys(extMenuProviders || {})) {
+      const bucket = extMenuProviders[t];
+      if (!bucket || !bucket.size) continue;
+      for (const id of bucket.keys()) ids.add(String(id || "").trim());
+    }
+    return Array.from(ids).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }
+
+  function getExtensionContextsForProvider(providerId) {
+    const id = String(providerId || "").trim();
+    if (!id) return [];
+    const out = [];
+    for (const t of ["segment", "map", "place"]) {
+      if (extMenuProviders?.[t]?.has(id)) out.push(t);
+    }
+    return out;
+  }
+
+  function refreshSidebarTabContent() {
+    try {
+      const pane = document.querySelector('.wmeRcSideWrap');
+      if (pane && pane._wmeRcRefresh && typeof pane._wmeRcRefresh === 'function') pane._wmeRcRefresh();
+    } catch {}
+  }
+
+  function getNativeMenuDefaults(type) {
+    const t = normalizeExtMenuContextType(type);
+    if (t === "segment") {
+      return [
+        { id: "copyCoords", label: "Copy coordinates" },
+        { id: "copyPermalink", label: "Copy permalink" },
+        { id: "refreshHere", label: "Refresh here" },
+        { id: "pinPlace", label: "Pin this Place" },
+        { id: "endpoints", label: "Endpoints" },
+        { id: "jumpSearch", label: "Jump / Search…" },
+        { id: "moreTools", label: "More" },
+      ];
+    }
+    if (t === "map") {
+      return [
+        { id: "copyCoords", label: "Copy coordinates" },
+        { id: "pinPlace", label: "Pin this Place" },
+        { id: "refreshHere", label: "Refresh here" },
+        { id: "copyPermalink", label: "Copy permalink" },
+        { id: "openGoogleMaps", label: "Open in Google Maps" },
+        { id: "jumpSearch", label: "Jump / Search…" },
+      ];
+    }
+    if (t === "place") {
+      return [
+        { id: "copyCoords", label: "Copy coordinates" },
+        { id: "pinPlace", label: "Pin this Place" },
+        { id: "refreshHere", label: "Refresh here" },
+        { id: "copyPermalink", label: "Copy permalink" },
+        { id: "openGoogleMaps", label: "Open in Google Maps" },
+        { id: "jumpSearch", label: "Jump / Search…" },
+      ];
+    }
+    return [];
+  }
+
+  function normalizeNativeMenuSettings(type, cfg) {
+    const defs = getNativeMenuDefaults(type);
+    const validIds = new Set(defs.map(d => d.id));
+    const order = [];
+    for (const id of Array.isArray(cfg?.order) ? cfg.order : []) {
+      const sid = String(id || "").trim();
+      if (validIds.has(sid) && !order.includes(sid)) order.push(sid);
+    }
+    for (const def of defs) {
+      if (!order.includes(def.id)) order.push(def.id);
+    }
+    const hidden = {};
+    const rawHidden = cfg && typeof cfg.hidden === "object" ? cfg.hidden : {};
+    for (const def of defs) hidden[def.id] = rawHidden[def.id] === true;
+    return { order, hidden };
+  }
+
+  function loadAllNativeMenuSettings() {
+    try {
+      const raw = localStorage.getItem(NATIVE_MENU_SETTINGS_KEY);
+      const parsed = JSON.parse(raw || "{}") || {};
+      return {
+        map: normalizeNativeMenuSettings("map", parsed.map),
+        segment: normalizeNativeMenuSettings("segment", parsed.segment),
+        place: normalizeNativeMenuSettings("place", parsed.place),
+      };
+    } catch {
+      return {
+        map: normalizeNativeMenuSettings("map", null),
+        segment: normalizeNativeMenuSettings("segment", null),
+        place: normalizeNativeMenuSettings("place", null),
+      };
+    }
+  }
+
+  function saveAllNativeMenuSettings(all) {
+    const next = {
+      map: normalizeNativeMenuSettings("map", all?.map),
+      segment: normalizeNativeMenuSettings("segment", all?.segment),
+      place: normalizeNativeMenuSettings("place", all?.place),
+    };
+    try { localStorage.setItem(NATIVE_MENU_SETTINGS_KEY, JSON.stringify(next)); } catch {}
+    return next;
+  }
+
+  function getNativeMenuSettings(type) {
+    const t = normalizeExtMenuContextType(type);
+    return loadAllNativeMenuSettings()[t] || normalizeNativeMenuSettings(t, null);
+  }
+
+  function makeNativeMenuItem(id, label, item) {
+    return { ...(item || {}), _nativeId: String(id || "").trim(), _nativeLabel: String(label || item?.label || id || "") };
+  }
+
+  function applyNativeMenuSettings(type, items) {
+    const defs = getNativeMenuDefaults(type);
+    if (!defs.length) return Array.isArray(items) ? items.slice() : [];
+    const cfg = getNativeMenuSettings(type);
+    const byId = new Map();
+    for (const item of (Array.isArray(items) ? items : [])) {
+      if (item && item._nativeId) byId.set(item._nativeId, item);
+    }
+    const ordered = [];
+    for (const id of cfg.order) {
+      if (cfg.hidden[id] === true) continue;
+      const item = byId.get(id);
+      if (item) ordered.push(item);
+    }
+    const out = [];
+    for (const item of ordered) {
+      if (!item) continue;
+      const clone = { ...item };
+      delete clone._nativeId;
+      delete clone._nativeLabel;
+      out.push(clone);
+    }
+    return out;
+  }
+
+  function buildNativeMenuSettingsEditor() {
+    const wrap = document.createElement("div");
+    wrap.className = "wmeRcSideCard";
+    try { wrap.style.display = "grid"; wrap.style.gap = "10px"; } catch {}
+
+    function parseColorToRgb(str) {
+      const s = String(str || "").trim();
+      let m = s.match(/^rgba?\(([^)]+)\)$/i);
+      if (m) {
+        const parts = m[1].split(',').map(v => parseFloat(v.trim()));
+        if (parts.length >= 3) return { r: parts[0] || 0, g: parts[1] || 0, b: parts[2] || 0, a: parts.length >= 4 ? parts[3] : 1 };
+      }
+      m = s.match(/^#([0-9a-f]{3,8})$/i);
+      if (m) {
+        const hex = m[1];
+        if (hex.length === 3) return { r: parseInt(hex[0] + hex[0], 16), g: parseInt(hex[1] + hex[1], 16), b: parseInt(hex[2] + hex[2], 16), a: 1 };
+        if (hex.length >= 6) return { r: parseInt(hex.slice(0,2), 16), g: parseInt(hex.slice(2,4), 16), b: parseInt(hex.slice(4,6), 16), a: 1 };
+      }
+      return null;
+    }
+
+    function getAdaptiveTextColor(el) {
+      let cur = el;
+      while (cur) {
+        try {
+          const cs = getComputedStyle(cur);
+          const bg = parseColorToRgb(cs.backgroundColor);
+          if (bg && bg.a !== 0) {
+            const lum = (0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b) / 255;
+            return lum > 0.58 ? '#1d2329' : '#f3f7fb';
+          }
+        } catch {}
+        cur = cur.parentElement;
+      }
+      return '#f3f7fb';
+    }
+
+    const fg = getAdaptiveTextColor(wrap.parentElement || document.body);
+    try { wrap.style.setProperty('--wmeRcSideFg', fg); wrap.style.color = fg; } catch {}
+
+    const head = document.createElement("div");
+    head.innerHTML = `
+      <div class="wmeRcSideTitle">Native context menu actions</div>
+      <div class="wmeRcSideSub">Hide actions or drag them into a different order by context.</div>
+    `;
+    wrap.appendChild(head);
+
+    const sections = document.createElement("div");
+    try { sections.style.display = "grid"; sections.style.gap = "10px"; } catch {}
+    wrap.appendChild(sections);
+
+    const state = loadAllNativeMenuSettings();
+    const groups = [
+      { id: "segment", label: "Segment" },
+      { id: "map", label: "Map" },
+      { id: "place", label: "Place" },
+    ];
+
+    function saveGroup(groupId, cfg) {
+      state[groupId] = normalizeNativeMenuSettings(groupId, cfg);
+      saveAllNativeMenuSettings(state);
+    }
+
+    function mountSortable(list, groupId, cfg, rerender) {
+      let drag = null;
+      const rows = () => Array.from(list.querySelectorAll('[data-native-id]'));
+
+      function onMove(ev) {
+        if (!drag) return;
+        drag.row.style.top = `${Math.round(ev.clientY - drag.offsetY)}px`;
+        const others = rows().filter(r => r !== drag.row);
+        let placed = false;
+        for (const row of others) {
+          const rect = row.getBoundingClientRect();
+          const midpoint = rect.top + (rect.height / 2);
+          if (ev.clientY < midpoint) {
+            if (drag.placeholder !== row.previousSibling) list.insertBefore(drag.placeholder, row);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) list.appendChild(drag.placeholder);
+      }
+
+      function onUp() {
+        if (!drag) return;
+        try { document.removeEventListener('pointermove', onMove, true); } catch {}
+        try { document.removeEventListener('pointerup', onUp, true); } catch {}
+        try { document.removeEventListener('pointercancel', onUp, true); } catch {}
+        try { document.body.style.userSelect = ''; } catch {}
+
+        const otherIds = rows().filter(r => r !== drag.row).map(r => r.dataset.nativeId);
+        const slot = Math.max(0, Array.from(list.children).indexOf(drag.placeholder));
+        otherIds.splice(Math.min(slot, otherIds.length), 0, drag.row.dataset.nativeId);
+        cfg.order = otherIds;
+        saveGroup(groupId, cfg);
+
+        drag.row.style.position = '';
+        drag.row.style.left = '';
+        drag.row.style.top = '';
+        drag.row.style.width = '';
+        drag.row.style.height = '';
+        drag.row.style.zIndex = '';
+        drag.row.style.pointerEvents = '';
+        drag.row.style.boxShadow = '';
+        drag.row.style.opacity = '';
+        drag.row.style.transform = '';
+        list.insertBefore(drag.row, drag.placeholder);
+        if (drag.placeholder.parentNode) drag.placeholder.parentNode.removeChild(drag.placeholder);
+        drag = null;
+        rerender();
+      }
+
+      rows().forEach(row => {
+        const handle = row.querySelector('.wmeRcSideHandle');
+        if (!handle) return;
+        handle.addEventListener('pointerdown', (ev) => {
+          if (ev.button != null && ev.button !== 0) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          const rect = row.getBoundingClientRect();
+          const placeholder = document.createElement('div');
+          placeholder.className = 'wmeRcNativePlaceholder';
+          placeholder.style.height = `${Math.round(rect.height)}px`;
+          placeholder.style.borderRadius = '10px';
+          placeholder.style.border = '1px dashed rgba(127,127,127,.35)';
+          placeholder.style.background = 'transparent';
+          list.insertBefore(placeholder, row.nextSibling);
+
+          drag = { row, placeholder, offsetY: ev.clientY - rect.top };
+          row.style.position = 'fixed';
+          row.style.left = `${Math.round(rect.left)}px`;
+          row.style.top = `${Math.round(rect.top)}px`;
+          row.style.width = `${Math.round(rect.width)}px`;
+          row.style.height = `${Math.round(rect.height)}px`;
+          row.style.zIndex = '999999';
+          row.style.pointerEvents = 'none';
+          row.style.boxShadow = '0 10px 24px rgba(0,0,0,.22)';
+          row.style.opacity = '1';
+          row.style.transform = 'none';
+          try { document.body.style.userSelect = 'none'; } catch {}
+
+          document.addEventListener('pointermove', onMove, true);
+          document.addEventListener('pointerup', onUp, true);
+          document.addEventListener('pointercancel', onUp, true);
+        });
+      });
+    }
+
+    function render() {
+      sections.innerHTML = "";
+      try { wrap.style.setProperty('--wmeRcSideFg', getAdaptiveTextColor(wrap.parentElement || document.body)); } catch {}
+      for (const group of groups) {
+        const cfg = state[group.id] || normalizeNativeMenuSettings(group.id, null);
+        const defs = getNativeMenuDefaults(group.id);
+        const orderedDefs = cfg.order.map(id => defs.find(d => d.id === id)).filter(Boolean);
+
+        const card = document.createElement("div");
+        try {
+          card.style.display = "grid";
+          card.style.gap = "8px";
+          card.style.padding = "10px";
+          card.style.border = "1px solid rgba(127,127,127,.18)";
+          card.style.borderRadius = "12px";
+          card.style.background = "transparent";
+        } catch {}
+
+        const top = document.createElement("div");
+        try {
+          top.style.display = "flex";
+          top.style.alignItems = "center";
+          top.style.justifyContent = "space-between";
+          top.style.gap = "10px";
+        } catch {}
+
+        const titleWrap = document.createElement("div");
+        titleWrap.innerHTML = `<div class="wmeRcSideTitle" style="font-size:13px">${group.label}</div>`;
+
+        const reset = document.createElement("button");
+        reset.type = "button";
+        reset.className = "wmeRcMiniBtn";
+        reset.textContent = "Reset";
+        reset.addEventListener("click", () => {
+          state[group.id] = normalizeNativeMenuSettings(group.id, null);
+          saveAllNativeMenuSettings(state);
+          render();
+        });
+
+        top.appendChild(titleWrap);
+        top.appendChild(reset);
+        card.appendChild(top);
+
+        const list = document.createElement("div");
+        try { list.style.display = "grid"; list.style.gap = "8px"; } catch {}
+
+        orderedDefs.forEach((def) => {
+          const row = document.createElement("div");
+          row.dataset.nativeId = def.id;
+          try {
+            row.style.display = "grid";
+            row.style.gridTemplateColumns = "1fr auto";
+            row.style.gap = "10px";
+            row.style.alignItems = "center";
+            row.style.padding = "8px 10px";
+            row.style.border = "1px solid rgba(127,127,127,.18)";
+            row.style.borderRadius = "10px";
+            row.style.background = "transparent";
+            row.style.transition = "none";
+          } catch {}
+
+          const left = document.createElement("label");
+          try { left.style.display = "flex"; left.style.alignItems = "center"; left.style.gap = "10px"; left.style.cursor = "pointer"; left.style.minWidth = '0'; } catch {}
+
+          const chk = document.createElement("input");
+          chk.type = "checkbox";
+          chk.checked = cfg.hidden[def.id] !== true;
+          chk.addEventListener("change", () => {
+            cfg.hidden[def.id] = !chk.checked;
+            state[group.id] = normalizeNativeMenuSettings(group.id, cfg);
+            saveAllNativeMenuSettings(state);
+          });
+
+          const txt = document.createElement("div");
+          txt.className = 'wmeRcHint';
+          txt.textContent = def.label;
+          try { txt.style.fontWeight = '600'; txt.style.color = 'var(--wmeRcSideFg, inherit)'; txt.style.minWidth = '0'; } catch {}
+
+          left.appendChild(chk);
+          left.appendChild(txt);
+
+          const handle = document.createElement('button');
+          handle.type = 'button';
+          handle.className = 'wmeRcSideHandle';
+          handle.textContent = '≡';
+          handle.title = 'Drag to reorder';
+          try {
+            handle.style.border = '0';
+            handle.style.background = 'transparent';
+            handle.style.color = 'var(--wmeRcSideFg, inherit)';
+            handle.style.cursor = 'grab';
+            handle.style.fontSize = '18px';
+            handle.style.lineHeight = '1';
+            handle.style.padding = '0 2px';
+            handle.style.opacity = '.8';
+            handle.style.touchAction = 'none';
+          } catch {}
+
+          row.appendChild(left);
+          row.appendChild(handle);
+          list.appendChild(row);
+        });
+
+        card.appendChild(list);
+        sections.appendChild(card);
+        mountSortable(list, group.id, cfg, render);
+      }
+    }
+
+    render();
+    return wrap;
+  }
+
+  function buildExtensionsSettingsEditor() {
+    const wrap = document.createElement("div");
+    wrap.className = "wmeRcSideCard";
+
+    const head = document.createElement("div");
+    head.innerHTML = `
+      <div class="wmeRcSideTitle">Extensions</div>
+    `;
+    wrap.appendChild(head);
+
+    const note = document.createElement("div");
+    note.className = "wmeRcHint";
+    note.textContent = "Coming Soon";
+    try { note.style.marginTop = "8px"; note.style.color = 'var(--wmeRcSideFg, inherit)'; } catch {}
+    wrap.appendChild(note);
+
+    return wrap;
+  }
+
+  function buildRcSidebarPanel() {
+    const wrap = document.createElement("div");
+    wrap.className = "wmeRcSideWrap";
+
+    function parseColorToRgb(s) {
+      if (!s || typeof s !== 'string') return null;
+      let m = s.match(/^rgba?\(([^)]+)\)$/i);
+      if (m) {
+        const parts = m[1].split(',').map(v => parseFloat(v.trim()));
+        if (parts.length >= 3) return { r: parts[0] || 0, g: parts[1] || 0, b: parts[2] || 0, a: parts.length >= 4 ? parts[3] : 1 };
+      }
+      m = s.match(/^#([0-9a-f]{3,8})$/i);
+      if (m) {
+        const hex = m[1];
+        if (hex.length === 3) return { r: parseInt(hex[0] + hex[0], 16), g: parseInt(hex[1] + hex[1], 16), b: parseInt(hex[2] + hex[2], 16), a: 1 };
+        if (hex.length >= 6) return { r: parseInt(hex.slice(0,2), 16), g: parseInt(hex.slice(2,4), 16), b: parseInt(hex.slice(4,6), 16), a: 1 };
+      }
+      return null;
+    }
+
+    function getAdaptiveTextColor(el) {
+      let cur = el;
+      while (cur) {
+        try {
+          const cs = getComputedStyle(cur);
+          const bg = parseColorToRgb(cs.backgroundColor);
+          if (bg && bg.a !== 0) {
+            const lum = (0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b) / 255;
+            return lum > 0.58 ? '#1d2329' : '#f3f7fb';
+          }
+        } catch {}
+        cur = cur.parentElement;
+      }
+      return '#f3f7fb';
+    }
+
+    function applyAdaptiveTextColor() {
+      const fg = getAdaptiveTextColor(wrap.parentElement || document.body);
+      try { wrap.style.setProperty('--wmeRcSideFg', fg); wrap.style.color = fg; } catch {}
+    }
+
+    const mainCard = document.createElement("div");
+    mainCard.className = "wmeRcSideCard";
+    mainCard.innerHTML = `
+      <div class="wmeRcSideRow">
+        <div>
+          <div class="wmeRcSideTitle">Right-click menu</div>
+          <div class="wmeRcSideSub">Shift + right click = default menu</div>
+        </div>
+        <div class="wmeRcSwitch ${enabled ? "on" : ""}" id="wmeRcSideSwitch">
+          <div class="wmeRcKnob"></div>
+        </div>
+      </div>
+    `;
+    wrap.appendChild(mainCard);
+
+    const nav = document.createElement('div');
+    nav.className = 'wmeRcSideNav';
+    nav.innerHTML = `
+      <button type="button" class="wmeRcSideNavBtn is-active" data-tab="native">Native actions</button>
+      <button type="button" class="wmeRcSideNavBtn" data-tab="extensions">Extensions</button>
+    `;
+    wrap.appendChild(nav);
+
+    const content = document.createElement('div');
+    content.className = 'wmeRcSideTabHost';
+    wrap.appendChild(content);
+
+    function renderTab(tab) {
+      applyAdaptiveTextColor();
+      content.innerHTML = '';
+      nav.querySelectorAll('.wmeRcSideNavBtn').forEach(btn => btn.classList.toggle('is-active', btn.dataset.tab === tab));
+      content.appendChild(tab === 'extensions' ? buildExtensionsSettingsEditor() : buildNativeMenuSettingsEditor());
+      applyAdaptiveTextColor();
+    }
+
+    nav.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('.wmeRcSideNavBtn') : null;
+      if (!btn) return;
+      renderTab(btn.dataset.tab || 'native');
+    });
+
+    const sw = mainCard.querySelector('#wmeRcSideSwitch');
+    if (sw) {
+      sw.addEventListener('click', () => {
+        setEnabled(!enabled);
+        sw.classList.toggle('on', enabled);
+        toast(`${SCRIPT_NAME}: ${enabled ? "ON" : "OFF"}`);
+        closeAllMenus();
+      });
+    }
+
+    wrap._wmeRcRefresh = () => {
+      const active = nav.querySelector('.wmeRcSideNavBtn.is-active')?.dataset.tab || 'native';
+      renderTab(active);
+    };
+
+    renderTab('native');
+    return wrap;
+  }
+
+  function getCurrentContextSnapshot() {
+    return buildExtMenuContext(menuState?.rootType || "", {
+      lonLat: menuState?.rootLL || lastLonLat,
+      segmentIds: selectedSegmentIds(),
+      placeIds: (function() {
+        try { return selectedPlaceInfo()?.ids || []; } catch { return []; }
+      })(),
+    });
+  }
+
 
   let cachedUserLevel = null;
   let rankIsZeroBased = null;
@@ -58,7 +781,7 @@
   const PIN_MINIMIZE_MODE_KEY = `${SCRIPT_ID}:pinsMinimizeMode:v1`;
   const PIN_PANEL_MINIMIZED_KEY = `${SCRIPT_ID}:pinsPanelMinimized:v1`;
 
-  // --- Pin name validation ---
+
   const PIN_NAME_MAX = 28;
   function validatePinName(name, fallback) {
     const s = String(name ?? "").trim();
@@ -78,9 +801,9 @@
   let _pinsLastJson = null;
   const _DEBOUNCE_SAVE_MS = 250;
 
-  // ---------- Lightweight scheduler (performance) ----------
-  // Replaces some hot setInterval loops with an adaptive timeout loop
-  // that slows down when the tab is hidden and can be gated by an `active()` predicate.
+
+
+
   function _createAdaptiveLoop(fn, baseMs, opts = {}) {
     let stopped = false;
     let t = null;
@@ -89,7 +812,7 @@
     const immediateOnVisible = opts.immediateOnVisible !== false;
 
     function delay() {
-      // Slow down when tab is hidden to cut CPU usage.
+
       if (document.hidden) return Math.max(baseMs * 4, 1200);
       return baseMs;
     }
@@ -102,10 +825,10 @@
       t = setTimeout(tick, delay());
     }
 
-    // Kick off
+
     t = setTimeout(tick, baseMs);
 
-    // Optional: run once when coming back to foreground
+
     function onVis() {
       if (stopped) return;
       if (!document.hidden && immediateOnVisible) {
@@ -210,7 +933,7 @@ function saveCustomPinColors(colors) {
       const out = (ui && typeof ui === "object") ? ui : {};
       loadPinGroupUi._cache = out;
 
-      // Debounced write to avoid hammering localStorage on rapid UI toggles.
+
       if (savePinGroupUi._t) clearTimeout(savePinGroupUi._t);
       savePinGroupUi._t = setTimeout(() => {
         try { localStorage.setItem(PIN_GROUP_UI_KEY, JSON.stringify(loadPinGroupUi._cache || {})); } catch {}
@@ -367,7 +1090,7 @@ const PINS_NAMES_KEY = `${SCRIPT_ID}:pinsShowNamesOnMap:v1`;
 function getPinsShowNamesOnMap() {
   try {
     const v = localStorage.getItem(PINS_NAMES_KEY);
-    if (v == null) return true; // default ON
+    if (v == null) return true;
     return v === "1" || v === "true";
   } catch { return true; }
 }
@@ -380,7 +1103,7 @@ const PINS_NAMES_MINZOOM_KEY = `${SCRIPT_ID}:pinsNamesMinZoom:v1`;
 function getPinsNamesMinZoom(){
   try{
     const v = localStorage.getItem(PINS_NAMES_MINZOOM_KEY);
-    if (v == null) return 9; // default
+    if (v == null) return 9;
     const n = Number(v);
     if (!Number.isFinite(n)) return 9;
     return Math.min(22, Math.max(1, Math.round(n)));
@@ -397,7 +1120,7 @@ function setPinsNamesMinZoom(z){
   let pinsDrag = { active:false, startX:0, startY:0, baseLeft:12, baseTop:12, pointerId:null };
   let pinsPanelEl = null;
 
-  // Pins bubble minimize state (strict-mode safe declarations)
+
   let pinsBubbleEl = null;
   let pinsBubbleDrag = {
     active: false,
@@ -429,7 +1152,7 @@ function setPinsNamesMinZoom(z){
   let missedRemindersChecked = false;
 
 
-const reminderTimers = new Map(); // pinId -> timeoutId
+const reminderTimers = new Map();
 function clearReminderTimer(pinId){
   try{
     const t = reminderTimers.get(String(pinId));
@@ -502,13 +1225,13 @@ function triggerReminderById(pinId, expectedAt){
   let pinsCountdownTimerId = null;
   let _pinsCountdownTicking = false;
   let _pinCountdownEls = new Map();
-  let _pinCountdownModes = new Map(); // pinId -> 0/1/2
-  let _pinCountdownTipModes = new Map(); // pinId -> 0/1/2 (tooltip only)
+  let _pinCountdownModes = new Map();
+  let _pinCountdownTipModes = new Map();
   let _pinRowEls = new Map();
   let pinsMarkersEl = null;
   let pinsOlLayer = null;
-  const pinsOlMarkers = new Map(); // pinId -> OpenLayers.Marker
-  const pinsOlClusterMarkers = new Map(); // clusterId -> OpenLayers.Marker
+  const pinsOlMarkers = new Map();
+  const pinsOlClusterMarkers = new Map();
   const pinMarkerEls = new Map();
 const pinClusterEls = new Map();
   let pinsMarkersIntervalId = null;
@@ -582,7 +1305,6 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcToast{position:fixed;right:16px;bottom:16px;z-index:2147483647;background:rgba(20,20,22,.90);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.35);backdrop-filter:blur(10px);font:13px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;opacity:0;transform:translate3d(0,10px,0);transition:.18s ease;max-width:min(560px,calc(100vw - 32px));pointer-events:none;will-change:transform,opacity;}
       .wmeRcToast.show{opacity:1;transform:translate3d(0,0,0);}
 
-      /* Pin click toast (bottom-center) */
       .wmeRcPinHitPill{position:fixed;left:50%;bottom:22px;top:auto;right:auto;z-index:2147483647;
         display:flex;align-items:center;gap:10px;
         max-width:min(520px,calc(100vw - 32px));
@@ -598,7 +1320,6 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
         background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;transition:.16s ease;user-select:none;}
       .wmeRcPinHitClose:hover{background:rgba(255,255,255,.10);}
 
-      /* Reminder notice stack: bottom-right, keep clear of WME right-side controls */
       .wmeRcNoticeStack{position:fixed;right:96px;bottom:118px;z-index:2147483647;display:flex;flex-direction:column;gap:10px;align-items:flex-end;pointer-events:none;}
       .wmeRcNotice{position:relative;min-width:260px;max-width:min(440px,calc(100vw - 32px));
         background:rgba(16,16,18,.55);color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:13px 13px 11px;
@@ -767,7 +1488,7 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
 
 
 
-      .wmeRcMenu{position:fixed;z-index:2147483647;min-width:240px;max-width:340px;background:rgba(20,20,22,.72);color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:14px;box-shadow:0 18px 60px rgba(0,0,0,.45);backdrop-filter:blur(18px);overflow:hidden;font:13px/1.25 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
+      .wmeRcMenu{position:fixed;z-index:2147483647;padding-bottom: 5px;min-width:240px;max-width:340px;background:rgba(20,20,22,.72);color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:14px;box-shadow:0 18px 60px rgba(0,0,0,.45);backdrop-filter:blur(18px);overflow:hidden;font:13px/1.25 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
       .wmeRcMenu.sub{min-width:240px;max-width:340px;border-radius:12px;max-height:380px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) rgba(255,255,255,.06);}
       .wmeRcMenu.sub::-webkit-scrollbar{width:10px;}
       .wmeRcMenu.sub::-webkit-scrollbar-track{background:rgba(255,255,255,.06);}
@@ -855,7 +1576,6 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcModalBtn:active{background:rgba(255,255,255,.14);transform:translate3d(0,0,0);}
       .wmeRcModalBtn.primary{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.16);box-shadow:0 0 0 4px rgba(255,255,255,.06);font-weight:700;}
       .wmeRcModalBtn.danger{border-color:rgba(255,75,75,.35);background:rgba(255,75,75,.12);}
-      /* Pins Manager Lightbox */
       .wmeRcModal.wmeRcLightbox{width:min(980px,calc(100vw - 24px));height:min(720px,calc(100vh - 24px));}
       .wmeRcLightbox .wmeRcModalBody{padding:0;display:flex;flex-direction:row;gap:0;height:100%;}
       .wmeRcPmLeft{width:280px;max-width:42vw;border-right:1px solid rgba(255,255,255,.10);padding:12px;display:flex;flex-direction:column;gap:10px;}
@@ -924,7 +1644,6 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcSoundCaret svg{width:16px;height:16px;fill:rgba(255,255,255,.85);}
       .wmeRcSoundMenu{position:absolute;left:0;right:0;top:42px;background:rgba(18,18,20,.86);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.16);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.50);padding:6px;display:none;max-height:240px;overflow:auto;z-index:99999;}
       .wmeRcSoundPick[data-open="1"] .wmeRcSoundMenu{display:block;}
-      /* Sound menu portal (so it isn't clipped by modal overflow) */
       .wmeRcSoundMenu.wmeRcSoundMenuPortal{position:fixed;left:auto;right:auto;top:auto;width:auto;z-index:2147483647;}
       .wmeRcSoundItem{padding:9px 10px;border-radius:10px;color:rgba(255,255,255,.92);font-size:13px;cursor:pointer;user-select:none;transition:.14s ease;}
       .wmeRcSoundItem:hover{background:rgba(255,255,255,.10);}
@@ -982,11 +1701,17 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcActionLeft{display:flex;flex-direction:column;gap:2px;min-width:0;}
       .wmeRcActionTitle{font-weight:800;display:flex;gap:8px;align-items:center;}
       .wmeRcActionDesc{font-size:11px;opacity:.70;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-      .wmeRcSideWrap{padding:10px 12px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;}
-      .wmeRcSideCard{background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.08);padding:10px 10px;}
+      .wmeRcSideWrap{padding:10px 12px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--wmeRcSideFg,inherit);}
+      .wmeRcSideCard{background:transparent;border:1px solid rgba(127,127,127,.18);border-radius:12px;box-shadow:none;padding:10px 10px;margin-bottom:10px;}
       .wmeRcSideRow{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+      .wmeRcSideTitle,.wmeRcSideSub,.wmeRcSideWrap .wmeRcHint,.wmeRcSideNavBtn,.wmeRcSideWrap .wmeRcMiniBtn,.wmeRcSideWrap label,.wmeRcSideWrap div{color:var(--wmeRcSideFg,inherit);}
       .wmeRcSideTitle{font-weight:800;}
       .wmeRcSideSub{font-size:12px;opacity:.65;margin-top:2px;}
+      .wmeRcSideNav{display:flex;gap:8px;margin:0 0 10px;}
+      .wmeRcSideNavBtn{appearance:none;border:1px solid rgba(127,127,127,.22);background:transparent;border-radius:999px;padding:5px 12px;font-weight:700;cursor:pointer;transition:background .12s ease,border-color .12s ease,opacity .12s ease;opacity:.86;}
+      .wmeRcSideNavBtn:hover{opacity:1;}
+      .wmeRcSideNavBtn.is-active{background:rgba(127,127,127,.14);border-color:rgba(127,127,127,.34);opacity:1;}
+      .wmeRcSideTabHost{display:grid;gap:10px;}
       .wmeRcSwitch{width:44px;height:26px;border-radius:999px;border:1px solid rgba(0,0,0,.18);background:rgba(0,0,0,.08);position:relative;cursor:pointer;transition:.16s ease;flex:0 0 auto;}
       .wmeRcSwitch.on{background:rgba(60,255,143,.35);border-color:rgba(60,255,143,.55);}
       .wmeRcKnob{width:22px;height:22px;border-radius:999px;background:#fff;position:absolute;top:1px;left:1px;box-shadow:0 8px 16px rgba(0,0,0,.18);transition:.16s ease;}
@@ -1014,7 +1739,6 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcPins.hidden{display:none;}
       .wmeRcPins.collapsed{resize:none;min-height:0 !important;}
       .wmeRcPins.collapsed .wmeRcPinsList{display:none;}
-/* Pins bubble (minimized state) */
 .wmeRcPinsBubble{
   position:absolute;
   width:46px;height:46px;
@@ -1043,7 +1767,6 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
   50%{box-shadow:0 22px 70px rgba(0,0,0,.52);}
 }
 
-/* Pins panel open/close animation helpers */
 .wmeRcPins.animOut{opacity:0;transform:scale(.94) translate3d(0,10px,0);pointer-events:none;}
 .wmeRcPins.animIn{opacity:1;transform:scale(1) translate3d(0,0,0);}
 
@@ -1066,7 +1789,6 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
 
       .wmeRcPinsGroup{border-top:1px solid rgba(255,255,255,.08);}
       .wmeRcPinsGroup:first-child{border-top:none;}
-            /* Keep the current folder header visible while scrolling through many pins */
             .wmeRcPinsGroupHdr{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;font-weight:900;letter-spacing:.2px;
 
               user-select:none;position:sticky;top:0;z-index:3;}
@@ -1092,7 +1814,6 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcPinsGroupEmpty{padding:8px 6px;color:rgba(255,255,255,.55);font-size:11px;border:1px dashed rgba(255,255,255,.14);border-radius:12px;text-align:center;background:rgba(255,255,255,.02);}
 
 
-      /* Map Pins markers (map) */
       .wmeRcPinMarkers{position:absolute;inset:0;z-index:2147483645;pointer-events:none;}
       .wmeRcPinMarker{position:absolute;width:20px;height:20px;transform:translate3d(-9999px,-9999px,0);pointer-events:auto;cursor:pointer;will-change:transform;}
       .wmeRcPinMarker::before{
@@ -1129,7 +1850,6 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
         0%,100%{filter:brightness(1); }
         50%{filter:brightness(1.08); }
       }
-      /* Reminder picker (clock) */
       .wmeRcTabs{display:flex;gap:6px;align-items:center;}
       .wmeRcTab{cursor:pointer;padding:7px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);font-size:12px;opacity:.90;user-select:none;transition:.16s ease;}
       .wmeRcTab:hover{background:rgba(255,255,255,.10);transform:translate3d(0,-1px,0);}
@@ -1258,7 +1978,6 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
   );
 }
 
-/* FIX8: remove borders around the color picker controls (SV square + hue bar) */
 .wmeRcPickerSV,
 .wmeRcPickerHue{
   border:none !important;
@@ -1448,7 +2167,6 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
       .wmeRcDT{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
       .wmeRcDT > *{flex:1 1 160px;}
 
-      /* Custom date/time pickers */
       .wmeRcPickerBtn{appearance:none;-webkit-appearance:none;cursor:pointer;
         display:flex;align-items:center;justify-content:space-between;gap:10px;
         padding:10px 12px;border-radius:14px;
@@ -1475,7 +2193,6 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
       .wmeRcPickerPop{border:none !important;}
       @keyframes wmeRcPickerIn{from{opacity:0;transform:translate3d(0,8px,0) scale(.985);}to{opacity:1;transform:translate3d(0,0,0) scale(1);}}
 
-      /* Calendar */
       .wmeRcCalHdr{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
       .wmeRcCalTitle{flex:1;min-width:0;text-align:center;font-weight:950;letter-spacing:.2px;opacity:1;color:rgba(255,255,255,.92);}
       .wmeRcCalNav{appearance:none;border:none;background:rgba(255,255,255,.06);
@@ -1496,7 +2213,6 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
       .wmeRcCalCell:hover{background:rgba(255,255,255,.10);transform:translate3d(0,-1px,0);}
       .wmeRcCalCell.sel{background:rgba(var(--pinRGB,255,160,60),.18);border-color:rgba(var(--pinRGB,255,160,60),.38);box-shadow:0 0 0 4px rgba(var(--pinRGB,255,160,60),.10);}
 
-      /* Time picker */
       .wmeRcTimeHdr{font-weight:950;letter-spacing:.2px;opacity:1;margin-bottom:10px;text-align:center;color:rgba(255,255,255,.92);}
       .wmeRcTimeBody{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-height:220px;overflow:auto;scrollbar-width:thin;}
       .wmeRcTimeCol{display:flex;flex-direction:column;gap:6px;}
@@ -1515,7 +2231,6 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
         color:#fff;border-radius:14px;padding:10px 14px;font-weight:950;cursor:pointer;transition:background .14s ease,transform .14s ease;}
       .wmeRcTimeOk:hover{background:rgba(255,160,60,.22);transform:translate3d(0,-1px,0);}
 
-      /* Time picker (clock-based, no scrollbar) */
       .wmeRcTimePop{min-width:300px;max-width:360px;}
       .wmeRcPickerPop.wmeRcTimePop{padding-top:18px;}
 
@@ -1563,7 +2278,6 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
       .wmeRcTimeDoneBtn:active{transform:translate3d(0,0,0);background:rgba(255,255,255,.12) !important;}
 
 
-      /* Custom quick preset pop */
       .wmeRcQuickPlus{font-weight:950;min-width:32px;justify-content:center;}
       .wmeRcQuickPop{position:fixed;left:0;top:0;z-index:2147483647;
         color:#fff;
@@ -1614,7 +2328,6 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
       }
       .wmeRcPinRow>*{position:relative;z-index:3;}
 
-      /* colored left edge */
       .wmeRcPinRow::before{
         content:"";
         position:absolute;left:0;top:0;bottom:0;
@@ -1627,7 +2340,6 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
         z-index:2;
       }
 
-      /* inside glow from the left edge (pin color) */
       .wmeRcPinRow::after{
         content:"";
         position:absolute;left:0;top:0;bottom:0;
@@ -1759,11 +2471,11 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
   }
 
 
-  // Inline toggle click policy
-// - Clicking the row/label should NOT toggle.
-// - Clicking the actual switch (track/thumb) SHOULD toggle.
-// We implement this via delegated capture click handling and manual toggling,
-// to avoid browser/label retargeting edge-cases.
+
+
+
+
+
 (function installInlineToggleClickPolicy(){
   if (UW.__wmeRcInlineToggleClickPolicyInstalled) return;
   UW.__wmeRcInlineToggleClickPolicyInstalled = true;
@@ -1792,9 +2504,9 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
       const input = lbl.querySelector('input[type="checkbox"]');
       if (!input) return;
 
-      // Only allow toggle when clicking the actual switch.
+
       if (isOnSwitch(e)) {
-        // Prevent the label default toggle (and double-toggles).
+
         e.preventDefault();
         e.stopPropagation();
 
@@ -1807,13 +2519,13 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 18px 34px rgba(0, 0, 0, .2
         return;
       }
 
-      // Clicked elsewhere on the row/label -> do nothing (and prevent default label toggle).
+
       e.preventDefault();
       e.stopPropagation();
     } catch {}
   };
 
-  // Capture so we beat the label default behavior.
+
   try { document.addEventListener("click", handler, true); } catch {}
 })();
 
@@ -2413,7 +3125,7 @@ function ensurePinsPanel() {
           const hdr = ev.target && ev.target.closest && ev.target.closest(".wmeRcPinsHdr");
           if (!hdr) return;
           if (ev.target && ev.target.closest && (ev.target.closest(".wmeRcSelect") || ev.target.closest(".wmeRcPinsHdrBtn"))) return;
-          if (ev.button != null && ev.button !== 0) return; // left click only
+          if (ev.button != null && ev.button !== 0) return;
           ev.preventDefault();
           stop(ev);
 
@@ -2520,9 +3232,9 @@ function applyPinsPanelMinimizedOnLoad() {
     const minimized = (minimizedRaw === true);
 
     if (mode !== "bubble") {
-      // In panel mode we never show the bubble.
+
       try { _hidePinsBubble(true); } catch {}
-      // If a previous bubble-minimize left the panel hidden, unhide it.
+
       try {
         if (pinsPanelEl.style && pinsPanelEl.style.display === "none") pinsPanelEl.style.display = "block";
       } catch {}
@@ -2530,14 +3242,14 @@ function applyPinsPanelMinimizedOnLoad() {
       return;
     }
 
-    // Bubble mode
+
     if (minimized) {
       const mapEl = pinsPanelEl.parentElement || _getMapElForPins();
       try { _ensurePinsBubble(mapEl); } catch {}
       try { pinsPanelEl.style.display = "none"; } catch {}
       try { _showPinsBubble(false); } catch {}
     } else {
-      // Not minimized: show panel, hide bubble
+
       try {
         if (pinsPanelEl.style && pinsPanelEl.style.display === "none") pinsPanelEl.style.display = "block";
       } catch {}
@@ -2578,22 +3290,22 @@ function savePinsBubblePos(pos) {
   } catch {}
 }
 
-// Resolve the WME map container used for pins UI and bubble.
+
 function _getMapElForPins() {
   try { return getMapContainerEl(); } catch { return null; }
 }
 
 function _isPinsPanelMinimizedNow() {
   try {
-    // IMPORTANT: "collapsed" is a UI state (header-only) and should NOT be treated as
-    // "minimized-to-bubble". The bubble should only show when the panel is actually
-    // minimized (saved flag) or hidden.
+
+
+
     if (!pinsPanelEl || !document.contains(pinsPanelEl)) return true;
 
-    // If we explicitly saved "minimized", treat it as minimized even during animations.
+
     try { if (loadPinsPanelMinimizedRaw() === true) return true; } catch {}
 
-    // Fallback: if the element is hidden, it's minimized.
+
     if (pinsPanelEl.style && pinsPanelEl.style.display === "none") return true;
 
     return false;
@@ -2607,7 +3319,7 @@ function _syncPinsBubbleVisibility() {
       _hidePinsBubble(true);
       return;
     }
-    // During open animation we force-hide to prevent overlap (but never hide while minimized-to-bubble).
+
     try {
       if (_pinsBubbleForceHideUntil && _pinsNow() < _pinsBubbleForceHideUntil) {
         if (!_isPinsPanelMinimizedNow()) { _hidePinsBubble(true); return; }
@@ -2665,13 +3377,13 @@ function onPinsBubbleDragUp(ev) {
     try { document.removeEventListener("pointercancel", onPinsBubbleDragUp, true); } catch {}
     try { if (pinsBubbleEl && ev.pointerId != null) pinsBubbleEl.releasePointerCapture(ev.pointerId); } catch {}
 
-    // If it was a tap (not a drag), restore the panel.
+
     if (!moved) {
       try { _restorePinsPanelFromBubble(); } catch {}
       return;
     }
 
-    // Ignore the synthetic click right after a drag.
+
     pinsBubbleDrag.movedAt = movedAt || Date.now();
   } catch {}
 }
@@ -2743,8 +3455,8 @@ function _showPinsBubble(withPulse) {
     const mapEl = _getMapElForPins();
     const b = _ensurePinsBubble(mapEl);
 
-    // If we just restored from bubble, a short force-hide window may still be active.
-    // Clear it so the bubble cannot be hidden while we are minimizing.
+
+
     try { _pinsBubbleForceHideUntil = 0; } catch {}
     try { if (_pinsBubbleHideT) { clearTimeout(_pinsBubbleHideT); _pinsBubbleHideT = 0; } } catch {}
     if (!b) return;
@@ -2794,7 +3506,7 @@ function _minimizePinsPanelInPlace(opts) {
   try {
     if (!pinsPanelEl || !document.contains(pinsPanelEl)) return;
 
-    // Panel-mode collapse should never fade away: hard-reset any "bubble" animation artifacts.
+
     try {
       pinsPanelEl.classList.remove("animOut");
       pinsPanelEl.classList.remove("animIn");
@@ -2807,7 +3519,7 @@ function _minimizePinsPanelInPlace(opts) {
 
     const instant = !!(opts && opts.instant);
 
-    // Remember current height so expanding can restore it.
+
     try {
       const h = Math.round(pinsPanelEl.getBoundingClientRect().height || 0);
       if (h > 0) pinsPanelEl.dataset.prevExpandedHeight = String(h);
@@ -2817,7 +3529,7 @@ function _minimizePinsPanelInPlace(opts) {
     try { savePinsPanelMinimized(false); } catch {}
     try { renderPinsPanel(); } catch {}
 
-    // Collapse down to header height (still a panel, not a bubble).
+
     try {
       pinsPanelEl.style.display = "block";
       const hdr = pinsPanelEl.querySelector(".wmeRcPinsHdr");
@@ -2850,7 +3562,7 @@ function _restorePinsPanelFromPanelCollapse() {
     _setPinsPanelCollapsedFlag(false);
     try { savePinsPanelMinimized(false); } catch {}
 
-    // Restore previous height (or last saved size) if we can.
+
     try {
       const sz = loadPinsPanelSize();
       const prev = parseInt(String(pinsPanelEl.dataset.prevExpandedHeight || ""), 10);
@@ -2885,7 +3597,7 @@ function _minimizePinsPanelToBubble(opts) {
 
     _ensurePinsBubble(mapEl);
 
-    // Default bubble position: wherever the panel currently is.
+
     try {
       const mapRect = mapEl.getBoundingClientRect();
       const r = pinsPanelEl.getBoundingClientRect();
@@ -2906,7 +3618,7 @@ function _minimizePinsPanelToBubble(opts) {
     try { savePinsPanelMinimized(true); } catch {}
     try { renderPinsPanel(); } catch {}
 
-    // Animate panel out, then hide.
+
     try {
       if (!instant) {
         pinsPanelEl.style.transition = "opacity .22s ease, transform .22s cubic-bezier(.2,.9,.2,1)";
@@ -2929,14 +3641,14 @@ function _restorePinsPanelFromBubble() {
   try {
     if (!pinsPanelEl || !document.contains(pinsPanelEl)) return;
 
-    // If a previous minimize-to-bubble animation is still pending, cancel its delayed hide.
+
     try { if (_pinsPanelMinimizeHideT) { clearTimeout(_pinsPanelMinimizeHideT); _pinsPanelMinimizeHideT = 0; } } catch {}
 
-    // Force-hide the bubble during the opening sequence so it never overlaps the header.
+
     try { _pinsBubbleForceHideUntil = _pinsNow() + 600; } catch { _pinsBubbleForceHideUntil = Date.now() + 600; }
 
-    // Restore the panel at its last saved panel position (not the bubble).
-    // Fallback: if no saved panel position exists yet, expand near the bubble.
+
+
     try {
       const mapEl = _getMapElForPins();
       if (mapEl) {
@@ -2966,7 +3678,7 @@ function _restorePinsPanelFromBubble() {
           pinsPanelEl.style.left = `${left}px`;
           pinsPanelEl.style.top  = `${top}px`;
 
-          // Only persist if we had to clamp an existing saved position (viewport changed).
+
           try {
             if (target.left !== left || target.top !== top) {
               localStorage.setItem(PIN_POS_KEY, JSON.stringify({ left, top }));
@@ -2976,16 +3688,16 @@ function _restorePinsPanelFromBubble() {
       }
     } catch {}
 
-    // Prevent the auto "avoid left dock" logic from overriding the bubble placement.
+
     try { _pinsPanelSuppressDockUntil = _pinsNow() + 900; } catch {}
 
-    // Hide bubble immediately so it does not sit on top of the opening panel.
+
     try { _hidePinsBubble(true); } catch {}
 
     _setPinsPanelCollapsedFlag(false);
     try { savePinsPanelMinimized(false); } catch {}
 
-    // Render expanded content first (so height/scroll are correct).
+
     try { renderPinsPanel(); } catch {}
 
     pinsPanelEl.style.display = "block";
@@ -3837,7 +4549,7 @@ function renderPinsMarkers() {
                 try { mk.lonlat = it.ll; } catch {}
                 try { const div = mk && mk.icon && mk.icon.imageDiv; upsertMapPinLabel(div, pin, showLabels); } catch {}
               }
-            }// Remove stale markers
+            }
       for (const [id, mk] of Array.from(pinsOlMarkers.entries())) {
         if (keep.has(id)) continue;
         try { olLayer.removeMarker(mk); } catch {}
@@ -3917,14 +4629,14 @@ function renderPinsMarkers() {
 
 function startPinsMarkersLoop() {
   if (pinsMarkersIntervalId) return;
-  // Adaptive loop: slower when tab hidden + runs only when pins are actually visible.
+
   pinsMarkersIntervalId = _createAdaptiveLoop(() => { try { updatePinsMarkersPositions(); } catch {} }, 400, {
     active: () => {
       try {
-        // Only run when we have visible markers layer and at least one marker.
+
         if (!pinsMarkersEl || !document.contains(pinsMarkersEl)) return false;
         if (!pinMarkerEls || pinMarkerEls.size === 0) return false;
-        // If user turned off pins on map, don't tick.
+
         if (!getPinsOnMapEnabled()) return false;
         return true;
       } catch { return true; }
@@ -4183,7 +4895,7 @@ function _findVisibleLeftDockRect() {
       const r = el.getBoundingClientRect();
       if (r.width < 220 || r.height < 200) continue;
       if (r.right < 120) continue;
-      if (r.left > 40) continue; // must be docked left-ish
+      if (r.left > 40) continue;
       if (pinsPanelEl && (el === pinsPanelEl || el.contains(pinsPanelEl) || pinsPanelEl.contains(el))) continue;
       const score = (Math.min(r.width, 520) * 2) + Math.min(r.height, 900);
       if (!best || score > best.score) best = { el, r, score };
@@ -4413,8 +5125,8 @@ function renderPinsPanel() {
 
   titleWrap.appendChild(titleEl);
 
-// Clicking the title should behave exactly like the collapse/minimize control,
-// but without triggering the header drag. Use pointer events (capture) to be robust.
+
+
 try { titleWrap.style.cursor = "pointer"; } catch {}
 
 const _pinsTitleTap = { down:false, x:0, y:0, t:0 };
@@ -4433,14 +5145,14 @@ const _togglePinsFromTitle = () => {
       else _minimizePinsPanelToBubble({ instant: false });
     }
     try { _syncPinsBubbleVisibility(); } catch {}
-    // Ensure the collapse icon/label stays in sync.
+
     try { _syncPinsPanelCollapseBtn && _syncPinsPanelCollapseBtn(); } catch {}
   } catch {}
 };
 
 const _onPinsTitleDown = (ev) => {
   try {
-    // Left-click or touch only.
+
     if (ev && ev.button != null && ev.button !== 0) return;
     _pinsTitleTap.down = true;
     _pinsTitleTap.x = ev.clientX || 0;
@@ -4461,7 +5173,7 @@ const _onPinsTitleUp = (ev) => {
     const dist = Math.sqrt(dx*dx + dy*dy);
     const dt = Date.now() - (_pinsTitleTap.t || 0);
 
-    // Treat as a tap/click only if there was no drag.
+
     if (dist <= 6 && dt <= 650) _togglePinsFromTitle();
 
     try { ev.preventDefault(); } catch {}
@@ -4469,12 +5181,12 @@ const _onPinsTitleUp = (ev) => {
   } catch {}
 };
 
-// Capture so a drag handler on the header can't swallow it.
+
 titleWrap.addEventListener("pointerdown", _onPinsTitleDown, true);
 titleWrap.addEventListener("pointerup", _onPinsTitleUp, true);
 titleWrap.addEventListener("pointercancel", () => { _pinsTitleTap.down = false; }, true);
 
-// Fallback for environments without Pointer Events.
+
 titleWrap.addEventListener("mousedown", _onPinsTitleDown, true);
 titleWrap.addEventListener("mouseup", _onPinsTitleUp, true);
 
@@ -4565,8 +5277,8 @@ titleWrap.addEventListener("mouseup", _onPinsTitleUp, true);
   try { list.classList.remove("scroll"); } catch {}
   try { pinsPanelEl.classList.remove("scrollMode"); } catch {}
   try {
-    // Allow the list to scroll. We only stop propagation so the map below doesn't zoom/pan while
-    // you scroll inside the panel.
+
+
     if (!list.dataset.scrollBound) {
       list.dataset.scrollBound = "1";
       const stop = (e) => { try { e.stopPropagation(); } catch {} };
@@ -4578,7 +5290,7 @@ titleWrap.addEventListener("mouseup", _onPinsTitleUp, true);
           const hdrs = Array.from(list.querySelectorAll(".wmeRcPinsGroupHdr"));
           let active = null;
           for (const h of hdrs) {
-            // offsetTop is relative to the scrolling container's content
+
             if ((h.offsetTop || 0) <= st + 1) active = h;
           }
           for (const h of hdrs) h.classList.remove("wmeRcSticky");
@@ -7138,7 +7850,7 @@ const actions = document.createElement("div");
       body.appendChild(emptyWrap);
 
 
-      // Minimize behavior
+
 
       const minModeTitle = document.createElement("div");
       minModeTitle.className = "wmeRcHint";
@@ -7294,7 +8006,7 @@ function openPinsManagerLightbox() {
       const right = document.createElement("div");
       right.className = "wmeRcPmRight";
 
-      // ----- Left: folders -----
+
       const leftHdr = document.createElement("div");
       leftHdr.className = "wmeRcPmHdrRow";
 
@@ -7340,7 +8052,7 @@ function openPinsManagerLightbox() {
       left.appendChild(folderSearch);
       left.appendChild(folderList);
 
-      // ----- Right: pins -----
+
       const rightHdr = document.createElement("div");
       rightHdr.className = "wmeRcPmHdrRow";
 
@@ -7392,7 +8104,7 @@ function openPinsManagerLightbox() {
         folderList.innerHTML = "";
         const gs = groups();
 
-        // Default folder first
+
         const allFolderIds = ["default", ...gs.map(g => g.id)];
 
         for (const gid0 of allFolderIds) {
@@ -7430,7 +8142,7 @@ function openPinsManagerLightbox() {
           const btns = document.createElement("div");
           btns.className = "wmeRcPmCardBtns";
 
-          // Rename (not for default)
+
           if (gid0 !== "default") {
             btns.appendChild(mkTiny(ICONS.edit, "Rename folder", () => {
               const g = gs.find(x => x && x.id === gid0);
@@ -7451,7 +8163,7 @@ function openPinsManagerLightbox() {
             }));
             btns.appendChild(mkTiny(ICONS.trash, "Remove folder", () => {
               openRemoveFolderModal(gid0);
-              // openRemoveFolderModal triggers re-render via existing flows; also refresh after a tick
+
               setTimeout(() => { try { render(); } catch {} }, 250);
             }));
           } else {
@@ -7482,7 +8194,7 @@ function openPinsManagerLightbox() {
         const gid = normalizeGroupId(selGid || "default");
         const meta = getGroupMeta(gid);
 
-        // Header: folder name + quick actions
+
         rightHdr.innerHTML = "";
         const title = document.createElement("div");
         title.style.fontWeight = "900";
@@ -7495,7 +8207,7 @@ function openPinsManagerLightbox() {
         hdrBtns.style.alignItems = "center";
 
         const closeBtn = mkTiny(ICONS.chevDown, "Close", () => close());
-        // make it an X-like feel by rotating chevron
+
         try { closeBtn.querySelector("svg").style.transform = "rotate(90deg)"; } catch {}
 
         hdrBtns.appendChild(closeBtn);
@@ -7543,7 +8255,7 @@ function openPinsManagerLightbox() {
           const btns = document.createElement("div");
           btns.className = "wmeRcPmRowBtns";
 
-          // Move to folder (select)
+
           const sel = document.createElement("select");
           sel.className = "wmeRcSelect wmeRcPmSelect";
           for (const fo of folderOptions) {
@@ -7556,7 +8268,7 @@ function openPinsManagerLightbox() {
           sel.addEventListener("change", () => {
             const to = normalizeGroupId(sel.value || "default");
             updatePin(p.id, { groupId: to });
-            // stay on current folder view; just refresh
+
             render();
             try { renderPinsPanel(); } catch {}
             try { renderPinsMarkers(); } catch {}
@@ -7581,7 +8293,7 @@ function openPinsManagerLightbox() {
       }
 
       function render() {
-        // if selected folder removed, fall back
+
         const gid = normalizeGroupId(selGid || "default");
         const exists = gid === "default" || groups().some(g => g && g.id === gid);
         if (!exists) selGid = "default";
@@ -7602,7 +8314,7 @@ function openReminderModal(pinId) {
   const now = Date.now();
   const currentTs = pin.reminderAt && pin.reminderAt > now ? pin.reminderAt : null;
 
-  let mode = "IN"; // always start on In tab
+  let mode = "IN";
   let unit = (pin.reminderUnit === "HOURS") ? "HOURS" : "MINUTES";
   let inValue = Number.isFinite(pin.reminderValue) ? Math.max(1, Math.round(pin.reminderValue)) : (unit === "HOURS" ? 1 : 30);
 
@@ -7738,7 +8450,7 @@ const calcAtTargetTs = () => {
         const dx = clientX - cx;
         const dy = clientY - cy;
 
-        let ang = Math.atan2(dy, dx); // 0 at +x, CCW
+        let ang = Math.atan2(dy, dx);
         let deg = (ang * 180 / Math.PI) + 90;
         deg = (deg + 360) % 360;
 
@@ -8042,7 +8754,7 @@ const setHandsFromTs = (ts) => {
         const dx = clientX - cx;
         const dy = clientY - cy;
 
-        let ang = Math.atan2(dy, dx); // 0 at +x, CCW
+        let ang = Math.atan2(dy, dx);
         let deg = (ang * 180 / Math.PI) + 90;
         deg = (deg + 360) % 360;
 
@@ -8428,7 +9140,7 @@ const dt = document.createElement("div");
             grid.innerHTML = "";
 
             const first = new Date(view.y, view.m - 1, 1);
-            const firstDow = (first.getDay() + 6) % 7; // monday=0
+            const firstDow = (first.getDay() + 6) % 7;
             const daysIn = new Date(view.y, view.m, 0).getDate();
 
             for (let i = 0; i < firstDow; i++) {
@@ -8516,7 +9228,7 @@ const dt = document.createElement("div");
 
           const help = document.createElement("div");
           help.className = "wmeRcTimeClockHelp";
-          help.textContent = "Drag the clock hands";          // Auto hand selection (no Hour/Minute toggle)
+          help.textContent = "Drag the clock hands";
           let pickHandFromClient = () => "MIN";
 
           const clock = document.createElement("div");
@@ -8630,7 +9342,7 @@ try {
 
 let _editHH = "00";
 let _editMM = "00";
-let _editPhase = "H"; // H or M
+let _editPhase = "H";
 let _editIdx = 0;
 
 const _syncEditFromAt = () => {
@@ -8800,11 +9512,11 @@ label.addEventListener("blur", () => { try { _applyEditToAt(); } catch {} });
 
           const setHourFromClient = (clientX, clientY) => {
             const deg = angleFromClient(clientX, clientY);
-            const h12 = Math.round(deg / 30) % 12; // 0..11, where 0=12
+            const h12 = Math.round(deg / 30) % 12;
             const p = timeToParts(atTime || "00:00");
             const curH = p.hh;
 
-            const candA = (h12 === 0 ? 12 : h12) % 12; // 0..11
+            const candA = (h12 === 0 ? 12 : h12) % 12;
             const a = candA;
             const b = candA + 12;
 
@@ -8858,7 +9570,7 @@ const startDrag = (ev, forcedMode) => {
     const prevMin = p.mm;
 
     if (_dragLastDeg != null) {
-      const delta = ((deg - _dragLastDeg + 540) % 360) - 180; // signed shortest step
+      const delta = ((deg - _dragLastDeg + 540) % 360) - 180;
       if (delta > 0 && prevMin >= 50 && minute <= 10) hh = (hh + 1) % 24;
       if (delta < 0 && prevMin <= 10 && minute >= 50) hh = (hh + 23) % 24;
     }
@@ -9438,7 +10150,7 @@ function startReminderLoop() {
     try { handleMissedRemindersOnStart(); } catch {}
   }
 
-  // Adaptive loop: slows down when tab is hidden to reduce CPU, but catches up immediately on focus/visible.
+
   reminderIntervalId = _createAdaptiveLoop(() => { try { checkRemindersNow(); } catch {} }, 1500);
 
   try { checkRemindersNow(); } catch {}
@@ -10764,7 +11476,7 @@ setColor(chosenColor);
 
         const t = ev.target;
         const tag = t && t.tagName ? String(t.tagName).toLowerCase() : "";
-        if (tag === "textarea") return; // allow newlines
+        if (tag === "textarea") return;
 
         let targetBtn = modal.querySelector(".wmeRcModalBtn.primary");
         if (!targetBtn) {
@@ -11089,19 +11801,19 @@ function isMapClick(clientX, clientY) {
       const r = mapEl.getBoundingClientRect();
       if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) return false;
 
-      // If the click is on UR panel/UI overlay, it's not a map click for our purposes.
+
       const stack = (document.elementsFromPoint ? document.elementsFromPoint(clientX, clientY) : [document.elementFromPoint(clientX, clientY)]).filter(Boolean);
 
       for (const el of stack.slice(0, 12)) {
         if (!el || !el.closest) continue;
         if (isInUpdateRequestPanel(el)) return false;
 
-        // Generic UI panels/cards/menus — let native WME handle these.
+
         if (el.closest(".wmeRcMenu, .wmeRcModal, .wmeRcPinsPanel")) return false;
         if (el.closest("wz-card, [role='dialog'], [role='menu'], .menu, .dropdown, .panel, .sidebar, .tooltip")) return false;
       }
 
-      // A real map click typically hits the map canvas or something within the map container.
+
       for (const el of stack) {
         if (!el) continue;
         if (el.tagName === "CANVAS") return true;
@@ -11160,7 +11872,7 @@ function isMapClick(clientX, clientY) {
     return [];
   }
 
-  // --- Place / Venue / POI selection detection (header only) ---
+
   function _isPlaceObject(sel) {
     try {
       if (!sel) return false;
@@ -11177,13 +11889,13 @@ function isMapClick(clientX, clientY) {
         ""
       );
 
-      // Common labels across builds/locales
+
       if (/venue|place|poi|point\s*of\s*interest/i.test(t)) return true;
 
-      // Explicit id hints
+
       if ("venueId" in sel || "placeId" in sel || "poiId" in sel || "venueID" in sel || "placeID" in sel) return true;
 
-      // Numeric ObjectType constants when available
+
       try {
         const OT = sdk?.Editing?.ObjectType;
         if (typeof sel.objectType === "number" && OT) {
@@ -11192,7 +11904,7 @@ function isMapClick(clientX, clientY) {
         }
       } catch {}
 
-      // Nested selection containers
+
       if (Array.isArray(sel.selection)) return _isPlaceObject(sel.selection);
       if (Array.isArray(sel.selectedItems)) return _isPlaceObject(sel.selectedItems);
       if (Array.isArray(sel.objects)) return _isPlaceObject(sel.objects);
@@ -11229,7 +11941,7 @@ function isMapClick(clientX, clientY) {
   }
 
   function selectedPlaceInfo() {
-    // Returns: { has: boolean, ids: number[] }
+
     try {
       const raw = sdk?.Editing?.getSelection?.();
       const ids = _extractPlaceIds(raw);
@@ -11237,7 +11949,7 @@ function isMapClick(clientX, clientY) {
       if (_isPlaceObject(raw)) return { has: true, ids: [] };
     } catch {}
 
-    // Best-effort legacy fallback (some builds don't expose venue ids in selection)
+
     try {
       const sm = UW?.W?.selectionManager;
       const items = sm?.getSelectedFeatures?.() || sm?.getSelectedItems?.() || [];
@@ -11254,7 +11966,7 @@ function isMapClick(clientX, clientY) {
   }
 
 
-  // If an Update Request (UR) / Issue is active, let WME show its native right-click menu.
+
   function isUpdateRequestSelection(sel) {
     try {
       if (!sel) return false;
@@ -11273,13 +11985,13 @@ function isMapClick(clientX, clientY) {
 
       if (/update\s*request|updaterequest|\bur\b/i.test(t)) return true;
 
-      // Some builds use generic "issue"/"problem" types; look for UR-ish hints.
+
       if (/issue|problem/i.test(t) && /update|request|\bur\b/i.test(t)) return true;
 
-      // Some selections expose explicit ids.
+
       if ("updateRequestId" in sel || "urId" in sel || "issueId" in sel || "problemId" in sel) return true;
 
-      // Try numeric ObjectType constants if present.
+
       try {
         const OT = sdk?.Editing?.ObjectType;
         if (typeof sel.objectType === "number" && OT) {
@@ -11296,9 +12008,9 @@ function isMapClick(clientX, clientY) {
   }
 
     function isUpdateRequestPanelOpen() {
-    // Robust, DOM-version-tolerant detection:
-    // If the UR panel is open, it almost always contains the action buttons below.
-    // We avoid broad `innerText` reads from generic "sidebar" nodes because WME's DOM varies across builds.
+
+
+
     try {
       const isVisible = (el) => {
         try {
@@ -11309,9 +12021,9 @@ function isMapClick(clientX, clientY) {
         } catch { return true; }
       };
 
-      // 0) Fast path: the UR side-panel is a `wz-card` with class `mapUpdateRequest` (shadow DOM inside).
-      // The action buttons live in the open shadow root, so querying `button` from `document` won't see them.
-      // Detect the host element instead.
+
+
+
       try {
         const urHost = document.querySelector(
           "wz-card.mapUpdateRequest, wz-card[class*='mapUpdateRequest'], wz-card[aria-label*='Update request'], wz-card[aria-label*='Αίτημα ενημέρωσης'], wz-card[aria-label*='Αιτημα ενημερωσης']"
@@ -11331,14 +12043,14 @@ function isMapClick(clientX, clientY) {
         return null;
       };
 
-      // Strong UR-specific UI controls (English + Greek best effort)
+
       const btnSolved = findBtn(/^\s*mark\s+as\s+solved\s*$/i) || findBtn(/^\s*σήμανση\s+ως\s+λυμ(έ|ε)νο\s*$/i);
       if (btnSolved && isVisible(btnSolved)) return true;
 
       const btnNotId = findBtn(/^\s*mark\s+as\s+not\s+identified\s*$/i) || findBtn(/^\s*σήμανση\s+ως\s+μη\s+ταυτοποιημ(έ|ε)νο\s*$/i);
       if (btnNotId && isVisible(btnNotId)) return true;
 
-      // Header title check (Update request / Αίτημα ενημέρωσης)
+
       try {
         const heads = document.querySelectorAll(
           "#sidepanel [role='heading'], #sidebar [role='heading'], [class*='sidepanel'] [role='heading'], [class*='sidebar'] [role='heading'], " +
@@ -11355,7 +12067,7 @@ function isMapClick(clientX, clientY) {
         }
       } catch {}
 
-      // Fallback: narrow scan of likely panel containers (visible only)
+
       try {
         const roots = [
           document.querySelector("#sidepanel"),
@@ -11378,8 +12090,8 @@ function isMapClick(clientX, clientY) {
 
   function isUrMarkerAtPoint(x, y) {
     try {
-      // elementFromPoint() can miss overlay icons when a transparent map layer sits on top.
-      // elementsFromPoint() gives us the full stack at the cursor.
+
+
       const stack = (document.elementsFromPoint ? document.elementsFromPoint(x, y) : [document.elementFromPoint(x, y)]).filter(Boolean);
       if (!stack || !stack.length) return false;
 
@@ -11389,7 +12101,7 @@ function isMapClick(clientX, clientY) {
       const hasUrSignals = (node) => {
         if (!node || node.nodeType !== 1) return false;
 
-        // Strong signals: data-* ids that WME often uses for UR/problem objects.
+
         try {
           const ds = node.dataset || {};
           if (ds.problemId || ds.issueId || ds.reportId || ds.updateRequestId || ds.urId) return true;
@@ -11398,7 +12110,7 @@ function isMapClick(clientX, clientY) {
 
         const tag = (node.tagName || "").toUpperCase();
 
-        // Images/icons
+
         if (tag === "IMG") {
           const src = String(node.getAttribute("src") || "").toLowerCase();
           const alt = String(node.getAttribute("alt") || "").toLowerCase();
@@ -11406,25 +12118,25 @@ function isMapClick(clientX, clientY) {
           if (alt && (urTextRe.test(alt) || /problem|issue|report|ur/.test(alt))) return true;
         }
 
-        // SVG icons
+
         if (tag === "SVG" || tag === "PATH" || tag === "G") {
           const aria = String((node.getAttribute && (node.getAttribute("aria-label") || node.getAttribute("title") || "")) || "").toLowerCase();
           if (aria && (urTextRe.test(aria) || /problem|issue|report|ur/.test(aria))) return true;
         }
 
-        // Textual identifiers
+
         const aria = String((node.getAttribute && (node.getAttribute("aria-label") || node.getAttribute("title") || node.getAttribute("role") || "")) || "").toLowerCase();
         const cls = (typeof node.className === "string" ? node.className : "") || "";
         const id = node.id || "";
         const combo = (aria + " " + cls + " " + id).toLowerCase();
 
-        // UR-ish text + marker-ish hints, OR very strong "problem/issue/report" words on an icon element
+
         if (combo) {
           if (urTextRe.test(combo) && (markerHintRe.test(combo) || tag === "IMG" || tag === "SVG")) return true;
           if (/problem|issue|report/.test(combo) && (markerHintRe.test(combo) || tag === "IMG" || tag === "SVG")) return true;
         }
 
-        // CSS background icons
+
         try {
           const bg = (node.style && node.style.backgroundImage) ? String(node.style.backgroundImage).toLowerCase() : "";
           if (bg && (urTextRe.test(bg) || /problem|issue|report|ur/.test(bg))) return true;
@@ -11433,7 +12145,7 @@ function isMapClick(clientX, clientY) {
         return false;
       };
 
-      // Check the stack + a few ancestor levels for each element.
+
       for (const el of stack.slice(0, 20)) {
         let cur = el;
         for (let i = 0; cur && i < 8; i++) {
@@ -11450,11 +12162,11 @@ function isMapClick(clientX, clientY) {
     try {
       if (!target || !target.closest) return false;
 
-      // Primary: the UR panel host is a <wz-card> with class "mapUpdateRequest" (Shadow DOM inside).
+
       const host = target.closest("wz-card.mapUpdateRequest, .mapUpdateRequest");
       if (host) return true;
 
-      // Fallbacks: some builds rely on aria labels / testids.
+
       const host2 = target.closest(
         "wz-card[aria-label*='Update request'], wz-card[aria-label*='Update Request'], wz-card[aria-label*='Αίτημα'], " +
         "[data-testid*='update'], [data-testid*='problem'], [data-testid*='mapUpdateRequest']"
@@ -11466,17 +12178,17 @@ function isMapClick(clientX, clientY) {
 
   function shouldAllowNativeContextMenu(e) {
     try {
-      // Shift+RightClick always yields WME native menu.
+
       if (e && e.shiftKey) return true;
 
-      // Always allow WME native menu inside the Update Request (UR) sidebar panel.
+
       if (e && isInUpdateRequestPanel(e.target)) return true;
 
-      // Native menu ONLY when the right-click is actually on a UR marker.
+
       if (e && isUrMarkerAtPoint(e.clientX, e.clientY)) return true;
 
-      // Weak fallback: if selection is an UR and the element under cursor still looks marker-ish.
-      // This avoids "sticking" native mode when you right-click empty map while UR panel is open.
+
+
       try {
         const sel = (() => { try { return sdk?.Editing?.getSelection?.(); } catch { return null; } })();
         if (isUpdateRequestSelection(sel) && e) {
@@ -12240,7 +12952,6 @@ function setSegLevelById(segmentId, level) {
         }
       } catch {}
     }
-    /* visible-area correction disabled */
     return moved;
   }
 
@@ -12587,7 +13298,7 @@ function getDefaultPinZoom() {
 
   function osmUrlFromLonLat(ll, zoom = 19) {
     const z = Number.isFinite(zoom) ? zoom : 19;
-    return `https://www.openstreetmap.org/?mlat=${fmt(ll.lat)}&mlon=${fmt(ll.lon)}#map=${z}/${fmt(ll.lat)}/${fmt(ll.lon)}`;
+    return `https://www.openstreetmap.org/#map=${z}/${fmt(ll.lat)}/${fmt(ll.lon)}`;
   }
 
   function wazeLiveMapUrlFromLonLat(ll, zoom = 17) {
@@ -12610,7 +13321,6 @@ function getDefaultPinZoom() {
   }
 
 
-  // ===== Permalink settings (used by Copy permalink / Refresh here) =====
   const PERMALINK_SETTINGS_KEY = "wme_rc_permalink_settings_v1";
   const DEFAULT_PERMALINK_SETTINGS = { zoomLocked: false, zoomLevel: null, includeLayers: true };
 
@@ -12668,7 +13378,6 @@ function getDefaultPinZoom() {
         hint.textContent = "Applies to Copy permalink and Refresh here.";
         wrap.appendChild(hint);
 
-        // Zoom lock toggle + input
         const zoomRow = document.createElement("div");
         zoomRow.className = "wmeRcRow";
         zoomRow.style.alignItems = "center";
@@ -12703,7 +13412,6 @@ function getDefaultPinZoom() {
 
         wrap.appendChild(zoomRow);
 
-        // Include layers toggle
         const layersWrap = document.createElement("div");
         layersWrap.className = "wmeRcHint";
         layersWrap.innerHTML = `
@@ -12760,7 +13468,7 @@ function getDefaultPinZoom() {
       },
     });
   }
-  function buildPermalink(ll, segIds = null) {
+  function buildPermalink(ll, segIds = null, venuesParam = null) {
     const st = loadPermalinkSettings();
     const z = (st && st.zoomLocked && Number.isFinite(st.zoomLevel)) ? Number(st.zoomLevel) : getZoomLevelBestEffort();
 
@@ -12771,7 +13479,6 @@ function getDefaultPinZoom() {
       if (cur.has(k)) params.set(k, cur.get(k));
     }
 
-    // Optional: include current layer params (if present)
     if (st && st.includeLayers) {
       for (const [k, v] of Object.entries(getLayerParamsFromCurrentURL())) {
         if (v != null) params.set(k, String(v));
@@ -12785,11 +13492,210 @@ function getDefaultPinZoom() {
 
     if (Array.isArray(segIds) && segIds.length) params.set("segments", segIds.join(","));
 
+    const vp = String(venuesParam || "").trim();
+    if (vp) params.set("venues", vp);
+
     const qs = params.toString();
     return qs ? `${EDITOR_BASE}?${qs}` : EDITOR_BASE;
   }
 
-  async function copyCoordsLatLon(ll) {
+
+  function _extractVenuesTokenFromValue(val) {
+    try {
+      const s = String(val || "").trim();
+      if (!s) return null;
+      const u = new URL(s, location.origin);
+      const v = u.searchParams.get("venues");
+      const t = String(v || "").trim();
+      if (t) return t;
+    } catch {}
+    return null;
+  }
+
+  function _isVenuesTokenString(s) {
+    const t = String(s || "").trim();
+    if (!t) return false;
+    if (!/^\d+\.\d+\.\d+(,\d+\.\d+\.\d+)*$/.test(t)) return false;
+    return true;
+  }
+
+  function getVenuesParamBestEffort() {
+    try {
+      const cur = new URL(location.href);
+      const v = String(cur.searchParams.get("venues") || "").trim();
+      if (_isVenuesTokenString(v)) return v;
+    } catch {}
+
+    try {
+      const nodes = Array.from(document.querySelectorAll("input, textarea"));
+      let best = null;
+      for (const el of nodes) {
+        const val = String(el && (el.value ?? "") || "").trim();
+        if (!val) continue;
+        if (val.indexOf("/editor") === -1 || val.indexOf("lat=") === -1 || val.indexOf("lon=") === -1) continue;
+        const tok = _extractVenuesTokenFromValue(val);
+        if (tok && _isVenuesTokenString(tok)) return tok;
+        if (!best) best = val;
+      }
+      if (best) {
+        const tok = _extractVenuesTokenFromValue(best);
+        if (tok && _isVenuesTokenString(tok)) return tok;
+      }
+    } catch {}
+
+    try {
+      const nodes = Array.from(document.querySelectorAll("[href]"));
+      for (const el of nodes) {
+        const href = String(el && el.getAttribute && el.getAttribute("href") || "").trim();
+        if (!href) continue;
+        if (href.indexOf("/editor") === -1 || href.indexOf("lat=") === -1 || href.indexOf("lon=") === -1) continue;
+        const tok = _extractVenuesTokenFromValue(href);
+        if (tok && _isVenuesTokenString(tok)) return tok;
+      }
+    } catch {}
+
+    return null;
+  }
+
+  function getPermalinkFromUiPreferVenues() {
+    try {
+      const nodes = Array.from(document.querySelectorAll("input, textarea"));
+      let fallback = null;
+      for (const el of nodes) {
+        const val = String(el && (el.value ?? "") || "").trim();
+        if (!val) continue;
+        if (val.indexOf("/editor") === -1 || val.indexOf("lat=") === -1 || val.indexOf("lon=") === -1) continue;
+        const tok = _extractVenuesTokenFromValue(val);
+        if (tok && _isVenuesTokenString(tok)) return val;
+        if (!fallback) fallback = val;
+      }
+      return fallback;
+    } catch {}
+    return null;
+  }
+
+  function deriveVenuesTokenFromSelection() {
+    try {
+      const sm = UW?.W?.selectionManager;
+      const items = sm?.getSelectedFeatures?.() || sm?.getSelectedItems?.() || [];
+      if (Array.isArray(items) && items.length) {
+        for (const it of items) {
+          const cand = [
+            it?.permalink,
+            it?.permalinkId,
+            it?.permaLinkId,
+            it?.attributes?.permalink,
+            it?.attributes?.permalinkId,
+            it?.attributes?.permaLinkId,
+            it?.model?.permalink,
+            it?.model?.permalinkId,
+            it?.model?.permaLinkId,
+            it?.model?.attributes?.permalink,
+            it?.model?.attributes?.permalinkId,
+            it?.model?.attributes?.permaLinkId,
+          ].filter(Boolean);
+
+          for (const c of cand) {
+            const tok = _extractVenuesTokenFromValue(c) || (_isVenuesTokenString(c) ? String(c).trim() : null);
+            if (tok) return tok;
+          }
+
+          const attrs = it?.attributes || it?.model?.attributes || null;
+          if (attrs && typeof attrs === "object") {
+            for (const v of Object.values(attrs)) {
+              if (typeof v === "string") {
+                if (_isVenuesTokenString(v)) return v.trim();
+                const tok = _extractVenuesTokenFromValue(v);
+                if (tok) return tok;
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+
+    try {
+      const info = selectedPlaceInfo();
+      const ids = Array.isArray(info?.ids) ? info.ids : [];
+      const venuesModel = UW?.W?.model?.venues || UW?.W?.model?.pois || null;
+      if (venuesModel && ids.length && typeof venuesModel.getObjectById === "function") {
+        for (const id of ids) {
+          try {
+            const obj = venuesModel.getObjectById(id);
+            const attrs = obj?.attributes || obj?.model?.attributes || null;
+            const cand = [
+              obj?.permalink,
+              obj?.permalinkId,
+              obj?.permaLinkId,
+              attrs?.permalink,
+              attrs?.permalinkId,
+              attrs?.permaLinkId,
+            ].filter(Boolean);
+
+            for (const c of cand) {
+              const tok = _extractVenuesTokenFromValue(c) || (_isVenuesTokenString(c) ? String(c).trim() : null);
+              if (tok) return tok;
+            }
+
+            if (attrs && typeof attrs === "object") {
+              for (const v of Object.values(attrs)) {
+                if (typeof v === "string") {
+                  if (_isVenuesTokenString(v)) return v.trim();
+                  const tok = _extractVenuesTokenFromValue(v);
+                  if (tok) return tok;
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+
+    return null;
+  }
+
+  async function copyPermalink(ll, segIds = null) {
+    let venues = null;
+
+    try {
+      const p = selectedPlaceInfo();
+      if (p && p.has) {
+        const direct = getPermalinkFromUiPreferVenues();
+        const tok = _extractVenuesTokenFromValue(direct);
+        if (tok && _isVenuesTokenString(tok)) {
+          await setClipboard(String(direct).trim());
+          toast("Copied: permalink");
+          closeAllMenus();
+          return;
+        }
+      }
+    } catch {}
+
+    try {
+      const p = selectedPlaceInfo();
+      if (p && p.has) {
+        venues = getVenuesParamBestEffort() || deriveVenuesTokenFromSelection();
+        if (!venues) {
+          try {
+            const ww = UW?.WazeWrap || (typeof WazeWrap !== "undefined" ? WazeWrap : null);
+            const fn = ww?.Util?.getPermalink || ww?.Util?.getPermalinkUrl || ww?.Util?.getPermalinkURL || null;
+            if (typeof fn === "function") {
+              const out = String(fn() || "").trim();
+              const tok = _extractVenuesTokenFromValue(out);
+              if (tok) venues = tok;
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+
+    const url = buildPermalink(ll, segIds, venues);
+    await setClipboard(url);
+    toast("Copied: permalink");
+    closeAllMenus();
+  }
+
+async function copyCoordsLatLon(ll) {
     await setClipboard(`${fmt(ll.lat)}, ${fmt(ll.lon)}`);
     toast("Copied: lat,lon");
     closeAllMenus();
@@ -12800,13 +13706,6 @@ function getDefaultPinZoom() {
     toast("Copied: Google Maps link");
     closeAllMenus();
   }
-  async function copyPermalink(ll, segIds = null) {
-    const url = buildPermalink(ll, segIds);
-    await setClipboard(url);
-    toast("Copied: permalink");
-    closeAllMenus();
-  }
-
   function refreshHere(ll, segIds = null) {
     try {
       if (!ll || !Number.isFinite(ll.lat) || !Number.isFinite(ll.lon)) {
@@ -12846,11 +13745,11 @@ function getDefaultPinZoom() {
       const s = String(input || "").trim();
       if (!s) return null;
 
-      // Fast check for common Google Maps hosts/paths
+
       const looksLikeGmaps = /google\.[^\s/]+\/maps|maps\.google\.|\/maps\b|maps\.app\.goo\.gl|goo\.gl\/maps/i.test(s);
       if (!looksLikeGmaps) return null;
 
-      // Pattern: .../@lat,lon,17z
+
       const at = s.match(/@\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(?:,\s*(\d+(?:\.\d+)?)z)?/i);
       if (at) {
         const lat = Number(at[1]);
@@ -12858,7 +13757,7 @@ function getDefaultPinZoom() {
         if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon, zoom: null };
       }
 
-      // Query params: q=lat,lon or ll=lat,lon
+
       let url = null;
       try { url = new URL(s); } catch { url = null; }
       if (url) {
@@ -12869,11 +13768,11 @@ function getDefaultPinZoom() {
         }
       }
 
-      // Some links embed coordinates in the path even without @
+
       const cc2 = tryParseCoords(s);
       if (cc2) return { lat: cc2.lat, lon: cc2.lon, zoom: null };
 
-      // Short links can't be resolved offline (needs a network redirect)
+
       return { needsResolve: true };
     } catch {
       return null;
@@ -12899,9 +13798,9 @@ function getDefaultPinZoom() {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
     return { lat, lon, zoom: Number.isFinite(zoom) ? zoom : null };
   }
-  // -------------------------------
-  // Jump / Search helpers (segment lookup + custom jump pin)
-  // -------------------------------
+
+
+
   let __rcJumpPinLayer = null;
   let __rcJumpPinMarker = null;
   let __rcJumpPinTimer = null;
@@ -12913,11 +13812,11 @@ function getDefaultPinZoom() {
       if (!map || !ol) return null;
 
       if (__rcJumpPinLayer && typeof map.getLayer === "function") {
-        // keep existing
+
         return __rcJumpPinLayer;
       }
 
-      // Marker layer (topmost)
+
       const layer = new ol.Layer.Markers(`${SCRIPT_ID}:jumpPin`, { displayInLayerSwitcher: false });
       try { layer.setZIndex?.(99999); } catch {}
       try { map.addLayer(layer); } catch {}
@@ -12955,13 +13854,13 @@ function getDefaultPinZoom() {
       const ol = UW?.OpenLayers;
       if (!layer || !map || !ol) return;
 
-      // remove previous
+
       try { if (__rcJumpPinMarker) layer.removeMarker(__rcJumpPinMarker); } catch {}
       __rcJumpPinMarker = null;
       try { if (__rcJumpPinTimer) clearTimeout(__rcJumpPinTimer); } catch {}
       __rcJumpPinTimer = null;
 
-      // build marker
+
       const ll = new ol.LonLat(Number(lon), Number(lat));
       const iconUrl = __rcMakeJumpPinSvg(label);
       const size = new ol.Size(72, 72);
@@ -13015,7 +13914,7 @@ function getDefaultPinZoom() {
     const id = Number(segmentId);
     if (!Number.isFinite(id) || id <= 0) return null;
 
-    // 1) If already loaded, use its geometry center immediately
+
     try {
       const seg = sdkSegGetById(id);
       const geom = seg?.geometry || seg?.geojson || null;
@@ -13025,11 +13924,11 @@ function getDefaultPinZoom() {
       }
     } catch {}
 
-    // 2) Try WazeWrap SegmentFinder (works even when not loaded)
+
     try {
       const ww = UW?.WazeWrap || unsafeWindow?.WazeWrap || (typeof WazeWrap !== "undefined" ? WazeWrap : null);
       if (ww?.Util?.findSegment) {
-        // some builds want (regionCode, segId); if regionCode is omitted, it still works in most cases
+
         let res = null;
         try { res = await ww.Util.findSegment(safeRegionCode(), String(id)); } catch {}
         if (!res) {
@@ -13045,7 +13944,7 @@ function getDefaultPinZoom() {
     } catch {}
 
 
-    // 3) Try SegmentFinder directly (w-tools) via GM_xmlhttpRequest
+
     try {
       if (typeof GM_xmlhttpRequest === "function") {
         const url = `https://w-tools.org/api/SegmentFinder?find=${encodeURIComponent(String(id))}`;
@@ -13069,11 +13968,11 @@ function getDefaultPinZoom() {
       }
     } catch {}
 
-    // 3) Last resort: if SDK has findSegment, try it (API varies)
+
     try {
       if (sdk?.Segments?.findSegment) {
         const out = await sdk.Segments.findSegment({ segmentId: id });
-        // best-effort parse for returned geometry/center
+
         const geom = out?.geometry || out?.geojson || out?.segment?.geometry || null;
         const c = geom ? geoCenterFromAny(geom) : null;
         if (c && Number.isFinite(c.lon) && Number.isFinite(c.lat)) return { lon: c.lon, lat: c.lat, source: "sdk" };
@@ -13084,7 +13983,7 @@ function getDefaultPinZoom() {
   }
 
   function safeRegionCode() {
-    // Best-effort; if unknown, WazeWrap often still succeeds.
+
     try {
       const href = String(location.href || "");
       const m = href.match(/\/\/[^/]+\/([a-z]{2,3})\/editor/i);
@@ -13099,12 +13998,12 @@ function getDefaultPinZoom() {
 
   function geoCenterFromAny(geom) {
     try {
-      // SDK often returns GeoJSON-like { type, coordinates }
+
       const gj = geom?.type && geom?.coordinates ? geom : (geom?.geometry || null);
       const coords = gj?.coordinates;
       if (!coords) return null;
 
-      // LineString -> average points
+
       if (gj.type === "LineString" && Array.isArray(coords) && coords.length) {
         let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
         for (const p of coords) {
@@ -13116,7 +14015,7 @@ function getDefaultPinZoom() {
         if (minLon !== Infinity) return { lon: (minLon + maxLon) / 2, lat: (minLat + maxLat) / 2 };
       }
 
-      // MultiLineString -> first line
+
       if (gj.type === "MultiLineString" && Array.isArray(coords) && coords.length) {
         const first = coords[0];
         if (Array.isArray(first) && first.length) {
@@ -13138,7 +14037,7 @@ function getDefaultPinZoom() {
     const ids = Array.from(new Set((segIds || []).map(Number).filter(n => Number.isFinite(n) && n > 0)));
     if (!ids.length) { toast("Invalid segment id."); return false; }
 
-    // If already loaded: zoom + select
+
     const loaded = ids.filter(id => !!sdkSegGetById(id));
     if (loaded.length) {
       try { zoomToSegments(loaded); } catch {}
@@ -13146,7 +14045,7 @@ function getDefaultPinZoom() {
       return true;
     }
 
-    // Not loaded: locate first segment, jump, wait, then select
+
     const firstId = ids[0];
     const loc = await __rcFindSegmentLonLat(firstId);
     if (!loc) { toast("Segment not found / not accessible."); return false; }
@@ -13154,13 +14053,13 @@ function getDefaultPinZoom() {
     const label = ids.length > 1 ? `${ids.length}X` : String(firstId).slice(-4);
     __rcShowJumpPin(loc.lon, loc.lat, label);
 
-    // Jump to the located position; z18 like Enhanced Search
+
     try { await jumpToCoords(loc.lat, loc.lon, 18, label); } catch { await jumpToCoords(loc.lat, loc.lon, 18, label); }
 
-    // Wait for features to load
+
     await __rcWaitFeaturesLoaded();
 
-    // Now try selecting
+
     const nowLoaded = ids.filter(id => !!sdkSegGetById(id));
     if (!nowLoaded.length) { toast("Segment still not loaded (try again)."); return false; }
 
@@ -13921,7 +14820,7 @@ async function actionPasteAttributesToSelection(segIds) {
       { label: withIcon(ICONS.street, "Street name"), sub: "From first selected", onClick: () => actionCopyStreetName(segIds[0]) },
       { label: withIcon(ICONS.copy, "Segment ID"), sub: segIds.length === 1 ? String(segIds[0]) : `${segIds.length} segments`, onClick: () => actionCopySegmentIds(segIds) },
       { type: "sep" },
-      { label: withIcon(ICONS.ext, "Google Maps link"), sub: hasLL ? "https://www.google.com/…" : "Right-click on map", disabled: !hasLL, onClick: () => copyCoordsGmaps(ll), rightButton: hasLL ? { label: "Open", onClick: () => { try { UW.open(gmapsUrlFromLonLat(ll), "_blank", "noopener,noreferrer"); } catch (e) { console.error(e); } closeAllMenus(); } } : null },
+      { label: withIcon(ICONS.ext, "Google Maps link"), sub: hasLL ? "https://www.google.com/maps?q=…" : "Move mouse on map first", disabled: !hasLL, onClick: () => copyCoordsGmaps(ll) },
       { type: "sep" },
       { label: withIcon(ICONS.copy, "Summary"), sub: hasLL ? "Street • IDs • Links" : "Right-click on map", disabled: !hasLL, onClick: () => actionCopySelectionSummary(segIds, ll) },
     ];
@@ -13932,41 +14831,43 @@ async function actionPasteAttributesToSelection(segIds) {
 
   function openSegmentMenu(x, y, segIds, ctxLL) {
     try { menuState.rootLL = (ctxLL || lastLonLat || null); menuState.rootType = "segment"; } catch {}
-    const dirInfo = dirSummaryForSelection(segIds);
-    const dirSub = dirInfo.mixed ? "mixed" : modeLabel(dirInfo.mode);
-
     const ll = ctxLL || lastLonLat;
     const hasLL = !!(ll && Number.isFinite(ll.lat) && Number.isFinite(ll.lon));
-
-    openRootMenu(x, y, "Segment", `${segIds.length} selected`, [
-      { label: withIcon(ICONS.copy, "Copy coordinates"), sub: hasLL ? `${fmt(ll.lat)}, ${fmt(ll.lon)}` : "Move mouse on map first", disabled: !hasLL, onClick: () => copyCoordsLatLon(ll) },
-      { label: withIcon(ICONS.chain, "Copy permalink"), sub: hasLL ? "WME permalink" : "Move mouse on map first", disabled: !hasLL, onClick: () => copyPermalink(ll, segIds) },
-      { label: withIcon(ICONS.refresh, "Refresh here"), sub: hasLL ? "Reload editor at this spot" : "Move mouse on map first", disabled: !hasLL, onClick: () => refreshHere(ll, segIds) },
-      { label: withIcon(ICONS.mapPin, "Pin this Place"), sub: hasLL ? "Save in pins panel" : "Move mouse on map first", disabled: !hasLL, onClick: () => pinThisPlace("segment", ll, segIds) },
-      { type: "sep" },
-      { label: withIcon(ICONS.endpoints, "Endpoints"), sub: segIds.length === 1 ? "Go to A/B node" : "Select 1 segment", disabled: segIds.length !== 1, submenu: true, submenuKind: "endpoints", submenuHeaderLeft: "Endpoints", submenuHeaderRight: "", getSubmenuItems: () => buildEndpointsSubmenu(segIds) },
-      { type: "sep" },
-      { label: withIcon(ICONS.jump, "Jump / Search…"), sub: "coords • permalink • google maps • segment id", onClick: () => showJumpModal("") },
-      { label: withIcon(ICONS.more, "More"), sub: "Tools & utilities", submenu: true, submenuKind: "tools", submenuHeaderLeft: "Tools", submenuHeaderRight: "", getSubmenuItems: () => buildToolsSubmenuForSegments(segIds, ll) },
-]);
+    const extCtx = buildExtMenuContext("segment", { lonLat: ll, segmentIds: segIds, clientX: x, clientY: y });
+    const extMenuItem = buildExtensionsMenuItem("segment", extCtx);
+    let items = [
+      makeNativeMenuItem("copyCoords", "Copy coordinates", { label: withIcon(ICONS.copy, "Copy coordinates"), sub: hasLL ? `${fmt(ll.lat)}, ${fmt(ll.lon)}` : "Move mouse on map first", disabled: !hasLL, onClick: () => copyCoordsLatLon(ll) }),
+      makeNativeMenuItem("copyPermalink", "Copy permalink", { label: withIcon(ICONS.chain, "Copy permalink"), sub: hasLL ? "WME permalink" : "Move mouse on map first", disabled: !hasLL, onClick: () => copyPermalink(ll, segIds) }),
+      makeNativeMenuItem("refreshHere", "Refresh here", { label: withIcon(ICONS.refresh, "Refresh here"), sub: hasLL ? "Reload editor at this spot" : "Move mouse on map first", disabled: !hasLL, onClick: () => refreshHere(ll, segIds) }),
+      makeNativeMenuItem("pinPlace", "Pin this Place", { label: withIcon(ICONS.mapPin, "Pin this Place"), sub: hasLL ? "Save in pins panel" : "Move mouse on map first", disabled: !hasLL, onClick: () => pinThisPlace("segment", ll, segIds) }),
+      makeNativeMenuItem("endpoints", "Endpoints", { label: withIcon(ICONS.endpoints, "Endpoints"), sub: segIds.length === 1 ? "Go to A/B node" : "Select 1 segment", disabled: segIds.length !== 1, submenu: true, submenuKind: "endpoints", submenuHeaderLeft: "Endpoints", submenuHeaderRight: "", getSubmenuItems: () => buildEndpointsSubmenu(segIds) }),
+      makeNativeMenuItem("jumpSearch", "Jump / Search…", { label: withIcon(ICONS.jump, "Jump / Search…"), sub: "coords • permalink • google maps • segment id", onClick: () => showJumpModal("") }),
+      makeNativeMenuItem("moreTools", "More", { label: withIcon(ICONS.more, "More"), sub: "Tools & utilities", submenu: true, submenuKind: "tools", submenuHeaderLeft: "Tools", submenuHeaderRight: "", getSubmenuItems: () => buildToolsSubmenuForSegments(segIds, ll) }),
+    ];
+    items = applyNativeMenuSettings("segment", items);
+    if (extMenuItem) items.push({ type: "sep" }, extMenuItem);
+    openRootMenu(x, y, "Segment", `${segIds.length} selected`, items);
   }
 
   function openMapMenu(x, y, ll) {
     const has = !!ll;
     try { menuState.rootLL = (ll || lastLonLat || null); menuState.rootType = "map"; } catch {}
-
-    openRootMenu(x, y, "Map", "No selection", [
-      { label: withIcon(ICONS.copy, "Copy coordinates"), sub: has ? `${fmt(ll.lat)}, ${fmt(ll.lon)}` : "Move mouse on map first", disabled: !has, onClick: () => copyCoordsLatLon(ll) },
-      { label: withIcon(ICONS.mapPin, "Pin this Place"), sub: has ? "Save in pins panel" : "Move mouse on map first", disabled: !has, onClick: () => pinThisPlace("map", ll, null) },
-      { label: withIcon(ICONS.refresh, "Refresh here"), sub: has ? "Reload editor at this spot" : "Move mouse on map first", disabled: !has, onClick: () => refreshHere(ll, null) },
-      { label: withIcon(ICONS.chain, "Copy permalink"), sub: has ? "WME permalink (lat/lon/zoom)" : "Move mouse on map first", disabled: !has, onClick: () => copyPermalink(ll, null) },
-      { label: withIcon(ICONS.ext, "Open in Google Maps"), sub: has ? "https://www.google.com/…" : "Move mouse on map first", disabled: !has,
+    const extCtx = buildExtMenuContext("map", { lonLat: ll, clientX: x, clientY: y });
+    const extMenuItem = buildExtensionsMenuItem("map", extCtx);
+    let items = [
+      makeNativeMenuItem("copyCoords", "Copy coordinates", { label: withIcon(ICONS.copy, "Copy coordinates"), sub: has ? `${fmt(ll.lat)}, ${fmt(ll.lon)}` : "Move mouse on map first", disabled: !has, onClick: () => copyCoordsLatLon(ll) }),
+      makeNativeMenuItem("pinPlace", "Pin this Place", { label: withIcon(ICONS.mapPin, "Pin this Place"), sub: has ? "Save in pins panel" : "Move mouse on map first", disabled: !has, onClick: () => pinThisPlace("map", ll, null) }),
+      makeNativeMenuItem("refreshHere", "Refresh here", { label: withIcon(ICONS.refresh, "Refresh here"), sub: has ? "Reload editor at this spot" : "Move mouse on map first", disabled: !has, onClick: () => refreshHere(ll, null) }),
+      makeNativeMenuItem("copyPermalink", "Copy permalink", { label: withIcon(ICONS.chain, "Copy permalink"), sub: has ? "WME permalink (lat/lon/zoom)" : "Move mouse on map first", disabled: !has, onClick: () => copyPermalink(ll, null) }),
+      makeNativeMenuItem("openGoogleMaps", "Open in Google Maps", { label: withIcon(ICONS.ext, "Open in Google Maps"), sub: has ? "https://www.google.com/…" : "Move mouse on map first", disabled: !has,
         onClick: () => { try { UW.open(gmapsUrlFromLonLat(ll), "_blank", "noopener,noreferrer"); } catch (e) { console.error(e); } closeAllMenus(); },
         rightButton: has ? { label: "Copy", onClick: () => copyCoordsGmaps(ll) } : null
-      },
-      { type: "sep" },
-      { label: withIcon(ICONS.jump, "Jump / Search…"), sub: "coords • permalink • google maps • segment id", onClick: () => showJumpModal("") },
-    ]);
+      }),
+      makeNativeMenuItem("jumpSearch", "Jump / Search…", { label: withIcon(ICONS.jump, "Jump / Search…"), sub: "coords • permalink • google maps • segment id", onClick: () => showJumpModal("") }),
+    ];
+    items = applyNativeMenuSettings("map", items);
+    if (extMenuItem) items.push({ type: "sep" }, extMenuItem);
+    openRootMenu(x, y, "Map", "No selection", items);
 
   }
 
@@ -13974,20 +14875,22 @@ async function actionPasteAttributesToSelection(segIds) {
     const has = !!ll;
     try { menuState.rootLL = (ll || lastLonLat || null); menuState.rootType = "place"; } catch {}
     const countTxt = placeInfo && Array.isArray(placeInfo.ids) && placeInfo.ids.length ? `${placeInfo.ids.length} selected` : "Selected";
-
-    // Keep the same actions as the Map menu; only change the header to "Place".
-    openRootMenu(x, y, "Place", countTxt, [
-      { label: withIcon(ICONS.copy, "Copy coordinates"), sub: has ? `${fmt(ll.lat)}, ${fmt(ll.lon)}` : "Move mouse on map first", disabled: !has, onClick: () => copyCoordsLatLon(ll) },
-      { label: withIcon(ICONS.mapPin, "Pin this Place"), sub: has ? "Save in pins panel" : "Move mouse on map first", disabled: !has, onClick: () => pinThisPlace("place", ll, null) },
-      { label: withIcon(ICONS.refresh, "Refresh here"), sub: has ? "Reload editor at this spot" : "Move mouse on map first", disabled: !has, onClick: () => refreshHere(ll, null) },
-      { label: withIcon(ICONS.chain, "Copy permalink"), sub: has ? "WME permalink (lat/lon/zoom)" : "Move mouse on map first", disabled: !has, onClick: () => copyPermalink(ll, null) },
-      { label: withIcon(ICONS.ext, "Open in Google Maps"), sub: has ? "https://www.google.com/…" : "Move mouse on map first", disabled: !has,
+    const extCtx = buildExtMenuContext("place", { lonLat: ll, placeIds: placeInfo?.ids, placeInfo, clientX: x, clientY: y });
+    const extMenuItem = buildExtensionsMenuItem("place", extCtx);
+    let items = [
+      makeNativeMenuItem("copyCoords", "Copy coordinates", { label: withIcon(ICONS.copy, "Copy coordinates"), sub: has ? `${fmt(ll.lat)}, ${fmt(ll.lon)}` : "Move mouse on map first", disabled: !has, onClick: () => copyCoordsLatLon(ll) }),
+      makeNativeMenuItem("pinPlace", "Pin this Place", { label: withIcon(ICONS.mapPin, "Pin this Place"), sub: has ? "Save in pins panel" : "Move mouse on map first", disabled: !has, onClick: () => pinThisPlace("place", ll, null) }),
+      makeNativeMenuItem("refreshHere", "Refresh here", { label: withIcon(ICONS.refresh, "Refresh here"), sub: has ? "Reload editor at this spot" : "Move mouse on map first", disabled: !has, onClick: () => refreshHere(ll, null) }),
+      makeNativeMenuItem("copyPermalink", "Copy permalink", { label: withIcon(ICONS.chain, "Copy permalink"), sub: has ? "WME permalink (lat/lon/zoom)" : "Move mouse on map first", disabled: !has, onClick: () => copyPermalink(ll, null) }),
+      makeNativeMenuItem("openGoogleMaps", "Open in Google Maps", { label: withIcon(ICONS.ext, "Open in Google Maps"), sub: has ? "https://www.google.com/…" : "Move mouse on map first", disabled: !has,
         onClick: () => { try { UW.open(gmapsUrlFromLonLat(ll), "_blank", "noopener,noreferrer"); } catch (e) { console.error(e); } closeAllMenus(); },
         rightButton: has ? { label: "Copy", onClick: () => copyCoordsGmaps(ll) } : null
-      },
-      { type: "sep" },
-      { label: withIcon(ICONS.jump, "Jump / Search…"), sub: "coords • permalink • google maps • segment id", onClick: () => showJumpModal("") },
-    ]);
+      }),
+      makeNativeMenuItem("jumpSearch", "Jump / Search…", { label: withIcon(ICONS.jump, "Jump / Search…"), sub: "coords • permalink • google maps • segment id", onClick: () => showJumpModal("") }),
+    ];
+    items = applyNativeMenuSettings("place", items);
+    if (extMenuItem) items.push({ type: "sep" }, extMenuItem);
+    openRootMenu(x, y, "Place", countTxt, items);
   }
 
 
@@ -14094,6 +14997,8 @@ function onContextMenuCapture(e) {
   window.addEventListener("mousedown", onMouseDownCapture, { capture: true });
 
   let tinyFallbackToggleEl = null;
+  let sidebarTabApiRef = null;
+  let sidebarTabMounted = false;
 
   function setEnabled(v) {
     enabled = !!v;
@@ -14122,68 +15027,41 @@ function onContextMenuCapture(e) {
 
   function mountSidebarPanelBestEffort() {
     try {
+      const us = UW?.W?.userscripts || UW?.userscripts;
+      const registerSidebarTab = us?.registerSidebarTab;
+      if (typeof registerSidebarTab === "function") {
+        if (!sidebarTabApiRef) sidebarTabApiRef = registerSidebarTab(String(SCRIPT_ID || "wme-rightclick-functions-3"));
+        const { tabLabel, tabPane } = sidebarTabApiRef || {};
+        if (tabLabel && !tabLabel.dataset.wmeRcInit) {
+          tabLabel.dataset.wmeRcInit = "1";
+          tabLabel.textContent = "Right Click";
+          tabLabel.title = SCRIPT_NAME;
+        }
+        if (tabPane && !sidebarTabMounted) {
+          sidebarTabMounted = true;
+          const wrap = buildRcSidebarPanel();
+          tabPane.appendChild(wrap);
+
+          if (tinyFallbackToggleEl) tinyFallbackToggleEl.remove();
+          tinyFallbackToggleEl = null;
+        }
+        return true;
+      }
+    } catch (e) {
+      console.warn("Sidebar tab mount failed:", e);
+    }
+
+    try {
       const ww = UW?.WazeWrap;
       const addTab = ww?.Interface?.AddScriptTab;
       if (typeof addTab === "function") {
         const tab = addTab(SCRIPT_NAME);
         if (tab && tab.appendChild) {
-          const wrap = document.createElement("div");
-          wrap.className = "wmeRcSideWrap";
-          wrap.innerHTML = `
-            <div class="wmeRcSideCard">
-              <div class="wmeRcSideRow">
-                <div>
-                  <div class="wmeRcSideTitle">Right-click menu</div>
-                  <div class="wmeRcSideSub">Shift + right click = default menu</div>
-                </div>
-                <div class="wmeRcSwitch ${enabled ? "on" : ""}" id="wmeRcSideSwitch">
-                  <div class="wmeRcKnob"></div>
-                </div>
-              </div>
-            </div>
-
-<div class="wmeRcSideCard">
-  <div class="wmeRcSideRow">
-    <div>
-      <div class="wmeRcSideTitle">Pins on map</div>
-      <div class="wmeRcSideSub">Show / hide all pinned markers</div>
-    </div>
-    <div class="wmeRcSwitch ${getPinsLayerVisible() ? "on" : ""}" id="wmeRcPinsLayerSwitch">
-      <div class="wmeRcKnob"></div>
-    </div>
-  </div>
-</div>
-`;
+          const wrap = buildRcSidebarPanel();
           tab.appendChild(wrap);
-
-          const sw = wrap.querySelector("#wmeRcSideSwitch");
-          sw.addEventListener("click", () => {
-            setEnabled(!enabled);
-            sw.classList.toggle("on", enabled);
-            toast(`${SCRIPT_NAME}: ${enabled ? "ON" : "OFF"}`);
-            closeAllMenus();
-          });
-
-
-const ps = wrap.querySelector("#wmeRcPinsLayerSwitch");
-if (ps) {
-  const applyPinsSwitch = () => {
-    const v = getPinsLayerVisible();
-    ps.classList.toggle("on", v);
-  };
-  applyPinsSwitch();
-  ps.addEventListener("click", () => {
-    const next = !getPinsLayerVisible();
-    setPinsLayerVisible(next);
-    ps.classList.toggle("on", next);
-    toast(`Pins on map: ${next ? "ON" : "OFF"}`);
-  });
-}
-
 
           if (tinyFallbackToggleEl) tinyFallbackToggleEl.remove();
           tinyFallbackToggleEl = null;
-
           return true;
         }
       }
@@ -14244,6 +15122,27 @@ if (ps) {
       }
     }, 450);
     setTimeout(() => clearInterval(t), 8000);
+  }
+
+  const publicApi = Object.freeze({
+    version: SCRIPT_VERSION,
+    registerMenuProvider,
+    unregisterMenuProvider,
+    listMenuProviders,
+    getCurrentContext: getCurrentContextSnapshot,
+    closeMenu: closeAllMenus,
+    openMenu: openRootMenu,
+  });
+
+  UW.WmeRightClickFunctions = publicApi;
+  UW.WmeRightClickFunctionsApi = publicApi;
+
+  if (typeof UW.dispatchEvent === "function" && typeof UW.CustomEvent === "function") {
+    try {
+      UW.dispatchEvent(new UW.CustomEvent("wme-rightclick-functions:ready", {
+        detail: { api: publicApi, version: SCRIPT_VERSION },
+      }));
+    } catch {}
   }
 
   if (UW.SDK_INITIALIZED?.then) UW.SDK_INITIALIZED.then(initSdk);
