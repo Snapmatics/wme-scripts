@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WME - RightClick Functions
 // @author       GreekCaptain
-// @version      1.0.3
-// @description  Right-click functionality which changes the existing context-menu and adds pin reminders
+// @version      1.0.4
+// @description  Right-click functionality
 // @match        https://www.waze.com/*/editor*
 // @match        https://www.waze.com/editor*
 // @match        https://beta.waze.com/*/editor*
@@ -25,14 +25,14 @@
 
   const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   const SCRIPT_ID = "wme-rightclick-functions";
-  const SCRIPT_NAME = "WME - RightClick Functions";
-  const SCRIPT_VERSION = "1.0.3";
+  const SCRIPT_NAME = "WME - RightClick Functions 3";
+  const SCRIPT_VERSION = "1.0.4";
   const CHANGELOG_SEEN_KEY = `${SCRIPT_ID}:changelogSeenVersion:v2`;
   const CHANGELOG_ITEMS = [
     "New: Visual and accesibility changes",
-    "New: Exported API for third-party context menu providers (coming soon)",
-    "New: Settings to change the order of the native context-menu actions in the 'Scripts' tab",
-    "Fixed: The zoomed-out bubble didn’t show all pins in view when clicked",
+    "New: Exported API for third-party context menu providers",
+    "New: Third-party items grouped under Extensions submenu",
+    "Hotfix: bubble pin fix wasn't pushed in previous build"
   ];
 
 
@@ -4426,34 +4426,7 @@ function renderPinsMarkers() {
                   mk.events?.register?.("mousedown", mk, (evt) => {
                     try { ol.Event.stop(evt); } catch {}
                     try { pinsNoClusterUntil = Date.now() + 1200; } catch {}
-                    try {
-                      let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
-                      for (const it of cl) {
-                        const llx = it?.ll;
-                        if (!llx) continue;
-                        minLon = Math.min(minLon, Number(llx.lon));
-                        maxLon = Math.max(maxLon, Number(llx.lon));
-                        minLat = Math.min(minLat, Number(llx.lat));
-                        maxLat = Math.max(maxLat, Number(llx.lat));
-                      }
-
-                      if (isFinite(minLon) && isFinite(minLat) && isFinite(maxLon) && isFinite(maxLat) && typeof ol.Bounds === "function") {
-                        const b = new ol.Bounds(minLon, minLat, maxLon, maxLat);
-                        try { if (typeof b.scale === "function") b.scale(1.7); } catch {}
-                        if (typeof map.zoomToExtent === "function") map.zoomToExtent(b, true);
-                        setTimeout(() => {
-                          try {
-                            if (typeof map.setCenter === "function") map.setCenter(llc, 15);
-                          } catch {}
-                        }, 90);
-                      } else {
-                        const z = (typeof map.getZoom === "function") ? Number(map.getZoom()) : null;
-                        const target = Math.max((Number.isFinite(z) ? z : 12) + 3, 15);
-                        if (typeof map.setCenter === "function") map.setCenter(llc, target);
-                      }
-
-                      setTimeout(() => { try { renderPinsMarkers(); } catch {} }, 250);
-                    } catch {}
+                    zoomToClusterItems(cl, llc, map, ol);
                   });
 
                   try { mk.icon?.imageDiv?.classList?.add("wmeRcOlMarker"); } catch {}
@@ -4466,7 +4439,7 @@ function renderPinsMarkers() {
                       div.addEventListener("contextmenu", (ev) => {
                         try { ev.preventDefault(); ev.stopPropagation(); if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); } catch {}
                         try { pinsNoClusterUntil = Date.now() + 1200; } catch {}
-                        zoomToCluster(Number(mk.clusterLat), Number(mk.clusterLon));
+                        zoomToClusterItems(cl, llc, map, ol);
                       }, true);
                     }
                   } catch {}
@@ -14957,6 +14930,49 @@ async function actionPasteAttributesToSelection(segIds) {
     } catch {}
   }
 
+  function zoomToClusterItems(cl, llc, map, ol) {
+    try {
+      let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
+
+      for (const it of (Array.isArray(cl) ? cl : [])) {
+        const llx = it?.ll;
+        if (!llx) continue;
+        const lon = Number(llx.lon);
+        const lat = Number(llx.lat);
+        if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+        minLon = Math.min(minLon, lon);
+        maxLon = Math.max(maxLon, lon);
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+      }
+
+      if (Number.isFinite(minLon) && Number.isFinite(minLat) && Number.isFinite(maxLon) && Number.isFinite(maxLat) && typeof ol?.Bounds === "function") {
+        const samePoint = Math.abs(maxLon - minLon) < 0.00002 && Math.abs(maxLat - minLat) < 0.00002;
+        if (samePoint) {
+          const z = (typeof map?.getZoom === "function") ? Number(map.getZoom()) : null;
+          const target = Math.max((Number.isFinite(z) ? z : 12) + 2, 16);
+          if (typeof map?.setCenter === "function") map.setCenter(llc, target);
+        } else {
+          const padLon = Math.max((maxLon - minLon) * 0.28, 0.00012);
+          const padLat = Math.max((maxLat - minLat) * 0.28, 0.00012);
+          const bounds = new ol.Bounds(
+            minLon - padLon,
+            minLat - padLat,
+            maxLon + padLon,
+            maxLat + padLat
+          );
+          if (typeof map?.zoomToExtent === "function") map.zoomToExtent(bounds, true);
+        }
+      } else {
+        const z = (typeof map?.getZoom === "function") ? Number(map.getZoom()) : null;
+        const target = Math.max((Number.isFinite(z) ? z : 12) + 3, 15);
+        if (typeof map?.setCenter === "function") map.setCenter(llc, target);
+      }
+
+      setTimeout(() => { try { renderPinsMarkers(); } catch {} }, 250);
+    } catch {}
+  }
+
 function onContextMenuCapture(e) {
     if (!enabled) return;
     if (e.shiftKey) return;
@@ -15034,7 +15050,7 @@ function onContextMenuCapture(e) {
         const { tabLabel, tabPane } = sidebarTabApiRef || {};
         if (tabLabel && !tabLabel.dataset.wmeRcInit) {
           tabLabel.dataset.wmeRcInit = "1";
-          tabLabel.textContent = "Right Click";
+          tabLabel.textContent = "RC";
           tabLabel.title = SCRIPT_NAME;
         }
         if (tabPane && !sidebarTabMounted) {
