@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - RightClick Functions
 // @author       GreekCaptain
-// @version      1.0.4
+// @version      1.0.5
 // @description  Right-click functionality
 // @match        https://www.waze.com/*/editor*
 // @match        https://www.waze.com/editor*
@@ -25,14 +25,11 @@
 
   const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   const SCRIPT_ID = "wme-rightclick-functions";
-  const SCRIPT_NAME = "WME - RightClick Functions 3";
-  const SCRIPT_VERSION = "1.0.4";
+  const SCRIPT_NAME = "WME - RightClick Functions";
+  const SCRIPT_VERSION = "1.0.5";
   const CHANGELOG_SEEN_KEY = `${SCRIPT_ID}:changelogSeenVersion:v2`;
   const CHANGELOG_ITEMS = [
-    "New: Visual and accesibility changes",
-    "New: Exported API for third-party context menu providers",
-    "New: Third-party items grouped under Extensions submenu",
-    "Hotfix: bubble pin fix wasn't pushed in previous build"
+    "New: Compatible with the new WME SDK"
   ];
 
 
@@ -11475,7 +11472,7 @@ setColor(chosenColor);
 
     openModal({
       iconSvg: ICONS.tools,
-      title: `What’s new — v${SCRIPT_VERSION}`,
+      title: `WME - RightClick Functions — v${SCRIPT_VERSION}`,
       bodyBuilder: ({ body, close }) => {
         const wrap = document.createElement("div");
         wrap.style.display = "flex";
@@ -12295,6 +12292,14 @@ function isMapClick(clientX, clientY) {
       null
     );
   }
+  function sdkCitiesGetById(cityId) {
+    return (
+      sdk?.Cities?.getById?.({ cityId }) ??
+      sdk?.DataModel?.Cities?.getById?.({ cityId }) ??
+      null
+    );
+  }
+
 
   function sdkSegUpdateSegment(segmentId, attrs) {
     if (typeof sdk?.Segments?.updateSegment === "function") {
@@ -12386,6 +12391,14 @@ function isMapClick(clientX, clientY) {
 
   function getAllLoadedSegmentsW() {
     try {
+      const arr = sdk?.DataModel?.Segments?.getAll?.();
+      if (Array.isArray(arr) && arr.length) return arr.filter(Boolean);
+    } catch {}
+    try {
+      const arr = sdk?.Segments?.getAll?.();
+      if (Array.isArray(arr) && arr.length) return arr.filter(Boolean);
+    } catch {}
+    try {
       const segs = UW?.W?.model?.segments;
       if (!segs) return [];
       if (typeof segs.getObjectArray === "function") return segs.getObjectArray() || [];
@@ -12395,12 +12408,18 @@ function isMapClick(clientX, clientY) {
   }
 
   function segIdFromW(segW) {
-    return Number(segW?.attributes?.id ?? segW?.id ?? (typeof segW?.getID === "function" ? segW.getID() : NaN));
+    return Number(
+      segW?.segmentId ??
+      segW?.objectId ??
+      segW?.attributes?.id ??
+      segW?.id ??
+      (typeof segW?.getID === "function" ? segW.getID() : NaN)
+    );
   }
 
   function primaryStreetIdFromW(segW) {
     const a = segW?.attributes || {};
-    return a.primaryStreetID ?? a.primaryStreetId ?? a.primaryStreet ?? segW?.primaryStreetId ?? null;
+    return a.primaryStreetID ?? a.primaryStreetId ?? a.primaryStreet ?? segW?.primaryStreetId ?? segW?.streetId ?? null;
   }
 
   function lockRankFromW(segW) {
@@ -13590,12 +13609,11 @@ function getDefaultPinZoom() {
     try {
       const info = selectedPlaceInfo();
       const ids = Array.isArray(info?.ids) ? info.ids : [];
-      const venuesModel = UW?.W?.model?.venues || UW?.W?.model?.pois || null;
-      if (venuesModel && ids.length && typeof venuesModel.getObjectById === "function") {
+      if (ids.length) {
         for (const id of ids) {
           try {
-            const obj = venuesModel.getObjectById(id);
-            const attrs = obj?.attributes || obj?.model?.attributes || null;
+            const obj = sdk?.DataModel?.Venues?.getById?.({ venueId: id }) || sdk?.Venues?.getById?.({ venueId: id }) || null;
+            const attrs = obj?.attributes || obj?.model?.attributes || obj || null;
             const cand = [
               obj?.permalink,
               obj?.permalinkId,
@@ -13860,7 +13878,14 @@ async function copyCoordsLatLon(ll) {
     return new Promise((resolve) => {
       const interval = setInterval(() => {
         count++;
-        const loading = !!(UW?.W?.app?.layout?.model?.attributes?.loadingFeatures || UW?.W?.app?.layout?.model?.get?.("loadingFeatures") || UW?.W?.app?.layout?.model?.get?.("loading") === true);
+        let loading = false;
+        try {
+          const appState = sdk?.WmeState?.getState?.() || sdk?.WmeState?.get?.() || null;
+          loading = !!(appState?.loadingFeatures || appState?.loading || appState?.isLoading);
+        } catch {}
+        if (!loading) {
+          loading = !!(UW?.W?.app?.layout?.model?.attributes?.loadingFeatures || UW?.W?.app?.layout?.model?.get?.("loadingFeatures") || UW?.W?.app?.layout?.model?.get?.("loading") === true);
+        }
         if (!loading) {
           clearInterval(interval);
           resolve(true);
@@ -14167,9 +14192,8 @@ async function actionCopyAttributesFromSelection(segIds) {
   const id = Number(segIds?.[0]);
   if (!Number.isFinite(id)) { toast("Cannot copy attrs: no segment."); closeAllMenus(); return; }
 
-  const seg = sdkSegGetById(id);
-  const segW = UW?.W?.model?.segments?.getObjectById?.(id) || null;
-  if (!seg && !segW) { toast("Cannot copy attrs: segment not loaded."); closeAllMenus(); return; }
+  const seg = sdkSegGetById(id) || segWGetById(id);
+  if (!seg) { toast("Cannot copy attrs: segment not loaded."); closeAllMenus(); return; }
 
   attrClip = pickAttributesFromSegmentId(id);
   toast("Copied attributes");
@@ -14569,7 +14593,10 @@ async function actionPasteAttributesToSelection(segIds) {
 
   function nodeIdFromW(segW, which) {
     const a = segW?.attributes || {};
-    return a[which + "NodeID"] ?? a[which + "NodeId"] ?? a[which + "Node"] ?? segW?.[which + "NodeID"] ?? null;
+    const key = String(which || "").toLowerCase();
+    if (key === "from") return a.fromNodeID ?? a.fromNodeId ?? a.fromNode ?? segW?.fromNodeID ?? segW?.fromNodeId ?? segW?.fromNode ?? null;
+    if (key === "to") return a.toNodeID ?? a.toNodeId ?? a.toNode ?? segW?.toNodeID ?? segW?.toNodeId ?? segW?.toNode ?? null;
+    return a[which + "NodeID"] ?? a[which + "NodeId"] ?? a[which + "Node"] ?? segW?.[which + "NodeID"] ?? segW?.[which + "NodeId"] ?? segW?.[which + "Node"] ?? null;
   }
 
   function connectedSegmentsAtNode(nodeId, loadedSegs) {
@@ -14592,7 +14619,7 @@ async function actionPasteAttributesToSelection(segIds) {
     const all = new Set();
 
     for (const startId of segIds) {
-      const startW = UW?.W?.model?.segments?.getObjectById?.(startId) || null;
+      const startW = sdkSegGetById(startId) || segWGetById(startId);
       if (!startW) { all.add(startId); continue; }
 
       all.add(startId);
@@ -14614,7 +14641,7 @@ async function actionPasteAttributesToSelection(segIds) {
           const nextSegId = con[0];
           all.add(nextSegId);
 
-          const nextW = UW?.W?.model?.segments?.getObjectById?.(nextSegId) || null;
+          const nextW = sdkSegGetById(nextSegId) || segWGetById(nextSegId);
           if (!nextW) break;
 
           const nFrom = nodeIdFromW(nextW, "from");
@@ -14699,8 +14726,8 @@ async function actionPasteAttributesToSelection(segIds) {
         const cityId = street?.cityId ?? street?.cityID ?? null;
         if (!cityName && cityId != null) {
           try {
-            const c = UW?.W?.model?.cities?.getObjectById?.(Number(cityId));
-            cityName = c?.name ?? null;
+            const c = sdkCitiesGetById(Number(cityId)) || null;
+            cityName = c?.name ?? c?.cityName ?? null;
           } catch {}
         }
       }
@@ -14722,8 +14749,8 @@ async function actionPasteAttributesToSelection(segIds) {
           if (!streetName) streetName = st?.name ?? null;
           const cId = st?.cityID ?? st?.cityId ?? st?.attributes?.cityID ?? st?.attributes?.cityId ?? null;
           if (cId != null) {
-            const c = UW?.W?.model?.cities?.getObjectById?.(Number(cId));
-            cityName = c?.name ?? null;
+            const c = sdkCitiesGetById(Number(cId)) || UW?.W?.model?.cities?.getObjectById?.(Number(cId)) || null;
+            cityName = c?.name ?? c?.cityName ?? null;
           }
         }
       } catch {}
