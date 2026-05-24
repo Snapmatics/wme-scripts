@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - JB Geometry
 // @author       Fo_tis (4) / GreekCaptain (5)
-// @version      0.1.1
+// @version      0.1.2
 // @description  Editable geometry builder for WME Junction Boxes
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
