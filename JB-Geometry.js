@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - JB Geometry
 // @author       Fo_tis (4) / GreekCaptain (5)
-// @version      0.1.0
+// @version      0.2.0
 // @description  Editable geometry builder for WME Junction Boxes
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
@@ -19,7 +19,7 @@
 // @run-at       document-start
 // @license      MIT
 // @connect      w-tools.org
-// @downloadURL https://update.greasyfork.org/scripts/579540/WME%20-%20JB%20Geometry.user.js 
+// @downloadURL https://update.greasyfork.org/scripts/579540/WME%20-%20JB%20Geometry.user.js
 // @updateURL https://update.greasyfork.org/scripts/579540/WME%20-%20JB%20Geometry.user.js
 // @icon         data:image/png;base64,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
 // @grant        none
@@ -31,8 +31,8 @@
     if (/^\/(?:discuss|user\/editor)(?:\/|$)/.test(window.location.pathname || '')) return;
 
     const SCRIPT_ID = 'gr.wme.jb-pretty';
-    const SCRIPT_NAME = 'JB Geometry';
-    const VERSION = '0.5.7';
+    const SCRIPT_NAME = 'WME - JB Geometry';
+    const VERSION = '0.2.0';
 
     const GLOBAL_KEY = '__JB_PRETTY__';
 
@@ -3685,6 +3685,7 @@
         btnCopyPasteJb: null,
         recreateEditTarget: null,
         recreateEditKey: null,
+        recreateTurnSnapshot: null,
         editCard: null,
         colorCard: null,
         actionCard: null,
@@ -4507,7 +4508,7 @@
                 shortcutsDesc: 'Useful editing shortcuts while shaping a JB.',
                 replaceJb: 'Replace JB',
                 replaceJbNoSelection: 'Select/click an existing Junction Box first.',
-                replaceJbDone: 'Junction Box deleted and loaded as editable shape. Modify it, then click Create JB.',
+                replaceJbDone: 'Junction Box removed and loaded as editable shape. Modify it, then click Create JB to create the replacement and copy turn permissions.',
                 recreateEditLoaded: 'JB loaded as editable shape. Modify it, then click Create JB to test direct update.',
                 directUpdateOk: 'Direct update was attempted on the selected JB. Try saving in WME.',
                 directUpdateFail: 'Direct update failed. Use Replace JB instead.',
@@ -4550,7 +4551,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Replace JB',
                 replaceJbNoSelection: 'Επίλεξε ή πάτα ένα υπάρχον Junction Box πρώτα.',
-                replaceJbDone: 'Το Junction Box διαγράφηκε και μπήκε σαν editable shape. Τροποποίησέ το και μετά πάτα Δημιουργία JB.',
+                replaceJbDone: 'Το Junction Box αφαιρέθηκε και φορτώθηκε σαν editable shape. Τροποποίησέ το και μετά πάτα Δημιουργία JB για να δημιουργηθεί το νέο με τα ίδια turn permissions.',
                 recreateEditLoaded: 'Το JB φορτώθηκε σαν editable shape. Τροποποίησέ το και πάτα Δημιουργία JB για δοκιμή direct update.',
                 directUpdateOk: 'Έγινε προσπάθεια direct update στο επιλεγμένο JB. Δοκίμασε save στο WME.',
                 directUpdateFail: 'Το direct update δεν πέτυχε. Χρησιμοποίησε Replace JB.',
@@ -4593,7 +4594,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'JB ersetzen',
                 replaceJbNoSelection: 'Wähle/klicke zuerst eine bestehende Junction Box.',
-                replaceJbDone: 'Junction Box gelöscht und als bearbeitbare Form geladen. Ändere sie und klicke dann auf JB erstellen.',
+                replaceJbDone: 'Junction Box entfernt und als bearbeitbare Form geladen. Ändere sie und klicke dann auf JB erstellen, um den Ersatz mit kopierten Turn Permissions zu erstellen.',
                 recreateEditLoaded: 'JB als bearbeitbare Form geladen. Ändere sie und klicke auf JB erstellen, um das direkte Update zu testen.',
                 directUpdateOk: 'Direktes Update wurde an der ausgewählten JB versucht. Versuche in WME zu speichern.',
                 directUpdateFail: 'Direktes Update fehlgeschlagen. Verwende stattdessen JB ersetzen.',
@@ -4636,7 +4637,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Remplacer JB',
                 replaceJbNoSelection: 'Sélectionne/clique d’abord une Junction Box existante.',
-                replaceJbDone: 'Junction Box supprimée et chargée comme forme modifiable. Modifie-la, puis clique sur Créer JB.',
+                replaceJbDone: 'Junction Box supprimée et chargée comme forme modifiable. Modifie-la, puis clique sur Créer JB pour créer le remplacement avec les mêmes permissions de virage.',
                 recreateEditLoaded: 'JB chargée comme forme modifiable. Modifie-la, puis clique sur Créer JB pour tester la mise à jour directe.',
                 directUpdateOk: 'Mise à jour directe tentée sur la JB sélectionnée. Essaie de sauvegarder dans WME.',
                 directUpdateFail: 'Mise à jour directe échouée. Utilise plutôt Remplacer JB.',
@@ -4679,7 +4680,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Reemplazar JB',
                 replaceJbNoSelection: 'Selecciona/haz clic primero en una Junction Box existente.',
-                replaceJbDone: 'Junction Box eliminada y cargada como forma editable. Modifícala y luego haz clic en Crear JB.',
+                replaceJbDone: 'Junction Box eliminada y cargada como forma editable. Modifícala y luego haz clic en Crear JB para crear el reemplazo y copiar los permisos de giro.',
                 recreateEditLoaded: 'JB cargada como forma editable. Modifícala y haz clic en Crear JB para probar la actualización directa.',
                 directUpdateOk: 'Se intentó actualizar directamente la JB seleccionada. Intenta guardar en WME.',
                 directUpdateFail: 'La actualización directa falló. Usa Reemplazar JB.',
@@ -4722,7 +4723,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Sostituisci JB',
                 replaceJbNoSelection: 'Seleziona/fai clic prima su una Junction Box esistente.',
-                replaceJbDone: 'Junction Box eliminata e caricata come forma modificabile. Modificala, poi fai clic su Crea JB.',
+                replaceJbDone: 'Junction Box rimossa e caricata come forma modificabile. Modificala, poi fai clic su Crea JB per creare la sostituzione e copiare i permessi di svolta.',
                 recreateEditLoaded: 'JB caricata come forma modificabile. Modificala, poi fai clic su Crea JB per testare l’aggiornamento diretto.',
                 directUpdateOk: 'Aggiornamento diretto tentato sulla JB selezionata. Prova a salvare in WME.',
                 directUpdateFail: 'Aggiornamento diretto non riuscito. Usa Sostituisci JB.',
@@ -4765,7 +4766,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Substituir JB',
                 replaceJbNoSelection: 'Seleciona/clica primeiro numa Junction Box existente.',
-                replaceJbDone: 'Junction Box eliminada e carregada como forma editável. Modifica-a e depois clica em Criar JB.',
+                replaceJbDone: 'Junction Box carregada como forma editável. Modifica-a e depois clica em Criar JB para atualizar a JB original.',
                 recreateEditLoaded: 'JB carregada como forma editável. Modifica-a e clica em Criar JB para testar a atualização direta.',
                 directUpdateOk: 'Foi tentada a atualização direta na JB selecionada. Tenta guardar no WME.',
                 directUpdateFail: 'A atualização direta falhou. Usa Substituir JB.',
@@ -4808,7 +4809,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'JB vervangen',
                 replaceJbNoSelection: 'Selecteer/klik eerst een bestaande Junction Box.',
-                replaceJbDone: 'Junction Box verwijderd en geladen als bewerkbare vorm. Pas deze aan en klik daarna op JB maken.',
+                replaceJbDone: 'Junction Box verwijderd en geladen als bewerkbare vorm. Pas deze aan en klik daarna op JB maken om de vervanging te maken en turn permissions te kopiëren.',
                 recreateEditLoaded: 'JB geladen als bewerkbare vorm. Pas deze aan en klik op JB maken om directe update te testen.',
                 directUpdateOk: 'Directe update geprobeerd op de geselecteerde JB. Probeer op te slaan in WME.',
                 directUpdateFail: 'Directe update mislukt. Gebruik JB vervangen.',
@@ -4937,7 +4938,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Înlocuiește JB',
                 replaceJbNoSelection: 'Selectează/clic pe o Junction Box existentă mai întâi.',
-                replaceJbDone: 'Junction Box ștearsă și încărcată ca formă editabilă. Modific-o, apoi apasă Creează JB.',
+                replaceJbDone: 'Junction Box încărcată ca formă editabilă. Modific-o, apoi apasă Creează JB pentru a actualiza JB originală.',
                 recreateEditLoaded: 'JB încărcată ca formă editabilă. Modific-o, apoi apasă Creează JB pentru a testa actualizarea directă.',
                 directUpdateOk: 'S-a încercat actualizarea directă a JB selectate. Încearcă să salvezi în WME.',
                 directUpdateFail: 'Actualizarea directă a eșuat. Folosește Înlocuiește JB.',
@@ -4980,7 +4981,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Замени JB',
                 replaceJbNoSelection: 'Първо избери/кликни съществуваща Junction Box.',
-                replaceJbDone: 'Junction Box е изтрита и заредена като редактируема форма. Промени я и после кликни Създай JB.',
+                replaceJbDone: 'Junction Box е премахнат и зареден като редактируема форма. Промени го и после кликни Създай JB, за да се създаде заместител с копирани turn permissions.',
                 recreateEditLoaded: 'JB е заредена като редактируема форма. Промени я и кликни Създай JB, за да тестваш директна актуализация.',
                 directUpdateOk: 'Опитан е директен update на избраната JB. Опитай да запазиш в WME.',
                 directUpdateFail: 'Директният update не успя. Използвай Замени JB.',
@@ -5023,7 +5024,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'החלפת JB',
                 replaceJbNoSelection: 'בחר/לחץ קודם על Junction Box קיימת.',
-                replaceJbDone: 'Junction Box נמחקה ונטענה כצורה ניתנת לעריכה. שנה אותה ואז לחץ Create JB.',
+                replaceJbDone: 'Junction Box נמחקה ונטענה כצורה ניתנת לעריכה. שנה אותה ואז לחץ Create JB כדי ליצור החלפה עם אותן הרשאות פנייה.',
                 recreateEditLoaded: 'JB נטענה כצורה ניתנת לעריכה. שנה אותה ואז לחץ Create JB כדי לבדוק עדכון ישיר.',
                 directUpdateOk: 'בוצע ניסיון לעדכון ישיר של ה-JB שנבחרה. נסה לשמור ב-WME.',
                 directUpdateFail: 'עדכון ישיר נכשל. השתמש ב-Replace JB במקום.',
@@ -5066,7 +5067,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'استبدال JB',
                 replaceJbNoSelection: 'اختر/اضغط على Junction Box موجودة أولاً.',
-                replaceJbDone: 'تم حذف Junction Box وتحميلها كشكل قابل للتعديل. عدّلها ثم اضغط Create JB.',
+                replaceJbDone: 'تم حذف Junction Box وتحميلها كشكل قابل للتعديل. عدّلها ثم اضغط Create JB لإنشاء البديل ونسخ أذونات الانعطاف.',
                 recreateEditLoaded: 'تم تحميل JB كشكل قابل للتعديل. عدّلها ثم اضغط Create JB لاختبار التحديث المباشر.',
                 directUpdateOk: 'تمت محاولة تحديث مباشر للـ JB المحددة. حاول الحفظ في WME.',
                 directUpdateFail: 'فشل التحديث المباشر. استخدم استبدال JB بدلاً من ذلك.',
@@ -6470,7 +6471,7 @@
                 .jbg-btn, .jbg-map-toolbar, .jbg-map-tool { transition: none; }
                 .jbg-btn:hover, .jbg-map-tool:hover { transform: none; }
             }
-
+        
             .jbg-map-tool.jbg-rotate-tool,
             .jbg-map-tool.jbg-rotate-tool:hover,
             .jbg-map-tool.jbg-rotate-tool:active,
@@ -7049,13 +7050,173 @@
                 background: linear-gradient(135deg, #ff5a5a, #dc2626) !important;
             }
 
+
+            .jbg-splash-backdrop[data-jbg-theme="light"],
+            .jbg-modal-backdrop[data-jbg-theme="light"] {
+                background: rgba(241,245,249,.58) !important;
+                backdrop-filter: blur(14px) saturate(145%) !important;
+                -webkit-backdrop-filter: blur(14px) saturate(145%) !important;
+            }
+            .jbg-splash[data-jbg-theme="light"],
+            .jbg-modal[data-jbg-theme="light"] {
+                border-color: rgba(15,23,42,.14) !important;
+                background:
+                    radial-gradient(circle at 18% 0%, rgba(42,168,255,.12), transparent 34%),
+                    radial-gradient(circle at 92% 8%, rgba(168,85,247,.10), transparent 32%),
+                    linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.98)) !important;
+                color: #0f172a !important;
+                -webkit-text-fill-color: #0f172a !important;
+                box-shadow: 0 30px 80px rgba(15,23,42,.18), inset 0 1px 0 rgba(255,255,255,.94) !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-splash-title,
+            .jbg-splash[data-jbg-theme="light"] .jbg-splash-item-title,
+            .jbg-splash[data-jbg-theme="light"] .jbg-setup-toggle-title,
+            .jbg-modal[data-jbg-theme="light"] .jbg-modal-title {
+                color: #0f172a !important;
+                -webkit-text-fill-color: #0f172a !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-splash-subtitle,
+            .jbg-splash[data-jbg-theme="light"] .jbg-splash-item-text,
+            .jbg-splash[data-jbg-theme="light"] .jbg-setup-label,
+            .jbg-splash[data-jbg-theme="light"] .jbg-setup-toggle-sub,
+            .jbg-modal[data-jbg-theme="light"] .jbg-modal-message {
+                color: rgba(51,65,85,.84) !important;
+                -webkit-text-fill-color: rgba(51,65,85,.84) !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-splash-kicker {
+                border-color: rgba(42,168,255,.30) !important;
+                background: rgba(42,168,255,.12) !important;
+                color: #1d4ed8 !important;
+                -webkit-text-fill-color: #1d4ed8 !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-splash-item,
+            .jbg-splash[data-jbg-theme="light"] .jbg-setup-toggle {
+                border-color: rgba(15,23,42,.12) !important;
+                background: rgba(15,23,42,.045) !important;
+                color: #0f172a !important;
+                -webkit-text-fill-color: #0f172a !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-custom-select-btn {
+                border-color: rgba(15,23,42,.14) !important;
+                background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(241,245,249,.90)) !important;
+                color: #0f172a !important;
+                -webkit-text-fill-color: #0f172a !important;
+                text-shadow: none !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.92), 0 8px 20px rgba(15,23,42,.12) !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-custom-select-btn::after {
+                border-right-color: rgba(15,23,42,.72) !important;
+                border-bottom-color: rgba(15,23,42,.72) !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-custom-select-menu {
+                border-color: rgba(15,23,42,.13) !important;
+                background: rgba(255,255,255,.98) !important;
+                color: #0f172a !important;
+                -webkit-text-fill-color: #0f172a !important;
+                box-shadow: 0 18px 44px rgba(15,23,42,.18), inset 0 1px 0 rgba(255,255,255,.92) !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-custom-select-option {
+                color: rgba(15,23,42,.82) !important;
+                -webkit-text-fill-color: rgba(15,23,42,.82) !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-custom-select-option:hover {
+                background: rgba(15,23,42,.06) !important;
+                color: #0f172a !important;
+                -webkit-text-fill-color: #0f172a !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-custom-select-option.is-active {
+                background: linear-gradient(180deg, #2aa8ff, #0b74ff) !important;
+                color: #fff !important;
+                -webkit-text-fill-color: #fff !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-setup-switch {
+                background: rgba(148,163,184,.34) !important;
+                box-shadow: inset 0 1px 2px rgba(15,23,42,.16) !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-setup-switch::after {
+                background: #fff !important;
+                box-shadow: 0 3px 9px rgba(15,23,42,.24) !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-setup-toggle.is-on .jbg-setup-switch {
+                background: #2aa8ff !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-modal-btn:not(.jbg-modal-btn-primary) {
+                border-color: rgba(15,23,42,.12) !important;
+                background: rgba(15,23,42,.045) !important;
+                color: #334155 !important;
+                -webkit-text-fill-color: #334155 !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.86) !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-modal-btn:not(.jbg-modal-btn-primary):hover {
+                border-color: rgba(42,168,255,.28) !important;
+                background: rgba(42,168,255,.08) !important;
+                color: #0f172a !important;
+                -webkit-text-fill-color: #0f172a !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-splash-btn,
+            .jbg-splash[data-jbg-theme="light"] .jbg-modal-btn-primary {
+                color: #fff !important;
+                -webkit-text-fill-color: #fff !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="dark"],
+            .jbg-modal[data-jbg-theme="dark"] {
+                color: #f8fafc !important;
+                -webkit-text-fill-color: #f8fafc !important;
+            }
+
 `;
         document.head.appendChild(style);
     }
 
+    function getJbgThemeHint() {
+        const roots = [document.documentElement, document.body, document.querySelector('[wz-theme]')].filter(Boolean);
+        for (const el of roots) {
+            const attr = String(el.getAttribute('wz-theme') || '').toLowerCase();
+            if (attr === 'light' || attr === 'dark') return attr;
+        }
+        for (const el of roots) {
+            const cls = String(el.className || '').toLowerCase();
+            if (cls.includes('theme-light') || cls.includes('wmerclight')) return 'light';
+            if (cls.includes('theme-dark') || cls.includes('wmercdark')) return 'dark';
+        }
+        try {
+            const css = getComputedStyle(document.documentElement);
+            const raw = css.getPropertyValue('--background_default') || css.backgroundColor || '';
+            const nums = String(raw).match(/\d+(?:\.\d+)?/g)?.map(Number) || [];
+            if (nums.length >= 3) {
+                const brightness = (nums[0] * 299 + nums[1] * 587 + nums[2] * 114) / 1000;
+                return brightness > 150 ? 'light' : 'dark';
+            }
+        } catch (e) {}
+        try {
+            return window.matchMedia?.('(prefers-color-scheme: light)')?.matches ? 'light' : 'dark';
+        } catch (e) {}
+        return 'dark';
+    }
+
+    function applyJbgThemeHint(el) {
+        if (!el || !el.className) return;
+        const cls = String(el.className);
+        if (!/(^|\s)(jbg-shell|jbg-splash|jbg-splash-backdrop|jbg-modal|jbg-modal-backdrop)(\s|$)/.test(cls)) return;
+        const theme = getJbgThemeHint();
+        el.dataset.jbgTheme = theme;
+        el.classList.toggle('jbg-theme-light', theme === 'light');
+        el.classList.toggle('jbg-theme-dark', theme === 'dark');
+    }
+
     function createEl(tag, className, text) {
         const el = document.createElement(tag);
-        if (className) el.className = className;
+        if (className) {
+            el.className = className;
+            applyJbgThemeHint(el);
+        }
         if (text != null) el.textContent = text;
         return el;
     }
@@ -8405,8 +8566,8 @@
         btnCircle.addEventListener('click', () => runSafely(async () => { clearRecreateEditTarget(); await startCircleOrConvertCurrent(); refreshUiStatus(); }));
         btnManual.addEventListener('click', () => runSafely(async () => { clearRecreateEditTarget(); if (!(await confirmReplaceCurrentShape('a new Manual shape'))) return; resetCurrentShapeForNewMode('manual-new'); ensureOverlayLayer(); manualStart(); refreshUiStatus(); }));
         btnCreate.addEventListener('click', () => runSafely(async () => {
-            if (UI.recreateEditTarget) {
-                await updateRecreatedJunctionBoxDirectly();
+            if (UI.recreateTurnSnapshot || UI.recreateEditTarget) {
+                await recreateReplacedJunctionBoxWithTurnSnapshot();
                 return;
             }
             const current = writeSettings({ shortcutKey: 'j' });
@@ -8832,6 +8993,7 @@
     function clearRecreateEditTarget() {
         UI.recreateEditTarget = null;
         UI.recreateEditKey = null;
+        UI.recreateTurnSnapshot = null;
     }
 
     function cloneOlGeometrySafe(g) {
@@ -8903,6 +9065,172 @@
         try { W?.model?.events?.trigger?.('change'); } catch (e) {}
 
         return changed;
+    }
+
+    function getJunctionBoxObjectId(obj) {
+        return String(obj?.id ?? obj?.model?.id ?? obj?.attributes?.id ?? obj?.objectId ?? '');
+    }
+
+    function cloneTurnSnapshotValue(value) {
+        if (value == null) return value;
+        try { return JSON.parse(JSON.stringify(value)); } catch (e) {}
+        if (Array.isArray(value)) return value.map(v => cloneTurnSnapshotValue(v));
+        if (typeof value === 'object') return Object.assign({}, value);
+        return value;
+    }
+
+    function getTurnMatchKey(turn, withPath = false) {
+        if (!turn) return '';
+        const path = Array.isArray(turn.segmentPath) ? turn.segmentPath.map(String).join(',') : '';
+        const base = [
+            turn.fromSegmentId,
+            turn.fromSegmentFwd ? 1 : 0,
+            turn.toSegmentId,
+            turn.toSegmentFwd ? 1 : 0,
+        ].join('|');
+        return withPath ? `${base}|${path}` : base;
+    }
+
+    function cleanTurnSnapshotRow(turn) {
+        return {
+            id: String(turn?.id || ''),
+            key: getTurnMatchKey(turn, false),
+            fullKey: getTurnMatchKey(turn, true),
+            fromSegmentId: turn?.fromSegmentId,
+            fromSegmentFwd: !!turn?.fromSegmentFwd,
+            toSegmentId: turn?.toSegmentId,
+            toSegmentFwd: !!turn?.toSegmentFwd,
+            segmentPath: Array.isArray(turn?.segmentPath) ? turn.segmentPath.slice() : [],
+            isAllowed: !!turn?.isAllowed,
+            restrictions: cloneTurnSnapshotValue(turn?.restrictions || []),
+            instructionOpCode: turn?.instructionOpCode ?? null,
+            lanes: cloneTurnSnapshotValue(turn?.lanes ?? null),
+        };
+    }
+
+    async function getSdkTurnsModuleSafe() {
+        try {
+            const sdk = await initSdkOnce();
+            return sdk?.DataModel?.Turns || null;
+        } catch (e) {
+            log('Turns SDK unavailable:', e);
+            return null;
+        }
+    }
+
+    async function getAllTurnsSafe() {
+        const turns = await getSdkTurnsModuleSafe();
+        if (!turns?.getAll) return [];
+        try {
+            const res = turns.getAll();
+            const rows = (res && typeof res.then === 'function') ? await res : res;
+            return Array.isArray(rows) ? rows : [];
+        } catch (e) {
+            log('Turns.getAll failed:', e);
+            return [];
+        }
+    }
+
+    async function captureJunctionBoxTurnSnapshot() {
+        const rows = await getAllTurnsSafe();
+        const jbTurns = rows.filter(t => t && t.isJunctionBoxTurn && t.id && t.fromSegmentId != null && t.toSegmentId != null);
+        const unique = new Map();
+        for (const turn of jbTurns) {
+            const snap = cleanTurnSnapshotRow(turn);
+            if (!snap.key) continue;
+            unique.set(snap.fullKey || snap.key, snap);
+        }
+        return Array.from(unique.values());
+    }
+
+    async function waitForReplacementTurns(snapshot, timeoutMs = 4500) {
+        const wanted = new Set((snapshot || []).map(t => t.key).filter(Boolean));
+        const started = Date.now();
+        let last = [];
+        while (Date.now() - started <= timeoutMs) {
+            const turns = await getAllTurnsSafe();
+            last = turns.filter(t => t?.isJunctionBoxTurn && wanted.has(getTurnMatchKey(t, false)));
+            if (last.length || !wanted.size) return turns;
+            await sleep(220);
+        }
+        return await getAllTurnsSafe();
+    }
+
+    async function updateTurnFromSnapshot(destTurn, src) {
+        const turns = await getSdkTurnsModuleSafe();
+        if (!turns?.updateTurn || !destTurn?.id || !src) return false;
+
+        const turnData = {
+            isAllowed: !!src.isAllowed,
+            restrictions: cloneTurnSnapshotValue(src.restrictions || []),
+        };
+        if (src.instructionOpCode != null) turnData.instructionOpCode = src.instructionOpCode;
+        if (src.lanes != null) turnData.lanes = cloneTurnSnapshotValue(src.lanes);
+
+        const attempts = [
+            { turnId: destTurn.id, ...turnData },
+            { id: destTurn.id, ...turnData },
+            { turnId: destTurn.id, turn: turnData },
+            { turn: { id: destTurn.id, ...turnData } },
+            { id: destTurn.id, turn: turnData },
+        ];
+
+        for (const args of attempts) {
+            try {
+                const res = turns.updateTurn(args);
+                if (res && typeof res.then === 'function') await res;
+                return true;
+            } catch (e) {}
+        }
+
+        try {
+            const minimal = { turnId: destTurn.id, isAllowed: !!src.isAllowed };
+            const res = turns.updateTurn(minimal);
+            if (res && typeof res.then === 'function') await res;
+            return true;
+        } catch (e) {
+            log('Turns.updateTurn failed:', e);
+            return false;
+        }
+    }
+
+    async function applyJunctionBoxTurnSnapshot(snapshot) {
+        if (!Array.isArray(snapshot) || !snapshot.length) return { applied: 0, total: 0 };
+        const turns = await waitForReplacementTurns(snapshot);
+        const byFull = new Map();
+        const byBase = new Map();
+        for (const turn of turns) {
+            if (!turn?.isJunctionBoxTurn || !turn.id) continue;
+            const full = getTurnMatchKey(turn, true);
+            const base = getTurnMatchKey(turn, false);
+            if (full) byFull.set(full, turn);
+            if (base && !byBase.has(base)) byBase.set(base, turn);
+        }
+
+        let applied = 0;
+        for (const src of snapshot) {
+            const dest = byFull.get(src.fullKey) || byBase.get(src.key);
+            if (!dest) continue;
+            const ok = await updateTurnFromSnapshot(dest, src);
+            if (ok) applied++;
+        }
+        return { applied, total: snapshot.length };
+    }
+
+    async function recreateReplacedJunctionBoxWithTurnSnapshot() {
+        const snapshot = UI.recreateTurnSnapshot || await captureJunctionBoxTurnSnapshot();
+        const current = writeSettings({ shortcutKey: 'j' });
+        const newFt = await commitOverlayToJb({ autoClearAfterCreate: current.autoClearAfterCreate });
+        const result = await applyJunctionBoxTurnSnapshot(snapshot);
+        clearRecreateEditTarget();
+        EDITOR.createAbortReminderShownForShape = false;
+        showJbGeometryNotification(`Junction Box replaced. Turn permissions copied: ${result.applied}/${result.total}. Review before saving.`, {
+            title: getUiText().replaceJb,
+            closeLabel: 'OK',
+            timeoutMs: 8500,
+        });
+        refreshUiStatus();
+        return !!newFt;
     }
 
     async function updateRecreatedJunctionBoxDirectly() {
@@ -9377,6 +9705,9 @@
 
         if (!(await confirmReplaceCurrentShape('selected Junction Box geometry'))) return false;
 
+        const targetObj = getFirstJunctionBoxObjectFromContext({});
+        const turnSnapshot = await captureJunctionBoxTurnSnapshot();
+
         dispatchDeleteSelectedJunctionBox();
 
         try { await sleep(180); } catch (e) {}
@@ -9386,11 +9717,14 @@
         editorSetRadius(0);
         editorRenderOverlayFromRaw();
 
+        UI.recreateEditTarget = targetObj || getFirstJunctionBoxObjectFromContext({});
+        UI.recreateEditKey = ringSignatureForCopy(sani.ring);
+        UI.recreateTurnSnapshot = turnSnapshot;
         UI.copiedJbRing = null;
         UI.copiedJbKey = null;
         UI.lastSelectedJbKey = null;
 
-        showJbGeometryNotification(getUiText().replaceJbDone, {
+        showJbGeometryNotification(`${getUiText().replaceJbDone} Turn permissions captured: ${turnSnapshot.length}.`, {
             title: getUiText().replaceJb,
             closeLabel: 'OK',
             timeoutMs: 7500,
