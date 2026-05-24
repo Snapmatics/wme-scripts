@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - JB Geometry
 // @author       Fo_tis (4) / GreekCaptain (5)
-// @version      0.2.0
+// @version      0.1.1
 // @description  Editable geometry builder for WME Junction Boxes
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
@@ -32,7 +32,7 @@
 
     const SCRIPT_ID = 'gr.wme.jb-pretty';
     const SCRIPT_NAME = 'WME - JB Geometry';
-    const VERSION = '0.2.0';
+    const VERSION = '0.1.1';
 
     const GLOBAL_KEY = '__JB_PRETTY__';
 
@@ -6121,6 +6121,58 @@
                 font-size: 12px;
                 line-height: 1.35;
             }
+            .jbg-changelog-list {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 12px;
+                margin-top: 20px;
+                max-width: 58ch;
+            }
+            .jbg-changelog-row {
+                display: grid;
+                grid-template-columns: 74px 1fr;
+                gap: 12px;
+                align-items: start;
+            }
+            .jbg-changelog-type {
+                width: fit-content;
+                min-width: 56px;
+                padding: 4px 9px;
+                border-radius: 999px;
+                border: 1px solid rgba(42,168,255,.32);
+                background: rgba(42,168,255,.12);
+                color: #dbeafe;
+                -webkit-text-fill-color: #dbeafe;
+                font-size: 11px;
+                line-height: 1.15;
+                font-weight: 950;
+                text-align: center;
+            }
+            .jbg-changelog-type.is-fixed {
+                border-color: rgba(34,197,94,.38);
+                background: rgba(34,197,94,.14);
+                color: #bbf7d0;
+                -webkit-text-fill-color: #bbf7d0;
+            }
+            .jbg-changelog-type.is-added {
+                border-color: rgba(42,168,255,.32);
+                background: rgba(42,168,255,.12);
+                color: #dbeafe;
+                -webkit-text-fill-color: #dbeafe;
+            }
+            .jbg-changelog-type.is-known-issue {
+                border-color: rgba(248,113,113,.42);
+                background: rgba(248,113,113,.14);
+                color: #fecaca;
+                -webkit-text-fill-color: #fecaca;
+            }
+            .jbg-changelog-text {
+                color: rgba(226,232,240,.82);
+                -webkit-text-fill-color: rgba(226,232,240,.82);
+                font-size: 13px;
+                line-height: 1.42;
+                padding-top: 2px;
+            }
             .jbg-splash-actions {
                 display: flex;
                 justify-content: flex-end;
@@ -6471,7 +6523,7 @@
                 .jbg-btn, .jbg-map-toolbar, .jbg-map-tool { transition: none; }
                 .jbg-btn:hover, .jbg-map-tool:hover { transform: none; }
             }
-        
+
             .jbg-map-tool.jbg-rotate-tool,
             .jbg-map-tool.jbg-rotate-tool:hover,
             .jbg-map-tool.jbg-rotate-tool:active,
@@ -6931,6 +6983,28 @@
                 color: var(--content_default, #f4f7fb) !important;
                 -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
             }
+            .jbg-changelog-type.is-fixed {
+                border-color: color-mix(in srgb, #22c55e 38%, transparent) !important;
+                background: color-mix(in srgb, #22c55e 14%, transparent) !important;
+                color: color-mix(in srgb, #22c55e 46%, var(--content_default, #f4f7fb)) !important;
+                -webkit-text-fill-color: color-mix(in srgb, #22c55e 46%, var(--content_default, #f4f7fb)) !important;
+            }
+            .jbg-changelog-type.is-added {
+                border-color: color-mix(in srgb, #2aa8ff 34%, transparent) !important;
+                background: color-mix(in srgb, #2aa8ff 13%, transparent) !important;
+                color: color-mix(in srgb, #2aa8ff 34%, var(--content_default, #f4f7fb)) !important;
+                -webkit-text-fill-color: color-mix(in srgb, #2aa8ff 34%, var(--content_default, #f4f7fb)) !important;
+            }
+            .jbg-changelog-type.is-known-issue {
+                border-color: color-mix(in srgb, #ef4444 40%, transparent) !important;
+                background: color-mix(in srgb, #ef4444 14%, transparent) !important;
+                color: color-mix(in srgb, #ef4444 52%, var(--content_default, #f4f7fb)) !important;
+                -webkit-text-fill-color: color-mix(in srgb, #ef4444 52%, var(--content_default, #f4f7fb)) !important;
+            }
+            .jbg-changelog-text {
+                color: color-mix(in srgb, var(--content_default, #f4f7fb) 74%, transparent) !important;
+                -webkit-text-fill-color: color-mix(in srgb, var(--content_default, #f4f7fb) 74%, transparent) !important;
+            }
             .jbg-custom-poly-textarea {
                 border-color: color-mix(in srgb, var(--content_default, #f4f7fb) 14%, transparent) !important;
                 background: color-mix(in srgb, var(--content_default, #f4f7fb) 5%, transparent) !important;
@@ -7098,6 +7172,32 @@
                 background: rgba(15,23,42,.045) !important;
                 color: #0f172a !important;
                 -webkit-text-fill-color: #0f172a !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-changelog-type.is-fixed {
+                border-color: rgba(34,197,94,.42) !important;
+                background: rgba(34,197,94,.16) !important;
+                color: #15803d !important;
+                -webkit-text-fill-color: #15803d !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-changelog-type.is-added {
+                border-color: rgba(42,168,255,.42) !important;
+                background: rgba(42,168,255,.14) !important;
+                color: #0757c8 !important;
+                -webkit-text-fill-color: #0757c8 !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-changelog-type.is-known-issue {
+                border-color: rgba(239,68,68,.38) !important;
+                background: rgba(239,68,68,.13) !important;
+                color: #b91c1c !important;
+                -webkit-text-fill-color: #b91c1c !important;
+                text-shadow: none !important;
+            }
+            .jbg-splash[data-jbg-theme="light"] .jbg-changelog-text {
+                color: #334155 !important;
+                -webkit-text-fill-color: #334155 !important;
                 text-shadow: none !important;
             }
             .jbg-splash[data-jbg-theme="light"] .jbg-custom-select-btn {
@@ -7467,27 +7567,114 @@
             });
         };
 
+        const getUpdateChangelog = () => {
+            const data = {
+                en: {
+                    kicker: `Update · v${VERSION}`,
+                    title: 'Changelog',
+                    subtitle: '',
+                    items: [
+                        ['Fixed', 'Replace JB would not capture the turn instructions.', 'fixed'],
+                        ['Fixed', 'Some text in the light first setup modal was not visible for some users.', 'fixed'],
+                        ['Added', 'Changelog modal.', 'added'],
+                        ['Issue', 'Map Notes are treated as a JB, so they can be used to create a JB based on their geometry.', 'known-issue'],
+                    ],
+                },
+                el: {
+                    kicker: `Ενημέρωση · v${VERSION}`,
+                    title: 'Αλλαγές έκδοσης',
+                    subtitle: '',
+                    items: [
+                        ['Διορθώθηκε', 'Το Replace JB δεν κρατούσε τα turn instructions.', 'fixed'],
+                        ['Διορθώθηκε', 'Κάποια κείμενα στο light first setup modal δεν ήταν ορατά για μερικούς χρήστες.', 'fixed'],
+                        ['Προστέθηκε', 'Changelog modal.', 'added'],
+                        ['Issue', 'Τα Map Notes αναγνωρίζονται σαν JB, οπότε μπορούν να χρησιμοποιηθούν για δημιουργία JB με βάση τη γεωμετρία τους.', 'known-issue'],
+                    ],
+                },
+                de: {
+                    kicker: `Update · v${VERSION}`,
+                    title: 'Changelog',
+                    subtitle: '',
+                    items: [
+                        ['Fixed', 'Replace JB would not capture the turn instructions.', 'fixed'],
+                        ['Fixed', 'Some text in the light first setup modal was not visible for some users.', 'fixed'],
+                        ['Added', 'Changelog modal.', 'added'],
+                        ['Issue', 'Map Notes are treated as a JB, so they can be used to create a JB based on their geometry.', 'known-issue'],
+                    ],
+                },
+                fr: {
+                    kicker: `Mise à jour · v${VERSION}`,
+                    title: 'Changelog',
+                    subtitle: '',
+                    items: [
+                        ['Fixed', 'Replace JB would not capture the turn instructions.', 'fixed'],
+                        ['Fixed', 'Some text in the light first setup modal was not visible for some users.', 'fixed'],
+                        ['Added', 'Changelog modal.', 'added'],
+                        ['Issue', 'Map Notes are treated as a JB, so they can be used to create a JB based on their geometry.', 'known-issue'],
+                    ],
+                },
+                es: {
+                    kicker: `Actualización · v${VERSION}`,
+                    title: 'Changelog',
+                    subtitle: '',
+                    items: [
+                        ['Fixed', 'Replace JB would not capture the turn instructions.', 'fixed'],
+                        ['Fixed', 'Some text in the light first setup modal was not visible for some users.', 'fixed'],
+                        ['Added', 'Changelog modal.', 'added'],
+                        ['Issue', 'Map Notes are treated as a JB, so they can be used to create a JB based on their geometry.', 'known-issue'],
+                    ],
+                },
+            };
+            return data[selectedLang] || data.en;
+        };
+
+        const renderChangelogGrid = () => {
+            const list = createEl('div', 'jbg-changelog-list');
+            const change = getUpdateChangelog();
+            for (const [title, body, kind] of change.items) {
+                const row = createEl('div', 'jbg-changelog-row');
+                row.appendChild(createEl('div', `jbg-changelog-type is-${kind || 'added'}`, title));
+                row.appendChild(createEl('div', 'jbg-changelog-text', body));
+                list.appendChild(row);
+            }
+            return list;
+        };
+
         const render = () => {
             modal.innerHTML = '';
             modal.dir = isRtlLanguage(selectedLang) ? 'rtl' : 'ltr';
 
-            if (step === 'welcome' || step === 'updated') {
-                modal.appendChild(createEl('div', 'jbg-splash-kicker', step === 'welcome' ? t().welcomeKicker : t().updatedKicker));
+            if (step === 'updated') {
+                const change = getUpdateChangelog();
+                modal.appendChild(createEl('div', 'jbg-splash-kicker', change.kicker));
+                modal.appendChild(createEl('div', 'jbg-splash-title', change.title));
+                if (change.subtitle) modal.appendChild(createEl('div', 'jbg-splash-subtitle', change.subtitle));
+                modal.appendChild(renderChangelogGrid());
+
+                const actions = createEl('div', 'jbg-splash-actions');
+                const ok = createEl('button', 'jbg-splash-btn', t().gotIt);
+                ok.type = 'button';
+                ok.addEventListener('click', () => {
+                    try { localStorage.setItem(splashKey, VERSION); } catch (e) {}
+                    close();
+                });
+                actions.appendChild(ok);
+                modal.appendChild(actions);
+                return;
+            }
+
+            if (step === 'welcome') {
+                modal.appendChild(createEl('div', 'jbg-splash-kicker', t().welcomeKicker));
                 modal.appendChild(createEl('div', 'jbg-splash-title', t().title));
                 modal.appendChild(createEl('div', 'jbg-splash-subtitle', t().welcomeSubtitle));
                 modal.appendChild(renderFeatureGrid());
 
                 const actions = createEl('div', 'jbg-splash-actions');
-                const ok = createEl('button', 'jbg-splash-btn', firstRun ? t().next : t().gotIt);
+                const ok = createEl('button', 'jbg-splash-btn', t().next);
                 ok.type = 'button';
                 ok.addEventListener('click', () => {
-                    if (firstRun) {
-                        step = 'setup';
-                        render();
-                    } else {
-                        try { localStorage.setItem(splashKey, VERSION); } catch (e) {}
-                        close();
-                    }
+                    step = 'setup';
+                    render();
                 });
                 actions.appendChild(ok);
                 modal.appendChild(actions);
@@ -9079,9 +9266,16 @@
         return value;
     }
 
+    function normalizeTurnSegmentPath(path) {
+        if (!Array.isArray(path)) return [];
+        return path
+            .map(v => Number(v))
+            .filter(v => Number.isFinite(v));
+    }
+
     function getTurnMatchKey(turn, withPath = false) {
         if (!turn) return '';
-        const path = Array.isArray(turn.segmentPath) ? turn.segmentPath.map(String).join(',') : '';
+        const path = normalizeTurnSegmentPath(turn.segmentPath).map(String).join(',');
         const base = [
             turn.fromSegmentId,
             turn.fromSegmentFwd ? 1 : 0,
@@ -9091,7 +9285,87 @@
         return withPath ? `${base}|${path}` : base;
     }
 
+    function collectTurnSegmentIds(turn) {
+        const ids = [];
+        const add = (v) => {
+            const n = Number(v);
+            if (Number.isFinite(n) && !ids.includes(n)) ids.push(n);
+        };
+        add(turn?.fromSegmentId);
+        add(turn?.toSegmentId);
+        for (const id of normalizeTurnSegmentPath(turn?.segmentPath)) add(id);
+        return ids;
+    }
+
+    function turnSharesAnySegment(turn, segmentIds) {
+        if (!segmentIds || !segmentIds.size) return false;
+        return collectTurnSegmentIds(turn).some(id => segmentIds.has(Number(id)));
+    }
+
+    function getPathSignature(path) {
+        const ids = normalizeTurnSegmentPath(path);
+        return ids.length ? ids.join(',') : '';
+    }
+
+    function normalizeLaneIndexesFromTurnLanes(lanes) {
+        if (lanes == null) return null;
+
+        const out = [];
+        const pushIndex = (idx) => {
+            const n = Number(idx);
+            if (Number.isInteger(n) && n >= 0 && !out.includes(n)) out.push(n);
+        };
+
+        const pushRange = (a, b) => {
+            const from = Number(a);
+            const to = Number(b);
+            if (!Number.isInteger(from) || !Number.isInteger(to)) return;
+            const min = Math.min(from, to);
+            const max = Math.max(from, to);
+            for (let i = min; i <= max; i++) pushIndex(i);
+        };
+
+        const scan = (entry) => {
+            if (entry == null) return;
+
+            if (Array.isArray(entry)) {
+                for (const item of entry) scan(item);
+                return;
+            }
+
+            if (typeof entry === 'number') {
+                pushIndex(entry);
+                return;
+            }
+
+            if (typeof entry !== 'object') return;
+
+            if (Array.isArray(entry.laneIndexes)) {
+                for (const idx of entry.laneIndexes) pushIndex(idx);
+            }
+            if (Array.isArray(entry.enabledLaneIndexes)) {
+                for (const idx of entry.enabledLaneIndexes) pushIndex(idx);
+            }
+            if (Array.isArray(entry.indexes)) {
+                for (const idx of entry.indexes) pushIndex(idx);
+            }
+
+            if (entry.fromLaneIndex != null && entry.toLaneIndex != null) {
+                pushRange(entry.fromLaneIndex, entry.toLaneIndex);
+            } else if (entry.fromLaneIndex != null) {
+                pushIndex(entry.fromLaneIndex);
+            } else if (entry.toLaneIndex != null) {
+                pushIndex(entry.toLaneIndex);
+            }
+        };
+
+        scan(lanes);
+        out.sort((a, b) => a - b);
+        return out;
+    }
+
     function cleanTurnSnapshotRow(turn) {
+        const segmentPath = normalizeTurnSegmentPath(turn?.segmentPath);
         return {
             id: String(turn?.id || ''),
             key: getTurnMatchKey(turn, false),
@@ -9100,11 +9374,16 @@
             fromSegmentFwd: !!turn?.fromSegmentFwd,
             toSegmentId: turn?.toSegmentId,
             toSegmentFwd: !!turn?.toSegmentFwd,
-            segmentPath: Array.isArray(turn?.segmentPath) ? turn.segmentPath.slice() : [],
+            segmentPath,
+            pathSignature: getPathSignature(segmentPath),
+            relatedSegmentIds: collectTurnSegmentIds(Object.assign({}, turn, { segmentPath })),
+            isJunctionBoxTurn: !!turn?.isJunctionBoxTurn,
+            isPathTurn: !!turn?.isPathTurn || segmentPath.length > 0,
             isAllowed: !!turn?.isAllowed,
             restrictions: cloneTurnSnapshotValue(turn?.restrictions || []),
             instructionOpCode: turn?.instructionOpCode ?? null,
             lanes: cloneTurnSnapshotValue(turn?.lanes ?? null),
+            laneIndexes: normalizeLaneIndexesFromTurnLanes(turn?.lanes ?? null),
         };
     }
 
@@ -9133,12 +9412,14 @@
 
     async function captureJunctionBoxTurnSnapshot() {
         const rows = await getAllTurnsSafe();
-        const jbTurns = rows.filter(t => t && t.isJunctionBoxTurn && t.id && t.fromSegmentId != null && t.toSegmentId != null);
+        const valid = rows.filter(t => t && t.id && t.fromSegmentId != null && t.toSegmentId != null);
+        const jbTurns = valid.filter(t => !!t.isJunctionBoxTurn);
+
         const unique = new Map();
         for (const turn of jbTurns) {
             const snap = cleanTurnSnapshotRow(turn);
             if (!snap.key) continue;
-            unique.set(snap.fullKey || snap.key, snap);
+            if (!unique.has(snap.key)) unique.set(snap.key, snap);
         }
         return Array.from(unique.values());
     }
@@ -9156,36 +9437,43 @@
         return await getAllTurnsSafe();
     }
 
-    async function updateTurnFromSnapshot(destTurn, src) {
+    async function createPathTurnFromSnapshot(src) {
         const turns = await getSdkTurnsModuleSafe();
-        if (!turns?.updateTurn || !destTurn?.id || !src) return false;
-
-        const turnData = {
-            isAllowed: !!src.isAllowed,
-            restrictions: cloneTurnSnapshotValue(src.restrictions || []),
-        };
-        if (src.instructionOpCode != null) turnData.instructionOpCode = src.instructionOpCode;
-        if (src.lanes != null) turnData.lanes = cloneTurnSnapshotValue(src.lanes);
+        if (!turns?.createPathTurn || !src?.isPathTurn) return null;
+        if (src.fromSegmentId == null || src.toSegmentId == null) return null;
 
         const attempts = [
-            { turnId: destTurn.id, ...turnData },
-            { id: destTurn.id, ...turnData },
-            { turnId: destTurn.id, turn: turnData },
-            { turn: { id: destTurn.id, ...turnData } },
-            { id: destTurn.id, turn: turnData },
+            {
+                fromSegmentId: Number(src.fromSegmentId),
+                isForward: !!src.toSegmentFwd,
+                toSegmentId: Number(src.toSegmentId),
+            },
+            {
+                fromSegmentId: Number(src.fromSegmentId),
+                isForward: !src.toSegmentFwd,
+                toSegmentId: Number(src.toSegmentId),
+            },
         ];
 
         for (const args of attempts) {
             try {
-                const res = turns.updateTurn(args);
-                if (res && typeof res.then === 'function') await res;
-                return true;
-            } catch (e) {}
+                const res = turns.createPathTurn(args);
+                const created = (res && typeof res.then === 'function') ? await res : res;
+                if (created?.id) return created;
+            } catch (e) {
+                log('Turns.createPathTurn failed:', e, args, src);
+            }
         }
 
+        return null;
+    }
+
+    async function updateTurnFromSnapshot(destTurn, src) {
+        const turns = await getSdkTurnsModuleSafe();
+        if (!turns?.updateTurn || !destTurn?.id || !src) return false;
+
         try {
-            const minimal = { turnId: destTurn.id, isAllowed: !!src.isAllowed };
-            const res = turns.updateTurn(minimal);
+            const res = turns.updateTurn({ turnId: destTurn.id, isAllowed: !!src.isAllowed });
             if (res && typeof res.then === 'function') await res;
             return true;
         } catch (e) {
@@ -9194,13 +9482,36 @@
         }
     }
 
+    async function applyTurnLaneGuidanceFromSnapshot(destTurn, src) {
+        const turns = await getSdkTurnsModuleSafe();
+        if (!turns?.setTurnLaneGuidance || !destTurn?.id || !src) return false;
+
+        const laneIndexes = Array.isArray(src.laneIndexes)
+            ? src.laneIndexes.filter(n => Number.isInteger(Number(n)) && Number(n) >= 0).map(Number)
+            : normalizeLaneIndexesFromTurnLanes(src.lanes);
+
+        if (!Array.isArray(laneIndexes)) return false;
+        if (src.lanes == null && laneIndexes.length === 0) return false;
+
+        try {
+            const res = turns.setTurnLaneGuidance({ turnId: destTurn.id, laneIndexes });
+            if (res && typeof res.then === 'function') await res;
+            return true;
+        } catch (e) {
+            log('Turns.setTurnLaneGuidance failed:', e);
+            return false;
+        }
+    }
+
     async function applyJunctionBoxTurnSnapshot(snapshot) {
-        if (!Array.isArray(snapshot) || !snapshot.length) return { applied: 0, total: 0 };
+        if (!Array.isArray(snapshot) || !snapshot.length) return { applied: 0, total: 0, lanesApplied: 0, lanesTotal: 0 };
+
         const turns = await waitForReplacementTurns(snapshot);
+
         const byFull = new Map();
         const byBase = new Map();
-        for (const turn of turns) {
-            if (!turn?.isJunctionBoxTurn || !turn.id) continue;
+        for (const turn of turns || []) {
+            if (!turn?.id || !turn.isJunctionBoxTurn) continue;
             const full = getTurnMatchKey(turn, true);
             const base = getTurnMatchKey(turn, false);
             if (full) byFull.set(full, turn);
@@ -9208,13 +9519,22 @@
         }
 
         let applied = 0;
+        let lanesApplied = 0;
+        let lanesTotal = 0;
         for (const src of snapshot) {
             const dest = byFull.get(src.fullKey) || byBase.get(src.key);
             if (!dest) continue;
+
             const ok = await updateTurnFromSnapshot(dest, src);
             if (ok) applied++;
+
+            if (src.lanes != null || Array.isArray(src.laneIndexes)) {
+                lanesTotal++;
+                const laneOk = await applyTurnLaneGuidanceFromSnapshot(dest, src);
+                if (laneOk) lanesApplied++;
+            }
         }
-        return { applied, total: snapshot.length };
+        return { applied, total: snapshot.length, lanesApplied, lanesTotal };
     }
 
     async function recreateReplacedJunctionBoxWithTurnSnapshot() {
@@ -9224,7 +9544,8 @@
         const result = await applyJunctionBoxTurnSnapshot(snapshot);
         clearRecreateEditTarget();
         EDITOR.createAbortReminderShownForShape = false;
-        showJbGeometryNotification(`Junction Box replaced. Turn permissions copied: ${result.applied}/${result.total}. Review before saving.`, {
+        const laneText = result.lanesTotal ? ` Lane guidance copied: ${result.lanesApplied}/${result.lanesTotal}.` : '';
+        showJbGeometryNotification(`Junction Box replaced. Turn permissions copied: ${result.applied}/${result.total}.${laneText} Review before saving.`, {
             title: getUiText().replaceJb,
             closeLabel: 'OK',
             timeoutMs: 8500,
