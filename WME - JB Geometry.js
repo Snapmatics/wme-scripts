@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - JB Geometry
 // @author       Fo_tis (4) / GreekCaptain (5)
-// @version      0.2.3
+// @version      0.2.4
 // @description  Editable geometry builder for WME Junction Boxes
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
@@ -32,7 +32,7 @@
 
     const SCRIPT_ID = 'gr.wme.jb-pretty';
     const SCRIPT_NAME = 'WME - JB Geometry';
-    const VERSION = '0.2.3';
+    const VERSION = '0.2.4';
 
     const GLOBAL_KEY = '__JB_PRETTY__';
 
@@ -67,7 +67,70 @@
         for (const id of state.timers) window.clearInterval(id);
         state.timers.clear();
     }
-    function runCreateJbFlow() {
+
+
+
+
+    function closeJbGeometryScriptSidebar() {
+        try {
+            const editPanel = document.querySelector('#edit-panel');
+            const userScriptPane = document.querySelector('#userscript-tab-1');
+            const userTabs = document.querySelector('#user-tabs');
+
+            // Do NOT hide or modify #userscript-tab-1. Only switch WME back to the normal edit panel.
+            if (editPanel) {
+                editPanel.classList.add('active');
+                editPanel.removeAttribute('hidden');
+                editPanel.style.display = '';
+                try { editPanel.setAttribute('aria-expanded', 'true'); } catch (e) {}
+            }
+
+            if (userScriptPane) {
+                userScriptPane.classList.remove('active', 'show', 'in');
+                userScriptPane.style.display = '';
+                userScriptPane.removeAttribute('hidden');
+            }
+
+            if (userTabs) {
+                try { userTabs.querySelectorAll('li,a').forEach(el => el.classList.remove('active')); } catch (e) {}
+                // Keep the userscript drawer available; do not set hidden/display:none.
+                userTabs.style.display = '';
+            }
+
+            try {
+                const sidebar = document.querySelector('#sidebar');
+                if (sidebar) sidebar.style.display = '';
+            } catch (e) {}
+
+            return true;
+        } catch (e) {}
+
+        try {
+            const editPanel = document.querySelector('#edit-panel');
+            if (editPanel) {
+                editPanel.classList.add('active');
+                editPanel.removeAttribute('hidden');
+                editPanel.style.display = '';
+                return true;
+            }
+        } catch (e) {}
+
+        return false;
+    }
+
+    function closeJbGeometryScriptSidebarSoon() {
+        const run = () => {
+            closeJbGeometryScriptSidebar();
+            try { document.activeElement?.blur?.(); } catch (e) {}
+        };
+
+        try { setTimeoutSafe(run, 30); } catch (e) { try { setTimeout(run, 30); } catch (_) {} }
+        try { setTimeoutSafe(run, 160); } catch (e) { try { setTimeout(run, 160); } catch (_) {} }
+        try { setTimeoutSafe(run, 420); } catch (e) { try { setTimeout(run, 420); } catch (_) {} }
+    }
+
+
+function runCreateJbFlow() {
         refreshJbToolCache();
 
         const beforeIds = snapshotBigJunctionFeatureIds();
@@ -97,6 +160,7 @@
                 try { dbgRenderRole('committed', newFt.geometry); } catch (e) {}
                 dbgRenderBBoxFor('committed', newFt.geometry);
                 setUiStatus([ UI.statusEl?.textContent, '', `Committed: OK ✅ (${newFt.id})` ]);
+                closeJbGeometryScriptSidebarSoon();
             } else {
                 setUiStatus([ UI.statusEl?.textContent, '', 'Committed: not detected (timeout) ⚠️' ]);
             }
@@ -2971,6 +3035,9 @@
             toast.appendChild(textWrap);
             toast.appendChild(actions);
             document.body.appendChild(toast);
+        try { applyWmeVarsToVisibleNotifications(); } catch (e) {}
+        try { setTimeout(applyWmeVarsToVisibleNotifications, 30); } catch (e) {}
+        try { setTimeout(applyWmeVarsToVisibleNotifications, 160); } catch (e) {}
 
             const close = (value) => {
                 try { toast.remove(); } catch (e) {}
@@ -3693,6 +3760,16 @@
         copiedJbRing: null,
         copiedJbKey: null,
         lastSelectedJbKey: null,
+        recordedJbTurns: null,
+        recordedJbTurnsBusy: false,
+        recordedJbTurnsSeq: 0,
+        lastLaneRestoreSnapshot: null,
+        lastLaneRestoreBigJunctionId: null,
+        manualCopyTurnSnapshot: null,
+        manualPasteBigJunctionId: null,
+        manualLaneWidthSnapshot: null,
+        copiedTurnFloatingBox: null,
+        openedFromJunctionEntryView: false,
         clickedJbAt: 0,
         clickCaptureInstalled: false,
         retryTimer: null,
@@ -4128,17 +4205,7 @@
         try { softResetWmeMode(reason); } catch (e) {}
         return true;
     }
-
-
-    function softResetWmeMode(reason = 'recover') {
-        try {
-            const evtBase = { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true };
-            for (const target of [window, document, document.body, getMapDiv()].filter(Boolean)) {
-                try { target.dispatchEvent(new KeyboardEvent('keydown', evtBase)); } catch (e) {}
-                try { target.dispatchEvent(new KeyboardEvent('keyup', evtBase)); } catch (e) {}
-            }
-        } catch (e) {}
-
+function softResetWmeMode(reason = 'recover') {
         try {
             const em = W?.editingMediator;
             if (em?.set) {
@@ -4155,17 +4222,7 @@
 
         try { document.body.style.cursor = ''; } catch (e) {}
         try { getMapDiv()?.style && (getMapDiv().style.cursor = ''); } catch (e) {}
-
-        window.setTimeout(() => {
-            try {
-                const nav = findNavControl();
-                if (nav && !nav.active) nav.activate?.();
-            } catch (e) {}
-            try { document.body.style.cursor = ''; } catch (e) {}
-            try { getMapDiv()?.style && (getMapDiv().style.cursor = ''); } catch (e) {}
-        }, 80);
-
-        return true;
+        try { W?.map?.map?.events?.clearMouseCache?.(); } catch (e) {}
     }
 
     function forceWmeEditRecovery(reason = 'recover') {
@@ -4508,7 +4565,7 @@
                 shortcutsDesc: 'Useful editing shortcuts while shaping a JB.',
                 replaceJb: 'Replace JB',
                 replaceJbNoSelection: 'Select/click an existing Junction Box first.',
-                replaceJbDone: 'Junction Box removed and loaded as editable shape. Modify it, then click Create JB to create the replacement and copy turn permissions.',
+                replaceJbDone: 'Junction Box removed and loaded as editable shape. Modify it, then click Create JB to create the replacement.',
                 recreateEditLoaded: 'JB loaded as editable shape. Modify it, then click Create JB to test direct update.',
                 directUpdateOk: 'Direct update was attempted on the selected JB. Try saving in WME.',
                 directUpdateFail: 'Direct update failed. Use Replace JB instead.',
@@ -4551,7 +4608,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Replace JB',
                 replaceJbNoSelection: 'Επίλεξε ή πάτα ένα υπάρχον Junction Box πρώτα.',
-                replaceJbDone: 'Το Junction Box αφαιρέθηκε και φορτώθηκε σαν editable shape. Τροποποίησέ το και μετά πάτα Δημιουργία JB για να δημιουργηθεί το νέο με τα ίδια turn permissions.',
+                replaceJbDone: 'Το Junction Box αφαιρέθηκε και φορτώθηκε σαν editable shape. Τροποποίησέ το και μετά πάτα Δημιουργία JB για να δημιουργηθεί το νέο.',
                 recreateEditLoaded: 'Το JB φορτώθηκε σαν editable shape. Τροποποίησέ το και πάτα Δημιουργία JB για δοκιμή direct update.',
                 directUpdateOk: 'Έγινε προσπάθεια direct update στο επιλεγμένο JB. Δοκίμασε save στο WME.',
                 directUpdateFail: 'Το direct update δεν πέτυχε. Χρησιμοποίησε Replace JB.',
@@ -4637,7 +4694,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Remplacer JB',
                 replaceJbNoSelection: 'Sélectionne/clique d’abord une Junction Box existante.',
-                replaceJbDone: 'Junction Box supprimée et chargée comme forme modifiable. Modifie-la, puis clique sur Créer JB pour créer le remplacement avec les mêmes permissions de virage.',
+                replaceJbDone: 'Junction Box removed and loaded as editable shape. Modify it, then click Create JB to create the replacement.',
                 recreateEditLoaded: 'JB chargée comme forme modifiable. Modifie-la, puis clique sur Créer JB pour tester la mise à jour directe.',
                 directUpdateOk: 'Mise à jour directe tentée sur la JB sélectionnée. Essaie de sauvegarder dans WME.',
                 directUpdateFail: 'Mise à jour directe échouée. Utilise plutôt Remplacer JB.',
@@ -4680,7 +4737,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Reemplazar JB',
                 replaceJbNoSelection: 'Selecciona/haz clic primero en una Junction Box existente.',
-                replaceJbDone: 'Junction Box eliminada y cargada como forma editable. Modifícala y luego haz clic en Crear JB para crear el reemplazo y copiar los permisos de giro.',
+                replaceJbDone: 'Junction Box removed and loaded as editable shape. Modify it, then click Create JB to create the replacement.',
                 recreateEditLoaded: 'JB cargada como forma editable. Modifícala y haz clic en Crear JB para probar la actualización directa.',
                 directUpdateOk: 'Se intentó actualizar directamente la JB seleccionada. Intenta guardar en WME.',
                 directUpdateFail: 'La actualización directa falló. Usa Reemplazar JB.',
@@ -4809,7 +4866,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'JB vervangen',
                 replaceJbNoSelection: 'Selecteer/klik eerst een bestaande Junction Box.',
-                replaceJbDone: 'Junction Box verwijderd en geladen als bewerkbare vorm. Pas deze aan en klik daarna op JB maken om de vervanging te maken en turn permissions te kopiëren.',
+                replaceJbDone: 'Junction Box removed and loaded as editable shape. Modify it, then click Create JB to create the replacement.',
                 recreateEditLoaded: 'JB geladen als bewerkbare vorm. Pas deze aan en klik op JB maken om directe update te testen.',
                 directUpdateOk: 'Directe update geprobeerd op de geselecteerde JB. Probeer op te slaan in WME.',
                 directUpdateFail: 'Directe update mislukt. Gebruik JB vervangen.',
@@ -4981,7 +5038,7 @@
                 recreate: 'Custom Polygon',
                 replaceJb: 'Замени JB',
                 replaceJbNoSelection: 'Първо избери/кликни съществуваща Junction Box.',
-                replaceJbDone: 'Junction Box е премахнат и зареден като редактируема форма. Промени го и после кликни Създай JB, за да се създаде заместител с копирани turn permissions.',
+                replaceJbDone: 'Junction Box removed and loaded as editable shape. Modify it, then click Create JB to create the replacement.',
                 recreateEditLoaded: 'JB е заредена като редактируема форма. Промени я и кликни Създай JB, за да тестваш директна актуализация.',
                 directUpdateOk: 'Опитан е директен update на избраната JB. Опитай да запазиш в WME.',
                 directUpdateFail: 'Директният update не успя. Използвай Замени JB.',
@@ -5223,6 +5280,7 @@
                 cursor: pointer;
                 box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 8px 18px rgba(0,0,0,.16);
                 transition: border-color .12s ease, background .12s ease, box-shadow .12s ease;
+    -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
             }
             .jbg-custom-select-btn:hover {
                 border-color: rgba(42,168,255,.38);
@@ -5300,6 +5358,7 @@
                 cursor: pointer;
                 text-align: left;
                 transition: background .095s ease, color .095s ease, transform .095s ease;
+    -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
             }
             .jbg-custom-select-option:hover {
                 background: rgba(255,255,255,.075);
@@ -6080,6 +6139,7 @@
                 font-weight: 900;
                 letter-spacing: .03em;
                 text-transform: uppercase;
+    -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
             }
             .jbg-splash-title {
                 margin-top: 14px;
@@ -6523,7 +6583,7 @@
                 .jbg-btn, .jbg-map-toolbar, .jbg-map-tool { transition: none; }
                 .jbg-btn:hover, .jbg-map-tool:hover { transform: none; }
             }
-        
+
             .jbg-map-tool.jbg-rotate-tool,
             .jbg-map-tool.jbg-rotate-tool:hover,
             .jbg-map-tool.jbg-rotate-tool:active,
@@ -7271,6 +7331,53 @@
                 -webkit-text-fill-color: #f8fafc !important;
             }
 
+            .jbg-turn-console {
+                position: fixed;
+                right: 18px;
+                bottom: 18px;
+                width: min(520px, calc(100vw - 36px));
+                max-height: min(560px, calc(100vh - 80px));
+                z-index: 2147483646;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                border-radius: 18px;
+                border: 1px solid color-mix(in srgb, var(--content_default, #f4f7fb) 16%, transparent);
+                background: color-mix(in srgb, var(--background_default, #151922) 90%, transparent);
+                color: var(--content_default, #f4f7fb);
+                box-shadow: 0 18px 48px rgba(0, 0, 0, .32);
+                backdrop-filter: blur(18px);
+                -webkit-backdrop-filter: blur(18px);
+                font-family: var(--content_font, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+            }
+            .jbg-turn-console.is-collapsed .jbg-turn-console-body { display: none; }
+            .jbg-turn-console-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                padding: 10px 12px;
+                cursor: move;
+                border-bottom: 1px solid color-mix(in srgb, var(--content_default, #f4f7fb) 10%, transparent);
+                background: color-mix(in srgb, var(--background_default, #151922) 80%, var(--content_default, #fff) 4%);
+            }
+            .jbg-turn-console-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-weight: 900; font-size: 12px; letter-spacing: .02em; }
+            .jbg-turn-console-sub { font-weight: 700; font-size: 11px; color: color-mix(in srgb, var(--content_default, #f4f7fb) 62%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px; }
+            .jbg-turn-console-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+            .jbg-turn-console-btn { min-width: 30px; height: 28px; padding: 0 9px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--content_default, #f4f7fb) 14%, transparent); background: color-mix(in srgb, var(--background_default, #151922) 80%, var(--content_default, #fff) 7%); color: var(--content_default, #f4f7fb); -webkit-text-fill-color: var(--content_default, #f4f7fb); font-weight: 900; font-size: 11px; line-height: 1; cursor: pointer; }
+            .jbg-turn-console-btn:hover { background: color-mix(in srgb, #2aa8ff 18%, var(--background_default, #151922)); border-color: color-mix(in srgb, #2aa8ff 55%, transparent); }
+            .jbg-turn-console-body { padding: 10px 12px 12px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+            .jbg-turn-console-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+            .jbg-turn-console-stat { border-radius: 12px; border: 1px solid color-mix(in srgb, var(--content_default, #f4f7fb) 10%, transparent); background: color-mix(in srgb, var(--background_default, #151922) 78%, var(--content_default, #fff) 5%); padding: 7px 8px; font-size: 11px; font-weight: 900; text-align: center; }
+            .jbg-turn-console-list { display: flex; flex-direction: column; gap: 6px; }
+            .jbg-turn-console-row { border-radius: 12px; border: 1px solid color-mix(in srgb, var(--content_default, #f4f7fb) 10%, transparent); background: color-mix(in srgb, var(--background_default, #151922) 84%, var(--content_default, #fff) 4%); padding: 8px; font-size: 11px; line-height: 1.35; }
+            .jbg-turn-console-row.is-allowed { border-color: rgba(34, 199, 122, .34); }
+            .jbg-turn-console-row.is-blocked { border-color: rgba(255, 83, 102, .34); }
+            .jbg-turn-console-main { display: flex; justify-content: space-between; gap: 8px; font-weight: 900; }
+            .jbg-turn-console-state { color: #22c77a; white-space: nowrap; }
+            .jbg-turn-console-row.is-blocked .jbg-turn-console-state { color: #ff5366; }
+            .jbg-turn-console-details { margin-top: 4px; color: color-mix(in srgb, var(--content_default, #f4f7fb) 70%, transparent); word-break: break-word; }
+
 `;
         document.head.appendChild(style);
     }
@@ -7568,17 +7675,19 @@
             });
         };
 
-        const getUpdateChangelog = () => {
+
+
+const getUpdateChangelog = () => {
             const data = {
                 en: {
                     kicker: `Update · v${VERSION}`,
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Fixed', 'Replace JB would not capture the turn instructions.', 'fixed'],
-                        ['Fixed', 'Some text in the light first setup modal was not visible for some users.', 'fixed'],
-                        ['Added', 'Changelog modal.', 'added'],
-                        ['Issue', 'Map Notes are treated as a JB, so they can be used to create a JB based on their geometry.', 'known-issue'],
+                        ['Added', 'Open JB Geometry Editor button inside the Junction Box entry view.', 'added'],
+                        ['Added', 'High-priority manual review warning after replacing a Junction Box.', 'added'],
+                        ['Fixed', 'Light theme font visibility issues inside setup and changelog modals.', 'fixed'],
+                        ['Issue', 'Turn instructions and far-lane guidance cannot be restored automatically after replacing a Junction Box yet.', 'known-issue'],
                     ],
                 },
                 el: {
@@ -7586,10 +7695,10 @@
                     title: 'Αλλαγές έκδοσης',
                     subtitle: '',
                     items: [
-                        ['Διορθώθηκε', 'Το Replace JB δεν κρατούσε τα turn instructions.', 'fixed'],
-                        ['Διορθώθηκε', 'Κάποια κείμενα στο light first setup modal δεν ήταν ορατά για μερικούς χρήστες.', 'fixed'],
-                        ['Προστέθηκε', 'Changelog modal.', 'added'],
-                        ['Issue', 'Τα Map Notes αναγνωρίζονται σαν JB, οπότε μπορούν να χρησιμοποιηθούν για δημιουργία JB με βάση τη γεωμετρία τους.', 'known-issue'],
+                        ['Προστέθηκε', 'Κουμπί Open JB Geometry Editor μέσα στο Junction Box entry view.', 'added'],
+                        ['Προστέθηκε', 'High-priority προειδοποίηση για manual review μετά το Replace JB.', 'added'],
+                        ['Διορθώθηκε', 'Προβλήματα ορατότητας γραμματοσειρών στο light theme μέσα στα setup και changelog modals.', 'fixed'],
+                        ['Issue', 'Turn instructions και far-lane guidance δεν μπορούν ακόμα να αποκατασταθούν αυτόματα μετά το Replace JB.', 'known-issue'],
                     ],
                 },
                 de: {
@@ -7597,10 +7706,10 @@
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Fixed', 'Replace JB would not capture the turn instructions.', 'fixed'],
-                        ['Fixed', 'Some text in the light first setup modal was not visible for some users.', 'fixed'],
-                        ['Added', 'Changelog modal.', 'added'],
-                        ['Issue', 'Map Notes are treated as a JB, so they can be used to create a JB based on their geometry.', 'known-issue'],
+                        ['Added', 'Open JB Geometry Editor button inside the Junction Box entry view.', 'added'],
+                        ['Added', 'High-priority manual review warning after replacing a Junction Box.', 'added'],
+                        ['Fixed', 'Light theme font visibility issues inside setup and changelog modals.', 'fixed'],
+                        ['Issue', 'Turn instructions and far-lane guidance cannot be restored automatically after replacing a Junction Box yet.', 'known-issue'],
                     ],
                 },
                 fr: {
@@ -7608,10 +7717,10 @@
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Fixed', 'Replace JB would not capture the turn instructions.', 'fixed'],
-                        ['Fixed', 'Some text in the light first setup modal was not visible for some users.', 'fixed'],
-                        ['Added', 'Changelog modal.', 'added'],
-                        ['Issue', 'Map Notes are treated as a JB, so they can be used to create a JB based on their geometry.', 'known-issue'],
+                        ['Added', 'Open JB Geometry Editor button inside the Junction Box entry view.', 'added'],
+                        ['Added', 'High-priority manual review warning after replacing a Junction Box.', 'added'],
+                        ['Fixed', 'Light theme font visibility issues inside setup and changelog modals.', 'fixed'],
+                        ['Issue', 'Turn instructions and far-lane guidance cannot be restored automatically after replacing a Junction Box yet.', 'known-issue'],
                     ],
                 },
                 es: {
@@ -7619,10 +7728,10 @@
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Fixed', 'Replace JB would not capture the turn instructions.', 'fixed'],
-                        ['Fixed', 'Some text in the light first setup modal was not visible for some users.', 'fixed'],
-                        ['Added', 'Changelog modal.', 'added'],
-                        ['Issue', 'Map Notes are treated as a JB, so they can be used to create a JB based on their geometry.', 'known-issue'],
+                        ['Added', 'Open JB Geometry Editor button inside the Junction Box entry view.', 'added'],
+                        ['Added', 'High-priority manual review warning after replacing a Junction Box.', 'added'],
+                        ['Fixed', 'Light theme font visibility issues inside setup and changelog modals.', 'fixed'],
+                        ['Issue', 'Turn instructions and far-lane guidance cannot be restored automatically after replacing a Junction Box yet.', 'known-issue'],
                     ],
                 },
             };
@@ -8785,6 +8894,7 @@
         refreshUiStatus();
         const selectionRefreshTimer = setIntervalSafe(() => {
             try { installJunctionBoxClickCapture(); } catch (e) {}
+            try { recordSelectedJunctionBoxTurnsIfNeeded(); } catch (e) {}
             try { refreshUiStatus(); } catch (e) {}
         }, 700);
 
@@ -8797,6 +8907,7 @@
             UI.btnClear = null;
             UI.btnCreate = null;
             UI.btnCopyPasteJb = null;
+            clearRecordedJunctionBoxTurns();
             clearRecreateEditTarget();
             UI.editCard = null;
             UI.colorCard = null;
@@ -8968,6 +9079,98 @@
         return null;
     }
 
+
+    function getStreetObjectById(id) {
+        if (id == null) return null;
+        const sid = String(id);
+        const stores = [
+            W?.model?.streets,
+            W?.model?.street,
+            W?.model?.roadNames,
+            W?.model?.streetNames,
+        ].filter(Boolean);
+
+        for (const store of stores) {
+            try { const obj = store.getObjectById?.(sid) || store.getObjectById?.(Number(sid)); if (obj) return obj; } catch (e) {}
+            try { const obj = store.get?.(sid) || store.get?.(Number(sid)); if (obj) return obj; } catch (e) {}
+            try { const obj = store.objects?.[sid] || store.objects?.[Number(sid)]; if (obj) return obj; } catch (e) {}
+        }
+        return null;
+    }
+
+    function getStreetNameFromObject(obj) {
+        if (!obj) return '';
+        const vals = [
+            obj.name,
+            obj.streetName,
+            obj.fullName,
+            obj.attributes?.name,
+            obj.attributes?.streetName,
+            obj.model?.name,
+            obj.model?.attributes?.name,
+            obj.getAttribute?.('name'),
+            obj.getAttribute?.('streetName'),
+        ];
+        for (const v of vals) {
+            const text = String(v || '').trim();
+            if (text) return text;
+        }
+        return '';
+    }
+
+    function getSegmentStreetIds(seg) {
+        const ids = [];
+        const push = (v) => {
+            if (v == null) return;
+            if (Array.isArray(v)) {
+                for (const item of v) push(item);
+                return;
+            }
+            if (typeof v === 'object') {
+                push(v.id ?? v.streetId ?? v.streetID ?? v.nameId);
+                return;
+            }
+            const n = Number(v);
+            if (Number.isFinite(n) && !ids.includes(n)) ids.push(n);
+        };
+        for (const c of [seg, seg?.attributes, seg?.model, seg?.model?.attributes].filter(Boolean)) {
+            push(c.primaryStreetID);
+            push(c.primaryStreetId);
+            push(c.streetID);
+            push(c.streetId);
+            push(c.streetIds);
+            push(c.streetIDs);
+            push(c.street);
+            push(c.streets);
+        }
+        return ids;
+    }
+
+    function getSegmentDisplayNameById(id) {
+        if (id == null) return 'n/a';
+        const seg = getSegmentObjectById(id);
+        const direct = [
+            seg?.name,
+            seg?.streetName,
+            seg?.roadName,
+            seg?.attributes?.name,
+            seg?.attributes?.streetName,
+            seg?.attributes?.roadName,
+            seg?.model?.name,
+            seg?.model?.attributes?.name,
+            seg?.getAttribute?.('name'),
+            seg?.getAttribute?.('streetName'),
+        ].map(v => String(v || '').trim()).find(Boolean);
+        if (direct) return direct;
+
+        for (const streetId of getSegmentStreetIds(seg)) {
+            const streetName = getStreetNameFromObject(getStreetObjectById(streetId));
+            if (streetName) return streetName;
+        }
+
+        return `Segment ${id}`;
+    }
+
     function collectPointsFromGeometryObject(obj, out) {
         if (!obj || !out) return;
 
@@ -9058,7 +9261,7 @@
             obj.model?.className,
             obj.constructor?.name,
         ].map(v => String(v || '').toLowerCase()).join(' ');
-        return /junction\s*box|junctionbox|jb/.test(parts);
+        return /junction\s*box|junctionbox|big[_\s-]*junction|junction[_\s-]*nc|\bjb\b/.test(parts);
     }
 
     function collectJunctionBoxIdsFromCtx(ctx) {
@@ -9090,6 +9293,118 @@
         push(ctx?.id);
 
         return Array.from(new Set(ids.filter(Boolean)));
+    }
+
+
+    function collectJunctionBoxIdsFromAnyObject(root, depth = 0, out = new Set()) {
+        if (!root || depth > 4) return out;
+        if (Array.isArray(root)) {
+            for (const item of root) collectJunctionBoxIdsFromAnyObject(item, depth + 1, out);
+            return out;
+        }
+        if (typeof root !== 'object') return out;
+
+        const typeText = [
+            root.type,
+            root.objectType,
+            root.modelType,
+            root.featureType,
+            root.className,
+            root.__type,
+            root.attributes?.type,
+            root.attributes?.objectType,
+            root.attributes?.modelType,
+            root.attributes?.__type,
+            root.model?.type,
+            root.model?.objectType,
+            root.model?.className,
+            root.model?.__type,
+            root.model?.attributes?.type,
+            root.model?.attributes?.objectType,
+            root.model?.attributes?.__type,
+            root.constructor?.name,
+        ].map(v => String(v || '').toLowerCase()).join(' ');
+
+        const looksJb = /junction\s*box|junctionbox|big[_\s-]*junction|junction[_\s-]*nc|\bjb\b/.test(typeText);
+        const idCandidates = [
+            root.id,
+            root.objectId,
+            root.bigJunctionId,
+            root.bigJunctionID,
+            root.junctionBoxId,
+            root.junctionBoxID,
+            root.junctionId,
+            root.attributes?.id,
+            root.attributes?.objectId,
+            root.attributes?.bigJunctionId,
+            root.attributes?.bigJunctionID,
+            root.attributes?.junctionBoxId,
+            root.attributes?.junctionBoxID,
+            root.attributes?.junctionId,
+            root.model?.id,
+            root.model?.objectId,
+            root.model?.bigJunctionId,
+            root.model?.bigJunctionID,
+            root.model?.junctionBoxId,
+            root.model?.junctionBoxID,
+            root.model?.junctionId,
+            root.model?.attributes?.id,
+            root.model?.attributes?.objectId,
+            root.model?.attributes?.bigJunctionId,
+            root.model?.attributes?.bigJunctionID,
+            root.model?.attributes?.junctionBoxId,
+            root.model?.attributes?.junctionBoxID,
+            root.model?.attributes?.junctionId,
+        ];
+
+        if (looksJb) {
+            for (const value of idCandidates) {
+                const n = Number(value);
+                if (Number.isFinite(n)) out.add(n);
+            }
+        }
+
+        for (const key of ['model', 'feature', 'attributes', 'object', 'selectedObject', 'selectedFeature', 'placeInfo']) {
+            try { collectJunctionBoxIdsFromAnyObject(root[key], depth + 1, out); } catch (e) {}
+        }
+        return out;
+    }
+
+    function getSelectedJunctionBoxIdFallback() {
+        const ids = new Set();
+        try {
+            for (const ft of getSelectedWmeFeaturesSafe()) collectJunctionBoxIdsFromAnyObject(ft, 0, ids);
+        } catch (e) {}
+
+        try {
+            const selected = [
+                W?.selectionManager?.selectedItems,
+                W?.selectionManager?.selectedObjects,
+                W?.selectionManager?.selectedFeatures,
+                W?.selectionManager?.getSelectedDataModelObjects?.(),
+                W?.selectionManager?.getSelectedFeatures?.(),
+            ];
+            for (const row of selected) collectJunctionBoxIdsFromAnyObject(row, 0, ids);
+        } catch (e) {}
+
+        if (!ids.size) {
+            try {
+                const txt = String(document.body?.innerText || '');
+                if (/JUNCTION\s+BOX\s+SELECTED/i.test(txt)) {
+                    const m = txt.match(/JUNCTION\s+BOX\s+SELECTED[\s\S]{0,220}?ID:\s*(\d+)/i) || txt.match(/ID:\s*(\d+)/i);
+                    if (m) ids.add(Number(m[1]));
+                }
+            } catch (e) {}
+        }
+
+        for (const id of ids) if (Number.isFinite(Number(id))) return Number(id);
+        return null;
+    }
+
+    function makeJunctionBoxIdOnlyObject(id) {
+        const n = Number(id);
+        if (!Number.isFinite(n)) return null;
+        return { id: n, objectType: 'BIG_JUNCTION', __type: 'BIG_JUNCTION', attributes: { id: n } };
     }
 
     function getSelectedWmeFeaturesSafe() {
@@ -9142,6 +9457,12 @@
 
         for (const obj of getSelectedJunctionBoxObjects()) pushObj(obj);
 
+        const selectedJbId = getSelectedJunctionBoxIdFallback();
+        if (selectedJbId != null) {
+            pushObj(getJunctionBoxObjectById(selectedJbId));
+            pushObj(makeJunctionBoxIdOnlyObject(selectedJbId));
+        }
+
         return out;
     }
 
@@ -9173,13 +9494,16 @@
     }
 
     function getFirstJunctionBoxObjectFromContext(ctx = {}) {
+        let idOnly = null;
         for (const obj of getJunctionBoxCandidateObjects(ctx)) {
             if (!maybeJunctionBoxObject(obj)) continue;
             const ring = getJunctionBoxRingFromObject(obj);
             if (ring && ring.length >= 4) return obj;
+            if (!idOnly && getBigJunctionIdValue(obj) != null) idOnly = obj;
         }
-        if (UI.clickedJbRing && UI.clickedJbRing.length >= 4) return getRealJunctionBoxObjectMatchingRing(UI.clickedJbRing);
-        return null;
+        if (idOnly) return idOnly;
+        if (UI.clickedJbRing && UI.clickedJbRing.length >= 4) return getRealJunctionBoxObjectMatchingRing(UI.clickedJbRing) || makeJunctionBoxIdOnlyObject(getSelectedJunctionBoxIdFallback());
+        return makeJunctionBoxIdOnlyObject(getSelectedJunctionBoxIdFallback());
     }
 
     function clearRecreateEditTarget() {
@@ -9263,7 +9587,148 @@
         return String(obj?.id ?? obj?.model?.id ?? obj?.attributes?.id ?? obj?.objectId ?? '');
     }
 
-    function cloneTurnSnapshotValue(value) {
+
+    function readDeepValue(obj, names) {
+        for (const name of names || []) {
+            try {
+                if (obj && obj[name] != null) return obj[name];
+            } catch (e) {}
+            try {
+                if (obj?.attributes && obj.attributes[name] != null) return obj.attributes[name];
+            } catch (e) {}
+            try {
+                if (obj?.model && obj.model[name] != null) return obj.model[name];
+            } catch (e) {}
+            try {
+                if (obj?.model?.attributes && obj.model.attributes[name] != null) return obj.model.attributes[name];
+            } catch (e) {}
+            try {
+                if (typeof obj?.get === 'function') {
+                    const v = obj.get(name);
+                    if (v != null) return v;
+                }
+            } catch (e) {}
+        }
+        return null;
+    }
+
+    function turnToPlainObject(turn) {
+        if (!turn) return {};
+        try {
+            if (typeof turn.toJSON === 'function') {
+                const json = turn.toJSON();
+                if (json && typeof json === 'object') return json;
+            }
+        } catch (e) {}
+        try {
+            if (typeof turn.getAttributes === 'function') {
+                const attrs = turn.getAttributes();
+                if (attrs && typeof attrs === 'object') return attrs;
+            }
+        } catch (e) {}
+        try {
+            if (turn.attributes && typeof turn.attributes === 'object') return turn.attributes;
+        } catch (e) {}
+        try {
+            return Object.assign({}, turn);
+        } catch (e) {
+            return {};
+        }
+    }
+function extractTurnData(turn) {
+        const plain = turnToPlainObject(turn);
+        const jsonId = plain?.id && typeof plain.id === 'object' ? plain.id : {};
+        const turnData = (() => {
+            try {
+                if (typeof turn?.getTurnData === 'function') return turn.getTurnData() || {};
+            } catch (e) {}
+            return turn?.nativeTurnData || turn?.turnData || {};
+        })();
+        const turnGuidance = turnData?.turnGuidance || turn?.turnGuidance || {};
+
+        const source = [turn, plain, jsonId, turnData, turnGuidance, turn?.attributes, turn?.model, turn?.model?.attributes].filter(Boolean);
+
+        const read = (names) => {
+            for (const obj of source) {
+                const v = readDeepValue(obj, names);
+                if (v != null) return v;
+            }
+            return null;
+        };
+
+        const callBool = (methodName) => {
+            try {
+                if (typeof turn?.[methodName] === 'function') return !!turn[methodName]();
+            } catch (e) {}
+            return null;
+        };
+
+        const readBool = (names, methodName = null) => {
+            const mv = methodName ? callBool(methodName) : null;
+            if (mv != null) return mv;
+            const v = read(names);
+            if (typeof v === 'boolean') return v;
+            if (v === 1 || v === '1' || String(v).toLowerCase() === 'true') return true;
+            if (v === 0 || v === '0' || String(v).toLowerCase() === 'false') return false;
+            return !!v;
+        };
+
+        const id = (() => {
+            const direct = read(['id', 'turnId', 'turnID', 'uuid']);
+            if (direct && typeof direct !== 'object') return direct;
+            try {
+                if (typeof turn?.getID === 'function') return turn.getID();
+            } catch (e) {}
+            return direct;
+        })();
+
+        const fromSegmentId = Number(turn?.fromVertex?.segmentID ?? turn?.fromVertex?.segmentId ?? read(['fromSegmentId', 'fromSegId', 'fromSegmentID', 'fromSegment', 'fromSegID']));
+        const toSegmentId = Number(turn?.toVertex?.segmentID ?? turn?.toVertex?.segmentId ?? read(['toSegmentId', 'toSegId', 'toSegmentID', 'toSegment', 'toSegID']));
+        const fromSegmentFwdRaw = read(['fromSegmentFwd', 'fromSegFwd', 'fromForward', 'fromIsForward', 'fromDirection']);
+        const toSegmentFwdRaw = read(['toSegmentFwd', 'toSegFwd', 'toForward', 'toIsForward', 'toDirection']);
+        const fromDirection = String(turn?.fromVertex?.direction || turn?.fromVertex?.dir || '').toLowerCase();
+        const toDirection = String(turn?.toVertex?.direction || turn?.toVertex?.dir || '').toLowerCase();
+
+        const asBoolDir = (raw, dir) => {
+            if (dir === 'f') return true;
+            if (dir === 'r') return false;
+            if (raw === 'f') return true;
+            if (raw === 'r') return false;
+            if (typeof raw === 'boolean') return raw;
+            return !!raw;
+        };
+
+        const segmentPath = read(['segmentPath', 'path', 'segmentsPath', 'pathSegments', 'viaSegmentIds', 'viaSegments', 'segments']);
+        const lanes = read(['lanes', 'laneGuidance', 'laneIndexes', 'turnLaneGuidance']) || turnGuidance?.lanes || turnGuidance?.laneGuidance || null;
+        const restrictions = read(['restrictions', 'turnRestrictions']);
+        const instructionOpCode = read(['instructionOpCode', 'instructionOpcode', 'instruction']);
+
+        let pathId = null;
+        try {
+            if (typeof turn?.getPathID === 'function') pathId = turn.getPathID();
+        } catch (e) {}
+
+        return {
+            raw: turn,
+            plain,
+            id: id != null && typeof id !== 'object' ? String(id) : '',
+            pathId,
+            fromSegmentId,
+            fromSegmentFwd: asBoolDir(fromSegmentFwdRaw, fromDirection),
+            toSegmentId,
+            toSegmentFwd: asBoolDir(toSegmentFwdRaw, toDirection),
+            segmentPath: normalizeTurnSegmentPath(segmentPath),
+            isJunctionBoxTurn: readBool(['isJunctionBoxTurn', 'junctionBoxTurn', 'isBigJunctionTurn', 'nativeBigJunctionPath'], 'isJunctionBoxTurn'),
+            isPathTurn: readBool(['isPathTurn', 'pathTurn'], 'isPathTurn'),
+            isFarTurn: readBool(['isFarTurn', 'farTurn'], 'isFarTurn'),
+            isAllowed: readBool(['isAllowed', 'allowed', 'navigable']),
+            restrictions: cloneTurnSnapshotValue(restrictions || []),
+            instructionOpCode: instructionOpCode ?? null,
+            lanes: cloneTurnSnapshotValue(lanes ?? null),
+        };
+    }
+
+function cloneTurnSnapshotValue(value) {
         if (value == null) return value;
         try { return JSON.parse(JSON.stringify(value)); } catch (e) {}
         if (Array.isArray(value)) return value.map(v => cloneTurnSnapshotValue(v));
@@ -9277,34 +9742,89 @@
             .map(v => Number(v))
             .filter(v => Number.isFinite(v));
     }
-
-    function getTurnMatchKey(turn, withPath = false) {
+function getTurnMatchKey(turn, withPath = false) {
         if (!turn) return '';
-        const path = normalizeTurnSegmentPath(turn.segmentPath).map(String).join(',');
+        const data = extractTurnData(turn);
+        const path = normalizeTurnSegmentPath(data.segmentPath).map(String).join(',');
         const base = [
-            turn.fromSegmentId,
-            turn.fromSegmentFwd ? 1 : 0,
-            turn.toSegmentId,
-            turn.toSegmentFwd ? 1 : 0,
+            data.fromSegmentId,
+            data.fromSegmentFwd ? 1 : 0,
+            data.toSegmentId,
+            data.toSegmentFwd ? 1 : 0,
         ].join('|');
         return withPath ? `${base}|${path}` : base;
     }
+function getTurnLooseMatchKey(turn) {
+        if (!turn) return '';
+        const data = extractTurnData(turn);
+        if (data.fromSegmentId == null || data.toSegmentId == null || !Number.isFinite(Number(data.fromSegmentId)) || !Number.isFinite(Number(data.toSegmentId))) return '';
+        return [data.fromSegmentId, data.toSegmentId].join('|');
+    }
 
-    function collectTurnSegmentIds(turn) {
+    function getTurnReverseLooseMatchKey(turn) {
+        if (!turn) return '';
+        const data = extractTurnData(turn);
+        if (!Number.isFinite(Number(data.fromSegmentId)) || !Number.isFinite(Number(data.toSegmentId))) return '';
+        return [data.toSegmentId, data.fromSegmentId].join('|');
+    }
+
+    function getTurnUndirectedLooseMatchKey(turn) {
+        if (!turn) return '';
+        const data = extractTurnData(turn);
+        const a = Number(data.fromSegmentId);
+        const b = Number(data.toSegmentId);
+        if (!Number.isFinite(a) || !Number.isFinite(b)) return '';
+        return [Math.min(a, b), Math.max(a, b)].join('|');
+    }
+
+    function getTurnNameKey(turn) {
+        const data = extractTurnData(turn);
+        const from = data.fromName || getSegmentDisplayNameById(data.fromSegmentId);
+        const to = data.toName || getSegmentDisplayNameById(data.toSegmentId);
+        return `${from || ''}→${to || ''}`;
+    }
+
+    function getTurnReverseNameKey(turn) {
+        const data = extractTurnData(turn);
+        const from = data.fromName || getSegmentDisplayNameById(data.fromSegmentId);
+        const to = data.toName || getSegmentDisplayNameById(data.toSegmentId);
+        return `${to || ''}→${from || ''}`;
+    }
+
+function collectTurnSegmentIds(turn) {
+        const data = extractTurnData(turn);
         const ids = [];
         const add = (v) => {
             const n = Number(v);
             if (Number.isFinite(n) && !ids.includes(n)) ids.push(n);
         };
-        add(turn?.fromSegmentId);
-        add(turn?.toSegmentId);
-        for (const id of normalizeTurnSegmentPath(turn?.segmentPath)) add(id);
+        add(data.fromSegmentId);
+        add(data.toSegmentId);
+        for (const id of normalizeTurnSegmentPath(data.segmentPath)) add(id);
         return ids;
     }
 
     function turnSharesAnySegment(turn, segmentIds) {
         if (!segmentIds || !segmentIds.size) return false;
         return collectTurnSegmentIds(turn).some(id => segmentIds.has(Number(id)));
+    }
+
+    function turnUsesOnlyJunctionBoxIncludedSegments(turn, includedSegmentIds) {
+        if (!turn || !includedSegmentIds || !includedSegmentIds.size) return false;
+        const ids = collectTurnSegmentIds(turn);
+        if (!ids.length) return false;
+        return ids.every(id => includedSegmentIds.has(Number(id)));
+    }
+
+    function turnTouchesJunctionBoxIncludedSegments(turn, includedSegmentIds) {
+        if (!turn || !includedSegmentIds || !includedSegmentIds.size) return false;
+        return collectTurnSegmentIds(turn).some(id => includedSegmentIds.has(Number(id)));
+    }
+
+    function getVisibleJbTurnSnapshotRows(snapshot) {
+        const rows = Array.isArray(snapshot) ? snapshot : [];
+        const filtered = rows.filter(row => row && row.inJunctionBox !== false);
+        return filtered.length || !rows.some(row => row && Object.prototype.hasOwnProperty.call(row, 'inJunctionBox')) ? filtered : [];
     }
 
     function getPathSignature(path) {
@@ -9368,31 +9888,176 @@
         out.sort((a, b) => a - b);
         return out;
     }
-
-    function cleanTurnSnapshotRow(turn) {
-        const segmentPath = normalizeTurnSegmentPath(turn?.segmentPath);
+function cleanTurnSnapshotRow(turn) {
+        const data = extractTurnData(turn);
+        const segmentPath = normalizeTurnSegmentPath(data.segmentPath);
+        const normalized = Object.assign({}, data, { segmentPath });
+        const fromName = getSegmentDisplayNameById(data.fromSegmentId);
+        const toName = getSegmentDisplayNameById(data.toSegmentId);
         return {
-            id: String(turn?.id || ''),
-            key: getTurnMatchKey(turn, false),
-            fullKey: getTurnMatchKey(turn, true),
-            fromSegmentId: turn?.fromSegmentId,
-            fromSegmentFwd: !!turn?.fromSegmentFwd,
-            toSegmentId: turn?.toSegmentId,
-            toSegmentFwd: !!turn?.toSegmentFwd,
+            id: String(data.id || ''),
+            pathId: data.pathId ?? null,
+            key: getTurnMatchKey(normalized, false),
+            fullKey: getTurnMatchKey(normalized, true),
+            fromSegmentId: data.fromSegmentId,
+            fromSegmentFwd: !!data.fromSegmentFwd,
+            toSegmentId: data.toSegmentId,
+            toSegmentFwd: !!data.toSegmentFwd,
+            fromName,
+            toName,
+            nameKey: `${fromName || ''}→${toName || ''}`,
+            reverseNameKey: `${toName || ''}→${fromName || ''}`,
             segmentPath,
             pathSignature: getPathSignature(segmentPath),
-            relatedSegmentIds: collectTurnSegmentIds(Object.assign({}, turn, { segmentPath })),
-            isJunctionBoxTurn: !!turn?.isJunctionBoxTurn,
-            isPathTurn: !!turn?.isPathTurn || segmentPath.length > 0,
-            isAllowed: !!turn?.isAllowed,
-            restrictions: cloneTurnSnapshotValue(turn?.restrictions || []),
-            instructionOpCode: turn?.instructionOpCode ?? null,
-            lanes: cloneTurnSnapshotValue(turn?.lanes ?? null),
-            laneIndexes: normalizeLaneIndexesFromTurnLanes(turn?.lanes ?? null),
+            relatedSegmentIds: collectTurnSegmentIds(Object.assign({}, normalized, { segmentPath })),
+            looseKey: getTurnLooseMatchKey(normalized),
+            reverseLooseKey: getTurnReverseLooseMatchKey(normalized),
+            undirectedLooseKey: getTurnUndirectedLooseMatchKey(normalized),
+            isJunctionBoxTurn: !!data.isJunctionBoxTurn,
+            isFarTurn: !!data.isFarTurn,
+            isPathTurn: !!data.isPathTurn || !!data.isFarTurn || segmentPath.length > 0,
+            isAllowed: !!data.isAllowed,
+            restrictions: cloneTurnSnapshotValue(data.restrictions || []),
+            instructionOpCode: data.instructionOpCode ?? null,
+            lanes: cloneTurnSnapshotValue(data.lanes ?? null),
+            laneIndexes: normalizeLaneIndexesFromTurnLanes(data.lanes ?? null),
         };
     }
 
-    async function getSdkTurnsModuleSafe() {
+function describeTurnSnapshotRow(row, index = 0) {
+        const laneIndexes = Array.isArray(row?.laneIndexes) ? row.laneIndexes.join(',') : '';
+        const path = Array.isArray(row?.segmentPath) && row.segmentPath.length ? row.segmentPath.join(' > ') : '';
+        return {
+            '#': index + 1,
+            state: row?.isAllowed ? 'allowed' : 'blocked',
+            from: getSegmentDisplayNameById(row?.fromSegmentId),
+            fromSegmentId: row?.fromSegmentId ?? '',
+            fromFwd: !!row?.fromSegmentFwd,
+            to: getSegmentDisplayNameById(row?.toSegmentId),
+            toSegmentId: row?.toSegmentId ?? '',
+            toFwd: !!row?.toSegmentFwd,
+            isJB: !!row?.isJunctionBoxTurn,
+            isPath: !!row?.isPathTurn,
+            lanes: laneIndexes,
+            path,
+            key: row?.key || '',
+            turnId: row?.id || '',
+        };
+    }
+
+    const JBTURN_FLOAT = {
+        el: null,
+        body: null,
+        sub: null,
+        drag: null,
+    };
+
+    function hideJbTurnFloatingConsole() {
+        try {
+            if (JBTURN_FLOAT.el) JBTURN_FLOAT.el.style.display = 'none';
+            if (JBTURN_FLOAT.sub) JBTURN_FLOAT.sub.textContent = 'No Junction Box selected.';
+        } catch (e) {}
+    }
+function showJbTurnFloatingConsole() {
+        try { hideJbTurnFloatingConsole(); } catch (e) {}
+    }
+
+    function ensureJbTurnFloatingConsole() {
+        if (JBTURN_FLOAT.el && document.body?.contains(JBTURN_FLOAT.el)) return JBTURN_FLOAT.el;
+        if (!document.body) return null;
+        const el = document.createElement('div');
+        el.className = 'jbg-turn-console';
+        const head = document.createElement('div');
+        head.className = 'jbg-turn-console-head';
+        const titleWrap = document.createElement('div');
+        titleWrap.className = 'jbg-turn-console-title';
+        const title = document.createElement('div');
+        title.textContent = 'JB Turn Recorder';
+        const sub = document.createElement('div');
+        sub.className = 'jbg-turn-console-sub';
+        sub.textContent = 'Waiting for selected Junction Box turns…';
+        titleWrap.appendChild(title);
+        titleWrap.appendChild(sub);
+        const actions = document.createElement('div');
+        actions.className = 'jbg-turn-console-actions';
+        const collapse = document.createElement('button');
+        collapse.type = 'button';
+        collapse.className = 'jbg-turn-console-btn';
+        collapse.textContent = 'Min';
+        const clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'jbg-turn-console-btn';
+        clear.textContent = 'Clear';
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'jbg-turn-console-btn';
+        close.textContent = '×';
+        actions.appendChild(collapse);
+        actions.appendChild(clear);
+        actions.appendChild(close);
+        head.appendChild(titleWrap);
+        head.appendChild(actions);
+        const body = document.createElement('div');
+        body.className = 'jbg-turn-console-body';
+        el.appendChild(head);
+        el.appendChild(body);
+        document.body.appendChild(el);
+        collapse.addEventListener('click', () => {
+            el.classList.toggle('is-collapsed');
+            collapse.textContent = el.classList.contains('is-collapsed') ? 'Open' : 'Min';
+        });
+        clear.addEventListener('click', () => {
+            body.textContent = '';
+            sub.textContent = 'Cleared.';
+        });
+        close.addEventListener('click', () => {
+            try { el.remove(); } catch (e) {}
+            JBTURN_FLOAT.el = null;
+            JBTURN_FLOAT.body = null;
+            JBTURN_FLOAT.sub = null;
+        });
+        const move = (evt) => {
+            if (!JBTURN_FLOAT.drag) return;
+            const x = Math.max(8, Math.min(window.innerWidth - 80, evt.clientX - JBTURN_FLOAT.drag.dx));
+            const y = Math.max(8, Math.min(window.innerHeight - 44, evt.clientY - JBTURN_FLOAT.drag.dy));
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            el.style.right = 'auto';
+            el.style.bottom = 'auto';
+        };
+        const stop = () => {
+            JBTURN_FLOAT.drag = null;
+            document.removeEventListener('mousemove', move, true);
+            document.removeEventListener('mouseup', stop, true);
+        };
+        head.addEventListener('mousedown', (evt) => {
+            if (evt.target?.closest?.('button')) return;
+            const rect = el.getBoundingClientRect();
+            JBTURN_FLOAT.drag = { dx: evt.clientX - rect.left, dy: evt.clientY - rect.top };
+            document.addEventListener('mousemove', move, true);
+            document.addEventListener('mouseup', stop, true);
+            try { evt.preventDefault(); } catch (e) {}
+        });
+        JBTURN_FLOAT.el = el;
+        JBTURN_FLOAT.body = body;
+        JBTURN_FLOAT.sub = sub;
+        return el;
+    }
+
+    function addJbTurnConsoleStat(parent, label, value) {
+        const el = document.createElement('div');
+        el.className = 'jbg-turn-console-stat';
+        el.textContent = `${label}: ${value}`;
+        parent.appendChild(el);
+    }
+function renderJbTurnFloatingConsole() {
+        try { hideJbTurnFloatingConsole(); } catch (e) {}
+    }
+function logJunctionBoxTurnSnapshotStatus() {
+        try { hideJbTurnFloatingConsole(); } catch (e) {}
+    }
+
+async function getSdkTurnsModuleSafe() {
         try {
             const sdk = await initSdkOnce();
             return sdk?.DataModel?.Turns || null;
@@ -9415,147 +10080,1509 @@
         }
     }
 
-    async function captureJunctionBoxTurnSnapshot() {
-        const rows = await getAllTurnsSafe();
-        const valid = rows.filter(t => t && t.id && t.fromSegmentId != null && t.toSegmentId != null);
-        const jbTurns = valid.filter(t => !!t.isJunctionBoxTurn);
 
-        const unique = new Map();
-        for (const turn of jbTurns) {
-            const snap = cleanTurnSnapshotRow(turn);
-            if (!snap.key) continue;
-            if (!unique.has(snap.key)) unique.set(snap.key, snap);
+    async function ensureJunctionBoxesLayerVisibleSafe() {
+        try {
+            const sdk = await initSdkOnce();
+            const res = sdk?.LayerSwitcher?.setJunctionBoxesLayerCheckboxChecked?.({ isChecked: true });
+            if (res && typeof res.then === 'function') await res;
+            return true;
+        } catch (e) {
+            log('Junction Boxes layer enable failed:', e);
+            return false;
         }
-        return Array.from(unique.values());
     }
 
-    async function waitForReplacementTurns(snapshot, timeoutMs = 4500) {
-        const wanted = new Set((snapshot || []).map(t => t.key).filter(Boolean));
-        const started = Date.now();
-        let last = [];
-        while (Date.now() - started <= timeoutMs) {
-            const turns = await getAllTurnsSafe();
-            last = turns.filter(t => t?.isJunctionBoxTurn && wanted.has(getTurnMatchKey(t, false)));
-            if (last.length || !wanted.size) return turns;
-            await sleep(220);
+    async function getSdkBigJunctionsModuleSafe() {
+        try {
+            const sdk = await initSdkOnce();
+            return sdk?.DataModel?.BigJunctions || null;
+        } catch (e) {
+            log('BigJunctions SDK unavailable:', e);
+            return null;
         }
-        return await getAllTurnsSafe();
     }
 
-    async function createPathTurnFromSnapshot(src) {
-        const turns = await getSdkTurnsModuleSafe();
-        if (!turns?.createPathTurn || !src?.isPathTurn) return null;
-        if (src.fromSegmentId == null || src.toSegmentId == null) return null;
-
-        const attempts = [
-            {
-                fromSegmentId: Number(src.fromSegmentId),
-                isForward: !!src.toSegmentFwd,
-                toSegmentId: Number(src.toSegmentId),
-            },
-            {
-                fromSegmentId: Number(src.fromSegmentId),
-                isForward: !src.toSegmentFwd,
-                toSegmentId: Number(src.toSegmentId),
-            },
+    function getBigJunctionIdValue(obj) {
+        const values = [
+            obj?.id,
+            obj?.objectId,
+            obj?.bigJunctionId,
+            obj?.bigJunctionID,
+            obj?.junctionBoxId,
+            obj?.junctionBoxID,
+            obj?.attributes?.id,
+            obj?.attributes?.objectId,
+            obj?.attributes?.bigJunctionId,
+            obj?.attributes?.bigJunctionID,
+            obj?.model?.id,
+            obj?.model?.objectId,
+            obj?.model?.bigJunctionId,
+            obj?.model?.bigJunctionID,
+            obj?.model?.attributes?.id,
+            obj?.model?.attributes?.objectId,
+            obj?.model?.attributes?.bigJunctionId,
+            obj?.feature?.id,
+            obj?.feature?.objectId,
+            obj?.feature?.attributes?.id,
         ];
+        for (const value of values) {
+            const n = Number(value);
+            if (Number.isFinite(n)) return n;
+        }
+        return getSelectedJunctionBoxIdFallback();
+    }
 
-        for (const args of attempts) {
-            try {
-                const res = turns.createPathTurn(args);
-                const created = (res && typeof res.then === 'function') ? await res : res;
-                if (created?.id) return created;
-            } catch (e) {
-                log('Turns.createPathTurn failed:', e, args, src);
+    async function getBigJunctionByIdSafe(bigJunctionId) {
+        const id = Number(bigJunctionId);
+        if (!Number.isFinite(id)) return null;
+        const bigJunctions = await getSdkBigJunctionsModuleSafe();
+        if (!bigJunctions) return null;
+
+        try {
+            if (typeof bigJunctions.getById === 'function') {
+                const res = bigJunctions.getById({ bigJunctionId: id });
+                const row = (res && typeof res.then === 'function') ? await res : res;
+                if (row) return row;
             }
+        } catch (e) {
+            log('BigJunctions.getById failed:', e);
+        }
+
+        try {
+            if (typeof bigJunctions.getAll === 'function') {
+                const res = bigJunctions.getAll();
+                const rows = (res && typeof res.then === 'function') ? await res : res;
+                return (rows || []).find(row => Number(row?.id) === id) || null;
+            }
+        } catch (e) {
+            log('BigJunctions.getAll failed:', e);
         }
 
         return null;
     }
 
-    async function updateTurnFromSnapshot(destTurn, src) {
-        const turns = await getSdkTurnsModuleSafe();
-        if (!turns?.updateTurn || !destTurn?.id || !src) return false;
 
+    async function getAllBigJunctionsSafe() {
+        const bigJunctions = await getSdkBigJunctionsModuleSafe();
+        if (!bigJunctions?.getAll) return [];
         try {
-            const res = turns.updateTurn({ turnId: destTurn.id, isAllowed: !!src.isAllowed });
-            if (res && typeof res.then === 'function') await res;
-            return true;
+            const res = bigJunctions.getAll();
+            const rows = (res && typeof res.then === 'function') ? await res : res;
+            return Array.isArray(rows) ? rows : [];
         } catch (e) {
-            log('Turns.updateTurn failed:', e);
+            log('BigJunctions.getAll failed:', e);
+            return [];
+        }
+    }
+
+    async function snapshotBigJunctionModelIdsSafe() {
+        const rows = await getAllBigJunctionsSafe();
+        const ids = new Set();
+        for (const row of rows || []) {
+            const id = getBigJunctionIdValue(row);
+            if (id != null) ids.add(Number(id));
+        }
+        return ids;
+    }
+
+    async function waitForNewBigJunctionModelId(beforeIds, timeoutMs = 9000) {
+        const before = beforeIds instanceof Set ? beforeIds : new Set();
+        const started = Date.now();
+        let best = null;
+
+        while (Date.now() - started <= timeoutMs) {
+            const rows = await getAllBigJunctionsSafe();
+            for (const row of rows || []) {
+                const id = getBigJunctionIdValue(row);
+                if (id == null) continue;
+                if (!before.has(Number(id))) return Number(id);
+                best = Number(id);
+            }
+            await sleep(280);
+        }
+
+        return null;
+    }
+
+    async function getBigJunctionForTurnCapture(targetObj = null) {
+        const id = getBigJunctionIdValue(targetObj || getFirstJunctionBoxObjectFromContext({}));
+        if (id == null) return null;
+        return await getBigJunctionByIdSafe(id) || { id, segmentIds: [] };
+    }
+async function getAllPossibleBigJunctionTurnsSafe(bigJunctionId) {
+        const id = Number(bigJunctionId);
+        if (!Number.isFinite(id)) return [];
+        const bigJunctions = await getSdkBigJunctionsModuleSafe();
+        if (!bigJunctions?.getAllPossibleTurns) return [];
+        try {
+            const res = bigJunctions.getAllPossibleTurns({ bigJunctionId: id });
+            const rows = (res && typeof res.then === 'function') ? await res : res;
+            return Array.isArray(rows) ? rows : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    async function getSdkSegmentsModuleSafe() {
+        try {
+            const sdk = await initSdkOnce();
+            return sdk?.DataModel?.Segments || null;
+        } catch (e) {
+            log('Segments SDK unavailable:', e);
+            return null;
+        }
+    }
+
+    async function getAllSegmentsSafe() {
+        const segments = await getSdkSegmentsModuleSafe();
+        if (!segments?.getAll) return [];
+        try {
+            const res = segments.getAll();
+            const rows = (res && typeof res.then === 'function') ? await res : res;
+            return Array.isArray(rows) ? rows : [];
+        } catch (e) {
+            log('Segments.getAll failed:', e);
+            return [];
+        }
+    }
+
+    function getSegmentIdValue(seg) {
+        const v = seg?.id ?? seg?.segmentId ?? seg?.attributes?.id ?? seg?.model?.id;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+    }
+
+    function getSegmentJunctionIdValue(seg) {
+        const v = seg?.junctionId ?? seg?.attributes?.junctionId ?? seg?.model?.junctionId ?? seg?.model?.attributes?.junctionId;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+    }
+
+    function collectPossibleBigJunctionIdsFromObject(obj) {
+        const out = new Set();
+        const push = (v) => {
+            if (v == null) return;
+            if (Array.isArray(v)) {
+                for (const item of v) push(item);
+                return;
+            }
+            if (typeof v === 'object') return;
+            const n = Number(v);
+            if (Number.isFinite(n)) out.add(n);
+        };
+
+        for (const c of [obj, obj?.model, obj?.feature, obj?.attributes, obj?.model?.attributes, obj?.feature?.attributes].filter(Boolean)) {
+            push(c.id);
+            push(c.objectId);
+            push(c.junctionId);
+            push(c.bigJunctionId);
+            push(c.bigJunctionID);
+            push(c.junctionBoxId);
+            push(c.junctionBoxID);
+        }
+        return out;
+    }
+
+    function sdkSegmentTouchesRingForTurnCapture(seg, ringClosed) {
+        if (!Array.isArray(ringClosed) || ringClosed.length < 4) return false;
+        const pts = [];
+        try { collectPointsFromGeometryObject(seg, pts); } catch (e) {}
+        if (!pts.length) return false;
+        const buffer = getRingSegmentCaptureBuffer(ringClosed);
+        const b = ringRoughBounds(ringClosed);
+        if (b && pts.some(p => {
+            const x = Number(p?.[0]), y = Number(p?.[1]);
+            return Number.isFinite(x) && Number.isFinite(y) &&
+                x >= b.minX - buffer && x <= b.maxX + buffer &&
+                y >= b.minY - buffer && y <= b.maxY + buffer;
+        })) return true;
+        return segmentDistanceToRingMerc(pts, ringClosed) <= buffer;
+    }
+
+    function safeBooleanSegmentApi(segments, methodName, args) {
+        if (!segments?.[methodName] || args == null) return false;
+        try {
+            const payload = (typeof args === 'object') ? args : { segmentId: Number(args) };
+            return !!segments[methodName](payload);
+        } catch (e) {
             return false;
         }
     }
 
-    async function applyTurnLaneGuidanceFromSnapshot(destTurn, src) {
+    async function collectJunctionBoxExitSegmentIdsForTurnCapture(ringClosed = null, targetObj = null) {
+        const rows = await getAllSegmentsSafe();
+        const segmentsApi = await getSdkSegmentsModuleSafe();
+        const selectedRing = Array.isArray(ringClosed) && ringClosed.length >= 4 ? ringClosed : null;
+        const bigJunction = await getBigJunctionForTurnCapture(targetObj);
+        const bigJunctionId = getBigJunctionIdValue(bigJunction || targetObj);
+        const targetJunctionIds = collectPossibleBigJunctionIdsFromObject(targetObj);
+        if (bigJunctionId != null) targetJunctionIds.add(Number(bigJunctionId));
+
+        const out = new Set();
+        for (const id of (bigJunction?.segmentIds || [])) {
+            const n = Number(id);
+            if (Number.isFinite(n)) out.add(n);
+        }
+
+        for (const seg of rows || []) {
+            const id = getSegmentIdValue(seg);
+            if (id == null) continue;
+
+            const junctionId = getSegmentJunctionIdValue(seg);
+            const sameJunctionId = junctionId != null && targetJunctionIds.has(Number(junctionId));
+            const touchesSelectedRing = selectedRing ? sdkSegmentTouchesRingForTurnCapture(seg, selectedRing) : false;
+
+            const argBase = { segmentId: Number(id) };
+            const argWithJb = bigJunctionId != null ? { segmentId: Number(id), bigJunctionId: Number(bigJunctionId) } : argBase;
+            const sdkSaysThisBigJunction =
+                safeBooleanSegmentApi(segmentsApi, 'isFromNodeInBigJunction', argWithJb) ||
+                safeBooleanSegmentApi(segmentsApi, 'isToNodeInBigJunction', argWithJb);
+            const sdkSaysAnyBigJunction =
+                safeBooleanSegmentApi(segmentsApi, 'isContainedInBigJunction', argBase) ||
+                safeBooleanSegmentApi(segmentsApi, 'isFromNodeInBigJunction', argBase) ||
+                safeBooleanSegmentApi(segmentsApi, 'isToNodeInBigJunction', argBase) ||
+                safeBooleanSegmentApi(segmentsApi, 'connectsToBigJunction', argBase);
+
+            if (
+                sameJunctionId ||
+                sdkSaysThisBigJunction ||
+                (selectedRing && touchesSelectedRing && (sdkSaysAnyBigJunction || junctionId != null))
+            ) {
+                out.add(Number(id));
+            }
+        }
+
+        if (!out.size && selectedRing) {
+            const segCache = new Map();
+            for (const seg of rows || []) {
+                const id = getSegmentIdValue(seg);
+                if (id == null) continue;
+                if (sdkSegmentTouchesRingForTurnCapture(seg, selectedRing) || segmentTouchesRingForTurnCapture(id, selectedRing, segCache)) {
+                    out.add(Number(id));
+                }
+            }
+        }
+
+        return out;
+    }
+
+    function pointInRingMerc(point, ringClosed) {
+        if (!Array.isArray(point) || !Array.isArray(ringClosed) || ringClosed.length < 4) return false;
+        const pts = ringIsClosed(ringClosed) ? ringClosed.slice(0, -1) : ringClosed;
+        const x = Number(point[0]);
+        const y = Number(point[1]);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+
+        let inside = false;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+            const xi = Number(pts[i]?.[0]);
+            const yi = Number(pts[i]?.[1]);
+            const xj = Number(pts[j]?.[0]);
+            const yj = Number(pts[j]?.[1]);
+            if (![xi, yi, xj, yj].every(Number.isFinite)) continue;
+            const crosses = ((yi > y) !== (yj > y)) &&
+                (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi);
+            if (crosses) inside = !inside;
+        }
+        return inside;
+    }
+
+    function distPointToSegmentMerc2(p, a, b) {
+        const px = Number(p?.[0]), py = Number(p?.[1]);
+        const ax = Number(a?.[0]), ay = Number(a?.[1]);
+        const bx = Number(b?.[0]), by = Number(b?.[1]);
+        if (![px, py, ax, ay, bx, by].every(Number.isFinite)) return Infinity;
+        const dx = bx - ax;
+        const dy = by - ay;
+        const len2 = dx * dx + dy * dy;
+        if (len2 <= 1e-9) return (px - ax) * (px - ax) + (py - ay) * (py - ay);
+        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+        const x = ax + t * dx;
+        const y = ay + t * dy;
+        return (px - x) * (px - x) + (py - y) * (py - y);
+    }
+
+    function segmentDistanceToRingMerc(segmentPoints, ringClosed) {
+        const segPts = (segmentPoints || []).filter(p => Array.isArray(p) && p.length >= 2);
+        const ring = ringIsClosed(ringClosed) ? ringClosed : ringClose(ringClosed || []);
+        if (!segPts.length || !Array.isArray(ring) || ring.length < 4) return Infinity;
+
+        let best = Infinity;
+        for (const p of segPts) {
+            if (pointInRingMerc(p, ring)) return 0;
+            for (let i = 0; i < ring.length - 1; i++) {
+                best = Math.min(best, distPointToSegmentMerc2(p, ring[i], ring[i + 1]));
+            }
+        }
+        return Math.sqrt(best);
+    }
+
+    function getRingSegmentCaptureBuffer(ringClosed) {
+        const b = ringRoughBounds(ringClosed);
+        if (!b) return 35;
+        const diag = Math.hypot(b.maxX - b.minX, b.maxY - b.minY);
+        return Math.max(25, Math.min(90, diag * 0.45));
+    }
+
+    function segmentTouchesRingForTurnCapture(segmentId, ringClosed, cache) {
+        if (segmentId == null || !Array.isArray(ringClosed) || ringClosed.length < 4) return false;
+        const key = String(segmentId);
+        if (cache?.has(key)) return cache.get(key);
+
+        let ok = false;
+        try {
+            const seg = getSegmentObjectById(key);
+            const pts = [];
+            collectPointsFromGeometryObject(seg, pts);
+            const buffer = getRingSegmentCaptureBuffer(ringClosed);
+            const b = ringRoughBounds(ringClosed);
+            if (b && pts.some(p => {
+                const x = Number(p?.[0]), y = Number(p?.[1]);
+                return Number.isFinite(x) && Number.isFinite(y) &&
+                    x >= b.minX - buffer && x <= b.maxX + buffer &&
+                    y >= b.minY - buffer && y <= b.maxY + buffer;
+            })) ok = true;
+            if (!ok && segmentDistanceToRingMerc(pts, ringClosed) <= buffer) ok = true;
+        } catch (e) {}
+
+        try { cache?.set(key, ok); } catch (e) {}
+        return ok;
+    }
+
+    function turnLooksRelatedToRing(turn, ringClosed, cache) {
+        if (!ringClosed || !ringClosed.length) return false;
+        const fromOk = segmentTouchesRingForTurnCapture(turn?.fromSegmentId, ringClosed, cache);
+        const toOk = segmentTouchesRingForTurnCapture(turn?.toSegmentId, ringClosed, cache);
+        if (fromOk && toOk) return true;
+
+        const path = normalizeTurnSegmentPath(turn?.segmentPath);
+        if (!path.length) return false;
+        const touchedPathCount = path.filter(id => segmentTouchesRingForTurnCapture(id, ringClosed, cache)).length;
+        return (fromOk || toOk) && touchedPathCount > 0;
+    }
+
+    function turnUsesJunctionBoxExitSegments(turn, exitSegmentIds) {
+        if (!turn || !exitSegmentIds || !exitSegmentIds.size) return false;
+        const fromIn = exitSegmentIds.has(Number(turn.fromSegmentId));
+        const toIn = exitSegmentIds.has(Number(turn.toSegmentId));
+        if (fromIn && toIn) return true;
+        if (turn?.isJunctionBoxTurn && (fromIn || toIn)) return true;
+        const path = normalizeTurnSegmentPath(turn?.segmentPath);
+        return (fromIn || toIn) && path.some(id => exitSegmentIds.has(Number(id)));
+    }
+
+
+    function getNativeBigJunctionObjectSafe(bigJunctionId) {
+        const id = Number(bigJunctionId);
+        if (!Number.isFinite(id)) return null;
+        try {
+            return W?.model?.bigJunctions?.getObjectById?.(id) || null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function getNativeBigJunctionPossibleTurnsForCapture(bigJunctionId) {
+        const bj = getNativeBigJunctionObjectSafe(bigJunctionId);
+        if (!bj?.getAllPossibleTurns) return [];
+
+        try {
+            const rows = bj.getAllPossibleTurns();
+            if (!Array.isArray(rows)) return [];
+
+            return rows.map((row, index) => {
+                const fromSegmentId = Number(row?.fromVertex?.segmentID ?? row?.fromVertex?.segmentId ?? row?.fromSegmentId);
+                const toSegmentId = Number(row?.toVertex?.segmentID ?? row?.toVertex?.segmentId ?? row?.toSegmentId);
+
+                const fromDir = String(row?.fromVertex?.direction || row?.fromVertex?.dir || '').toLowerCase();
+                const toDir = String(row?.toVertex?.direction || row?.toVertex?.dir || '').toLowerCase();
+
+                const fromSegmentFwd = fromDir === 'f' ? true : (fromDir === 'r' ? false : !!row?.fromSegmentFwd);
+                const toSegmentFwd = toDir === 'f' ? true : (toDir === 'r' ? false : !!row?.toSegmentFwd);
+
+                const path = Array.isArray(row?.path)
+                    ? row.path
+                    : (Array.isArray(row?.segments) ? row.segments : (Array.isArray(row?.segmentPath) ? row.segmentPath : []));
+
+                const turnData = row?.turnData || {};
+                const turnGuidance = turnData?.turnGuidance || {};
+                const lanes = turnGuidance?.lanes || turnGuidance?.laneGuidance || turnData?.lanes || turnData?.laneGuidance || null;
+
+                return {
+                    id: `nativeBJ:${bigJunctionId}:${index}:${fromSegmentId}:${fromSegmentFwd ? 1 : 0}:${toSegmentId}:${toSegmentFwd ? 1 : 0}`,
+                    nativeBigJunctionPath: true,
+                    nativeTurnData: turnData,
+                    nativeRow: row,
+                    fromSegmentId,
+                    fromSegmentFwd,
+                    toSegmentId,
+                    toSegmentFwd,
+                    segmentPath: path,
+                    isJunctionBoxTurn: true,
+                    isPathTurn: Array.isArray(path) && path.length > 0,
+                    isFarTurn: Array.isArray(path) && path.length > 1,
+                    isAllowed: !turnData?.isRestricted && !turnData?.isBlocked && turnData?.isAllowed !== false,
+                    instructionOpCode: turnData?.instructionOpcode ?? turnData?.instructionOpCode ?? null,
+                    lanes,
+                    turnGuidance,
+                };
+            }).filter(row =>
+                Number.isFinite(Number(row.fromSegmentId)) &&
+                Number.isFinite(Number(row.toSegmentId))
+            );
+        } catch (e) {
+            return [];
+        }
+    }
+
+
+async function captureJunctionBoxTurnSnapshot(ringClosed = null, opts = {}) {
+        await ensureJunctionBoxesLayerVisibleSafe();
+        const bigJunction = await getBigJunctionForTurnCapture(opts.targetObj || null);
+        const bigJunctionId = getBigJunctionIdValue(bigJunction || opts.targetObj);
+        const includedSegmentIds = new Set((bigJunction?.segmentIds || []).map(v => Number(v)).filter(v => Number.isFinite(v)));
+
+        const sdkPossibleTurns = bigJunctionId != null ? await getAllPossibleBigJunctionTurnsSafe(bigJunctionId) : [];
+        const nativePossibleTurns = bigJunctionId != null ? getNativeBigJunctionPossibleTurnsForCapture(bigJunctionId) : [];
+        const allTurns = await getAllTurnsSafe();
+
+        const combined = [];
+        const seen = new Set();
+        const pushTurn = (turn, source) => {
+            const data = extractTurnData(turn);
+            const key = data.id || getTurnMatchKey(data, true) || getTurnLooseMatchKey(data);
+            if (!key || seen.has(`${source}:${key}`)) return;
+            seen.add(`${source}:${key}`);
+            combined.push({ turn, source, data });
+        };
+
+        for (const turn of sdkPossibleTurns || []) pushTurn(turn, 'sdkPossible');
+        for (const turn of nativePossibleTurns || []) pushTurn(turn, 'nativePossible');
+        for (const turn of allTurns || []) pushTurn(turn, 'global');
+
+        const segCache = new Map();
+        const selectedRing = Array.isArray(ringClosed) && ringClosed.length >= 4 ? ringClosed : null;
+        const exitSegmentIds = opts.exitSegmentIds instanceof Set
+            ? opts.exitSegmentIds
+            : await collectJunctionBoxExitSegmentIdsForTurnCapture(selectedRing, opts.targetObj || bigJunction || null);
+
+        const candidateEntries = combined.filter(entry => {
+            const data = entry.data;
+            const fromToValid = Number.isFinite(Number(data.fromSegmentId)) && Number.isFinite(Number(data.toSegmentId));
+            if (!fromToValid) return false;
+            if (entry.source === 'sdkPossible' || entry.source === 'nativePossible') return true;
+
+            if (data.isFarTurn || data.isPathTurn || normalizeTurnSegmentPath(data.segmentPath).length) {
+                if (exitSegmentIds.size && turnUsesJunctionBoxExitSegments(data, exitSegmentIds)) return true;
+                if (includedSegmentIds.size && turnTouchesJunctionBoxIncludedSegments(data, includedSegmentIds)) return true;
+                if (selectedRing && turnLooksRelatedToRing(data, selectedRing, segCache)) return true;
+            }
+
+            if (exitSegmentIds.size && turnUsesJunctionBoxExitSegments(data, exitSegmentIds)) return true;
+            if (selectedRing && data.isJunctionBoxTurn && turnLooksRelatedToRing(data, selectedRing, segCache)) return true;
+            if (!exitSegmentIds.size && data.isJunctionBoxTurn) return true;
+            if (!selectedRing) return false;
+            return turnLooksRelatedToRing(data, selectedRing, segCache);
+        });
+
+        const unique = new Map();
+        for (const entry of candidateEntries) {
+            const snap = cleanTurnSnapshotRow(entry.turn);
+            if (!snap.key && !snap.looseKey) continue;
+            snap.captureSource = entry.source;
+            snap.bigJunctionId = bigJunctionId ?? null;
+            snap.exitSegmentIds = Array.from(exitSegmentIds || []);
+            snap.includedSegmentIds = Array.from(includedSegmentIds || []);
+            snap.inJunctionBox = entry.source === 'sdkPossible' || entry.source === 'nativePossible'
+                ? true
+                : (includedSegmentIds.size
+                    ? turnUsesOnlyJunctionBoxIncludedSegments(snap, includedSegmentIds)
+                    : (exitSegmentIds.size ? turnUsesJunctionBoxExitSegments(snap, exitSegmentIds) : !!snap.isJunctionBoxTurn));
+            snap.touchesJunctionBox = entry.source === 'sdkPossible' || entry.source === 'nativePossible'
+                ? true
+                : (includedSegmentIds.size
+                    ? turnTouchesJunctionBoxIncludedSegments(snap, includedSegmentIds)
+                    : (exitSegmentIds.size ? turnUsesJunctionBoxExitSegments(snap, exitSegmentIds) : !!snap.isJunctionBoxTurn));
+
+            const dedupeKey = snap.id || snap.fullKey || snap.key || snap.looseKey;
+            if (!unique.has(dedupeKey)) unique.set(dedupeKey, snap);
+        }
+
+        const snapshot = Array.from(unique.values());
+        logJunctionBoxTurnSnapshotStatus('captured snapshot', snapshot, {
+            bigJunctionId: bigJunctionId ?? null,
+            sdkPossibleTurns: sdkPossibleTurns.length,
+            nativePossibleTurns: nativePossibleTurns.length,
+            allTurns: allTurns.length,
+            candidates: candidateEntries.length,
+            realFarTurns: snapshot.filter(r => r.isFarTurn).length,
+            pathTurns: snapshot.filter(r => r.isPathTurn || normalizeTurnSegmentPath(r.segmentPath).length).length,
+            exits: exitSegmentIds.size,
+            includedSegments: includedSegmentIds.size,
+        });
+        return snapshot;
+    }
+
+function clearRecordedJunctionBoxTurns() {
+        UI.recordedJbTurns = null;
+        UI.recordedJbTurnsBusy = false;
+        UI.recordedJbTurnsSeq = 0;
+    }
+
+    function hasActiveSelectedJunctionBoxForRecorder() {
+        try {
+            const selected = getSelectedWmeFeaturesSafe();
+            if (selected.length) {
+                return getSelectedJunctionBoxObjects().length > 0;
+            }
+        } catch (e) {}
+
+        try {
+            const txt = String(document.body?.innerText || '');
+            if (/\b1\s+JUNCTION\s+BOX\s+SELECTED\b/i.test(txt) || /JUNCTION\s+BOX\s+SELECTED[\s\S]{0,220}?ID:\s*\d+/i.test(txt)) {
+                return true;
+            }
+        } catch (e) {}
+
+        return false;
+    }
+
+    function getSelectedJunctionBoxCaptureContext() {
+        if (!hasActiveSelectedJunctionBoxForRecorder()) return null;
+        const obj = getFirstJunctionBoxObjectFromContext({});
+        const id = getBigJunctionIdValue(obj) ?? getSelectedJunctionBoxIdFallback();
+        if (id == null) return null;
+
+        const ring = getJunctionBoxRingFromContext({}) || UI.clickedJbRing || null;
+        const key = ring && ring.length >= 4 ? ringSignatureForCopy(ring) : '';
+        return {
+            id: Number(id),
+            obj: obj || makeJunctionBoxIdOnlyObject(id),
+            ring,
+            key,
+        };
+    }
+
+    function getRecordedJunctionBoxTurnsForTarget(targetObj = null, ringClosed = null) {
+        const cache = UI.recordedJbTurns;
+        if (!cache || !Array.isArray(cache.snapshot) || !cache.snapshot.length) return null;
+
+        const targetId = getBigJunctionIdValue(targetObj) ?? getSelectedJunctionBoxIdFallback();
+        if (targetId != null && cache.id != null && Number(targetId) === Number(cache.id)) return cache;
+
+        const key = ringClosed && ringClosed.length >= 4 ? ringSignatureForCopy(ringClosed) : '';
+        if (key && cache.key && key === cache.key) return cache;
+
+        return null;
+    }
+
+    async function recordSelectedJunctionBoxTurnsIfNeeded() {
+        if (UI.recordedJbTurnsBusy) return false;
+
+        const ctx = getSelectedJunctionBoxCaptureContext();
+        if (!ctx || ctx.id == null) {
+            if (UI.recordedJbTurns?.isRecording) {
+                UI.recordedJbTurns.isRecording = false;
+                UI.recordedJbTurns.stoppedAt = Date.now();
+            }
+            hideJbTurnFloatingConsole();
+            return false;
+        }
+
+        const current = UI.recordedJbTurns;
+        if (current && Number(current.id) === Number(ctx.id) && current.key === ctx.key && Array.isArray(current.snapshot) && current.snapshot.length) {
+            current.isRecording = true;
+            logJunctionBoxTurnSnapshotStatus('recording still active', current.snapshot, {
+                bigJunctionId: current.id,
+                exits: Array.isArray(current.exitSegmentIds) ? current.exitSegmentIds.length : 0,
+                source: 'cache',
+            });
+            return true;
+        }
+
+        UI.recordedJbTurnsBusy = true;
+        const seq = ++UI.recordedJbTurnsSeq;
+        try {
+            const exitSegmentIds = await collectJunctionBoxExitSegmentIdsForTurnCapture(ctx.ring, ctx.obj);
+            const snapshot = await captureJunctionBoxTurnSnapshot(ctx.ring, { targetObj: ctx.obj, exitSegmentIds });
+            const laneWidthSnapshot = await captureSelectedJbLanesWidthUiSnapshot();
+            if (seq !== UI.recordedJbTurnsSeq) return false;
+
+            UI.recordedJbTurns = {
+                id: Number(ctx.id),
+                obj: ctx.obj,
+                ring: ctx.ring,
+                key: ctx.key,
+                exitSegmentIds: Array.from(exitSegmentIds || []),
+                snapshot,
+                laneWidthSnapshot,
+                isRecording: true,
+                capturedAt: Date.now(),
+            };
+            logJunctionBoxTurnSnapshotStatus('recording started', snapshot, {
+                bigJunctionId: ctx.id,
+                exits: exitSegmentIds.size,
+                exitSegmentIds: Array.from(exitSegmentIds || []),
+            });
+            return true;
+        } catch (e) {
+            return false;
+        } finally {
+            UI.recordedJbTurnsBusy = false;
+        }
+    }
+async function getReplacementTurnsPool(targetBigJunctionId = null) {
+        const allTurns = await getAllTurnsSafe();
+        const numericBigJunctionId = Number(targetBigJunctionId);
+        const possibleTurns = Number.isFinite(numericBigJunctionId) && numericBigJunctionId > 0
+            ? await getAllPossibleBigJunctionTurnsSafe(numericBigJunctionId)
+            : [];
+
+        const byId = new Map();
+        for (const turn of [...(allTurns || []), ...(possibleTurns || [])]) {
+            if (!turn?.id) continue;
+            byId.set(String(turn.id), turn);
+        }
+        return Array.from(byId.values());
+    }
+
+    function countReplacementTurnMatches(turns, snapshot) {
+        const wanted = new Set((snapshot || []).map(t => t.key).filter(Boolean));
+        const wantedFull = new Set((snapshot || []).map(t => t.fullKey).filter(Boolean));
+        const wantedLoose = new Set((snapshot || []).map(t => t.looseKey || `${t.fromSegmentId}|${t.toSegmentId}`).filter(Boolean));
+        const seen = new Set();
+
+        for (const turn of turns || []) {
+            if (!turn?.id) continue;
+            const full = getTurnMatchKey(turn, true);
+            const base = getTurnMatchKey(turn, false);
+            const loose = getTurnLooseMatchKey(turn);
+            if (wantedFull.has(full)) seen.add(`full:${full}`);
+            else if (wanted.has(base)) seen.add(`base:${base}`);
+            else if (wantedLoose.has(loose)) seen.add(`loose:${loose}`);
+        }
+
+        return seen.size;
+    }
+
+    async function waitForReplacementTurns(snapshot, timeoutMs = 8500, targetBigJunctionId = null) {
+        const wanted = new Set((snapshot || []).map(t => t.key).filter(Boolean));
+        const wantedLoose = new Set((snapshot || []).map(t => t.looseKey || `${t.fromSegmentId}|${t.toSegmentId}`).filter(Boolean));
+        const expected = Math.max(wanted.size, wantedLoose.size);
+        const started = Date.now();
+        let bestTurns = [];
+        let bestCount = 0;
+        let stable = 0;
+
+        while (Date.now() - started <= timeoutMs) {
+            const turns = await getReplacementTurnsPool(targetBigJunctionId);
+            const count = countReplacementTurnMatches(turns, snapshot);
+
+            if (!expected || count >= expected) return turns;
+
+            if (count > bestCount) {
+                bestCount = count;
+                bestTurns = turns;
+                stable = 0;
+            } else {
+                stable++;
+            }
+
+            if (bestCount > 0 && stable >= 12 && Date.now() - started > 5200) break;
+            await sleep(300);
+        }
+
+        return bestTurns.length ? bestTurns : await getReplacementTurnsPool(targetBigJunctionId);
+    }
+async function createPathTurnFromSnapshot(src) {
         const turns = await getSdkTurnsModuleSafe();
-        if (!turns?.setTurnLaneGuidance || !destTurn?.id || !src) return false;
+        if (!turns?.createPathTurn || !src) return null;
+
+        const srcData = extractTurnData(src);
+        const fromSegmentId = Number(srcData.fromSegmentId);
+        const toSegmentId = Number(srcData.toSegmentId);
+        if (!Number.isFinite(fromSegmentId) || !Number.isFinite(toSegmentId)) return null;
+
+        const attempts = [];
+        const addAttempt = (isForward) => {
+            const args = { fromSegmentId, isForward: !!isForward, toSegmentId };
+            const key = `${args.fromSegmentId}|${args.isForward ? 1 : 0}|${args.toSegmentId}`;
+            if (!attempts.some(a => `${a.fromSegmentId}|${a.isForward ? 1 : 0}|${a.toSegmentId}` === key)) attempts.push(args);
+        };
+
+        addAttempt(!!srcData.toSegmentFwd);
+        addAttempt(!srcData.toSegmentFwd);
+        addAttempt(!!srcData.fromSegmentFwd);
+        addAttempt(!srcData.fromSegmentFwd);
+        addAttempt(true);
+        addAttempt(false);
+
+        for (const args of attempts) {
+            try {
+                const res = turns.createPathTurn(args);
+                const created = (res && typeof res.then === 'function') ? await res : res;
+                if (created?.id || (typeof created?.getID === 'function' && created.getID())) return created;
+            } catch (e) {}
+        }
+
+        return null;
+    }
+
+    async function getTurnByIdSafe(turnId) {
+        const turns = await getSdkTurnsModuleSafe();
+        if (!turns?.getById || turnId == null) return null;
+        try {
+            return turns.getById({ turnId: String(turnId) }) || null;
+        } catch (e) {
+            return null;
+        }
+    }
+function getDataModelTurnsForMatching(allTurns) {
+        return (allTurns || []).filter(turn => {
+            const data = extractTurnData(turn);
+            return data && data.id && Number.isFinite(Number(data.fromSegmentId)) && Number.isFinite(Number(data.toSegmentId));
+        });
+    }
+function findEquivalentDataModelTurn(src, allTurns) {
+        if (!src) return null;
+        const rows = getDataModelTurnsForMatching(allTurns);
+        const srcData = extractTurnData(src);
+        const fullKey = src.fullKey || getTurnMatchKey(srcData, true) || '';
+        const baseKey = src.key || getTurnMatchKey(srcData, false) || '';
+        const looseKey = src.looseKey || getTurnLooseMatchKey(srcData) || `${srcData.fromSegmentId}|${srcData.toSegmentId}`;
+
+        let found = rows.find(turn => fullKey && getTurnMatchKey(turn, true) === fullKey);
+        if (found) return found;
+
+        found = rows.find(turn => baseKey && getTurnMatchKey(turn, false) === baseKey && !!extractTurnData(turn).isJunctionBoxTurn === !!srcData.isJunctionBoxTurn);
+        if (found) return found;
+
+        found = rows.find(turn => baseKey && getTurnMatchKey(turn, false) === baseKey);
+        if (found) return found;
+
+        found = rows.find(turn => looseKey && getTurnLooseMatchKey(turn) === looseKey && !!extractTurnData(turn).isJunctionBoxTurn === !!srcData.isJunctionBoxTurn);
+        if (found) return found;
+
+        return rows.find(turn => looseKey && getTurnLooseMatchKey(turn) === looseKey) || null;
+    }
+
+    function collectTurnSnapshotSegmentIds(snapshot) {
+        const ids = new Set();
+        const add = (v) => {
+            const n = Number(v);
+            if (Number.isFinite(n)) ids.add(n);
+        };
+        for (const row of snapshot || []) {
+            add(row?.fromSegmentId);
+            add(row?.toSegmentId);
+            for (const id of normalizeTurnSegmentPath(row?.segmentPath)) add(id);
+            for (const id of row?.relatedSegmentIds || []) add(id);
+            for (const id of row?.includedSegmentIds || []) add(id);
+            for (const id of row?.exitSegmentIds || []) add(id);
+        }
+        return ids;
+    }
+
+    async function getTurnsFromAndToSegmentsSafe(segmentIds) {
+        const turnsApi = await getSdkTurnsModuleSafe();
+        const out = [];
+        const seen = new Set();
+        const addMany = (arr) => {
+            for (const turn of arr || []) {
+                if (!turn?.id || seen.has(String(turn.id))) continue;
+                seen.add(String(turn.id));
+                out.push(turn);
+            }
+        };
+        if (!turnsApi) return out;
+        for (const id of segmentIds || []) {
+            const segmentId = Number(id);
+            if (!Number.isFinite(segmentId)) continue;
+            try {
+                if (typeof turnsApi.getTurnsFromSegment === 'function') addMany(turnsApi.getTurnsFromSegment({ segmentId }) || []);
+            } catch (e) {}
+            try {
+                if (typeof turnsApi.getTurnsToSegment === 'function') addMany(turnsApi.getTurnsToSegment({ segmentId }) || []);
+            } catch (e) {}
+        }
+        return out;
+    }
+async function getRealReplacementTurnPoolForSnapshot(snapshot, targetBigJunctionId = null) {
+        const allTurns = await getAllTurnsSafe();
+        const segmentIds = collectTurnSnapshotSegmentIds(snapshot);
+        const bySegment = await getTurnsFromAndToSegmentsSafe(segmentIds);
+        const possibleTurns = targetBigJunctionId != null ? await getAllPossibleBigJunctionTurnsSafe(targetBigJunctionId) : [];
+        const byKey = new Map();
+
+        for (const turn of [...(allTurns || []), ...(bySegment || []), ...(possibleTurns || [])]) {
+            if (!turn) continue;
+            const data = extractTurnData(turn);
+            const key = data.id ? `id:${data.id}` : `key:${getTurnMatchKey(data, true)}:${getTurnLooseMatchKey(data)}`;
+            if (!key || key === 'key::') continue;
+            byKey.set(key, turn);
+        }
+        return Array.from(byKey.values());
+    }
+
+    async function resolveDataModelTurnForUpdate(destTurn, src, realPool = null) {
+        if (!destTurn?.id && !src) return null;
+
+        const byId = await getTurnByIdSafe(destTurn?.id);
+        if (byId?.id) return byId;
+
+        if (Array.isArray(realPool) && realPool.length) {
+            const byPool = findEquivalentDataModelTurn(src || destTurn, realPool);
+            if (byPool?.id) {
+                const byPoolId = await getTurnByIdSafe(byPool.id);
+                if (byPoolId?.id) return byPoolId;
+                return byPool;
+            }
+        }
+
+        const allTurns = await getAllTurnsSafe();
+        const byEquivalent = findEquivalentDataModelTurn(src || destTurn, allTurns);
+        if (byEquivalent?.id) return byEquivalent;
+
+        return null;
+    }
+
+    async function updateTurnFromSnapshot(destTurn, src, realPool = null) {
+        const turns = await getSdkTurnsModuleSafe();
+        if (!turns?.updateTurn || !destTurn?.id || !src) return { ok: false, turn: null, reason: 'missing-sdk-or-turn' };
+
+        const dataTurn = await resolveDataModelTurnForUpdate(destTurn, src, realPool);
+        if (!dataTurn?.id) return { ok: false, turn: null, reason: 'no-real-data-model-turn' };
+
+        try {
+            const res = turns.updateTurn({ turnId: String(dataTurn.id), isAllowed: !!src.isAllowed });
+            if (res && typeof res.then === 'function') await res;
+            return { ok: true, turn: dataTurn, reason: 'updated' };
+        } catch (e) {
+            const msg = String(e?.message || e || 'update-failed');
+            return { ok: false, turn: dataTurn, reason: msg };
+        }
+    }
+
+
+
+    function getJbgLaneCountGuardSet() {
+        const key = '__JBG_LANE_COUNT_SET_KEYS__';
+        try {
+            if (!unsafeWindow[key]) unsafeWindow[key] = new Set();
+            return unsafeWindow[key];
+        } catch (e) {
+            if (!window[key]) window[key] = new Set();
+            return window[key];
+        }
+    }
+
+    function getJbgLaneGuidanceGuardSet() {
+        const key = '__JBG_LANE_GUIDANCE_SET_KEYS__';
+        try {
+            if (!unsafeWindow[key]) unsafeWindow[key] = new Set();
+            return unsafeWindow[key];
+        } catch (e) {
+            if (!window[key]) window[key] = new Set();
+            return window[key];
+        }
+    }
+
+function getLaneCountFromSnapshot(src) {
+        let max = -1;
+        const scan = (v) => {
+            if (v == null) return;
+            if (Array.isArray(v)) {
+                for (const item of v) scan(item);
+                return;
+            }
+            if (typeof v === 'number') {
+                if (Number.isInteger(v)) max = Math.max(max, v);
+                return;
+            }
+            if (typeof v !== 'object') return;
+            for (const key of ['fromLaneIndex', 'toLaneIndex']) {
+                const n = Number(v[key]);
+                if (Number.isInteger(n)) max = Math.max(max, n);
+            }
+            for (const key of ['laneIndexes', 'enabledLaneIndexes', 'indexes']) {
+                if (Array.isArray(v[key])) {
+                    for (const idx of v[key]) {
+                        const n = Number(idx);
+                        if (Number.isInteger(n)) max = Math.max(max, n);
+                    }
+                }
+            }
+        };
+        scan(src?.laneIndexes);
+        scan(src?.lanes);
+        return max >= 0 ? max + 1 : 0;
+    }
+
+    function getLaneDirectionFromTurnSource(src) {
+        const data = extractTurnData(src);
+        return data.fromSegmentFwd ? 'A_TO_B' : 'B_TO_A';
+    }
+async function ensureLaneCountForTurnSource(src) {
+        const turns = await getSdkTurnsModuleSafe();
+        if (!turns?.setSegmentTurnsLaneCount || !src) return false;
+
+        const data = extractTurnData(src);
+        const segmentId = Number(data.fromSegmentId);
+        const laneCount = getLaneCountFromSnapshot(src);
+        if (!Number.isFinite(segmentId) || laneCount <= 0) return false;
+
+        const laneDirection = getLaneDirectionFromTurnSource(src);
+        const guardKey = `${segmentId}|${laneDirection}|${laneCount}`;
+        const guard = getJbgLaneCountGuardSet();
+        if (guard.has(guardKey)) return true;
+        guard.add(guardKey);
+
+        const args = { segmentId, laneDirection, laneCount };
+
+        try {
+            const res = turns.setSegmentTurnsLaneCount(args);
+            if (res && typeof res.then === 'function') await res;
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function getFarTurnLaneRestoreCandidates(src, turns) {
+        const out = [];
+        const seen = new Set();
+        const add = (turn) => {
+            const data = extractTurnData(turn);
+            if (!data?.id || seen.has(String(data.id))) return;
+            seen.add(String(data.id));
+            out.push(turn);
+        };
+
+        for (const turn of getAllReplacementTurnsForSnapshot(src, turns)) add(turn);
+
+        const srcData = extractTurnData(src);
+        const srcPath = normalizeTurnSegmentPath(srcData.segmentPath);
+        const srcPathSig = getPathSignature(srcPath);
+        const srcFirst = srcPath.length ? srcPath[0] : null;
+        const srcLast = srcPath.length ? srcPath[srcPath.length - 1] : null;
+        const srcFromName = src.fromName || getSegmentDisplayNameById(srcData.fromSegmentId);
+        const srcToName = src.toName || getSegmentDisplayNameById(srcData.toSegmentId);
+
+        for (const turn of turns || []) {
+            const data = extractTurnData(turn);
+            if (!data?.id) continue;
+            const path = normalizeTurnSegmentPath(data.segmentPath);
+            const pathSig = getPathSignature(path);
+
+            if (srcPathSig && pathSig && srcPathSig === pathSig) add(turn);
+
+            if (srcPath.length && path.length) {
+                const first = path[0];
+                const last = path[path.length - 1];
+                if (String(first) === String(srcFirst) && String(last) === String(srcLast)) add(turn);
+                if (String(first) === String(srcLast) && String(last) === String(srcFirst)) add(turn);
+            }
+
+            const fromName = getSegmentDisplayNameById(data.fromSegmentId);
+            const toName = getSegmentDisplayNameById(data.toSegmentId);
+            if (srcFromName && srcToName && fromName && toName) {
+                if (fromName === srcFromName && toName === srcToName) add(turn);
+                if (fromName === srcToName && toName === srcFromName) add(turn);
+            }
+        }
+
+        return out;
+    }
+async function tryRestoreLaneByOriginalTurnId(src) {
+        const turns = await getSdkTurnsModuleSafe();
+        if (!turns?.setTurnLaneGuidance || !src?.id) return { ok: false, reason: 'no-original-id' };
 
         const laneIndexes = Array.isArray(src.laneIndexes)
             ? src.laneIndexes.filter(n => Number.isInteger(Number(n)) && Number(n) >= 0).map(Number)
             : normalizeLaneIndexesFromTurnLanes(src.lanes);
 
-        if (!Array.isArray(laneIndexes)) return false;
-        if (src.lanes == null && laneIndexes.length === 0) return false;
+        if (!Array.isArray(laneIndexes) || !laneIndexes.length) return { ok: false, reason: 'no-lanes' };
+
+        const original = await getTurnByIdSafe(src.id);
+        if (!original?.id) return { ok: false, reason: 'original-turn-not-found' };
+
+        const normalizedIndexes = laneIndexes.map(Number).filter(n => Number.isInteger(n) && n >= 0).sort((a, b) => a - b);
+        const guidanceGuard = getJbgLaneGuidanceGuardSet();
+        const guidanceKey = `${original.id}|${normalizedIndexes.join(',')}`;
+        if (guidanceGuard.has(guidanceKey)) return { ok: true, turn: original, reason: 'original-far-turn-lanes-already-restored' };
+
+        await ensureLaneCountForTurnSource(src);
 
         try {
-            const res = turns.setTurnLaneGuidance({ turnId: destTurn.id, laneIndexes });
+            const res = turns.setTurnLaneGuidance({ turnId: String(original.id), laneIndexes: normalizedIndexes });
             if (res && typeof res.then === 'function') await res;
-            return true;
+            guidanceGuard.add(guidanceKey);
+            return { ok: true, turn: original, reason: 'original-far-turn-lanes-updated' };
         } catch (e) {
-            log('Turns.setTurnLaneGuidance failed:', e);
-            return false;
+            return { ok: false, turn: original, reason: String(e?.message || e || 'original-lane-update-failed') };
+        }
+    }
+async function applyTurnLaneGuidanceFromSnapshot(destTurn, src, realPool = null) {
+        const turns = await getSdkTurnsModuleSafe();
+        if (!turns?.setTurnLaneGuidance || !src) return { ok: false, turn: null, reason: 'missing-sdk-or-src' };
+
+        const laneIndexes = Array.isArray(src.laneIndexes)
+            ? src.laneIndexes.filter(n => Number.isInteger(Number(n)) && Number(n) >= 0).map(Number)
+            : normalizeLaneIndexesFromTurnLanes(src.lanes);
+
+        if (!Array.isArray(laneIndexes)) return { ok: false, turn: null, reason: 'no-lane-indexes' };
+        if (src.lanes == null && laneIndexes.length === 0) return { ok: false, turn: null, reason: 'no-lane-guidance-recorded' };
+
+        const normalizedIndexes = laneIndexes.map(Number).filter(n => Number.isInteger(n) && n >= 0).sort((a, b) => a - b);
+
+        if ((src.isPathTurn || normalizeTurnSegmentPath(src.segmentPath).length) && src.id) {
+            const originalTry = await tryRestoreLaneByOriginalTurnId(src);
+            if (originalTry.ok) return originalTry;
+        }
+
+        if (!destTurn?.id) return { ok: false, turn: null, reason: 'missing-dest-turn' };
+
+        const dataTurn = await resolveDataModelTurnForUpdate(destTurn, src, realPool);
+        if (!dataTurn?.id) return { ok: false, turn: null, reason: 'no-real-data-model-turn' };
+
+        const guidanceGuard = getJbgLaneGuidanceGuardSet();
+        const guidanceKey = `${dataTurn.id}|${normalizedIndexes.join(',')}`;
+        if (guidanceGuard.has(guidanceKey)) return { ok: true, turn: dataTurn, reason: 'lanes-already-restored' };
+
+        await ensureLaneCountForTurnSource(src);
+
+        try {
+            const res = turns.setTurnLaneGuidance({ turnId: String(dataTurn.id), laneIndexes: normalizedIndexes });
+            if (res && typeof res.then === 'function') await res;
+            guidanceGuard.add(guidanceKey);
+            return { ok: true, turn: dataTurn, reason: 'lanes-updated' };
+        } catch (e) {
+            return { ok: false, turn: dataTurn, reason: String(e?.message || e || 'lane-update-failed') };
         }
     }
 
-    async function applyJunctionBoxTurnSnapshot(snapshot) {
-        if (!Array.isArray(snapshot) || !snapshot.length) return { applied: 0, total: 0, lanesApplied: 0, lanesTotal: 0 };
+function turnMatchesLaneGuidanceSource(turn, src) {
+        if (!turn || !src) return false;
+        if (String(turn.fromSegmentId ?? '') !== String(src.fromSegmentId ?? '')) return false;
+        if (!!turn.fromSegmentFwd !== !!src.fromSegmentFwd) return false;
+        return true;
+    }
 
-        const turns = await waitForReplacementTurns(snapshot);
+    function snapshotHasLaneIndexes(src) {
+        return Array.isArray(src?.laneIndexes) && src.laneIndexes.some(n => Number.isInteger(Number(n)) && Number(n) >= 0);
+    }
+async function clearConflictingReplacementLaneGuidance(laneRows, turnsPool) {
+        return { cleared: 0, tried: 0, skipped: true };
+    }
 
+    function buildReplacementTurnLookups(turns) {
         const byFull = new Map();
         const byBase = new Map();
+        const byLoose = new Map();
+        const prefer = (map, key, turn) => {
+            if (!key || !turn?.id) return;
+            const current = map.get(key);
+            if (!current || (!current.isJunctionBoxTurn && turn.isJunctionBoxTurn)) map.set(key, turn);
+        };
+
         for (const turn of turns || []) {
-            if (!turn?.id || !turn.isJunctionBoxTurn) continue;
-            const full = getTurnMatchKey(turn, true);
-            const base = getTurnMatchKey(turn, false);
-            if (full) byFull.set(full, turn);
-            if (base && !byBase.has(base)) byBase.set(base, turn);
+            if (!turn?.id) continue;
+            prefer(byFull, getTurnMatchKey(turn, true), turn);
+            prefer(byBase, getTurnMatchKey(turn, false), turn);
+            prefer(byLoose, getTurnLooseMatchKey(turn), turn);
+        }
+
+        return { byFull, byBase, byLoose };
+    }
+
+    function getReplacementTurnForSnapshot(src, lookups) {
+        if (!src || !lookups) return null;
+        const loose = src.looseKey || `${src.fromSegmentId}|${src.toSegmentId}`;
+        return lookups.byFull.get(src.fullKey) || lookups.byBase.get(src.key) || lookups.byLoose.get(loose) || null;
+    }
+
+    function getAllReplacementTurnsForSnapshot(src, turns) {
+        if (!src || !Array.isArray(turns)) return [];
+        const out = [];
+        const seen = new Set();
+        const loose = src.looseKey || `${src.fromSegmentId}|${src.toSegmentId}`;
+        const reverseLoose = src.reverseLooseKey || `${src.toSegmentId}|${src.fromSegmentId}`;
+        const undirectedLoose = src.undirectedLooseKey || getTurnUndirectedLooseMatchKey(src);
+        const nameKey = src.nameKey || `${src.fromName || getSegmentDisplayNameById(src.fromSegmentId) || ''}→${src.toName || getSegmentDisplayNameById(src.toSegmentId) || ''}`;
+        const reverseNameKey = src.reverseNameKey || `${src.toName || getSegmentDisplayNameById(src.toSegmentId) || ''}→${src.fromName || getSegmentDisplayNameById(src.fromSegmentId) || ''}`;
+
+        const add = (turn) => {
+            if (!turn?.id || seen.has(String(turn.id))) return;
+            seen.add(String(turn.id));
+            out.push(turn);
+        };
+
+        const each = (predicate) => {
+            for (const turn of turns) {
+                if (!turn?.id) continue;
+                try { if (predicate(turn)) add(turn); } catch (e) {}
+            }
+        };
+
+        each(turn => src.fullKey && getTurnMatchKey(turn, true) === src.fullKey);
+        each(turn => src.key && getTurnMatchKey(turn, false) === src.key);
+        each(turn => loose && getTurnLooseMatchKey(turn) === loose);
+        each(turn => nameKey && nameKey !== '→' && getTurnNameKey(turn) === nameKey);
+        each(turn => undirectedLoose && getTurnUndirectedLooseMatchKey(turn) === undirectedLoose && !!extractTurnData(turn).isJunctionBoxTurn === !!src.isJunctionBoxTurn);
+        each(turn => reverseLoose && getTurnLooseMatchKey(turn) === reverseLoose && !!extractTurnData(turn).isJunctionBoxTurn === !!src.isJunctionBoxTurn);
+        each(turn => reverseNameKey && reverseNameKey !== '→' && getTurnNameKey(turn) === reverseNameKey && !!extractTurnData(turn).isJunctionBoxTurn === !!src.isJunctionBoxTurn);
+        each(turn => undirectedLoose && getTurnUndirectedLooseMatchKey(turn) === undirectedLoose);
+        each(turn => reverseLoose && getTurnLooseMatchKey(turn) === reverseLoose);
+
+        return out;
+    }
+
+function makeTurnPasteReportRow(src, index, dest = null, updateResult = null, laneResult = null) {
+        return {
+            index: index + 1,
+            fromName: getSegmentDisplayNameById(src?.fromSegmentId),
+            fromSegmentId: src?.fromSegmentId ?? '',
+            toName: getSegmentDisplayNameById(src?.toSegmentId),
+            toSegmentId: src?.toSegmentId ?? '',
+            recordedState: src?.isAllowed ? 'allowed' : 'blocked',
+            recordedLanes: Array.isArray(src?.laneIndexes) ? src.laneIndexes.join(',') : '',
+            matched: !!dest,
+            newTurnId: updateResult?.turn?.id || laneResult?.turn?.id || dest?.id || '',
+            allowedCopied: !!updateResult?.ok,
+            laneCopied: !!laneResult?.ok,
+            reason: updateResult?.reason || (!dest ? 'no matching replacement turn' : 'pending'),
+            laneReason: laneResult?.reason || '',
+            key: src?.key || '',
+            looseKey: src?.looseKey || '',
+        };
+    }
+async function ensureReplacementPathTurnsFromSnapshotRows(sourceRows, turnsPool = []) {
+        const created = [];
+        const rows = (sourceRows || []).filter(src => src && (src.isPathTurn || normalizeTurnSegmentPath(src.segmentPath).length));
+        if (!rows.length) return created;
+
+        for (const src of rows) {
+            const existing = getAllReplacementTurnsForSnapshot(src, turnsPool);
+            const existingPath = existing.some(t => extractTurnData(t).isPathTurn || normalizeTurnSegmentPath(extractTurnData(t).segmentPath).length);
+            if (existingPath) continue;
+
+            const made = await createPathTurnFromSnapshot(src);
+            if (made?.id) created.push(made);
+        }
+
+        return created;
+    }
+async function pasteRecordedJunctionBoxTurnsToReplacement(snapshot, targetBigJunctionId = null) {
+        if (!Array.isArray(snapshot) || !snapshot.length) return { applied: 0, total: 0, lanesApplied: 0, lanesTotal: 0, report: [] };
+
+        const sourceRows = snapshot.filter(src => src && (src.key || src.looseKey));
+        const laneRows = sourceRows.filter(src => src.lanes != null || Array.isArray(src.laneIndexes));
+        const updatedKeys = new Set();
+        const updatedLaneKeys = new Set();
+        const latestReport = new Map();
+
+        let pathCreateAttempts = 0;
+        let pathCreated = 0;
+
+        for (let pass = 0; pass < 16; pass++) {
+            let turns = await getRealReplacementTurnPoolForSnapshot(sourceRows, targetBigJunctionId);
+
+            const madePathTurns = await ensureReplacementPathTurnsFromSnapshotRows(sourceRows, turns);
+            if (madePathTurns.length) {
+                pathCreateAttempts += madePathTurns.length;
+                pathCreated += madePathTurns.length;
+                await sleep(520);
+                turns = await getRealReplacementTurnPoolForSnapshot(sourceRows, targetBigJunctionId);
+            }
+
+            if (!turns.length) {
+                await sleep(pass < 5 ? 650 : 420);
+                continue;
+            }
+
+            for (let i = 0; i < sourceRows.length; i++) {
+                const src = sourceRows[i];
+                const rowKey = src.fullKey || src.key || src.looseKey || String(i);
+                if (updatedKeys.has(rowKey)) continue;
+
+                let matches = getAllReplacementTurnsForSnapshot(src, turns);
+
+                if ((!matches.length || (src.isPathTurn && !matches.some(t => t?.isPathTurn || normalizeTurnSegmentPath(t?.segmentPath).length))) && (src.isPathTurn || normalizeTurnSegmentPath(src.segmentPath).length)) {
+                    const made = await createPathTurnFromSnapshot(src);
+                    pathCreateAttempts++;
+                    if (made?.id) {
+                        pathCreated++;
+                        await sleep(420);
+                        turns = await getRealReplacementTurnPoolForSnapshot(sourceRows, targetBigJunctionId);
+                        matches = getAllReplacementTurnsForSnapshot(src, turns);
+                    }
+                }
+
+                let bestReport = null;
+                for (const dest of matches) {
+                    const updateResult = await updateTurnFromSnapshot(dest, src, turns);
+                    const row = makeTurnPasteReportRow(src, i, dest, updateResult, null);
+                    bestReport = row;
+                    if (updateResult.ok) {
+                        updatedKeys.add(rowKey);
+                        latestReport.set(rowKey, row);
+                        break;
+                    }
+                }
+
+                if (!matches.length) bestReport = makeTurnPasteReportRow(src, i, null, null, null);
+                if (bestReport && !latestReport.has(rowKey)) latestReport.set(rowKey, bestReport);
+            }
+
+            for (let i = 0; i < laneRows.length; i++) {
+                const src = laneRows[i];
+                const rowKey = src.fullKey || src.key || src.looseKey || String(i);
+                if (updatedLaneKeys.has(rowKey)) continue;
+
+                const matches = getAllReplacementTurnsForSnapshot(src, turns);
+                let laneBest = null;
+
+                for (const dest of matches) {
+                    const laneResult = await applyTurnLaneGuidanceFromSnapshot(dest, src, turns);
+                    const row = makeTurnPasteReportRow(src, i, dest, null, laneResult);
+                    laneBest = row;
+                    if (laneResult.ok) {
+                        updatedLaneKeys.add(rowKey);
+                        latestReport.set(rowKey, Object.assign({}, latestReport.get(rowKey) || row, { laneCopied: true, laneReason: laneResult.reason || 'lanes-updated' }));
+                        break;
+                    }
+                }
+
+                if (laneBest && !latestReport.has(rowKey)) latestReport.set(rowKey, laneBest);
+            }
+
+            const turnDone = updatedKeys.size >= sourceRows.length;
+            const laneDone = updatedLaneKeys.size >= laneRows.length;
+            if (turnDone && laneDone) break;
+
+            await sleep(pass < 7 ? 620 : 380);
+        }
+
+        if ((updatedKeys.size < sourceRows.length || updatedLaneKeys.size < laneRows.length) && sourceRows.length) {
+            for (let finalPass = 0; finalPass < 3; finalPass++) {
+                const turns = await getRealReplacementTurnPoolForSnapshot(sourceRows, targetBigJunctionId);
+
+                for (let i = 0; i < sourceRows.length; i++) {
+                    const src = sourceRows[i];
+                    const rowKey = src.fullKey || src.key || src.looseKey || String(i);
+                    if (updatedKeys.has(rowKey)) continue;
+
+                    let pool = turns;
+                    let matches = getAllReplacementTurnsForSnapshot(src, pool);
+                    if (!matches.length && (src.isPathTurn || normalizeTurnSegmentPath(src.segmentPath).length)) {
+                        const made = await createPathTurnFromSnapshot(src);
+                        if (made?.id) {
+                            pathCreateAttempts++;
+                            pathCreated++;
+                            await sleep(420);
+                            pool = await getRealReplacementTurnPoolForSnapshot(sourceRows, targetBigJunctionId);
+                            matches = getAllReplacementTurnsForSnapshot(src, pool);
+                        }
+                    }
+
+                    for (const dest of matches) {
+                        const updateResult = await updateTurnFromSnapshot(dest, src, pool);
+                        if (updateResult.ok) {
+                            updatedKeys.add(rowKey);
+                            break;
+                        }
+                    }
+                }
+
+                for (let i = 0; i < laneRows.length; i++) {
+                    const src = laneRows[i];
+                    const rowKey = src.fullKey || src.key || src.looseKey || String(i);
+                    if (updatedLaneKeys.has(rowKey)) continue;
+                    for (const dest of getAllReplacementTurnsForSnapshot(src, turns)) {
+                        const laneResult = await applyTurnLaneGuidanceFromSnapshot(dest, src, turns);
+                        if (laneResult.ok) {
+                            updatedLaneKeys.add(rowKey);
+                            break;
+                        }
+                    }
+                }
+
+                if (updatedKeys.size >= sourceRows.length && updatedLaneKeys.size >= laneRows.length) break;
+                await sleep(700);
+            }
+        }
+
+        const pathRowsTotal = sourceRows.filter(src => src && (src.isPathTurn || normalizeTurnSegmentPath(src.segmentPath).length)).length;
+        return {
+            applied: updatedKeys.size,
+            total: sourceRows.length,
+            lanesApplied: updatedLaneKeys.size,
+            lanesTotal: laneRows.length,
+            report: Array.from(latestReport.values()),
+            pathCreated,
+            pathCreateAttempts: pathRowsTotal,
+        };
+    }
+
+    async function applyJunctionBoxTurnSnapshot(snapshot, targetBigJunctionId = null) {
+        if (!Array.isArray(snapshot) || !snapshot.length) return { applied: 0, total: 0, lanesApplied: 0, lanesTotal: 0 };
+
+        logJunctionBoxTurnSnapshotStatus('applying recorded snapshot', snapshot, { targetBigJunctionId });
+
+        const pending = new Map();
+        const lanePending = new Map();
+        for (const src of snapshot) {
+            if (!src?.key) continue;
+            pending.set(src.key, src);
+            if (src.lanes != null || Array.isArray(src.laneIndexes)) lanePending.set(src.key, src);
         }
 
         let applied = 0;
         let lanesApplied = 0;
-        let lanesTotal = 0;
-        for (const src of snapshot) {
-            const dest = byFull.get(src.fullKey) || byBase.get(src.key);
-            if (!dest) continue;
+        const lanesTotal = lanePending.size;
 
-            const ok = await updateTurnFromSnapshot(dest, src);
-            if (ok) applied++;
+        for (let pass = 0; pass < 7 && (pending.size || lanePending.size); pass++) {
+            const needed = Array.from(new Map([...pending, ...lanePending]).values());
+            const turns = await waitForReplacementTurns(needed, pass === 0 ? 11000 : 3600, targetBigJunctionId);
+            const lookups = buildReplacementTurnLookups(turns);
 
-            if (src.lanes != null || Array.isArray(src.laneIndexes)) {
-                lanesTotal++;
-                const laneOk = await applyTurnLaneGuidanceFromSnapshot(dest, src);
-                if (laneOk) lanesApplied++;
+            for (const [key, src] of Array.from(pending.entries())) {
+                const dest = getReplacementTurnForSnapshot(src, lookups);
+                if (!dest) continue;
+
+                const updateResult = await updateTurnFromSnapshot(dest, src);
+                if (updateResult.ok) {
+                    applied++;
+                    pending.delete(key);
+                }
             }
+
+            for (const [key, src] of Array.from(lanePending.entries())) {
+                const dest = getReplacementTurnForSnapshot(src, lookups);
+                if (!dest) continue;
+
+                const laneResult = await applyTurnLaneGuidanceFromSnapshot(dest, src);
+                if (laneResult.ok) {
+                    lanesApplied++;
+                    lanePending.delete(key);
+                }
+            }
+
+            if (pending.size || lanePending.size) await sleep(420);
         }
+
         return { applied, total: snapshot.length, lanesApplied, lanesTotal };
     }
 
-    async function recreateReplacedJunctionBoxWithTurnSnapshot() {
-        const snapshot = UI.recreateTurnSnapshot || await captureJunctionBoxTurnSnapshot();
+    function getLaneRowsFromSnapshot(snapshot) {
+        return (Array.isArray(snapshot) ? snapshot : []).filter(src => {
+            if (!src) return false;
+            if (Array.isArray(src.laneIndexes) && src.laneIndexes.length) return true;
+            const normalized = normalizeLaneIndexesFromTurnLanes(src.lanes);
+            return Array.isArray(normalized) && normalized.length;
+        });
+    }
+
+
+    async function restoreLaneGuidanceFromSnapshot(snapshot, targetBigJunctionId = null, opts = {}) {
+        const laneRows = getLaneRowsFromSnapshot(snapshot);
+        if (!laneRows.length) return { applied: 0, total: 0 };
+
+        const appliedKeys = new Set();
+        const maxPasses = Number(opts.maxPasses || 20);
+
+        for (let pass = 0; pass < maxPasses && appliedKeys.size < laneRows.length; pass++) {
+            const turns = await getRealReplacementTurnPoolForSnapshot(laneRows, targetBigJunctionId);
+
+            for (let i = 0; i < laneRows.length; i++) {
+                const src = laneRows[i];
+                const rowKey = src.fullKey || src.key || src.looseKey || String(i);
+                if (appliedKeys.has(rowKey)) continue;
+
+                const candidates = getFarTurnLaneRestoreCandidates(src, turns).sort((a, b) => {
+                    const ad = extractTurnData(a);
+                    const bd = extractTurnData(b);
+                    const apath = normalizeTurnSegmentPath(ad.segmentPath).length ? 1 : 0;
+                    const bpath = normalizeTurnSegmentPath(bd.segmentPath).length ? 1 : 0;
+                    const asame = String(ad.fromSegmentId) === String(src.fromSegmentId) && !!ad.fromSegmentFwd === !!src.fromSegmentFwd ? 1 : 0;
+                    const bsame = String(bd.fromSegmentId) === String(src.fromSegmentId) && !!bd.fromSegmentFwd === !!src.fromSegmentFwd ? 1 : 0;
+                    return (bpath - apath) || (bsame - asame);
+                });
+
+                if (!candidates.length && (src.isPathTurn || normalizeTurnSegmentPath(src.segmentPath).length)) {
+                    const originalTry = await tryRestoreLaneByOriginalTurnId(src);
+                    if (originalTry.ok) {
+                        appliedKeys.add(rowKey);
+                        continue;
+                    }
+                }
+
+                for (const dest of candidates) {
+                    const laneResult = await applyTurnLaneGuidanceFromSnapshot(dest, src, turns);
+                    if (laneResult.ok) {
+                        appliedKeys.add(rowKey);
+                        break;
+                    }
+                }
+            }
+
+            if (appliedKeys.size < laneRows.length) await sleep(pass < 8 ? 900 : 550);
+        }
+
+        return { applied: appliedKeys.size, total: laneRows.length };
+    }
+
+async function restoreLastReplacementLaneGuidance() {
+        const snapshot = UI.lastLaneRestoreSnapshot;
+        const targetBigJunctionId = UI.lastLaneRestoreBigJunctionId;
+
+        if (!Array.isArray(snapshot) || !snapshot.length) {
+            return { applied: 0, total: 0, message: 'No recorded lane guidance snapshot is available for the last replacement.' };
+        }
+
+        const result = await restoreLaneGuidanceFromSnapshot(snapshot, targetBigJunctionId, { maxPasses: 18 });
+        const message = `Lane guidance restore attempted: ${result.applied}/${result.total}. Review before saving.`;
+        try { uiSetStep(message); } catch (e) {}
+        try { refreshUiStatus(); } catch (e) {}
+        return Object.assign({}, result, { message });
+    }
+
+    function showReplaceJbManualReviewWarning() {
+        showJbGeometryNotification(
+            'HIGH PRIORITY: Before saving, manually re-apply and verify ALL turn permissions, far turns, and lane guidance in Lanes & Width. Do not trust the copied data blindly.',
+            {
+                title: 'Replace JB — Manual Review Required',
+                closeLabel: 'I understand',
+                timeoutMs: 0,
+                priority: 'danger',
+            }
+        );
+    }
+
+
+async function recreateReplacedJunctionBoxWithTurnSnapshot() {
+        const recreateRing = EDITOR.previewRing || overlayGetRingMercClosed();
+        const cachedTurns = getRecordedJunctionBoxTurnsForTarget(UI.recreateEditTarget || null, recreateRing);
+        const snapshot = UI.manualCopyTurnSnapshot || UI.recreateTurnSnapshot || cachedTurns?.snapshot || await captureJunctionBoxTurnSnapshot(recreateRing, { targetObj: UI.recreateEditTarget || null });
+        const modelIdsBeforeCreate = await snapshotBigJunctionModelIdsSafe();
         const current = writeSettings({ shortcutKey: 'j' });
         const newFt = await commitOverlayToJb({ autoClearAfterCreate: current.autoClearAfterCreate });
-        const result = await applyJunctionBoxTurnSnapshot(snapshot);
+        let newBigJunctionId = getBigJunctionIdValue(newFt);
+        const detectedModelId = await waitForNewBigJunctionModelId(modelIdsBeforeCreate, 11500);
+        if (detectedModelId != null) newBigJunctionId = detectedModelId;
+
+        UI.lastLaneRestoreSnapshot = snapshot;
+        UI.lastLaneRestoreBigJunctionId = newBigJunctionId;
+        if (!UI.manualLaneWidthSnapshot && cachedTurns?.laneWidthSnapshot) UI.manualLaneWidthSnapshot = cachedTurns.laneWidthSnapshot;
+        UI.manualPasteBigJunctionId = newBigJunctionId;
+
         clearRecreateEditTarget();
         EDITOR.createAbortReminderShownForShape = false;
-        const laneText = result.lanesTotal ? ` Lane guidance copied: ${result.lanesApplied}/${result.lanesTotal}.` : '';
-        showJbGeometryNotification(`Junction Box replaced. Turn permissions copied: ${result.applied}/${result.total}.${laneText} Review before saving.`, {
-            title: getUiText().replaceJb,
-            closeLabel: 'OK',
-            timeoutMs: 8500,
-        });
+
+        setTimeout(showReplaceJbManualReviewWarning, 500);
         refreshUiStatus();
+        if (newFt) closeJbGeometryScriptSidebarSoon();
         return !!newFt;
     }
 
@@ -9979,37 +12006,490 @@
         return true;
     }
 
-    function showJbGeometryNotification(message, opts = {}) {
-        try { document.querySelector('.jbg-info-toast')?.remove(); } catch (e) {}
 
-        const toast = createEl('div', 'jbg-info-toast');
-        const textWrap = createEl('div', 'jbg-warning-text');
-        textWrap.appendChild(createEl('div', 'jbg-warning-title', opts.title || 'JB Geometry'));
-        textWrap.appendChild(createEl('div', 'jbg-warning-message', message));
+    function applyWmeVarsToVisibleNotifications() {
+        try {
+            const root = document.documentElement;
+            const cs = getComputedStyle(root);
 
-        const actions = createEl('div', 'jbg-warning-actions');
-        const closeBtn = createEl('button', 'jbg-warning-btn', opts.closeLabel || 'OK');
+            const content = (cs.getPropertyValue('--content_default') || '').trim() || '#f4f7fb';
+            const secondary = (cs.getPropertyValue('--content_secondary') || '').trim() || content;
+            const background = (cs.getPropertyValue('--background_default') || '').trim() || 'rgba(23, 27, 34, .97)';
+
+            for (const toast of document.querySelectorAll('.jbg-info-toast:not(.jbg-info-toast-danger)')) {
+                toast.style.setProperty('background', `color-mix(in srgb, ${background} 94%, transparent)`, 'important');
+                toast.style.setProperty('border', `1px solid color-mix(in srgb, ${content} 18%, #2aa8ff 50%)`, 'important');
+                toast.style.setProperty('box-shadow', '0 16px 36px rgba(0,0,0,.26), 0 0 0 1px rgba(255,255,255,.06) inset', 'important');
+
+                const title = toast.querySelector('.jbg-warning-title');
+                const message = toast.querySelector('.jbg-warning-message');
+                const textWrap = toast.querySelector('.jbg-warning-text');
+
+                for (const el of [title, textWrap, ...(textWrap ? Array.from(textWrap.querySelectorAll('*')) : [])]) {
+                    if (!el) continue;
+                    el.style.setProperty('color', content, 'important');
+                    el.style.setProperty('-webkit-text-fill-color', content, 'important');
+                    el.style.setProperty('opacity', '1', 'important');
+                    el.style.setProperty('text-shadow', 'none', 'important');
+                }
+
+                if (message) {
+                    message.style.setProperty('color', secondary, 'important');
+                    message.style.setProperty('-webkit-text-fill-color', secondary, 'important');
+                    message.style.setProperty('opacity', '1', 'important');
+                    message.style.setProperty('text-shadow', 'none', 'important');
+                }
+
+                for (const btn of toast.querySelectorAll('.jbg-warning-btn')) {
+                    btn.style.setProperty('color', content, 'important');
+                    btn.style.setProperty('-webkit-text-fill-color', content, 'important');
+                    btn.style.setProperty('background', `color-mix(in srgb, #2aa8ff 16%, ${background})`, 'important');
+                    btn.style.setProperty('border', '1px solid rgba(42,168,255,.62)', 'important');
+                    btn.style.setProperty('box-shadow', 'none', 'important');
+                        }
+            }
+        } catch (e) {}
+    }
+
+
+
+function showJbGeometryNotification(message, opts = {}) {
+        try { document.querySelectorAll('.jbg2-toast, .jbg-info-toast').forEach(el => el.remove()); } catch (e) {}
+
+        const isDanger = opts.priority === 'danger';
+
+        const getCssVar = (name, fallback) => {
+            try {
+                const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+                return value || fallback;
+            } catch (e) {
+                return fallback;
+            }
+        };
+
+        const parseRgb = (value) => {
+            const v = String(value || '').trim();
+            let m = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+            if (m) {
+                let hex = m[1];
+                if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+                const n = parseInt(hex, 16);
+                return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+            }
+            m = v.match(/rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)/i);
+            if (m) return [Number(m[1]), Number(m[2]), Number(m[3])];
+            return null;
+        };
+
+        const luminance = (rgb) => {
+            if (!rgb) return null;
+            const [r, g, b] = rgb.map((x) => {
+                x = Math.max(0, Math.min(255, Number(x))) / 255;
+                return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+            });
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        };
+
+        const root = document.documentElement;
+        const body = document.body;
+        const themeText = [
+            root?.getAttribute?.('wz-theme'),
+            body?.getAttribute?.('wz-theme'),
+            root?.className,
+            body?.className,
+            root?.dataset?.theme,
+            body?.dataset?.theme,
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        const wmeContent = getCssVar('--content_default', '#f4f7fb');
+        const wmeSecondary = getCssVar('--content_secondary', wmeContent);
+        const wmeBackground = getCssVar('--background_default', '#171b22');
+
+        const contentLum = luminance(parseRgb(wmeContent));
+        const bgLum = luminance(parseRgb(wmeBackground));
+        const isDark = themeText.includes('dark') || (contentLum != null && contentLum > 0.55) || (bgLum != null && bgLum < 0.42);
+
+        const theme = isDanger
+            ? (isDark ? {
+                bg: 'linear-gradient(135deg, rgba(76, 5, 16, .98), rgba(34, 3, 10, .98))',
+                border: 'rgba(255, 72, 88, .88)',
+                title: '#ff9aa6',
+                msg: '#fff4f5',
+                btnBg: 'rgba(255, 72, 88, .18)',
+                btnBorder: 'rgba(255, 110, 124, .82)',
+                btnText: '#ffffff',
+                shadow: '0 18px 44px rgba(255, 40, 60, .28), 0 0 0 1px rgba(255, 120, 132, .18) inset',
+            } : {
+                bg: 'rgba(255, 246, 246, .97)',
+                border: 'rgba(255, 90, 90, .55)',
+                title: '#b42318',
+                msg: '#4a1016',
+                btnBg: 'rgba(255, 59, 48, .12)',
+                btnBorder: 'rgba(255, 59, 48, .46)',
+                btnText: '#8f1d1d',
+                shadow: '0 16px 38px rgba(127, 29, 29, .18), 0 0 0 1px rgba(255, 255, 255, .70) inset',
+            })
+            : (isDark ? {
+                bg: 'rgba(23, 27, 34, .97)',
+                border: 'rgba(42, 168, 255, .58)',
+                title: wmeContent || '#f4f7fb',
+                msg: wmeSecondary || wmeContent || '#eef4ff',
+                btnBg: 'rgba(42, 168, 255, .18)',
+                btnBorder: 'rgba(42, 168, 255, .62)',
+                btnText: wmeContent || '#ffffff',
+                shadow: '0 16px 36px rgba(0,0,0,.34), 0 0 0 1px rgba(255,255,255,.055) inset',
+            } : {
+                bg: 'rgba(255, 255, 255, .96)',
+                border: 'rgba(42, 168, 255, .46)',
+                title: wmeContent || '#0f172a',
+                msg: wmeSecondary || wmeContent || '#243247',
+                btnBg: 'rgba(42, 168, 255, .14)',
+                btnBorder: 'rgba(42, 168, 255, .56)',
+                btnText: wmeContent || '#0f172a',
+                shadow: '0 16px 36px rgba(31, 41, 55, .18), 0 0 0 1px rgba(255,255,255,.72) inset',
+            });
+
+        const toast = document.createElement('div');
+        toast.className = `jbg2-toast ${isDanger ? 'jbg2-toast-danger' : 'jbg2-toast-normal'} ${isDark ? 'jbg2-dark' : 'jbg2-light'}`;
+
+        const textWrap = document.createElement('div');
+        textWrap.className = 'jbg2-toast-text';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'jbg2-toast-title';
+        titleEl.textContent = opts.title || 'JB Geometry';
+
+        const msgEl = document.createElement('div');
+        msgEl.className = 'jbg2-toast-message';
+        msgEl.textContent = message;
+
+        textWrap.appendChild(titleEl);
+        textWrap.appendChild(msgEl);
+
+        const actions = document.createElement('div');
+        actions.className = 'jbg2-toast-actions';
+
+        const applyButtonStyle = (btn) => {
+            btn.style.cssText = '';
+            btn.style.setProperty('min-width', '56px', 'important');
+            btn.style.setProperty('min-height', '32px', 'important');
+            btn.style.setProperty('padding', '5px 10px 4px', 'important');
+            btn.style.setProperty('border-radius', '11px', 'important');
+            btn.style.setProperty('border', `1px solid ${theme.btnBorder}`, 'important');
+            btn.style.setProperty('background', theme.btnBg, 'important');
+            btn.style.setProperty('background-image', 'none', 'important');
+            btn.style.setProperty('color', theme.btnText, 'important');
+            btn.style.setProperty('-webkit-text-fill-color', theme.btnText, 'important');
+            btn.style.setProperty('font-size', '12px', 'important');
+            btn.style.setProperty('font-weight', '900', 'important');
+            btn.style.setProperty('box-shadow', 'none', 'important');
+            btn.style.setProperty('filter', 'none', 'important');
+            btn.style.setProperty('cursor', 'pointer', 'important');
+        };
+
+        for (const action of (Array.isArray(opts.actions) ? opts.actions : [])) {
+            if (!action || !action.label) continue;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `jbg2-toast-btn ${action.className || ''}`.trim();
+            btn.textContent = action.label;
+            applyButtonStyle(btn);
+            btn.addEventListener('click', async () => {
+                const originalLabel = action.label;
+                try {
+                    btn.disabled = true;
+                    btn.textContent = action.busyLabel || action.label;
+                    const out = action.onClick?.();
+                    const result = (out && typeof out.then === 'function') ? await out : out;
+                    if (result?.message) msgEl.textContent = `${message} ${result.message}`;
+                    else if (result && typeof result.applied !== 'undefined') msgEl.textContent = `${message} Lane guidance restore attempted: ${result.applied}/${result.total}. Review before saving.`;
+                    btn.textContent = originalLabel;
+                    applyButtonStyle(btn);
+                } catch (e) {
+                    console.error(e);
+                    msgEl.textContent = `${message} Lane guidance restore failed. Check console.`;
+                    btn.textContent = originalLabel;
+                    applyButtonStyle(btn);
+                } finally {
+                    try { btn.disabled = false; } catch (e) {}
+                    applyButtonStyle(btn);
+                }
+            });
+            actions.appendChild(btn);
+        }
+
+        const closeBtn = document.createElement('button');
         closeBtn.type = 'button';
+        closeBtn.className = 'jbg2-toast-btn jbg2-toast-close';
+        closeBtn.textContent = opts.closeLabel || 'OK';
+        applyButtonStyle(closeBtn);
         actions.appendChild(closeBtn);
 
         toast.appendChild(textWrap);
         toast.appendChild(actions);
+
+        toast.style.setProperty('position', 'fixed', 'important');
+        toast.style.setProperty('left', '50%', 'important');
+        toast.style.setProperty('right', 'auto', 'important');
+        toast.style.setProperty('bottom', '46px', 'important');
+        toast.style.setProperty('z-index', '2147483647', 'important');
+        toast.style.setProperty('width', isDanger ? 'min(560px, calc(100vw - 32px))' : 'min(520px, calc(100vw - 32px))', 'important');
+        toast.style.setProperty('max-width', isDanger ? 'min(560px, calc(100vw - 32px))' : 'min(520px, calc(100vw - 32px))', 'important');
+        toast.style.setProperty('display', 'grid', 'important');
+        toast.style.setProperty('grid-template-columns', '1fr auto', 'important');
+        toast.style.setProperty('gap', '14px', 'important');
+        toast.style.setProperty('align-items', 'center', 'important');
+        toast.style.setProperty('box-sizing', 'border-box', 'important');
+        toast.style.setProperty('padding', '12px 14px', 'important');
+        toast.style.setProperty('border-radius', '16px', 'important');
+        toast.style.setProperty('border', `1px solid ${theme.border}`, 'important');
+        toast.style.setProperty('background', theme.bg, 'important');
+        toast.style.setProperty('box-shadow', theme.shadow, 'important');
+        toast.style.setProperty('backdrop-filter', 'blur(14px) saturate(1.15)', 'important');
+        toast.style.setProperty('-webkit-backdrop-filter', 'blur(14px) saturate(1.15)', 'important');
+        toast.style.setProperty('transform', 'translate(-50%, 16px) scale(.985)', 'important');
+        toast.style.setProperty('opacity', '0', 'important');
+        toast.style.setProperty('transition', 'opacity .16s ease, transform .16s ease', 'important');
+
+        textWrap.style.setProperty('min-width', '0', 'important');
+
+        titleEl.style.setProperty('color', theme.title, 'important');
+        titleEl.style.setProperty('-webkit-text-fill-color', theme.title, 'important');
+        titleEl.style.setProperty('font-size', '12.5px', 'important');
+        titleEl.style.setProperty('line-height', '1.15', 'important');
+        titleEl.style.setProperty('font-weight', '900', 'important');
+        titleEl.style.setProperty('margin-bottom', '4px', 'important');
+        titleEl.style.setProperty('opacity', '1', 'important');
+        titleEl.style.setProperty('text-shadow', 'none', 'important');
+
+        msgEl.style.setProperty('color', theme.msg, 'important');
+        msgEl.style.setProperty('-webkit-text-fill-color', theme.msg, 'important');
+        msgEl.style.setProperty('font-size', '12.5px', 'important');
+        msgEl.style.setProperty('line-height', '1.36', 'important');
+        msgEl.style.setProperty('font-weight', isDanger ? '900' : '850', 'important');
+        msgEl.style.setProperty('opacity', '1', 'important');
+        msgEl.style.setProperty('text-shadow', 'none', 'important');
+
+        actions.style.setProperty('display', 'flex', 'important');
+        actions.style.setProperty('gap', '8px', 'important');
+        actions.style.setProperty('align-items', 'center', 'important');
+
         document.body.appendChild(toast);
 
         const close = () => {
-            try { toast.classList.remove('is-visible'); } catch (e) {}
-            try { window.setTimeout(() => toast.remove(), 160); } catch (e) { try { toast.remove(); } catch (_) {} }
+            try {
+                toast.style.setProperty('opacity', '0', 'important');
+                toast.style.setProperty('transform', 'translate(-50%, 16px) scale(.985)', 'important');
+                window.setTimeout(() => toast.remove(), 170);
+            } catch (e) {
+                try { toast.remove(); } catch (_) {}
+            }
         };
 
         closeBtn.addEventListener('click', close);
 
-        try { window.setTimeout(() => toast.classList.add('is-visible'), 20); } catch (e) {}
-        try { window.setTimeout(close, Number(opts.timeoutMs || 6500)); } catch (e) {}
+        try {
+            window.setTimeout(() => {
+                toast.classList.add('is-visible');
+                toast.style.setProperty('opacity', '1', 'important');
+                toast.style.setProperty('transform', 'translate(-50%, 0) scale(1)', 'important');
+            }, 20);
+        } catch (e) {}
+
+        if (opts.timeoutMs !== 0 && !(Array.isArray(opts.actions) && opts.actions.length)) {
+            try { window.setTimeout(close, Number(opts.timeoutMs || 6500)); } catch (e) {}
+        }
 
         return true;
     }
 
-    async function replaceSelectedJunctionBoxWithShape() {
+
+
+
+    function jbgIsVisibleElement(el) {
+        try {
+            const r = el?.getBoundingClientRect?.();
+            const cs = window.getComputedStyle(el);
+            return !!r && r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden';
+        } catch (e) { return false; }
+    }
+
+    function jbgFindSidePanelRoot() {
+        const nodes = Array.from(document.querySelectorAll('aside,[class*="side"],[class*="panel"],[class*="properties"],body'));
+        return nodes.find(el => jbgIsVisibleElement(el) && /Lanes\s*&\s*Width|Number\s+Of\s+Lanes|Far\s+Turns|Turns/i.test(String(el.textContent || ''))) || document.body;
+    }
+
+    function jbgClickLanesWidthTab() {
+        const root = jbgFindSidePanelRoot();
+        const nodes = Array.from(root.querySelectorAll('button,[role="tab"],[role="button"],a,div,span')).filter(jbgIsVisibleElement);
+        const tab = nodes.find(el => /Lanes\s*&\s*W/i.test(String(el.textContent || '').trim()));
+        if (!tab) return false;
+        try { tab.click(); return true; } catch (e) {}
+        try { tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); return true; } catch (e) {}
+        return false;
+    }
+
+    function jbgGetLanePanelRoot() {
+        const root = jbgFindSidePanelRoot();
+        const nodes = Array.from(root.querySelectorAll('div,section,form,wz-card')).filter(jbgIsVisibleElement);
+        return nodes.find(el => /Number\s+Of\s+Lanes|Far\s+Turns|Turns/i.test(String(el.textContent || ''))) || root;
+    }
+
+    async function jbgOpenLanesWidthPanel() {
+        jbgClickLanesWidthTab();
+        await sleep(280);
+        return jbgGetLanePanelRoot();
+    }
+
+    function jbgCheckboxState(el) {
+        try { if ('checked' in el) return !!el.checked; } catch (e) {}
+        try {
+            const aria = el.getAttribute('aria-checked');
+            if (aria != null) return aria === 'true';
+        } catch (e) {}
+        try { return /\bchecked\b|is-checked|selected|active/i.test(String(el.className || '')); } catch (e) {}
+        return false;
+    }
+
+    function jbgSetCheckboxState(el, checked) {
+        if (jbgCheckboxState(el) === !!checked) return false;
+        try { el.click(); return true; } catch (e) {}
+        try { el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); return true; } catch (e) {}
+        return false;
+    }
+
+    function jbgCollectLaneCheckboxes(root) {
+        const nodes = Array.from(root.querySelectorAll('input[type="checkbox"],[role="checkbox"],wz-checkbox,.checkbox,[class*="checkbox"]')).filter(jbgIsVisibleElement);
+        const out = [];
+        const seen = new Set();
+        for (const n of nodes) {
+            if (!seen.has(n)) { seen.add(n); out.push(n); }
+        }
+        return out;
+    }
+
+    function jbgNearbyText(el) {
+        let cur = el;
+        for (let i = 0; i < 5 && cur; i++) {
+            const txt = String(cur.textContent || '').replace(/\s+/g, ' ').trim();
+            if (txt && txt.length < 220) return txt;
+            cur = cur.parentElement;
+        }
+        return '';
+    }
+
+    async function captureSelectedJbLanesWidthUiSnapshot() {
+        const root = await jbgOpenLanesWidthPanel();
+        if (!root) return null;
+        const laneInput = Array.from(root.querySelectorAll('input')).find(input => {
+            const type = String(input.getAttribute('type') || '').toLowerCase();
+            return (!type || type === 'text' || type === 'number') && jbgIsVisibleElement(input);
+        });
+        const boxes = jbgCollectLaneCheckboxes(root);
+        const snapshot = {
+            capturedAt: Date.now(),
+            laneCount: laneInput ? String(laneInput.value || '').trim() : '',
+            checkboxStates: boxes.map((box, index) => ({ index, checked: jbgCheckboxState(box), text: jbgNearbyText(box) })),
+            rootText: String(root.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 1800),
+        };
+        UI.manualLaneWidthSnapshot = snapshot;
+        return snapshot;
+    }
+
+    async function applySelectedJbLanesWidthUiSnapshot(snapshot = UI.manualLaneWidthSnapshot) {
+        if (!snapshot) return { ok: false, changed: 0, total: 0, reason: 'no-snapshot' };
+        const root = await jbgOpenLanesWidthPanel();
+        if (!root) return { ok: false, changed: 0, total: 0, reason: 'no-panel' };
+        let changed = 0;
+        const laneInput = Array.from(root.querySelectorAll('input')).find(input => {
+            const type = String(input.getAttribute('type') || '').toLowerCase();
+            return (!type || type === 'text' || type === 'number') && jbgIsVisibleElement(input);
+        });
+        if (laneInput && snapshot.laneCount != null && String(snapshot.laneCount) !== '') {
+            try {
+                laneInput.focus();
+                laneInput.value = String(snapshot.laneCount);
+                laneInput.dispatchEvent(new Event('input', { bubbles: true }));
+                laneInput.dispatchEvent(new Event('change', { bubbles: true }));
+                changed++;
+                await sleep(220);
+            } catch (e) {}
+        }
+        const boxes = jbgCollectLaneCheckboxes(root);
+        const states = Array.isArray(snapshot.checkboxStates) ? snapshot.checkboxStates : [];
+        const max = Math.min(boxes.length, states.length);
+        for (let i = 0; i < max; i++) {
+            if (jbgSetCheckboxState(boxes[i], !!states[i].checked)) {
+                changed++;
+                await sleep(70);
+            }
+        }
+        try {
+            const applyBtn = Array.from(root.querySelectorAll('button,[role="button"],wz-button'))
+                .filter(jbgIsVisibleElement)
+                .find(btn => /^Apply$/i.test(String(btn.textContent || '').trim()));
+            if (applyBtn && !applyBtn.disabled) { applyBtn.click(); changed++; }
+        } catch (e) {}
+        return { ok: true, changed, total: states.length, laneCount: snapshot.laneCount };
+    }
+
+function removeJbTurnCopyPasteBox() {
+        try { UI.copiedTurnFloatingBox?.remove?.(); } catch (e) {}
+        UI.copiedTurnFloatingBox = null;
+        try { document.querySelector('.jbg-turn-copy-paste-box')?.remove(); } catch (e) {}
+    }
+function summarizeTurnSnapshotForBox(snapshot) {
+        const rows = Array.isArray(snapshot) ? snapshot : [];
+        const total = rows.length;
+        const allowed = rows.filter(r => !!r?.isAllowed).length;
+        const blocked = rows.filter(r => !r?.isAllowed).length;
+        const lanes = rows.filter(r => (Array.isArray(r?.laneIndexes) && r.laneIndexes.length) || (Array.isArray(normalizeLaneIndexesFromTurnLanes(r?.lanes)) && normalizeLaneIndexesFromTurnLanes(r?.lanes).length)).length;
+        const realFar = rows.filter(r => !!r?.isFarTurn).length;
+        const paths = rows.filter(r => !!r?.isPathTurn || normalizeTurnSegmentPath(r?.segmentPath).length).length;
+        const farLaneRows = rows.filter(r => {
+            const path = normalizeTurnSegmentPath(r?.segmentPath);
+            const hasLanes = (Array.isArray(r?.laneIndexes) && r.laneIndexes.length) || (Array.isArray(normalizeLaneIndexesFromTurnLanes(r?.lanes)) && normalizeLaneIndexesFromTurnLanes(r?.lanes).length);
+            return hasLanes && (!!r?.isFarTurn || !!r?.isPathTurn || path.length);
+        }).length;
+        return { total, allowed, blocked, lanes, realFar, paths, farLaneRows };
+    }
+
+function makeTurnCopyPasteRow(row, index) {
+        const wrap = createEl('div', 'jbg-turn-copy-row');
+        const title = createEl('div', 'jbg-turn-copy-title');
+        const from = row?.fromName || getSegmentDisplayNameById(row?.fromSegmentId) || row?.fromSegmentId || '?';
+        const to = row?.toName || getSegmentDisplayNameById(row?.toSegmentId) || row?.toSegmentId || '?';
+        title.textContent = `#${index + 1} ${from} → ${to}`;
+        const state = createEl('span', `jbg-turn-copy-state ${row?.isAllowed ? 'is-allowed' : 'is-blocked'}`, row?.isAllowed ? 'allowed' : 'blocked');
+
+        const meta = createEl('div', 'jbg-turn-copy-meta');
+        const laneIndexes = Array.isArray(row?.laneIndexes)
+            ? row.laneIndexes.join(',')
+            : (Array.isArray(normalizeLaneIndexesFromTurnLanes(row?.lanes)) ? normalizeLaneIndexesFromTurnLanes(row?.lanes).join(',') : '');
+        const path = normalizeTurnSegmentPath(row?.segmentPath).join(' > ');
+        meta.textContent = [
+            laneIndexes ? `lanes=${laneIndexes}` : 'lanes=none',
+            row?.isFarTurn ? 'REAL far=yes' : (row?.isPathTurn || path ? 'path-record=yes' : 'path-record=no'),
+            path ? `path=${path}` : '',
+        ].filter(Boolean).join(' · ');
+
+        wrap.appendChild(title);
+        wrap.appendChild(state);
+        wrap.appendChild(meta);
+        return wrap;
+    }
+function showJbTurnCopyPasteBox() {
+        removeJbTurnCopyPasteBox();
+        return null;
+    }
+
+function waitForJbTurnCopyConfirmation(snapshot) {
+        UI.manualCopyTurnSnapshot = Array.isArray(snapshot) ? snapshot : [];
+        removeJbTurnCopyPasteBox();
+        return Promise.resolve(true);
+    }
+
+async function replaceSelectedJunctionBoxWithShape() {
         if (!hasRealJunctionBoxSelectedOrClicked()) {
             uiSetStep(getUiText().replaceJbNoSelection);
             refreshUiStatus();
@@ -10031,8 +12511,18 @@
 
         if (!(await confirmReplaceCurrentShape('selected Junction Box geometry'))) return false;
 
-        const targetObj = getFirstJunctionBoxObjectFromContext({});
-        const turnSnapshot = await captureJunctionBoxTurnSnapshot();
+        const targetObj = getFirstJunctionBoxObjectFromContext({}) || makeJunctionBoxIdOnlyObject(getSelectedJunctionBoxIdFallback());
+        await recordSelectedJunctionBoxTurnsIfNeeded();
+        const cachedTurns = getRecordedJunctionBoxTurnsForTarget(targetObj, sani.ring);
+        const exitSegmentIds = cachedTurns?.exitSegmentIds?.length
+            ? new Set(cachedTurns.exitSegmentIds.map(Number).filter(Number.isFinite))
+            : await collectJunctionBoxExitSegmentIdsForTurnCapture(sani.ring, targetObj);
+        const turnSnapshot = cachedTurns?.snapshot?.length
+            ? cachedTurns.snapshot
+            : await captureJunctionBoxTurnSnapshot(sani.ring, { targetObj, exitSegmentIds });
+
+        UI.manualLaneWidthSnapshot = cachedTurns?.laneWidthSnapshot || await captureSelectedJbLanesWidthUiSnapshot();
+        await waitForJbTurnCopyConfirmation(turnSnapshot);
 
         dispatchDeleteSelectedJunctionBox();
 
@@ -10050,7 +12540,7 @@
         UI.copiedJbKey = null;
         UI.lastSelectedJbKey = null;
 
-        showJbGeometryNotification(`${getUiText().replaceJbDone} Turn permissions captured: ${turnSnapshot.length}.`, {
+        showJbGeometryNotification(getUiText().replaceJbDone, {
             title: getUiText().replaceJb,
             closeLabel: 'OK',
             timeoutMs: 7500,
@@ -11143,4 +13633,1432 @@
     }, 300);
 
     log('Awaiting WazeMapEditor...');
+
+    function injectBackModalButtonStyleFix() {
+        const id = 'jbg-back-modal-button-style-fix';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg-modal-btn-back {
+  background: rgba(255, 92, 92, .14) !important;
+  border: 1px solid rgba(255, 92, 92, .42) !important;
+  color: var(--content_default, #f4f7fb) !important;
+  -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
+}
+
+.jbg-modal-btn-back:hover {
+  background: rgba(255, 92, 92, .22) !important;
+  border-color: rgba(255, 92, 92, .62) !important;
+}
+`;
+        document.documentElement.appendChild(st);
+
+        const apply = () => {
+            try {
+                document.querySelectorAll('button.jbg-modal-btn').forEach((btn) => {
+                    if ((btn.textContent || '').trim().toLowerCase() === 'back') {
+                        btn.classList.add('jbg-modal-btn-back');
+                    }
+                });
+            } catch (e) {}
+        };
+        apply();
+        try {
+            new MutationObserver(apply).observe(document.documentElement, { childList: true, subtree: true });
+        } catch (e) {}
+    }
+
+    injectBackModalButtonStyleFix();
+
+
+    function injectJbTurnConsoleForceHide() {
+        const id = 'jbg-turn-console-force-hide';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg-turn-console {
+  display: none !important;
+}
+`;
+        document.documentElement.appendChild(st);
+        try { hideJbTurnFloatingConsole(); } catch (e) {}
+    }
+
+    injectJbTurnConsoleForceHide();
+
+
+    function injectLaneRestoreButtonStyle() {
+        const id = 'jbg-lane-restore-button-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg-warning-btn-lanes {
+  background: rgba(26, 140, 255, .16) !important;
+  border-color: rgba(26, 140, 255, .45) !important;
+  color: var(--content_default, #f4f7fb) !important;
+  -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
+}
+.jbg-warning-btn-lanes:hover {
+  background: rgba(26, 140, 255, .24) !important;
+  border-color: rgba(26, 140, 255, .62) !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectLaneRestoreButtonStyle();
+
+
+    function injectJbTurnCopyPasteBoxStyle() {
+        const id = 'jbg-turn-copy-paste-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg-turn-copy-paste-box {
+  position: fixed;
+  right: 18px;
+  top: 96px;
+  width: min(520px, calc(100vw - 36px));
+  max-height: min(720px, calc(100vh - 132px));
+  z-index: 2147483646;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(42, 168, 255, .35);
+  border-radius: 18px;
+  background: var(--background_elevated, rgba(28, 30, 35, .96));
+  color: var(--content_default, #f4f7fb);
+  box-shadow: 0 18px 44px rgba(0,0,0,.30);
+  backdrop-filter: blur(18px);
+}
+.jbg-turn-copy-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.jbg-turn-copy-heading {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--content_default, #f4f7fb);
+  -webkit-text-fill-color: var(--content_default, #f4f7fb);
+}
+.jbg-turn-copy-small-btn,
+.jbg-turn-copy-main-btn,
+.jbg-turn-copy-secondary-btn {
+  border-radius: 12px;
+  border: 1px solid rgba(42, 168, 255, .35);
+  background: rgba(42, 168, 255, .14);
+  color: var(--content_default, #f4f7fb);
+  -webkit-text-fill-color: var(--content_default, #f4f7fb);
+  font-weight: 800;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.jbg-turn-copy-main-btn {
+  background: rgba(42, 168, 255, .30);
+}
+.jbg-turn-copy-sub {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--content_secondary, var(--content_default, #cbd5e1));
+}
+.jbg-turn-copy-list {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+.jbg-turn-copy-row {
+  position: relative;
+  padding: 10px 74px 10px 10px;
+  border-radius: 13px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.045);
+}
+.jbg-turn-copy-title {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--content_default, #f4f7fb);
+}
+.jbg-turn-copy-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--content_secondary, var(--content_default, #cbd5e1));
+}
+.jbg-turn-copy-state {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  font-size: 11px;
+  font-weight: 900;
+}
+.jbg-turn-copy-state.is-allowed {
+  color: #24e38c;
+  -webkit-text-fill-color: #24e38c;
+}
+.jbg-turn-copy-state.is-blocked {
+  color: #ff5570;
+  -webkit-text-fill-color: #ff5570;
+}
+.jbg-turn-copy-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.jbg-turn-copy-actions-top {
+  justify-content: flex-start !important;
+  padding-bottom: 2px;
+}
+.jbg-turn-copy-actions:not(.jbg-turn-copy-actions-top) {
+  position: sticky;
+  bottom: 0;
+  background: var(--background_elevated, rgba(28, 30, 35, .96));
+  padding-top: 8px;
+}
+
+.jbg-turn-copy-empty {
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255,255,255,.18);
+  color: var(--content_secondary, var(--content_default, #cbd5e1));
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectJbTurnCopyPasteBoxStyle();
+
+
+    function injectReplaceJbDangerWarningStyle() {
+        const id = 'jbg-replace-jb-danger-warning-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg-info-toast-danger {
+  border-color: rgba(255, 59, 48, .85) !important;
+  background: rgba(55, 8, 12, .98) !important;
+  box-shadow: 0 18px 46px rgba(255, 59, 48, .24), 0 0 0 1px rgba(255, 59, 48, .25) inset !important;
+}
+.jbg-info-toast-danger .jbg-warning-title {
+  color: #ff8a8a !important;
+  -webkit-text-fill-color: #ff8a8a !important;
+}
+.jbg-info-toast-danger .jbg-warning-message {
+  color: #fff2f2 !important;
+  -webkit-text-fill-color: #fff2f2 !important;
+  font-weight: 900 !important;
+}
+.jbg-info-toast-danger .jbg-warning-btn {
+  border-color: rgba(255, 138, 138, .70) !important;
+  background: rgba(255, 59, 48, .20) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectReplaceJbDangerWarningStyle();
+
+
+
+
+
+    function openJbGeometryEditorFromJunctionEntryView() {
+        try { UI.openedFromJunctionEntryView = true; } catch (e) {}
+        try {
+            if (typeof tryOpenSidebarTab === 'function' && tryOpenSidebarTab()) {
+                try { refreshUiStatus?.(); } catch (e) {}
+                return;
+            }
+        } catch (e) {}
+
+        try {
+            if (!UI.registered) initScriptsTabUiOnce?.();
+        } catch (e) {}
+
+        try {
+            if (UI.tab?.tabLabel) {
+                UI.tab.tabLabel.click();
+                try { refreshUiStatus?.(); } catch (e) {}
+                return;
+            }
+        } catch (e) {}
+
+        try {
+            const direct = document.querySelector('[data-script-id="' + SCRIPT_ID + '"], [data-scriptid="' + SCRIPT_ID + '"]');
+            if (direct) {
+                direct.click();
+                try { refreshUiStatus?.(); } catch (e) {}
+                return;
+            }
+        } catch (e) {}
+
+        try {
+            const candidates = Array.from(document.querySelectorAll('button,[role="tab"],[role="button"],a,div,span,wz-button'))
+                .filter(el => {
+                    const txt = String(el.textContent || el.getAttribute?.('aria-label') || el.getAttribute?.('title') || '').trim();
+                    return /^JB Geometry$/i.test(txt) || /WME\s*-\s*JB\s*Geometry/i.test(txt);
+                });
+            for (const el of candidates) {
+                try {
+                    el.click();
+                    try { refreshUiStatus?.(); } catch (e) {}
+                    return;
+                } catch (e) {}
+            }
+        } catch (e) {}
+
+        try {
+            showJbGeometryNotification('Could not open the JB Geometry script tab automatically. Open the Scripts tab and select JB Geometry.', {
+                title: 'JB Geometry',
+                closeLabel: 'OK',
+                timeoutMs: 5200,
+            });
+        } catch (e) {}
+    }
+
+function injectOpenJbGeometryEditorButtonIntoJunctionEntryView() {
+        try {
+            const views = Array.from(document.querySelectorAll('.junction-entry-view, [class*="junction-entry-view"]'));
+            for (const view of views) {
+                if (!view || view.querySelector('.jbg-open-editor-entry-btn')) continue;
+
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'jbg-open-editor-entry-btn';
+                btn.textContent = 'Open JB Geometry Editor';
+                btn.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    openJbGeometryEditorFromJunctionEntryView();
+                });
+
+                view.appendChild(btn);
+            }
+        } catch (e) {}
+    }
+
+    function startJunctionEntryViewButtonObserver() {
+        injectOpenJbGeometryEditorButtonIntoJunctionEntryView();
+
+        try {
+            if (window.__JBG_JUNCTION_ENTRY_VIEW_BTN_OBSERVER__) return;
+            const observer = new MutationObserver(() => injectOpenJbGeometryEditorButtonIntoJunctionEntryView());
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+            window.__JBG_JUNCTION_ENTRY_VIEW_BTN_OBSERVER__ = observer;
+        } catch (e) {
+            try { setInterval(injectOpenJbGeometryEditorButtonIntoJunctionEntryView, 1500); } catch (_) {}
+        }
+    }
+
+    function injectJunctionEntryViewButtonStyle() {
+        const id = 'jbg-junction-entry-view-button-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg-open-editor-entry-btn {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 12px 0 6px;
+  padding: 8px 10px;
+  min-height: 32px;
+  border: 1px solid rgba(42, 168, 255, .55);
+  border-radius: 10px;
+  background: rgba(42, 168, 255, .14);
+  color: var(--content_default, #1f2937);
+  -webkit-text-fill-color: var(--content_default, #1f2937);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  cursor: pointer;
+}
+.jbg-open-editor-entry-btn:hover {
+  background: rgba(42, 168, 255, .22);
+  border-color: rgba(42, 168, 255, .78);
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectJunctionEntryViewButtonStyle();
+    startJunctionEntryViewButtonObserver();
+
+
+
+    function injectDisableCopyPasteConsoleStyle() {
+        const id = 'jbg-disable-copy-paste-console-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg-turn-copy-paste-box,
+.jbg-turn-console {
+  display: none !important;
+}
+`;
+        document.documentElement.appendChild(st);
+        try { document.querySelectorAll('.jbg-turn-copy-paste-box,.jbg-turn-console').forEach(el => el.remove()); } catch (e) {}
+    }
+
+    injectDisableCopyPasteConsoleStyle();
+
+
+    function injectNotificationPolishStyle() {
+        const id = 'jbg-notification-polish-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg-info-toast {
+  bottom: 42px !important;
+  transform: translateY(18px) scale(.985);
+  max-width: min(560px, calc(100vw - 32px)) !important;
+  padding: 14px 16px !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(42, 168, 255, .50) !important;
+  background:
+    linear-gradient(135deg, rgba(28, 33, 40, .96), rgba(19, 24, 31, .96)) !important;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, .34),
+    0 0 0 1px rgba(255, 255, 255, .045) inset !important;
+  backdrop-filter: blur(18px) saturate(1.25) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.25) !important;
+}
+.jbg-info-toast.is-visible {
+  transform: translateY(0) scale(1) !important;
+}
+.jbg-info-toast .jbg-warning-title {
+  font-size: 13px !important;
+  line-height: 1.15 !important;
+  letter-spacing: .01em !important;
+  margin-bottom: 3px !important;
+  color: var(--content_default, #f4f7fb) !important;
+  -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
+}
+.jbg-info-toast .jbg-warning-message {
+  font-size: 12.5px !important;
+  line-height: 1.38 !important;
+  color: var(--content_secondary, #d5dde8) !important;
+  -webkit-text-fill-color: var(--content_secondary, #d5dde8) !important;
+}
+.jbg-info-toast .jbg-warning-actions {
+  align-items: center !important;
+  gap: 8px !important;
+}
+.jbg-info-toast .jbg-warning-btn {
+  min-width: 54px !important;
+  min-height: 34px !important;
+  padding: 8px 12px !important;
+  border-radius: 12px !important;
+  font-size: 12.5px !important;
+  font-weight: 900 !important;
+  border: 1px solid rgba(42, 168, 255, .55) !important;
+  background: rgba(42, 168, 255, .18) !important;
+  color: var(--content_default, #f4f7fb) !important;
+  -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
+  box-shadow: 0 8px 20px rgba(42, 168, 255, .12) !important;
+}
+.jbg-info-toast .jbg-warning-btn:hover {
+  background: rgba(42, 168, 255, .28) !important;
+  border-color: rgba(42, 168, 255, .78) !important;
+}
+.jbg-info-toast-danger {
+  bottom: 42px !important;
+  border-color: rgba(255, 86, 86, .80) !important;
+  background:
+    linear-gradient(135deg, rgba(60, 12, 18, .98), rgba(31, 13, 17, .98)) !important;
+  box-shadow:
+    0 18px 46px rgba(255, 59, 48, .22),
+    0 0 0 1px rgba(255, 138, 138, .14) inset !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectNotificationPolishStyle();
+
+
+    function injectNotificationCenterPolishStyle() {
+        const id = 'jbg-notification-center-polish-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg-info-toast {
+  left: 50% !important;
+  right: auto !important;
+  bottom: 46px !important;
+  width: min(520px, calc(100vw - 32px)) !important;
+  max-width: min(520px, calc(100vw - 32px)) !important;
+  transform: translate(-50%, 18px) scale(.985) !important;
+  padding: 12px 14px !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(42, 168, 255, .46) !important;
+  background: rgba(22, 27, 34, .96) !important;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, .30),
+    0 0 0 1px rgba(255, 255, 255, .045) inset !important;
+  backdrop-filter: blur(14px) saturate(1.15) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.15) !important;
+}
+.jbg-info-toast.is-visible {
+  transform: translate(-50%, 0) scale(1) !important;
+}
+.jbg-info-toast .jbg-warning-title {
+  font-size: 12.5px !important;
+  line-height: 1.15 !important;
+  margin-bottom: 4px !important;
+  color: var(--content_default, #f4f7fb) !important;
+  -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
+}
+.jbg-info-toast .jbg-warning-message {
+  font-size: 12.5px !important;
+  line-height: 1.36 !important;
+  color: var(--content_secondary, #d5dde8) !important;
+  -webkit-text-fill-color: var(--content_secondary, #d5dde8) !important;
+  font-weight: 750 !important;
+}
+.jbg-info-toast .jbg-warning-actions {
+  align-items: center !important;
+  gap: 8px !important;
+}
+.jbg-info-toast .jbg-warning-btn {
+  min-width: 56px !important;
+  min-height: 32px !important;
+  padding: 7px 11px !important;
+  border-radius: 11px !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  border: 1px solid rgba(42, 168, 255, .55) !important;
+  background: rgba(42, 168, 255, .16) !important;
+  color: var(--content_default, #f4f7fb) !important;
+  -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
+  box-shadow: none !important;
+}
+.jbg-info-toast .jbg-warning-btn:hover {
+  background: rgba(42, 168, 255, .25) !important;
+  border-color: rgba(42, 168, 255, .76) !important;
+}
+.jbg-info-toast-danger {
+  left: 50% !important;
+  right: auto !important;
+  bottom: 46px !important;
+  width: min(560px, calc(100vw - 32px)) !important;
+  max-width: min(560px, calc(100vw - 32px)) !important;
+  border-color: rgba(255, 92, 92, .55) !important;
+  background: rgba(32, 14, 18, .97) !important;
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, .34),
+    0 0 0 1px rgba(255, 92, 92, .13) inset !important;
+}
+.jbg-info-toast-danger .jbg-warning-title {
+  color: #ffb4b4 !important;
+  -webkit-text-fill-color: #ffb4b4 !important;
+}
+.jbg-info-toast-danger .jbg-warning-message {
+  color: #fff1f1 !important;
+  -webkit-text-fill-color: #fff1f1 !important;
+  font-weight: 850 !important;
+}
+.jbg-info-toast-danger .jbg-warning-btn {
+  border-color: rgba(255, 92, 92, .50) !important;
+  background: rgba(255, 92, 92, .13) !important;
+  color: #fff7f7 !important;
+  -webkit-text-fill-color: #fff7f7 !important;
+}
+.jbg-info-toast-danger .jbg-warning-btn:hover {
+  background: rgba(255, 92, 92, .20) !important;
+  border-color: rgba(255, 92, 92, .72) !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectNotificationCenterPolishStyle();
+
+
+    function injectNotificationReadableTextStyle() {
+        const id = 'jbg-notification-readable-text-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg-info-toast,
+.jbg-info-toast * {
+  color: #f4f7fb !important;
+  -webkit-text-fill-color: #f4f7fb !important;
+  text-shadow: none !important;
+}
+.jbg-info-toast .jbg-warning-title {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: .96 !important;
+}
+.jbg-info-toast .jbg-warning-message {
+  color: #f4f7fb !important;
+  -webkit-text-fill-color: #f4f7fb !important;
+  opacity: .98 !important;
+}
+.jbg-info-toast .jbg-warning-btn {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: rgba(42, 168, 255, .18) !important;
+  border-color: rgba(42, 168, 255, .62) !important;
+}
+.jbg-info-toast .jbg-warning-btn:disabled,
+.jbg-info-toast .jbg-warning-btn[disabled] {
+  color: rgba(255,255,255,.68) !important;
+  -webkit-text-fill-color: rgba(255,255,255,.68) !important;
+}
+.jbg-info-toast-danger,
+.jbg-info-toast-danger * {
+  color: #fff7f7 !important;
+  -webkit-text-fill-color: #fff7f7 !important;
+}
+.jbg-info-toast-danger .jbg-warning-title {
+  color: #ffb4b4 !important;
+  -webkit-text-fill-color: #ffb4b4 !important;
+}
+.jbg-info-toast-danger .jbg-warning-message {
+  color: #fff7f7 !important;
+  -webkit-text-fill-color: #fff7f7 !important;
+}
+.jbg-info-toast-danger .jbg-warning-btn {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectNotificationReadableTextStyle();
+
+
+    function injectNotificationAdaptiveThemeStyle() {
+        const id = 'jbg-notification-adaptive-theme-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* Notification theme follows WME theme */
+html:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger),
+body:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) {
+  background: rgba(255, 255, 255, .94) !important;
+  border-color: rgba(42, 168, 255, .42) !important;
+  box-shadow:
+    0 16px 36px rgba(31, 41, 55, .18),
+    0 0 0 1px rgba(255, 255, 255, .74) inset !important;
+  backdrop-filter: blur(16px) saturate(1.18) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.18) !important;
+}
+html:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger),
+html:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) *,
+body:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger),
+body:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) * {
+  color: #142033 !important;
+  -webkit-text-fill-color: #142033 !important;
+}
+html:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-title,
+body:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-title {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+html:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-message,
+body:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-message {
+  color: #243247 !important;
+  -webkit-text-fill-color: #243247 !important;
+  font-weight: 800 !important;
+}
+html:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-btn,
+body:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-btn {
+  background: rgba(42, 168, 255, .14) !important;
+  border-color: rgba(42, 168, 255, .56) !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+html:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-btn:hover,
+body:not([wz-theme='dark']) .jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-btn:hover {
+  background: rgba(42, 168, 255, .22) !important;
+  border-color: rgba(42, 168, 255, .76) !important;
+}
+
+/* Red/high-priority notification stays red, but uses a light red design in light theme */
+html:not([wz-theme='dark']) .jbg-info-toast-danger,
+body:not([wz-theme='dark']) .jbg-info-toast-danger {
+  background: rgba(255, 246, 246, .96) !important;
+  border-color: rgba(255, 59, 48, .48) !important;
+  box-shadow:
+    0 16px 38px rgba(127, 29, 29, .18),
+    0 0 0 1px rgba(255, 255, 255, .70) inset !important;
+}
+html:not([wz-theme='dark']) .jbg-info-toast-danger,
+html:not([wz-theme='dark']) .jbg-info-toast-danger *,
+body:not([wz-theme='dark']) .jbg-info-toast-danger,
+body:not([wz-theme='dark']) .jbg-info-toast-danger * {
+  color: #3b0d12 !important;
+  -webkit-text-fill-color: #3b0d12 !important;
+}
+html:not([wz-theme='dark']) .jbg-info-toast-danger .jbg-warning-title,
+body:not([wz-theme='dark']) .jbg-info-toast-danger .jbg-warning-title {
+  color: #b42318 !important;
+  -webkit-text-fill-color: #b42318 !important;
+}
+html:not([wz-theme='dark']) .jbg-info-toast-danger .jbg-warning-message,
+body:not([wz-theme='dark']) .jbg-info-toast-danger .jbg-warning-message {
+  color: #4a1016 !important;
+  -webkit-text-fill-color: #4a1016 !important;
+  font-weight: 900 !important;
+}
+html:not([wz-theme='dark']) .jbg-info-toast-danger .jbg-warning-btn,
+body:not([wz-theme='dark']) .jbg-info-toast-danger .jbg-warning-btn {
+  background: rgba(255, 59, 48, .12) !important;
+  border-color: rgba(255, 59, 48, .46) !important;
+  color: #8f1d1d !important;
+  -webkit-text-fill-color: #8f1d1d !important;
+}
+html:not([wz-theme='dark']) .jbg-info-toast-danger .jbg-warning-btn:hover,
+body:not([wz-theme='dark']) .jbg-info-toast-danger .jbg-warning-btn:hover {
+  background: rgba(255, 59, 48, .18) !important;
+  border-color: rgba(255, 59, 48, .66) !important;
+}
+
+/* Explicit dark WME theme */
+html[wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger),
+body[wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger) {
+  background: rgba(22, 27, 34, .96) !important;
+  border-color: rgba(42, 168, 255, .46) !important;
+}
+html[wz-theme='dark'] .jbg-info-toast,
+html[wz-theme='dark'] .jbg-info-toast *,
+body[wz-theme='dark'] .jbg-info-toast,
+body[wz-theme='dark'] .jbg-info-toast * {
+  color: #f4f7fb !important;
+  -webkit-text-fill-color: #f4f7fb !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectNotificationAdaptiveThemeStyle();
+
+
+    function injectAbortButtonReleaseStyle() {
+        const id = 'jbg-abort-button-release-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* Abort button: light red fill with clear red outline */
+.jbg-btn-red,
+.jbg-final-abort,
+.jbg-action-abort {
+  border: 1px solid rgba(239, 68, 68, .72) !important;
+  background: rgba(239, 68, 68, .14) !important;
+  color: #ef4444 !important;
+  -webkit-text-fill-color: #ef4444 !important;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+.jbg-btn-red:hover,
+.jbg-final-abort:hover,
+.jbg-action-abort:hover {
+  border-color: rgba(220, 38, 38, .88) !important;
+  background: rgba(239, 68, 68, .22) !important;
+  color: #dc2626 !important;
+  -webkit-text-fill-color: #dc2626 !important;
+  box-shadow: 0 8px 18px rgba(239, 68, 68, .14) !important;
+}
+
+.jbg-shell[data-jbg-theme="dark"] .jbg-btn-red,
+.jbg-shell[data-jbg-theme="dark"] .jbg-final-abort,
+.jbg-shell[data-jbg-theme="dark"] .jbg-action-abort {
+  border-color: rgba(248, 113, 113, .70) !important;
+  background: rgba(248, 113, 113, .14) !important;
+  color: #fecaca !important;
+  -webkit-text-fill-color: #fecaca !important;
+}
+
+.jbg-shell[data-jbg-theme="dark"] .jbg-btn-red:hover,
+.jbg-shell[data-jbg-theme="dark"] .jbg-final-abort:hover,
+.jbg-shell[data-jbg-theme="dark"] .jbg-action-abort:hover {
+  border-color: rgba(248, 113, 113, .92) !important;
+  background: rgba(248, 113, 113, .22) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.jbg-btn-red:disabled,
+.jbg-final-abort:disabled,
+.jbg-action-abort:disabled {
+  opacity: .46 !important;
+  filter: grayscale(.15) !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectAbortButtonReleaseStyle();
+
+
+    function injectFinalAbortAndNotificationNoHoverStyle() {
+        const id = 'jbg-final-abort-and-notification-no-hover-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* Final Abort button override: soft red fill, red outline, no hover shadow */
+button.jbg-abort-soft,
+.jbg-abort-soft,
+button[class*="abort" i],
+button[aria-label*="abort" i],
+.jbg-final-actions button:last-child {
+  border: 1px solid rgba(239, 68, 68, .76) !important;
+  background: rgba(239, 68, 68, .13) !important;
+  color: #dc2626 !important;
+  -webkit-text-fill-color: #dc2626 !important;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+button.jbg-abort-soft:hover,
+.jbg-abort-soft:hover,
+button[class*="abort" i]:hover,
+button[aria-label*="abort" i]:hover,
+.jbg-final-actions button:last-child:hover {
+  border-color: rgba(220, 38, 38, .86) !important;
+  background: rgba(239, 68, 68, .18) !important;
+  color: #b91c1c !important;
+  -webkit-text-fill-color: #b91c1c !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+button.jbg-abort-soft:active,
+.jbg-abort-soft:active,
+button[class*="abort" i]:active,
+button[aria-label*="abort" i]:active,
+.jbg-final-actions button:last-child:active {
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.jbg-shell[data-jbg-theme="dark"] button.jbg-abort-soft,
+.jbg-shell[data-jbg-theme="dark"] .jbg-abort-soft,
+.jbg-shell[data-jbg-theme="dark"] button[class*="abort" i],
+.jbg-shell[data-jbg-theme="dark"] button[aria-label*="abort" i],
+.jbg-shell[data-jbg-theme="dark"] .jbg-final-actions button:last-child {
+  border-color: rgba(248, 113, 113, .76) !important;
+  background: rgba(248, 113, 113, .13) !important;
+  color: #fecaca !important;
+  -webkit-text-fill-color: #fecaca !important;
+  box-shadow: none !important;
+}
+
+.jbg-shell[data-jbg-theme="dark"] button.jbg-abort-soft:hover,
+.jbg-shell[data-jbg-theme="dark"] .jbg-abort-soft:hover,
+.jbg-shell[data-jbg-theme="dark"] button[class*="abort" i]:hover,
+.jbg-shell[data-jbg-theme="dark"] button[aria-label*="abort" i]:hover,
+.jbg-shell[data-jbg-theme="dark"] .jbg-final-actions button:last-child:hover {
+  border-color: rgba(248, 113, 113, .88) !important;
+  background: rgba(248, 113, 113, .18) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Notifications: remove hover effects/shadows/transforms from buttons */
+.jbg-info-toast .jbg-warning-btn,
+.jbg-info-toast .jbg-warning-btn:hover,
+.jbg-info-toast .jbg-warning-btn:active,
+.jbg-info-toast-danger .jbg-warning-btn,
+.jbg-info-toast-danger .jbg-warning-btn:hover,
+.jbg-info-toast-danger .jbg-warning-btn:active {
+  box-shadow: none !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+.jbg-info-toast .jbg-warning-btn:hover {
+  background: inherit;
+}
+
+.jbg-info-toast-danger .jbg-warning-btn:hover {
+  box-shadow: none !important;
+  transform: none !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectFinalAbortAndNotificationNoHoverStyle();
+
+
+    function forceSoftAbortButtonStyle() {
+        try {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            for (const btn of buttons) {
+                const txt = String(btn.textContent || '').trim().toLowerCase();
+                if (txt === 'abort' || txt === 'ακύρωση') {
+                    btn.classList.add('jbg-abort-soft-final');
+                    btn.style.setProperty('border', '1px solid rgba(220, 38, 38, .72)', 'important');
+                    btn.style.setProperty('background', 'rgba(239, 68, 68, .14)', 'important');
+                    btn.style.setProperty('background-image', 'none', 'important');
+                    btn.style.setProperty('color', '#dc2626', 'important');
+                    btn.style.setProperty('-webkit-text-fill-color', '#dc2626', 'important');
+                    btn.style.setProperty('box-shadow', 'none', 'important');
+                    btn.style.setProperty('text-shadow', 'none', 'important');
+                }
+            }
+        } catch (e) {}
+    }
+
+    try { setIntervalSafe(forceSoftAbortButtonStyle, 350); } catch (e) { try { setInterval(forceSoftAbortButtonStyle, 350); } catch (_) {} }
+    forceSoftAbortButtonStyle();
+
+
+    function injectFinalAbortDirectStyle() {
+        const id = 'jbg-final-abort-direct-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* Final Abort button override: directly targets the actual rendered Abort button */
+button.jbg-abort-soft-final,
+button.jbg-abort-soft,
+button:where(.jbg-abort-soft-final),
+.jbg-shell button.jbg-abort-soft-final {
+  border: 1px solid rgba(220, 38, 38, .72) !important;
+  background: rgba(239, 68, 68, .14) !important;
+  background-image: none !important;
+  color: #dc2626 !important;
+  -webkit-text-fill-color: #dc2626 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transform: none !important;
+}
+
+button.jbg-abort-soft-final:hover,
+button.jbg-abort-soft:hover,
+.jbg-shell button.jbg-abort-soft-final:hover {
+  border: 1px solid rgba(220, 38, 38, .82) !important;
+  background: rgba(239, 68, 68, .18) !important;
+  background-image: none !important;
+  color: #b91c1c !important;
+  -webkit-text-fill-color: #b91c1c !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+button.jbg-abort-soft-final:active,
+button.jbg-abort-soft:active,
+.jbg-shell button.jbg-abort-soft-final:active {
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Dark theme abort */
+.jbg-shell[data-jbg-theme="dark"] button.jbg-abort-soft-final,
+html[wz-theme='dark'] button.jbg-abort-soft-final,
+body[wz-theme='dark'] button.jbg-abort-soft-final {
+  border-color: rgba(248, 113, 113, .76) !important;
+  background: rgba(248, 113, 113, .14) !important;
+  background-image: none !important;
+  color: #fecaca !important;
+  -webkit-text-fill-color: #fecaca !important;
+  box-shadow: none !important;
+}
+
+/* Remove notification button hover effects */
+.jbg-info-toast .jbg-warning-btn,
+.jbg-info-toast .jbg-warning-btn:hover,
+.jbg-info-toast .jbg-warning-btn:active,
+.jbg-info-toast-danger .jbg-warning-btn,
+.jbg-info-toast-danger .jbg-warning-btn:hover,
+.jbg-info-toast-danger .jbg-warning-btn:active {
+  box-shadow: none !important;
+  transform: none !important;
+  filter: none !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectFinalAbortDirectStyle();
+
+
+    function injectExactAbortButtonStyle() {
+        const id = 'jbg-exact-abort-button-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* Exact Abort button override */
+.jbg-final-action-row > button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"],
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"],
+button.jbg-final-abort[data-jbg-guide="abort"] {
+  background: rgba(239, 68, 68, .13) !important;
+  background-color: rgba(239, 68, 68, .13) !important;
+  background-image: none !important;
+  border: 1px solid rgba(220, 38, 38, .78) !important;
+  color: #dc2626 !important;
+  -webkit-text-fill-color: #dc2626 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.jbg-final-action-row > button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"]:hover,
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"]:hover,
+button.jbg-final-abort[data-jbg-guide="abort"]:hover {
+  background: rgba(239, 68, 68, .18) !important;
+  background-color: rgba(239, 68, 68, .18) !important;
+  background-image: none !important;
+  border: 1px solid rgba(220, 38, 38, .88) !important;
+  color: #b91c1c !important;
+  -webkit-text-fill-color: #b91c1c !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.jbg-final-action-row > button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"]:active,
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"]:active,
+button.jbg-final-abort[data-jbg-guide="abort"]:active {
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+html[wz-theme='dark'] .jbg-final-action-row > button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"],
+html[wz-theme='dark'] button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"],
+html[wz-theme='dark'] button.jbg-final-abort[data-jbg-guide="abort"],
+body[wz-theme='dark'] .jbg-final-action-row > button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"],
+body[wz-theme='dark'] button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"],
+body[wz-theme='dark'] button.jbg-final-abort[data-jbg-guide="abort"] {
+  background: rgba(248, 113, 113, .14) !important;
+  background-color: rgba(248, 113, 113, .14) !important;
+  background-image: none !important;
+  border-color: rgba(248, 113, 113, .78) !important;
+  color: #fecaca !important;
+  -webkit-text-fill-color: #fecaca !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    function applyExactAbortButtonInlineStyle() {
+        try {
+            const buttons = document.querySelectorAll('.jbg-final-action-row > button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"], button.jbg-final-abort[data-jbg-guide="abort"]');
+            for (const btn of buttons) {
+                btn.style.setProperty('background', 'rgba(239, 68, 68, .13)', 'important');
+                btn.style.setProperty('background-color', 'rgba(239, 68, 68, .13)', 'important');
+                btn.style.setProperty('background-image', 'none', 'important');
+                btn.style.setProperty('border', '1px solid rgba(220, 38, 38, .78)', 'important');
+                btn.style.setProperty('color', '#dc2626', 'important');
+                btn.style.setProperty('-webkit-text-fill-color', '#dc2626', 'important');
+                btn.style.setProperty('box-shadow', 'none', 'important');
+                btn.style.setProperty('text-shadow', 'none', 'important');
+                }
+        } catch (e) {}
+    }
+
+    injectExactAbortButtonStyle();
+    applyExactAbortButtonInlineStyle();
+    try { setIntervalSafe(applyExactAbortButtonInlineStyle, 250); } catch (e) { try { setInterval(applyExactAbortButtonInlineStyle, 250); } catch (_) {} }
+
+
+
+
+    function wireCloseUserscriptTabAfterCreateOrAbort() {
+        try {
+            document.addEventListener('click', (ev) => {
+                const target = ev.target?.closest?.('[data-jbg-guide="create-jb"], [data-jbg-guide="abort"], .jbg-final-create, .jbg-final-abort');
+                if (!target) return;
+
+                let shouldClose = false;
+                try { shouldClose = UI.openedFromJunctionEntryView === true; } catch (e) {}
+                if (!shouldClose) return;
+
+                try { UI.openedFromJunctionEntryView = false; } catch (e) {}
+                closeJbGeometryScriptSidebarSoon();
+            }, true);
+        } catch (e) {}
+    }
+
+    wireCloseUserscriptTabAfterCreateOrAbort();
+
+
+    function injectWmeVariableNotificationThemeStyle() {
+        const id = 'jbg-wme-variable-notification-theme-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* WME-variable adaptive notifications */
+.jbg-info-toast:not(.jbg-info-toast-danger) {
+  background:
+    color-mix(in srgb, var(--background_default, #ffffff) 92%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--content_default, #1f2937) 18%, #2aa8ff 45%) !important;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, .22),
+    0 0 0 1px color-mix(in srgb, var(--content_default, #1f2937) 8%, transparent) inset !important;
+  backdrop-filter: blur(16px) saturate(1.18) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.18) !important;
+}
+
+.jbg-info-toast:not(.jbg-info-toast-danger),
+.jbg-info-toast:not(.jbg-info-toast-danger) *,
+.jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-title,
+.jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-message,
+.jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-text,
+.jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-text * {
+  color: var(--content_default, #1f2937) !important;
+  -webkit-text-fill-color: var(--content_default, #1f2937) !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+.jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-message {
+  color: var(--content_secondary, var(--content_default, #334155)) !important;
+  -webkit-text-fill-color: var(--content_secondary, var(--content_default, #334155)) !important;
+}
+
+.jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-btn {
+  background: color-mix(in srgb, #2aa8ff 16%, var(--background_default, #ffffff)) !important;
+  border: 1px solid color-mix(in srgb, #2aa8ff 62%, var(--content_default, #1f2937) 10%) !important;
+  color: var(--content_default, #1f2937) !important;
+  -webkit-text-fill-color: var(--content_default, #1f2937) !important;
+  box-shadow: none !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+.jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-btn:hover,
+.jbg-info-toast:not(.jbg-info-toast-danger) .jbg-warning-btn:active {
+  box-shadow: none !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+/* Fallback for browsers/WME builds where color-mix is unreliable */
+@supports not (background: color-mix(in srgb, white 50%, black)) {
+  html[wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger),
+  body[wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger),
+  [wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger),
+  .jbg-info-toast.jbg-toast-theme-dark:not(.jbg-info-toast-danger) {
+    background: rgba(23, 27, 34, .97) !important;
+    border-color: rgba(42, 168, 255, .58) !important;
+  }
+
+  html[wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger),
+  html[wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger) *,
+  body[wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger),
+  body[wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger) *,
+  [wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger),
+  [wz-theme='dark'] .jbg-info-toast:not(.jbg-info-toast-danger) *,
+  .jbg-info-toast.jbg-toast-theme-dark:not(.jbg-info-toast-danger),
+  .jbg-info-toast.jbg-toast-theme-dark:not(.jbg-info-toast-danger) * {
+    color: #f4f7fb !important;
+    -webkit-text-fill-color: #f4f7fb !important;
+  }
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    function refreshWmeVariableNotificationThemeStyle() {
+        try { injectWmeVariableNotificationThemeStyle(); } catch (e) {}
+    }
+
+    refreshWmeVariableNotificationThemeStyle();
+
+    try {
+        const themeObserver = new MutationObserver(refreshWmeVariableNotificationThemeStyle);
+        themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['wz-theme', 'class', 'style'] });
+        if (document.body) themeObserver.observe(document.body, { attributes: true, attributeFilter: ['wz-theme', 'class', 'style'] });
+        addDisposer(() => { try { themeObserver.disconnect(); } catch (e) {} });
+    } catch (e) {}
+
+
+    function startNotificationWmeVarThemeObserver() {
+        try {
+            if (window.__JBG_NOTIFICATION_WME_VAR_OBSERVER__) return;
+            const obs = new MutationObserver(() => applyWmeVarsToVisibleNotifications());
+            obs.observe(document.body || document.documentElement, { childList: true, subtree: false });
+            obs.observe(document.documentElement, { attributes: true, attributeFilter: ['wz-theme', 'class', 'style'] });
+            if (document.body) obs.observe(document.body, { attributes: true, attributeFilter: ['wz-theme', 'class', 'style'] });
+            window.__JBG_NOTIFICATION_WME_VAR_OBSERVER__ = obs;
+            addDisposer(() => { try { obs.disconnect(); } catch (e) {} });
+        } catch (e) {}
+    }
+
+    startNotificationWmeVarThemeObserver();
+
+
+    function injectJbg2NotificationIsolationStyle() {
+        const id = 'jbg2-notification-isolation-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+.jbg2-toast, .jbg2-toast * {
+  text-shadow: none !important;
+}
+.jbg2-toast-btn:hover,
+.jbg2-toast-btn:active {
+  box-shadow: none !important;
+  filter: none !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectJbg2NotificationIsolationStyle();
+
+
+    function injectModalAbortNotificationAnimationStyle() {
+        const id = 'jbg-modal-abort-notification-animation-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* Requested modal button padding */
+.jbg-modal-btn {
+  padding: 3px 15px 3px !important;
+}
+
+/* Abort button hover animation */
+button.jbg-final-abort[data-jbg-guide="abort"],
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"],
+.jbg-final-action-row > button.jbg-final-abort[data-jbg-guide="abort"] {
+  transition:
+    background .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    -webkit-text-fill-color .16s ease,
+    transform .16s ease !important;
+}
+
+button.jbg-final-abort[data-jbg-guide="abort"]:hover,
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"]:hover,
+.jbg-final-action-row > button.jbg-final-abort[data-jbg-guide="abort"]:hover {
+  transform: translateY(-1px) scale(1.015) !important;
+}
+
+button.jbg-final-abort[data-jbg-guide="abort"]:active,
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"]:active,
+.jbg-final-action-row > button.jbg-final-abort[data-jbg-guide="abort"]:active {
+  transform: translateY(0) scale(.99) !important;
+}
+
+/* Notification OK / action button hover animation */
+.jbg2-toast-btn {
+  transition:
+    background .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    -webkit-text-fill-color .16s ease,
+    transform .16s ease !important;
+}
+
+.jbg2-toast-btn:hover {
+  transform: translateY(-1px) scale(1.015) !important;
+}
+
+.jbg2-toast-btn:active {
+  transform: translateY(0) scale(.99) !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectModalAbortNotificationAnimationStyle();
+
+
+    function injectExactAbortAndToastButtonHoverStyle() {
+        const id = 'jbg-exact-abort-toast-hover-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* Exact hover animation for final Abort button */
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort,
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"] {
+  transition:
+    background .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    -webkit-text-fill-color .16s ease,
+    transform .16s ease !important;
+  will-change: transform !important;
+}
+
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort:hover,
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"]:hover {
+  transform: translateY(-1px) scale(1.025) !important;
+}
+
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort:active,
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"]:active {
+  transform: translateY(0) scale(.985) !important;
+}
+
+/* Exact hover animation for rebuilt notification OK / close buttons */
+button.jbg2-toast-btn,
+button.jbg2-toast-btn.jbg2-toast-close {
+  transition:
+    background .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    -webkit-text-fill-color .16s ease,
+    transform .16s ease !important;
+  will-change: transform !important;
+}
+
+button.jbg2-toast-btn:hover,
+button.jbg2-toast-btn.jbg2-toast-close:hover {
+  transform: translateY(-1px) scale(1.025) !important;
+}
+
+button.jbg2-toast-btn:active,
+button.jbg2-toast-btn.jbg2-toast-close:active {
+  transform: translateY(0) scale(.985) !important;
+}
+
+/* I understand / danger notification button padding */
+.jbg2-toast-danger button.jbg2-toast-btn,
+.jbg2-toast-danger button.jbg2-toast-close,
+.jbg2-toast-danger .jbg2-toast-btn {
+  padding: 5px 10px 4px !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectExactAbortAndToastButtonHoverStyle();
+
+
+    function injectExactToastButtonPaddingStyle() {
+        const id = 'jbg-exact-toast-button-padding-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* Exact padding for rebuilt notification buttons, including normal OK */
+button.jbg2-toast-btn,
+button.jbg2-toast-btn.jbg2-toast-close,
+.jbg2-toast button.jbg2-toast-btn,
+.jbg2-toast button.jbg2-toast-close {
+  padding: 5px 10px 4px !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectExactToastButtonPaddingStyle();
+
+
+    function injectFinalAbortHoverAnimationStyle() {
+        const id = 'jbg-final-abort-hover-animation-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* Exact hover animation for the final Abort button */
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort,
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"],
+.jbg-final-action-row button.jbg-final-abort[data-jbg-guide="abort"] {
+  transition:
+    background .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    -webkit-text-fill-color .16s ease,
+    transform .16s cubic-bezier(.2, .8, .2, 1) !important;
+  will-change: transform !important;
+}
+
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort:hover,
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"]:hover,
+.jbg-final-action-row button.jbg-final-abort[data-jbg-guide="abort"]:hover {
+  transform: translateY(-1px) scale(1.025) !important;
+}
+
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort:active,
+button.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort[data-jbg-guide="abort"]:active,
+.jbg-final-action-row button.jbg-final-abort[data-jbg-guide="abort"]:active {
+  transform: translateY(0) scale(.985) !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectFinalAbortHoverAnimationStyle();
+
+
+    function injectAbortButtonHoverAnimationOnlyStyle() {
+        const id = 'jbg-abort-button-hover-animation-only-style';
+        const old = document.getElementById(id);
+        if (old) old.remove();
+        const st = document.createElement('style');
+        st.id = id;
+        st.textContent = `
+/* Hover animation for Abort button */
+.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort {
+  transition:
+    background .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    -webkit-text-fill-color .16s ease,
+    transform .16s cubic-bezier(.2, .8, .2, 1) !important;
+  will-change: transform !important;
+}
+
+.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort:hover {
+  transform: translateY(-1px) scale(1.025) !important;
+}
+
+.jbg-btn.jbg-btn-red.jbg-delete-btn.jbg-final-abort:active {
+  transform: translateY(0) scale(.985) !important;
+}
+`;
+        document.documentElement.appendChild(st);
+    }
+
+    injectAbortButtonHoverAnimationOnlyStyle();
+
 })();
