@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - JB Geometry
 // @author       Fo_tis (4) / GreekCaptain (5)
-// @version      0.2.4
+// @version      0.3.3
 // @description  Editable geometry builder for WME Junction Boxes
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
@@ -32,7 +32,7 @@
 
     const SCRIPT_ID = 'gr.wme.jb-pretty';
     const SCRIPT_NAME = 'WME - JB Geometry';
-    const VERSION = '0.2.4';
+    const VERSION = '0.3.3';
 
     const GLOBAL_KEY = '__JB_PRETTY__';
 
@@ -74,26 +74,25 @@
     function closeJbGeometryScriptSidebar() {
         try {
             const editPanel = document.querySelector('#edit-panel');
-            const userScriptPane = document.querySelector('#userscript-tab-1');
+            const userScriptPane = UI.tab?.tabPane || document.querySelector('#userscript-tab-1');
             const userTabs = document.querySelector('#user-tabs');
 
-            // Do NOT hide or modify #userscript-tab-1. Only switch WME back to the normal edit panel.
+            if (userScriptPane) {
+                userScriptPane.classList.remove('active', 'show', 'in');
+                userScriptPane.setAttribute('hidden', '');
+                userScriptPane.setAttribute('aria-hidden', 'true');
+            }
+
             if (editPanel) {
-                editPanel.classList.add('active');
+                editPanel.classList.add('active', 'show', 'in');
                 editPanel.removeAttribute('hidden');
+                editPanel.removeAttribute('aria-hidden');
                 editPanel.style.display = '';
                 try { editPanel.setAttribute('aria-expanded', 'true'); } catch (e) {}
             }
 
-            if (userScriptPane) {
-                userScriptPane.classList.remove('active', 'show', 'in');
-                userScriptPane.style.display = '';
-                userScriptPane.removeAttribute('hidden');
-            }
-
             if (userTabs) {
                 try { userTabs.querySelectorAll('li,a').forEach(el => el.classList.remove('active')); } catch (e) {}
-                // Keep the userscript drawer available; do not set hidden/display:none.
                 userTabs.style.display = '';
             }
 
@@ -103,16 +102,6 @@
             } catch (e) {}
 
             return true;
-        } catch (e) {}
-
-        try {
-            const editPanel = document.querySelector('#edit-panel');
-            if (editPanel) {
-                editPanel.classList.add('active');
-                editPanel.removeAttribute('hidden');
-                editPanel.style.display = '';
-                return true;
-            }
         } catch (e) {}
 
         return false;
@@ -5315,6 +5304,8 @@ function softResetWmeMode(reason = 'recover') {
                 overflow-y: auto;
                 overflow-x: hidden;
                 overscroll-behavior: contain;
+                -webkit-overflow-scrolling: touch;
+                touch-action: pan-y;
                 padding: 6px;
                 border-radius: 16px;
                 border: 1px solid color-mix(in srgb, var(--content_default, #fff) 13%, transparent);
@@ -5356,6 +5347,9 @@ function softResetWmeMode(reason = 'recover') {
                 line-height: 1;
                 font-weight: 780;
                 cursor: pointer;
+                touch-action: pan-y;
+                -webkit-user-select: none;
+                user-select: none;
                 text-align: left;
                 transition: background .095s ease, color .095s ease, transform .095s ease;
     -webkit-text-fill-color: var(--content_default, #f4f7fb) !important;
@@ -5886,6 +5880,18 @@ function softResetWmeMode(reason = 'recover') {
                 background-size: 100% 7px;
                 background-position: center;
                 border-radius: 999px;
+            }
+            .jbg-shell[dir="rtl"] .jbg-range,
+            [dir="rtl"] .jbg-shell .jbg-range {
+                background:
+                    linear-gradient(270deg,
+                        rgba(42,168,255,.88) 0%,
+                        rgba(42,168,255,.88) var(--jbg-range-pct),
+                        color-mix(in srgb, var(--jbg-text) 16%, transparent) var(--jbg-range-pct),
+                        color-mix(in srgb, var(--jbg-text) 16%, transparent) 100%);
+                background-repeat: no-repeat;
+                background-size: 100% 7px;
+                background-position: center;
             }
             .jbg-range::-webkit-slider-runnable-track {
                 height: 7px;
@@ -6576,6 +6582,41 @@ function softResetWmeMode(reason = 'recover') {
                 }
                 .jbg-warning-actions {
                     justify-content: flex-end;
+                }
+            }
+
+            @media (max-width: 700px), (pointer: coarse) {
+                .jbg-splash-backdrop,
+                .jbg-modal-backdrop {
+                    align-items: flex-start !important;
+                    justify-content: center !important;
+                    overflow-y: auto !important;
+                    overflow-x: hidden !important;
+                    min-height: 100dvh !important;
+                    padding: max(12px, env(safe-area-inset-top)) 12px max(18px, env(safe-area-inset-bottom)) !important;
+                    -webkit-overflow-scrolling: touch !important;
+                    touch-action: pan-y !important;
+                }
+                .jbg-splash,
+                .jbg-modal {
+                    max-height: calc(100dvh - 24px) !important;
+                    overflow-y: auto !important;
+                    overflow-x: hidden !important;
+                    -webkit-overflow-scrolling: touch !important;
+                    overscroll-behavior: contain !important;
+                }
+                .jbg-splash .jbg-custom-select-menu,
+                .jbg-custom-select-menu {
+                    max-height: min(46dvh, 320px) !important;
+                    overflow-y: auto !important;
+                    -webkit-overflow-scrolling: touch !important;
+                    touch-action: pan-y !important;
+                }
+                .jbg-splash-actions {
+                    position: sticky;
+                    bottom: -1px;
+                    padding-top: 10px;
+                    background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--background_default, #141820) 94%, transparent) 38%);
                 }
             }
 
@@ -7626,6 +7667,32 @@ function softResetWmeMode(reason = 'recover') {
             btn.type = 'button';
             menu.hidden = true;
 
+            const menuTouch = { x: 0, y: 0, moved: false, t: 0 };
+            const rememberTouchStart = (evt) => {
+                const p = evt?.touches?.[0] || evt;
+                menuTouch.x = Number(p?.clientX || 0);
+                menuTouch.y = Number(p?.clientY || 0);
+                menuTouch.moved = false;
+                menuTouch.t = Date.now();
+            };
+            const rememberTouchMove = (evt) => {
+                const p = evt?.touches?.[0] || evt;
+                const dx = Math.abs(Number(p?.clientX || 0) - menuTouch.x);
+                const dy = Math.abs(Number(p?.clientY || 0) - menuTouch.y);
+                if (dx > 8 || dy > 8) menuTouch.moved = true;
+            };
+            const ignoreTapAfterScroll = () => {
+                if (!menuTouch.moved) return false;
+                setTimeout(() => { menuTouch.moved = false; }, 220);
+                return true;
+            };
+            try {
+                menu.addEventListener('pointerdown', rememberTouchStart, { passive: true });
+                menu.addEventListener('pointermove', rememberTouchMove, { passive: true });
+                menu.addEventListener('touchstart', rememberTouchStart, { passive: true });
+                menu.addEventListener('touchmove', rememberTouchMove, { passive: true });
+            } catch (e) {}
+
             const closeMenu = () => {
                 select.classList.remove('is-open');
                 menu.hidden = true;
@@ -7642,6 +7709,7 @@ function softResetWmeMode(reason = 'recover') {
                     optionBtn.classList.toggle('is-active', item.code === selectedLang);
                     optionBtn.addEventListener('click', (evt) => {
                         try { evt.preventDefault(); evt.stopPropagation(); } catch (e) {}
+                        if (ignoreTapAfterScroll()) return;
                         selectedLang = item.code;
                         render();
                     }, true);
@@ -7654,6 +7722,10 @@ function softResetWmeMode(reason = 'recover') {
                 const open = !select.classList.contains('is-open');
                 select.classList.toggle('is-open', open);
                 menu.hidden = !open;
+                if (open) {
+                    try { menu.scrollTop = 0; } catch (e) {}
+                    try { btn.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
+                }
             }, true);
 
             document.addEventListener('click', (evt) => {
@@ -7684,10 +7756,7 @@ const getUpdateChangelog = () => {
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Added', 'Open JB Geometry Editor button inside the Junction Box entry view.', 'added'],
-                        ['Added', 'High-priority manual review warning after replacing a Junction Box.', 'added'],
-                        ['Fixed', 'Light theme font visibility issues inside setup and changelog modals.', 'fixed'],
-                        ['Issue', 'Turn instructions and far-lane guidance cannot be restored automatically after replacing a Junction Box yet.', 'known-issue'],
+                        ['Fixed', 'RTL slider progress background now mirrors correctly in Hebrew and Arabic.', 'fixed'],
                     ],
                 },
                 el: {
@@ -7695,10 +7764,7 @@ const getUpdateChangelog = () => {
                     title: 'Αλλαγές έκδοσης',
                     subtitle: '',
                     items: [
-                        ['Προστέθηκε', 'Κουμπί Open JB Geometry Editor μέσα στο Junction Box entry view.', 'added'],
-                        ['Προστέθηκε', 'High-priority προειδοποίηση για manual review μετά το Replace JB.', 'added'],
-                        ['Διορθώθηκε', 'Προβλήματα ορατότητας γραμματοσειρών στο light theme μέσα στα setup και changelog modals.', 'fixed'],
-                        ['Issue', 'Turn instructions και far-lane guidance δεν μπορούν ακόμα να αποκατασταθούν αυτόματα μετά το Replace JB.', 'known-issue'],
+                        ['Διορθώθηκε', 'Το background των RTL sliders εμφανίζεται πλέον σωστά σε Hebrew και Arabic.', 'fixed'],
                     ],
                 },
                 de: {
@@ -7706,10 +7772,7 @@ const getUpdateChangelog = () => {
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Added', 'Open JB Geometry Editor button inside the Junction Box entry view.', 'added'],
-                        ['Added', 'High-priority manual review warning after replacing a Junction Box.', 'added'],
-                        ['Fixed', 'Light theme font visibility issues inside setup and changelog modals.', 'fixed'],
-                        ['Issue', 'Turn instructions and far-lane guidance cannot be restored automatically after replacing a Junction Box yet.', 'known-issue'],
+                        ['Fixed', 'RTL slider progress background now mirrors correctly in Hebrew and Arabic.', 'fixed'],
                     ],
                 },
                 fr: {
@@ -7717,10 +7780,7 @@ const getUpdateChangelog = () => {
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Added', 'Open JB Geometry Editor button inside the Junction Box entry view.', 'added'],
-                        ['Added', 'High-priority manual review warning after replacing a Junction Box.', 'added'],
-                        ['Fixed', 'Light theme font visibility issues inside setup and changelog modals.', 'fixed'],
-                        ['Issue', 'Turn instructions and far-lane guidance cannot be restored automatically after replacing a Junction Box yet.', 'known-issue'],
+                        ['Fixed', 'RTL slider progress background now mirrors correctly in Hebrew and Arabic.', 'fixed'],
                     ],
                 },
                 es: {
@@ -7728,10 +7788,7 @@ const getUpdateChangelog = () => {
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Added', 'Open JB Geometry Editor button inside the Junction Box entry view.', 'added'],
-                        ['Added', 'High-priority manual review warning after replacing a Junction Box.', 'added'],
-                        ['Fixed', 'Light theme font visibility issues inside setup and changelog modals.', 'fixed'],
-                        ['Issue', 'Turn instructions and far-lane guidance cannot be restored automatically after replacing a Junction Box yet.', 'known-issue'],
+                        ['Fixed', 'RTL slider progress background now mirrors correctly in Hebrew and Arabic.', 'fixed'],
                     ],
                 },
             };
@@ -8455,6 +8512,19 @@ const getUpdateChangelog = () => {
         tabPane.innerHTML = '';
         tabPane.style.padding = '0';
 
+        const lanesGuardStyleId = 'jbg-lanes-tab-guard-style';
+        if (!document.getElementById(lanesGuardStyleId)) {
+            const lanesGuardStyle = document.createElement('style');
+            lanesGuardStyle.id = lanesGuardStyleId;
+            lanesGuardStyle.textContent = `
+                wz-tab.lanes-tab .jbg-shell,
+                .lanes-tab .jbg-shell {
+                    display: none !important;
+                }
+            `;
+            document.documentElement.appendChild(lanesGuardStyle);
+        }
+
         const shell = createEl('div', 'jbg-shell');
         shell.dir = isRtlLanguage(lang) ? 'rtl' : 'ltr';
 
@@ -8626,6 +8696,31 @@ const getUpdateChangelog = () => {
         const languageSelectMenu = createEl('div', 'jbg-custom-select-menu');
         languageSelectBtn.type = 'button';
         languageSelectMenu.hidden = true;
+        const languageMenuTouch = { x: 0, y: 0, moved: false, t: 0 };
+        const rememberLanguageMenuTouchStart = (evt) => {
+            const p = evt?.touches?.[0] || evt;
+            languageMenuTouch.x = Number(p?.clientX || 0);
+            languageMenuTouch.y = Number(p?.clientY || 0);
+            languageMenuTouch.moved = false;
+            languageMenuTouch.t = Date.now();
+        };
+        const rememberLanguageMenuTouchMove = (evt) => {
+            const p = evt?.touches?.[0] || evt;
+            const dx = Math.abs(Number(p?.clientX || 0) - languageMenuTouch.x);
+            const dy = Math.abs(Number(p?.clientY || 0) - languageMenuTouch.y);
+            if (dx > 8 || dy > 8) languageMenuTouch.moved = true;
+        };
+        const ignoreLanguageTapAfterScroll = () => {
+            if (!languageMenuTouch.moved) return false;
+            setTimeout(() => { languageMenuTouch.moved = false; }, 220);
+            return true;
+        };
+        try {
+            languageSelectMenu.addEventListener('pointerdown', rememberLanguageMenuTouchStart, { passive: true });
+            languageSelectMenu.addEventListener('pointermove', rememberLanguageMenuTouchMove, { passive: true });
+            languageSelectMenu.addEventListener('touchstart', rememberLanguageMenuTouchStart, { passive: true });
+            languageSelectMenu.addEventListener('touchmove', rememberLanguageMenuTouchMove, { passive: true });
+        } catch (e) {}
         languageSelect.appendChild(languageSelectBtn);
         document.body.appendChild(languageSelectMenu);
         languageRow.appendChild(languageCopy);
@@ -8696,11 +8791,10 @@ const getUpdateChangelog = () => {
                     try { evt.preventDefault(); } catch (e) {}
                     try { evt.stopPropagation(); } catch (e) {}
                     try { evt.stopImmediatePropagation?.(); } catch (e) {}
+                    if (ignoreLanguageTapAfterScroll()) return;
                     closeLanguageDropdown();
                     applyLanguage(item.code);
                 };
-                optionBtn.addEventListener('pointerdown', chooseLanguage, true);
-                optionBtn.addEventListener('mousedown', chooseLanguage, true);
                 optionBtn.addEventListener('click', chooseLanguage, true);
                 languageSelectMenu.appendChild(optionBtn);
             }
@@ -8756,25 +8850,67 @@ const getUpdateChangelog = () => {
         shell.appendChild(settingsCard);
         tabPane.appendChild(shell);
 
+        const removeJbgPanelsFromLanesTab = () => {
+            try {
+                for (const lanesTab of document.querySelectorAll('wz-tab.lanes-tab, .lanes-tab')) {
+                    for (const panel of lanesTab.querySelectorAll('.jbg-shell')) {
+                        if (panel !== shell) panel.remove();
+                    }
+                }
+            } catch (e) {}
+        };
+
+        removeJbgPanelsFromLanesTab();
+        try {
+            const lanesObserver = new MutationObserver(removeJbgPanelsFromLanesTab);
+            lanesObserver.observe(document.documentElement, { childList: true, subtree: true });
+            addDisposer(() => {
+                try { lanesObserver.disconnect(); } catch (e) {}
+                try { document.getElementById(lanesGuardStyleId)?.remove(); } catch (e) {}
+            });
+        } catch (e) {}
+
         builderTab.addEventListener('click', () => setActivePanel('builder'));
         settingsTab.addEventListener('click', () => setActivePanel('settings'));
         function positionLanguageDropdown() {
             try {
                 const rect = languageSelectBtn.getBoundingClientRect();
-                const menuWidth = Math.max(214, Math.round(rect.width));
+                const vv = window.visualViewport || null;
+                const vpW = Number(vv?.width || window.innerWidth || document.documentElement.clientWidth || 0);
+                const vpH = Number(vv?.height || window.innerHeight || document.documentElement.clientHeight || 0);
+                const offX = Number(vv?.offsetLeft || 0);
+                const offY = Number(vv?.offsetTop || 0);
+                const pad = 8;
+
+                const menuWidth = Math.min(Math.max(214, Math.round(rect.width)), Math.max(214, vpW - pad * 2));
+                const minLeft = offX + pad;
+                const maxLeft = offX + vpW - menuWidth - pad;
+                const left = Math.max(minLeft, Math.min(maxLeft, Math.round(rect.right - menuWidth)));
+
+                const maxHeight = Math.max(120, Math.min(320, vpH - pad * 2));
                 languageSelectMenu.style.width = `${menuWidth}px`;
-                languageSelectMenu.style.left = `${Math.round(rect.right - menuWidth)}px`;
+                languageSelectMenu.style.maxHeight = `${maxHeight}px`;
+                languageSelectMenu.style.left = `${Math.round(left)}px`;
                 languageSelectMenu.style.right = 'auto';
                 languageSelectMenu.style.bottom = '';
-                languageSelectMenu.style.top = `${Math.round(rect.bottom + 7)}px`;
+                languageSelectMenu.style.overflowY = 'auto';
+                languageSelectMenu.style.webkitOverflowScrolling = 'touch';
 
-                const maxHeight = Math.max(180, Math.min(320, window.innerHeight - 24));
-                languageSelectMenu.style.maxHeight = `${maxHeight}px`;
                 const menuRect = languageSelectMenu.getBoundingClientRect();
-                const availableBelow = window.innerHeight - rect.bottom;
-                if (availableBelow < menuRect.height + 12) {
-                    languageSelectMenu.style.top = `${Math.max(8, Math.round(rect.top - Math.min(menuRect.height, maxHeight) - 7))}px`;
+                const desiredHeight = Math.min(menuRect.height || maxHeight, maxHeight);
+                const belowTop = rect.bottom + 7;
+                const aboveTop = rect.top - desiredHeight - 7;
+                const bottomLimit = offY + vpH - pad;
+                const availableBelow = bottomLimit - belowTop;
+
+                let top = belowTop;
+                if (availableBelow < desiredHeight && aboveTop >= offY + pad) {
+                    top = aboveTop;
+                } else if (belowTop + desiredHeight > bottomLimit) {
+                    top = Math.max(offY + pad, bottomLimit - desiredHeight);
                 }
+
+                languageSelectMenu.style.top = `${Math.round(top)}px`;
             } catch (e) {}
         }
 
@@ -8791,6 +8927,8 @@ const getUpdateChangelog = () => {
                 languageSelect.classList.add('is-open');
                 languageSelectMenu.hidden = false;
                 positionLanguageDropdown();
+                try { languageSelectMenu.scrollTop = 0; } catch (e) {}
+                try { languageSelectBtn.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
             } else {
                 closeLanguageDropdown();
             }
@@ -8806,6 +8944,14 @@ const getUpdateChangelog = () => {
         window.addEventListener('scroll', () => {
             if (!languageSelectMenu.hidden) positionLanguageDropdown();
         }, true);
+        try {
+            window.visualViewport?.addEventListener('resize', () => {
+                if (!languageSelectMenu.hidden) positionLanguageDropdown();
+            }, { passive: true });
+            window.visualViewport?.addEventListener('scroll', () => {
+                if (!languageSelectMenu.hidden) positionLanguageDropdown();
+            }, { passive: true });
+        } catch (e) {}
         snapToggle.addEventListener('click', () => runSafely(() => {
             const next = !readSettings().snapToGrid;
             writeSettings({ snapToGrid: next });
