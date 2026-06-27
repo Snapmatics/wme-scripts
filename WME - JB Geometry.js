@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - JB Geometry
 // @author       Fo_tis (4) / GreekCaptain (5)
-// @version      0.3.3
+// @version      0.3.4
 // @description  Editable geometry builder for WME Junction Boxes
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
@@ -19,10 +19,10 @@
 // @run-at       document-start
 // @license      MIT
 // @connect      w-tools.org
-// @downloadURL https://update.greasyfork.org/scripts/579540/WME%20-%20JB%20Geometry.user.js
-// @updateURL https://update.greasyfork.org/scripts/579540/WME%20-%20JB%20Geometry.user.js
 // @icon         data:image/png;base64,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
-// @grant        none
+// @namespace https://greasyfork.org/users/1561762
+// @downloadURL https://update.greasyfork.org/scripts/579540/WME%20-%20JB%20Geometry.user.js
+// @updateURL https://update.greasyfork.org/scripts/579540/WME%20-%20JB%20Geometry.meta.js
 // ==/UserScript==
 
 (() => {
@@ -32,7 +32,7 @@
 
     const SCRIPT_ID = 'gr.wme.jb-pretty';
     const SCRIPT_NAME = 'WME - JB Geometry';
-    const VERSION = '0.3.3';
+    const VERSION = '0.3.4';
 
     const GLOBAL_KEY = '__JB_PRETTY__';
 
@@ -63,8 +63,20 @@
         return id;
     }
 
+    function setTimeoutSafe(fn, ms) {
+        const id = window.setTimeout(() => {
+            state.timers.delete(id);
+            try { fn(); } catch (e) { console.error(`[${SCRIPT_ID}] timer failed`, e); }
+        }, ms);
+        state.timers.add(id);
+        return id;
+    }
+
     function clearTimers() {
-        for (const id of state.timers) window.clearInterval(id);
+        for (const id of state.timers) {
+            try { window.clearInterval(id); } catch (e) {}
+            try { window.clearTimeout(id); } catch (e) {}
+        }
         state.timers.clear();
     }
 
@@ -7756,7 +7768,7 @@ const getUpdateChangelog = () => {
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Fixed', 'RTL slider progress background now mirrors correctly in Hebrew and Arabic.', 'fixed'],
+                        ['Fixed', 'Open JB Geometry Editor now reliably reopens after closing, including when using the same selected Junction Box again.', 'fixed'],
                     ],
                 },
                 el: {
@@ -7764,7 +7776,7 @@ const getUpdateChangelog = () => {
                     title: 'Αλλαγές έκδοσης',
                     subtitle: '',
                     items: [
-                        ['Διορθώθηκε', 'Το background των RTL sliders εμφανίζεται πλέον σωστά σε Hebrew και Arabic.', 'fixed'],
+                        ['Διορθώθηκε', 'Το Open JB Geometry Editor ανοίγει πλέον αξιόπιστα ξανά, ακόμα και στο ίδιο επιλεγμένο Junction Box.', 'fixed'],
                     ],
                 },
                 de: {
@@ -7772,7 +7784,7 @@ const getUpdateChangelog = () => {
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Fixed', 'RTL slider progress background now mirrors correctly in Hebrew and Arabic.', 'fixed'],
+                        ['Fixed', 'Open JB Geometry Editor now reliably reopens after closing, including when using the same selected Junction Box again.', 'fixed'],
                     ],
                 },
                 fr: {
@@ -7780,7 +7792,7 @@ const getUpdateChangelog = () => {
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Fixed', 'RTL slider progress background now mirrors correctly in Hebrew and Arabic.', 'fixed'],
+                        ['Fixed', 'Open JB Geometry Editor now reliably reopens after closing, including when using the same selected Junction Box again.', 'fixed'],
                     ],
                 },
                 es: {
@@ -7788,7 +7800,7 @@ const getUpdateChangelog = () => {
                     title: 'Changelog',
                     subtitle: '',
                     items: [
-                        ['Fixed', 'RTL slider progress background now mirrors correctly in Hebrew and Arabic.', 'fixed'],
+                        ['Fixed', 'Open JB Geometry Editor now reliably reopens after closing, including when using the same selected Junction Box again.', 'fixed'],
                     ],
                 },
             };
@@ -9197,15 +9209,96 @@ const getUpdateChangelog = () => {
         return [x, y];
     }
 
+    function sidebarClickTarget(el) {
+        if (!el) return false;
+        try { if (el.isConnected === false) return false; } catch (e) {}
+        try { if (el.disabled) return false; } catch (e) {}
+
+        try { el.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, view: window })); } catch (e) {}
+        try { el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window })); } catch (e) {}
+        try { el.click?.(); } catch (e) { return false; }
+        try { el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window })); } catch (e) {}
+        try { el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); } catch (e) {}
+        return true;
+    }
+
+    function getJbGeometrySidebarPane() {
+        let pane = null;
+
+        try {
+            if (UI.tab?.tabPane && UI.tab.tabPane.isConnected !== false) pane = UI.tab.tabPane;
+        } catch (e) {}
+
+        if (!pane) {
+            try { pane = document.querySelector('#userscript-tab-1 .jbg-shell')?.closest('#userscript-tab-1, .tab-pane, [role="tabpanel"], wz-tab, wz-tab-content') || null; } catch (e) {}
+        }
+
+        if (!pane) {
+            try { pane = document.querySelector('.jbg-shell')?.closest('#userscript-tab-1, .tab-pane, [role="tabpanel"], wz-tab, wz-tab-content') || null; } catch (e) {}
+        }
+
+        return pane;
+    }
+
+    function forceShowJbGeometryScriptSidebar() {
+        const pane = getJbGeometrySidebarPane();
+        if (!pane) return false;
+
+        try { pane.removeAttribute('hidden'); } catch (e) {}
+        try { pane.removeAttribute('aria-hidden'); } catch (e) {}
+        try { pane.style.removeProperty('display'); } catch (e) {}
+        try { pane.classList.add('active', 'show', 'in'); } catch (e) {}
+
+        try {
+            const editPanel = document.querySelector('#edit-panel');
+            if (editPanel && editPanel !== pane && !pane.contains(editPanel)) {
+                editPanel.classList.remove('active', 'show', 'in');
+                editPanel.setAttribute('hidden', '');
+                editPanel.setAttribute('aria-hidden', 'true');
+            }
+        } catch (e) {}
+
+        try {
+            const lbl = UI.tab?.tabLabel || document.querySelector('[data-script-id="' + SCRIPT_ID + '"], [data-scriptid="' + SCRIPT_ID + '"]');
+            if (lbl) {
+                lbl.classList.add('active');
+                lbl.closest?.('li,wz-tab,button,[role="tab"]')?.classList?.add('active');
+            }
+        } catch (e) {}
+
+        return true;
+    }
+
     function tryOpenSidebarTab() {
         try { initScriptsTabUiOnce(); } catch (e) {}
-        try { UI.tab?.tabLabel?.click?.(); return true; } catch (e) {}
+
+        const candidates = [];
+        const addCandidate = (el) => {
+            if (!el) return;
+            if (candidates.includes(el)) return;
+            candidates.push(el);
+        };
+
+        try { addCandidate(UI.tab?.tabLabel); } catch (e) {}
         try {
-            const lbl = document.querySelector('[data-script-id="' + SCRIPT_ID + '"]');
-            lbl?.click?.();
-            return !!lbl;
+            document.querySelectorAll('[data-script-id="' + SCRIPT_ID + '"], [data-scriptid="' + SCRIPT_ID + '"]').forEach(addCandidate);
         } catch (e) {}
-        return false;
+
+        try {
+            Array.from(document.querySelectorAll('button,[role="tab"],[role="button"],a,div,span,wz-button,wz-tab')).forEach(el => {
+                const txt = String(el.textContent || el.getAttribute?.('aria-label') || el.getAttribute?.('title') || '').trim();
+                if (/^JB Geometry$/i.test(txt) || /WME\s*-\s*JB\s*Geometry/i.test(txt)) addCandidate(el);
+            });
+        } catch (e) {}
+
+        for (const el of candidates) {
+            if (!sidebarClickTarget(el)) continue;
+            try { forceShowJbGeometryScriptSidebar(); } catch (e) {}
+            try { setTimeoutSafe(() => forceShowJbGeometryScriptSidebar(), 80); } catch (e) {}
+            return true;
+        }
+
+        return forceShowJbGeometryScriptSidebar();
     }
 
     function getSegmentObjectById(id) {
@@ -14028,56 +14121,38 @@ async function replaceSelectedJunctionBoxWithShape() {
 
     function openJbGeometryEditorFromJunctionEntryView() {
         try { UI.openedFromJunctionEntryView = true; } catch (e) {}
-        try {
-            if (typeof tryOpenSidebarTab === 'function' && tryOpenSidebarTab()) {
-                try { refreshUiStatus?.(); } catch (e) {}
-                return;
-            }
-        } catch (e) {}
 
-        try {
-            if (!UI.registered) initScriptsTabUiOnce?.();
-        } catch (e) {}
-
-        try {
-            if (UI.tab?.tabLabel) {
-                UI.tab.tabLabel.click();
-                try { refreshUiStatus?.(); } catch (e) {}
-                return;
-            }
-        } catch (e) {}
-
-        try {
-            const direct = document.querySelector('[data-script-id="' + SCRIPT_ID + '"], [data-scriptid="' + SCRIPT_ID + '"]');
-            if (direct) {
-                direct.click();
-                try { refreshUiStatus?.(); } catch (e) {}
-                return;
-            }
-        } catch (e) {}
-
-        try {
-            const candidates = Array.from(document.querySelectorAll('button,[role="tab"],[role="button"],a,div,span,wz-button'))
-                .filter(el => {
-                    const txt = String(el.textContent || el.getAttribute?.('aria-label') || el.getAttribute?.('title') || '').trim();
-                    return /^JB Geometry$/i.test(txt) || /WME\s*-\s*JB\s*Geometry/i.test(txt);
+        const fail = () => {
+            try {
+                showJbGeometryNotification('Could not open the JB Geometry script tab automatically. Open the Scripts tab and select JB Geometry.', {
+                    title: 'JB Geometry',
+                    closeLabel: 'OK',
+                    timeoutMs: 5200,
                 });
-            for (const el of candidates) {
-                try {
-                    el.click();
-                    try { refreshUiStatus?.(); } catch (e) {}
-                    return;
-                } catch (e) {}
-            }
-        } catch (e) {}
+            } catch (e) {}
+        };
 
-        try {
-            showJbGeometryNotification('Could not open the JB Geometry script tab automatically. Open the Scripts tab and select JB Geometry.', {
-                title: 'JB Geometry',
-                closeLabel: 'OK',
-                timeoutMs: 5200,
-            });
-        } catch (e) {}
+        const attempt = (n = 0) => {
+            let opened = false;
+            try { opened = typeof tryOpenSidebarTab === 'function' && tryOpenSidebarTab(); } catch (e) {}
+            try { refreshUiStatus?.(); } catch (e) {}
+
+            if (opened) {
+                try { forceShowJbGeometryScriptSidebar(); } catch (e) {}
+                try { setTimeoutSafe(() => forceShowJbGeometryScriptSidebar(), 120); } catch (e) {}
+                try { setTimeoutSafe(() => refreshUiStatus?.(), 180); } catch (e) {}
+                return;
+            }
+
+            if (n < 5) {
+                try { setTimeoutSafe(() => attempt(n + 1), 90 + n * 80); } catch (e) { try { setTimeout(() => attempt(n + 1), 90 + n * 80); } catch (_) {} }
+                return;
+            }
+
+            fail();
+        };
+
+        attempt(0);
     }
 
 function injectOpenJbGeometryEditorButtonIntoJunctionEntryView() {
@@ -14093,8 +14168,9 @@ function injectOpenJbGeometryEditorButtonIntoJunctionEntryView() {
                 btn.addEventListener('click', (ev) => {
                     ev.preventDefault();
                     ev.stopPropagation();
+                    try { ev.stopImmediatePropagation?.(); } catch (e) {}
                     openJbGeometryEditorFromJunctionEntryView();
-                });
+                }, true);
 
                 view.appendChild(btn);
             }
