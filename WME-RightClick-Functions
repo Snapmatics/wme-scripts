@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - RightClick Functions
 // @author       GreekCaptain
-// @version      1.0.6
+// @version      1.0.7
 // @description  Right-click functionality
 // @match        https://www.waze.com/*/editor*
 // @match        https://www.waze.com/editor*
@@ -26,7 +26,7 @@
   const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   const SCRIPT_ID = "wme-rightclick-functions-beta";
   const SCRIPT_NAME = "WME - RightClick Functions Beta";
-  const SCRIPT_VERSION = "1.0.31-beta.64";
+  const SCRIPT_VERSION = "1.0.31-beta.65";
   const CHANGELOG_SEEN_KEY = `${SCRIPT_ID}:changelogSeenVersion:v2`;
   const CHANGELOG_ITEMS = {
     new: [],
@@ -35,7 +35,9 @@
       "Cleaned up menu icons and Beta/Prod shortcuts.",
       "Improved permalink handling for selected segments."
     ],
-    fixes: []
+    fixes: [
+      "Fixed saved pins and folders not loading or persisting after refresh."
+    ]
   };
 
 
@@ -3026,23 +3028,46 @@ function saveCustomPinColors(colors) {
       }
       if (!seenIds.has("default")) flatGroups.unshift({ id: "default", name: "(no folder)", emoji: "", parentId: "", isSubfolder: false });
 
-      let changedPins = false;
-      try {
-        const pins = loadPins();
-        const migratedPins = pins.map((p) => {
-          const oldId = String(p && p.groupId || "default") || "default";
+      // Cache groups before touching pins. This breaks the previous
+      // loadPins -> normalizeGroupId -> loadPinGroups -> loadPins cycle.
+      _pinGroupsMem = flatGroups;
+
+      const migratePins = (pins) => {
+        let changed = false;
+        const migrated = (Array.isArray(pins) ? pins : []).map((p) => {
+          if (!p || typeof p !== "object") return p;
+          const oldId = String(p.groupId || "default") || "default";
           const nextId = resolveTopLevelGroupId(oldId);
           if (nextId !== oldId) {
-            changedPins = true;
+            changed = true;
             return { ...p, groupId: nextId };
           }
           return p;
         });
-        if (changedPins) savePins(migratedPins);
+        return { changed, migrated };
+      };
+
+      // Migrate old subfolder/orphaned IDs without calling loadPins while
+      // groups are still initializing. This keeps both memory and storage safe.
+      try {
+        if (_pinsMem && Array.isArray(_pinsMem)) {
+          const { changed, migrated } = migratePins(_pinsMem);
+          if (changed) savePins(migrated);
+        } else {
+          const pinsRaw = localStorage.getItem(PIN_KEY);
+          const pinsArr = JSON.parse(pinsRaw || "[]");
+          if (Array.isArray(pinsArr)) {
+            const { changed, migrated } = migratePins(pinsArr);
+            if (changed) {
+              const json = JSON.stringify(migrated);
+              localStorage.setItem(PIN_KEY, json);
+              _pinsLastJson = json;
+            }
+          }
+        }
       } catch {}
 
       const hadSubfolders = cleanGroups.some(g => g && g.id !== "default" && g.isSubfolder);
-      _pinGroupsMem = flatGroups;
       if (hadSubfolders) savePinGroups(flatGroups);
       return _pinGroupsMem;
     } catch {
@@ -3855,7 +3880,7 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcModal.theme-light .wmeRcModalClose,.wmeRcModal.waze-style.theme-light .wmeRcModalClose{background:rgba(255,255,255,.76) !important;border-color:rgba(15,23,42,.16) !important;}
       .wmeRcModal.theme-light .wmeRcModalBody,.wmeRcModal.waze-style.theme-light .wmeRcModalBody{color:#111827 !important;}
       .wmeRcModal.theme-light .wmeRcModalBody :where(.wmeRcHint,.wmeRcSwitchLabel,.wmeRcInfoQ,.wmeRcRowLabel,.wmeRcSettingTitle,.wmeRcSettingDesc,.wmeRcSideTitle,.wmeRcSideSub,.wmeRcSettingsIntroTitle,.wmeRcSettingsIntroSub,.wmeRcSettingsEyebrow,.wmeRcModalIntroTitle,.wmeRcModalIntroDesc,.wmeRcWizardTitle,.wmeRcWizardSub,.wmeRcWizardHint,.wmeRcWizardRowTitle,.wmeRcWizardRowSub,.wmeRcPmCardTitle,.wmeRcPmCardSub,.wmeRcPmRowTitle,.wmeRcPmRowSub,.wmeRcToggleName,.wmeRcToggleDesc,.wmeRcPinSetCompactLabel,.wmeRcLenText,.wmeRcLenCount,.wmeRcColorStatLine,.wmeRcColorStatKey,.wmeRcColorStatVal),.wmeRcModal.waze-style.theme-light .wmeRcModalBody :where(.wmeRcHint,.wmeRcSwitchLabel,.wmeRcInfoQ,.wmeRcRowLabel,.wmeRcSettingTitle,.wmeRcSettingDesc,.wmeRcSideTitle,.wmeRcSideSub,.wmeRcSettingsIntroTitle,.wmeRcSettingsIntroSub,.wmeRcSettingsEyebrow,.wmeRcModalIntroTitle,.wmeRcModalIntroDesc,.wmeRcWizardTitle,.wmeRcWizardSub,.wmeRcWizardHint,.wmeRcWizardRowTitle,.wmeRcWizardRowSub,.wmeRcPmCardTitle,.wmeRcPmCardSub,.wmeRcPmRowTitle,.wmeRcPmRowSub,.wmeRcToggleName,.wmeRcToggleDesc,.wmeRcPinSetCompactLabel,.wmeRcLenText,.wmeRcLenCount,.wmeRcColorStatLine,.wmeRcColorStatKey,.wmeRcColorStatVal){color:#111827 !important;-webkit-text-fill-color:#111827 !important;opacity:1 !important;}
-      .wmeRcModal.theme-light :where(.wmeRcSettingDesc,.wmeRcSideSub,.wmeRcSettingsIntroSub,.wmeRcWizardSub,.wmeRcWizardHint,.wmeRcWizardRowSub,.wmeRcUpdateMeta),.wmeRcModal.waze-style.theme-light :where(.wmeRcSettingDesc,.wmeRcSideSub,.wmeRcSettingsIntroSub,.wmeRcWizardSub,.wmeRcWizardHint,.wmeRcWizardRowSub,.wmeRcUpdateMeta){color:rgba(17,24,39,.72) !important;-webkit-text-fill-color:rgba(17,24,39,.72) !important;}
+      .wmeRcModal.theme-light :where(.wmeRcSettingDesc,.wmeRcSideSub,.wmeRcSettingsIntroSub,.wmeRcWizardSub,.wmeRcWizardHint,.wmeRcWizardRowSub,.wmeRcUpdateMeta),.wmeRcModal.waze-style.theme-light :where(.wmeRcSettingDesc,.wmeRcSideSub,.wmeRcSettingsIntroSub,.wmeRcWizardSub,.wmeRcWizardHint,.wmeRcWizardRowSub,.wmeRcUpdateMeta){color:rgba(17,24,39,.58) !important;-webkit-text-fill-color:rgba(17,24,39,.58) !important;}
       .wmeRcModal.theme-light .wmeRcSettingsHero,.wmeRcModal.waze-style.theme-light .wmeRcSettingsHero{background:radial-gradient(circle at 92% 10%,rgba(59,130,246,.24),transparent 42%),linear-gradient(135deg,rgba(219,234,254,.98),rgba(199,219,255,.94)) !important;border-color:rgba(37,99,235,.22) !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.72),0 8px 22px rgba(37,99,235,.08) !important;}
       .wmeRcModal.theme-light .wmeRcSettingsHero::before,.wmeRcModal.waze-style.theme-light .wmeRcSettingsHero::before{background:radial-gradient(circle at top right,rgba(37,99,235,.22),transparent 44%) !important;}
       .wmeRcModal.theme-light .wmeRcSettingsHero .wmeRcSettingsEyebrow,.wmeRcModal.waze-style.theme-light .wmeRcSettingsHero .wmeRcSettingsEyebrow{background:rgba(255,255,255,.54) !important;border-color:rgba(37,99,235,.22) !important;color:#1e3a8a !important;-webkit-text-fill-color:#1e3a8a !important;}
@@ -4784,7 +4809,7 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcSettingRow:hover{background:linear-gradient(90deg, rgba(255,255,255,.03), rgba(255,255,255,0));}
       .wmeRcSettingText{min-width:0;flex:1 1 auto;}
       .wmeRcSettingTitle{font-weight:800;line-height:1.2;color:var(--content_default);}
-      .wmeRcSettingDesc{margin-top:4px;font-size:11.5px;line-height:1.38;opacity:.72;max-width:40ch;}
+      .wmeRcSettingDesc{margin-top:4px;font-size:11.5px;line-height:1.38;opacity:.56;max-width:40ch;}
       .wmeRcSettingExtra{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:7px;}
       .wmeRcSettingsRefreshHint{display:none;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;font-size:10.5px;font-weight:800;line-height:1;letter-spacing:.01em;color:#f0b7b7;background:rgba(255,120,120,.08);border:1px solid rgba(255,120,120,.14);white-space:nowrap;}
       .wmeRcSettingsRefreshDot{width:7px;height:7px;border-radius:50%;background:rgba(255,110,110,.92);box-shadow:0 0 10px rgba(255,110,110,.22);display:inline-block;}
@@ -6796,6 +6821,9 @@ function upsertMapPinLabel(hostEl, pin, show) {
 function loadPins() {
   try {
     if (_pinsMem && Array.isArray(_pinsMem)) return _pinsMem;
+
+    // Initialize the folder cache first so pin normalization cannot recurse.
+    loadPinGroups();
 
     const raw = localStorage.getItem(PIN_KEY);
     _pinsLastJson = (typeof raw === "string") ? raw : _pinsLastJson;
