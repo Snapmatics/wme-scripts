@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WME - RightClick Functions
 // @author       GreekCaptain
-// @version      1.0.7
-// @description  Right-click functionality
+// @version      1.0.8
+// @description  Right-click tools and pinned places for Waze Map Editor
 // @match        https://www.waze.com/*/editor*
 // @match        https://www.waze.com/editor*
 // @match        https://beta.waze.com/*/editor*
@@ -11,26 +11,25 @@
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      w-tools.org
-// @require      https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
 // @icon         data:image/png;base64,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
 // @run-at       document-start
 // @license      MIT
 // @namespace https://greasyfork.org/users/1561762
-// @downloadURL https://update.greasyfork.org/scripts/563177/WME%20-%20RightClick%20Functions.user.js
-// @updateURL https://update.greasyfork.org/scripts/563177/WME%20-%20RightClick%20Functions.meta.js
 // ==/UserScript==
 
 (() => {
   "use strict";
 
   const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
-  const SCRIPT_ID = "wme-rightclick-functions-beta";
-  const SCRIPT_NAME = "WME - RightClick Functions Beta";
-  const SCRIPT_VERSION = "1.0.31-beta.65";
+  const SCRIPT_ID = "wme-rightclick-functions";
+  const SCRIPT_NAME = "WME - RightClick Functions";
+  const SCRIPT_VERSION = "1.0.8";
   const CHANGELOG_SEEN_KEY = `${SCRIPT_ID}:changelogSeenVersion:v2`;
   const CHANGELOG_ITEMS = {
     new: [],
     improved: [
+      "The reminder modal and notification have a new look.",
+      "Improved reminder countdowns, snooze controls, sounds, and pin search.",
       "Improved the pins and folder dialogs.",
       "Cleaned up menu icons and Beta/Prod shortcuts.",
       "Improved permalink handling for selected segments."
@@ -44,8 +43,8 @@
   const EDITOR_BASE = `${location.origin}${location.pathname}`;
   const GMAPS_BASE = "https://www.google.com/maps?q=";
 
-  if (UW.__WME_RIGHTCLICK_FUNCTIONS_BETA__) return;
-  UW.__WME_RIGHTCLICK_FUNCTIONS_BETA__ = true;
+  if (UW.__WME_RIGHTCLICK_FUNCTIONS__) return;
+  UW.__WME_RIGHTCLICK_FUNCTIONS__ = true;
 
   let sdk = null;
   let enabled = true;
@@ -1052,7 +1051,7 @@ function buildLinkSettingsEditor() {
       return row;
     };
 
-    const linkCard = makeCard('Link behavior', 'Marker and Beta link options.', '4 options');
+    const linkCard = makeCard('Link behavior', 'Marker and alternate editor options.', '4 options');
 
     const linkRows = [
       {
@@ -1980,7 +1979,7 @@ function openExtensionsDocumentationModal() {
 // @name         My Right Click Extension
 // @namespace    https://example.com/
 // @version      1.0.0
-// @description  Example extension for WME - RightClick Functions Beta
+// @description  Example extension for WME - RightClick Functions
 // @match        https://www.waze.com/*/editor*
 // @match        https://www.waze.com/editor*
 // @match        https://beta.waze.com/*/editor*
@@ -3373,6 +3372,7 @@ function triggerReminderById(pinId, expectedAt){
   let lastBellAt = 0;
   let pinsCountdownTimerId = null;
   let _pinsCountdownTicking = false;
+  let _pinsDueCheckPending = false;
   let _pinCountdownEls = new Map();
   let _pinCountdownModes = new Map();
   let _pinCountdownTipModes = new Map();
@@ -3440,6 +3440,8 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
     drag: svg(`<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>`),
     trash: svg(`<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/>`),
     bell: svg(`<path d="M18 9a6 6 0 1 0-12 0c0 7-2 7-2 9h16c0-2-2-2-2-9"/><path d="M10 21h4"/>`),
+    calendar: svg(`<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>`),
+    clockSmall: svg(`<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>`),
     edit: svg(`<path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17l-1 3z"/><path d="M13.5 8.5l2 2"/>`),
     eye: svg(`<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="3"/>`),
     eyeOff: svg(`<path d="M3 3l18 18"/><path d="M10.6 10.6A3 3 0 0 0 13.4 13.4"/><path d="M7.1 7.6C4.3 9.2 2.5 12 2.5 12s3.5 6 9.5 6c1.6 0 3-.4 4.2-1"/><path d="M14.7 6.4A10 10 0 0 0 12 6c-6 0-9.5 6-9.5 6s.9 1.6 2.5 3"/>`),
@@ -3500,47 +3502,41 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcPinHitClose:hover{background:rgba(255,255,255,.10);}
 
       .wmeRcNoticeStack{position:fixed;right:96px;bottom:118px;z-index:2147483647;display:flex;flex-direction:column;gap:10px;align-items:flex-end;pointer-events:none;}
-      .wmeRcNotice{position:relative;min-width:260px;max-width:min(440px,calc(100vw - 32px));
-        background:rgba(16,16,18,.55);color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:13px 13px 11px;
-        box-shadow:0 18px 54px rgba(0,0,0,.48);backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%);
-        font:13px/1.25 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-        opacity:0;transform:translate3d(0,10px,0);transition:.22s ease;pointer-events:auto;}
-      .wmeRcNotice.show{opacity:1;transform:translate3d(0,0,0);}
-
-      .wmeRcNoticeTitle{font-weight:900;font-size:12px;letter-spacing:.22px;text-transform:uppercase;margin-bottom:6px;opacity:.80;}
-      .wmeRcNoticeMsg{font-size:16px;font-weight:900;letter-spacing:.15px;opacity:.98;margin-bottom:6px;line-height:1.15;white-space:normal;word-break:break-word;}
-      .wmeRcNoticeNote{font-size:13px;opacity:.95;margin-top:2px;margin-bottom:10px;white-space:normal;word-break:break-word;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:8px 10px;}
-      .wmeRcNoticeActions{display:flex;gap:8px;justify-content:flex-start;}
-      .wmeRcNoticeBtn{
-  appearance:none;
-  display:flex;align-items:center;justify-content:center;line-height:1;
-  border:1px solid rgba(255,255,255,.16);
-  background:rgba(255,255,255,.06);
-  color:#fff;
-  border-radius:12px;
-  padding:8px 12px;
-  font-weight:900;
-  cursor:pointer;
-  transition:transform .14s ease, background .14s ease, box-shadow .14s ease, border-color .14s ease;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
-}
-.wmeRcNoticeBtn:hover{
-  background:rgba(255,255,255,.10);
-  transform:translate3d(0,-1px,0);
-  box-shadow:0 12px 28px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.08);
-}
-.wmeRcNoticeBtn:active{
-  background:rgba(255,255,255,.12);
-  transform:translate3d(0,0,0) scale(.99);
-}
-.wmeRcNoticeBtn.primary{
-  border-color:rgba(255,255,255,.18);
-  background:rgba(255,255,255,.10);
-}
-.wmeRcNoticeBtn.primary:hover{
-  background:rgba(255,255,255,.14);
-  transform:translate3d(0,-1px,0);
-}
+      .wmeRcNotice{position:relative;width:min(360px,calc(100vw - 32px));min-width:300px;max-width:360px;
+        background:linear-gradient(180deg,rgba(27,38,56,.97),rgba(10,16,27,.98));color:#f8fafc;border:1px solid rgba(148,163,184,.16);border-radius:18px;padding:0;
+        box-shadow:0 18px 44px rgba(0,0,0,.42);backdrop-filter:blur(12px) saturate(130%);-webkit-backdrop-filter:blur(12px) saturate(130%);
+        font:13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+        opacity:0;transform:translate3d(0,10px,0) scale(.985);transition:opacity .20s ease,transform .20s ease;pointer-events:auto;overflow:hidden;}
+      .wmeRcNotice.show{opacity:1;transform:translate3d(0,0,0) scale(1);}
+      .wmeRcNoticeBody{padding:13px 13px 11px;}
+      .wmeRcNoticeHead{display:flex;align-items:flex-start;gap:10px;min-width:0;}
+      .wmeRcNoticeIcon{width:34px;height:34px;flex:0 0 34px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+        background:rgba(47,128,237,.13);border:1px solid rgba(47,128,237,.22);color:#dbeafe;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+      .wmeRcNoticeIcon .wmeRcI{width:17px;height:17px;}
+      .wmeRcNoticeText{min-width:0;flex:1 1 auto;}
+      .wmeRcNoticeEyebrow{display:flex;align-items:center;gap:6px;margin:0 0 3px;color:#cbd5e1;font-size:10px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;line-height:1.2;}
+      .wmeRcNoticeDot{width:4px;height:4px;border-radius:50%;background:#60a5fa;box-shadow:0 0 8px rgba(96,165,250,.42);}
+      .wmeRcNoticeTime{color:rgba(203,213,225,.68);font-weight:800;letter-spacing:.04em;}
+      .wmeRcNoticeMsg{font-size:19px;font-weight:850;letter-spacing:-.025em;line-height:1.15;white-space:normal;overflow-wrap:anywhere;color:#f8fafc;}
+      .wmeRcNoticeSub{margin-top:3px;color:rgba(203,213,225,.72);font-size:12px;line-height:1.35;}
+      .wmeRcNoticeDismiss{appearance:none;width:30px;height:30px;flex:0 0 30px;padding:0;border:1px solid rgba(148,163,184,.18);border-radius:10px;
+        background:rgba(255,255,255,.045);color:#aeb8c6;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .14s ease,color .14s ease,transform .14s ease;}
+      .wmeRcNoticeDismiss:hover{background:rgba(255,255,255,.09);color:#fff;transform:translateY(-1px);}
+      .wmeRcNoticeDismiss:active{transform:translateY(0) scale(.98);}
+      .wmeRcNoticeDismiss .wmeRcI{width:14px;height:14px;}
+      .wmeRcNoticeNote{font-size:12px;color:rgba(238,242,247,.86);margin:10px 0 0 44px;white-space:normal;overflow-wrap:anywhere;
+        background:rgba(255,255,255,.045);border:1px solid rgba(148,163,184,.14);border-radius:11px;padding:8px 10px;}
+      .wmeRcNoticeActions{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:8px;margin-top:12px;}
+      .wmeRcNoticeBtn{appearance:none;height:34px;min-width:0;padding:0 12px;border:1px solid rgba(148,163,184,.25);background:rgba(255,255,255,.055);color:#e7edf5;
+        border-radius:11px;font-size:12px;line-height:1;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;
+        transition:transform .14s ease,background .14s ease,box-shadow .14s ease,border-color .14s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);white-space:nowrap;}
+      .wmeRcNoticeBtn .wmeRcI{width:14px;height:14px;}
+      .wmeRcNoticeBtn:hover{background:rgba(255,255,255,.095);transform:translateY(-1px);box-shadow:0 10px 22px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.06);}
+      .wmeRcNoticeBtn:active{transform:translateY(0) scale(.99);}
+      .wmeRcNoticeBtn.primary{justify-self:stretch;border-color:rgba(96,165,250,.50);background:linear-gradient(180deg,#3388f5,#2369ca);color:#fff !important;-webkit-text-fill-color:#fff !important;box-shadow:0 8px 20px rgba(35,105,202,.20),inset 0 1px 0 rgba(255,255,255,.12);}
+      .wmeRcNoticeBtn.primary span,.wmeRcNoticeBtn.primary .wmeRcI,.wmeRcNoticeBtn.primary svg{color:#fff !important;-webkit-text-fill-color:#fff !important;stroke:#fff !important;}
+      .wmeRcNoticeBtn.primary:hover{background:linear-gradient(180deg,#4394ff,#2874dc);box-shadow:0 11px 24px rgba(35,105,202,.28),inset 0 1px 0 rgba(255,255,255,.14);}
+      @media(max-width:520px){.wmeRcNoticeStack{right:16px;left:16px;align-items:stretch}.wmeRcNotice{width:100%;min-width:0;max-width:none}.wmeRcNoticeActions{grid-template-columns:1fr 1fr}.wmeRcNoticeBtn.primary{grid-column:1/-1}.wmeRcNoticeNote{margin-left:0}}
 
       .wmeRcRemNoteWrap{margin-top:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:8px 10px;}
       .wmeRcRemNoteLbl{font-weight:800;font-size:12px;opacity:.85;margin-bottom:6px;}
@@ -3548,88 +3544,36 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcRemNoteInp::-webkit-scrollbar{width:0;height:0;}
 .wmeRcSnoozePop{
   position:fixed;left:0;top:0;z-index:2147483647;
-  min-width:260px;max-width:320px;
-  padding:12px 12px 12px;
-  color:#fff;
-  background:linear-gradient(180deg,rgba(22,22,26,.42),rgba(12,12,14,.34));
-  border:1px solid rgba(255,255,255,.14);
-  border-radius:16px;
-  box-shadow:0 22px 60px rgba(0,0,0,.50);
-  backdrop-filter:blur(28px) saturate(160%);
-  -webkit-backdrop-filter:blur(28px) saturate(160%);
-  transform-origin:90% 100%;
-  animation:wmeRcSnoozeIn .18s ease-out;
+  width:300px;max-width:calc(100vw - 24px);padding:12px;
+  color:#f8fafc;background:linear-gradient(180deg,rgba(27,38,56,.985),rgba(10,16,27,.99));
+  border:1px solid rgba(148,163,184,.18);border-radius:18px;
+  box-shadow:0 18px 44px rgba(0,0,0,.44);backdrop-filter:blur(12px) saturate(130%);-webkit-backdrop-filter:blur(12px) saturate(130%);
+  transform-origin:90% 0%;animation:wmeRcSnoozeIn .18s ease-out;
+  font:13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
 }
-@keyframes wmeRcSnoozeIn{from{opacity:0;transform:translate3d(0,8px,0) scale(.985);}to{opacity:1;transform:translate3d(0,0,0) scale(1);}}
-.wmeRcSnoozeTitle{
-  font-weight:900;font-size:12px;letter-spacing:.2px;
-  opacity:.92;margin:0 0 10px;
-}
-.wmeRcSnoozeGrid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
-.wmeRcSnoozeChip{
-  cursor:pointer;user-select:none;
-  padding:8px 12px;border-radius:999px;
-  border:1px solid rgba(255,255,255,.14);
-  background:rgba(255,255,255,.05);
-  color:#fff;font-weight:900;font-size:12px;letter-spacing:.15px;
-  transition:transform .14s ease, background .14s ease, box-shadow .14s ease, border-color .14s ease;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
-}
-.wmeRcSnoozeChip:hover{
-  background:rgba(255,255,255,.10);
-  border-color:rgba(255,255,255,.22);
-  transform:translate3d(0,-1px,0) scale(1.02);
-  box-shadow:0 10px 24px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.08);
-}
-.wmeRcSnoozeChip:active{
-  transform:translate3d(0,0,0) scale(.99);
-  background:rgba(255,255,255,.12);
-}
-.wmeRcSnoozeRow{display:flex;gap:8px;align-items:center;}
-.wmeRcSnoozeInput{
-  flex:1;min-width:0;
-  height:34px;line-height:34px;
-  border-radius:12px;border:1px solid rgba(255,255,255,.14);
-  background:rgba(255,255,255,.05);
-  color:#fff !important;
-  -webkit-text-fill-color:#fff !important;
-  padding:0 12px;
-  font-weight:900;outline:none;
-  font-variant-numeric:tabular-nums;
-  transition:box-shadow .14s ease, border-color .14s ease, background .14s ease;
-}
-.wmeRcSnoozeInput:focus{
-  border-color:rgba(255,255,255,.24);
-  background:rgba(255,255,255,.07);
-  box-shadow:0 0 0 4px rgba(255,255,255,.06);
-}
-.wmeRcSnoozeInput::placeholder{color:rgba(255,255,255,.28);font-weight:700;}
-.wmeRcSnoozeInput:placeholder-shown{color:rgba(255,255,255,.31) !important;-webkit-text-fill-color:#ffffff50 !important;}
-.wmeRcSnoozeInput:not(:placeholder-shown){color:#fff !important;-webkit-text-fill-color:#fff !important;}
-.wmeRcSnoozeGo{
-  appearance:none;
-  height:34px;min-width:70px;
-  display:flex;align-items:center;justify-content:center;line-height:1;
-  border-radius:12px;
-  border:1px solid rgba(var(--pinRGB,255,160,60),.34);
-  background:var(--wmeRcPinGrad, linear-gradient(180deg, rgba(255,200,120,.92), rgba(255,140,0,.92)));
-  color:#fff;
-  padding:0 12px;
-  font-weight:950;letter-spacing:.15px;
-  cursor:pointer;
-  box-shadow:0 10px 26px rgba(0,0,0,.25);
-  transition:filter .14s ease,transform .14s ease,border-color .14s ease, box-shadow .14s ease;
-}
-.wmeRcSnoozeGo:hover{
-  filter:brightness(1.05);
-  border-color:rgba(var(--pinRGB,255,160,60),.44);
-  transform:translate3d(0,-1px,0);
-  box-shadow:0 14px 34px rgba(0,0,0,.30);
-}
-.wmeRcSnoozeGo:active{
-  transform:translate3d(0,0,0);
-  filter:brightness(.98);
-}
+@keyframes wmeRcSnoozeIn{from{opacity:0;transform:translate3d(0,-6px,0) scale(.985);}to{opacity:1;transform:translate3d(0,0,0) scale(1);}}
+.wmeRcSnoozeHead{display:flex;align-items:center;gap:10px;margin-bottom:11px;}
+.wmeRcSnoozeIcon{width:34px;height:34px;flex:0 0 34px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:rgba(47,128,237,.13);border:1px solid rgba(47,128,237,.22);color:#dbeafe;}
+.wmeRcSnoozeIcon .wmeRcI{width:17px;height:17px;}
+.wmeRcSnoozeHeadText{min-width:0;flex:1;}
+.wmeRcSnoozeTitle{font-weight:850;font-size:14px;letter-spacing:-.01em;line-height:1.15;margin:0;}
+.wmeRcSnoozeSub{margin-top:3px;color:rgba(203,213,225,.68);font-size:11.5px;line-height:1.25;}
+.wmeRcSnoozeClose{appearance:none;width:28px;height:28px;padding:0;border:1px solid rgba(148,163,184,.18);border-radius:9px;background:rgba(255,255,255,.045);color:#aeb8c6;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.wmeRcSnoozeClose:hover{background:rgba(255,255,255,.09);color:#fff;}
+.wmeRcSnoozeClose .wmeRcI{width:13px;height:13px;}
+.wmeRcSnoozeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:10px;}
+.wmeRcSnoozeChip{appearance:none;cursor:pointer;user-select:none;height:34px;padding:0 8px;border-radius:11px;border:1px solid rgba(148,163,184,.24);background:rgba(255,255,255,.055);color:#e7edf5;font-weight:800;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;transition:transform .14s ease,background .14s ease,border-color .14s ease;}
+.wmeRcSnoozeChip:hover{background:rgba(255,255,255,.095);border-color:rgba(148,163,184,.34);transform:translateY(-1px);}
+.wmeRcSnoozeChip:active{transform:translateY(0) scale(.99);}
+.wmeRcSnoozeCustomLabel{display:block;margin:0 0 6px;color:rgba(203,213,225,.70);font-size:11px;font-weight:800;}
+.wmeRcSnoozeRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;}
+.wmeRcSnoozeInput{min-width:0;height:34px;line-height:34px;border-radius:11px;border:1px solid rgba(148,163,184,.24);background:rgba(255,255,255,.055);color:#fff !important;-webkit-text-fill-color:#fff !important;padding:0 11px;font-weight:800;outline:none;font-variant-numeric:tabular-nums;}
+.wmeRcSnoozeInput:focus{border-color:rgba(96,165,250,.48);background:rgba(255,255,255,.075);box-shadow:0 0 0 3px rgba(59,130,246,.11);}
+.wmeRcSnoozeInput::placeholder{color:rgba(203,213,225,.38);font-weight:700;}
+.wmeRcSnoozeGo{appearance:none;height:34px;min-width:74px;display:flex;align-items:center;justify-content:center;line-height:1;border-radius:11px;border:1px solid rgba(96,165,250,.50);background:linear-gradient(180deg,#3388f5,#2369ca);color:#fff !important;-webkit-text-fill-color:#fff !important;padding:0 13px;font-weight:850;cursor:pointer;box-shadow:0 8px 20px rgba(35,105,202,.18);transition:transform .14s ease,filter .14s ease,box-shadow .14s ease;}
+.wmeRcSnoozeGo:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 11px 24px rgba(35,105,202,.26);}
+.wmeRcSnoozeGo:active{transform:translateY(0) scale(.99);}
+
 
       .wmeRcPinCluster{position:absolute;width:34px;height:34px;border-radius:999px;
         display:flex;align-items:center;justify-content:center;
@@ -3868,7 +3812,7 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcFloatingCreatePin.is-saved{color:#34c759 !important;filter:none !important;}
 
 
-      /* Beta light-theme hardening: readable modals + colored headers */
+      /* Light-theme hardening: readable modals + colored headers */
       .wmeRcModal.theme-light,
       .wmeRcModal.waze-style.theme-light{--wmeRcModalFg:#111827 !important;--wmeRcModalInputFg:#111827 !important;--wmeRcModalInputPlaceholder:rgba(17,24,39,.46) !important;--wmeRcModalInputPlaceholderSoft:rgba(17,24,39,.34) !important;color:#111827 !important;}
       .wmeRcModal.theme-light,.wmeRcModal.waze-style.theme-light{background:color-mix(in srgb, var(--background_default,#ffffff) 96%, var(--content_default,#111827) 4%) !important;border-color:var(--border_default,rgba(40,56,72,.14)) !important;box-shadow:0 24px 70px rgba(15,23,42,.18),0 8px 22px rgba(15,23,42,.10) !important;backdrop-filter:blur(14px) saturate(125%) !important;-webkit-backdrop-filter:blur(14px) saturate(125%) !important;}
@@ -5237,6 +5181,9 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcPinsSearch::placeholder{color:rgba(255,255,255,.42);}
       .wmeRcPinsSearchClear{position:absolute;right:5px;width:24px;height:24px;border-radius:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--wmeRcPinsFg,#fff);opacity:.62;background:transparent;border:1px solid transparent;font-weight:900;line-height:1;}
       .wmeRcPinsSearchClear:hover{opacity:1;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.10);}
+      .wmeRcPins.searching .wmeRcPinsGroupTwisty{opacity:.38;}
+      .wmeRcPins.searching .wmeRcPinRow.searchMatch{background:linear-gradient(90deg,rgba(59,130,246,.075),rgba(59,130,246,.015));}
+      .wmeRcPins.searching .wmeRcPinRow.searchMatch:hover{background:linear-gradient(90deg,rgba(59,130,246,.12),rgba(59,130,246,.025));}
       .wmeRcPinsFilters{display:flex;gap:6px;align-items:center;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;}
       .wmeRcPinsFilters::-webkit-scrollbar{display:none;}
       .wmeRcPinsFilterChip{flex:0 0 auto;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);color:var(--wmeRcPinsFg,#fff);border-radius:999px;padding:5px 9px;font-size:11px;font-weight:800;line-height:1;cursor:pointer;opacity:.78;white-space:nowrap;transition:background .14s ease,border-color .14s ease,opacity .14s ease;}
@@ -5401,10 +5348,15 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcPinSubLine{opacity:.86;}
       .wmeRcPinCountdownLine{margin-top:2px; font-variant-numeric:tabular-nums; letter-spacing:.2px;}
       .wmeRcPinCountdownBadge{display:inline-flex;align-items:center;justify-content:center;
-        padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.18);
+        height:24px;padding:0 9px;border-radius:999px;border:1px solid rgba(255,255,255,.18);
         background:rgba(255,255,255,.06);box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
-        font:700 12px/1 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;min-width:56px;contain:layout paint;color:rgba(255,255,255,.86);
-        cursor:pointer;}
+        font:700 12px/1 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+        font-variant-numeric:tabular-nums lining-nums;font-feature-settings:"tnum" 1,"lnum" 1;
+        min-width:58px;color:rgba(255,255,255,.86);white-space:nowrap;text-align:center;overflow:hidden;
+        -webkit-font-smoothing:antialiased;backface-visibility:hidden;transform:translateZ(0);cursor:pointer;}
+      .wmeRcPinCountdownBadge.is-clock{width:62px;min-width:62px;max-width:62px;}
+      .wmeRcPinCountdownBadge.is-long-clock{width:82px;min-width:82px;max-width:82px;}
+      .wmeRcPinCountdownBadge.is-human{width:auto;max-width:130px;text-overflow:ellipsis;}
       .wmeRcPinCountdownBadge:empty{display:none;}
       .wmeRcColorRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px;}
       .wmeRcColorSwatch{width:22px;height:22px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:var(--c);cursor:pointer;box-shadow:none;}
@@ -5746,14 +5698,17 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
         font-weight:950;font-size:18px;line-height:1;
         transition:background .14s ease,transform .14s ease;}
       .wmeRcCalNav:hover{background:rgba(255,255,255,.10);transform:translate3d(0,-1px,0);}
+      .wmeRcCalPop{background:linear-gradient(180deg,#111827,#070c14)!important;border:1px solid rgba(255,255,255,.09)!important;box-shadow:0 24px 66px rgba(0,0,0,.68);backdrop-filter:none;-webkit-backdrop-filter:none;}
       .wmeRcCalDow{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px;opacity:.70;font-size:11px;font-weight:800;text-align:center;}
+      .wmeRcCalDow>div{min-height:18px;display:grid;place-items:center;line-height:1;}
       .wmeRcCalGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
       .wmeRcCalCell{appearance:none;border:none;cursor:pointer;
-        height:34px;border-radius:12px;
+        height:34px;padding:0!important;display:flex!important;align-items:center!important;justify-content:center!important;border-radius:12px;
         background:rgba(255,255,255,.05);
         border:1px solid rgba(255,255,255,.12);
-        color:#fff;font-weight:900;
+        color:#fff;font-weight:900;line-height:1!important;font-variant-numeric:tabular-nums;
         transition:background .14s ease,transform .14s ease,border-color .14s ease,box-shadow .14s ease;}
+      .wmeRcCalCell>span{width:100%;height:100%;display:flex;align-items:center;justify-content:center;line-height:1;transform:translateY(1px);}
       .wmeRcCalCell.off{background:transparent;border-color:transparent;cursor:default;}
       .wmeRcCalCell:hover{background:rgba(255,255,255,.10);transform:translate3d(0,-1px,0);}
       .wmeRcCalCell.sel{background:rgba(var(--pinRGB,255,160,60),.18);border-color:rgba(var(--pinRGB,255,160,60),.38);box-shadow:0 0 0 4px rgba(var(--pinRGB,255,160,60),.10);}
@@ -5777,7 +5732,7 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
       .wmeRcTimeOk:hover{background:rgba(255,160,60,.22);transform:translate3d(0,-1px,0);}
 
       .wmeRcTimePop{min-width:300px;max-width:360px;}
-      .wmeRcPickerPop.wmeRcTimePop{padding-top:18px;}
+      .wmeRcPickerPop.wmeRcTimePop{padding-top:18px;background:linear-gradient(180deg,#111827,#070c14)!important;border:1px solid rgba(255,255,255,.09)!important;box-shadow:0 24px 66px rgba(0,0,0,.68);backdrop-filter:none;-webkit-backdrop-filter:none;}
 
       .wmeRcTimeClockBox{display:flex;flex-direction:column;align-items:center;gap:12px;}
       .wmeRcTimeClockLabel{font:900 18px/1.1 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
@@ -6229,6 +6184,71 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
         transform:translateY(1px) !important;
       }
 
+
+      /* Refined reminder scheduler */
+      .wmeRcReminderModal{width:min(580px,calc(100vw - 24px));}
+      .wmeRcReminderModal .wmeRcModalBody{gap:10px;padding:12px 14px 14px;}
+      .wmeRcReminderModal .wmeRcWizardHeader{align-items:center;min-height:34px;gap:12px;}
+      .wmeRcReminderModal .wmeRcWizardHdrLeft{justify-content:center;min-height:34px;}
+      .wmeRcReminderModal .wmeRcWizardSub{opacity:.62;}
+      .wmeRcReminderModal .wmeRcTabs{display:inline-flex;align-items:center;flex:0 0 auto;align-self:center;height:34px;gap:2px;margin:0;padding:2px;border:1px solid rgba(255,255,255,.11);border-radius:999px;background:rgba(255,255,255,.045);}
+      .wmeRcReminderModal .wmeRcTab{appearance:none;-webkit-appearance:none;min-width:38px;height:28px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:999px;background:transparent;box-shadow:none;color:inherit;font:inherit;font-size:12px;line-height:1;opacity:.78;pointer-events:auto;}
+      .wmeRcReminderModal .wmeRcTab:hover{background:rgba(255,255,255,.07);transform:none;}
+      .wmeRcReminderModal .wmeRcTab.on{background:rgba(255,255,255,.12);border:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);opacity:1;}
+      .wmeRcReminderModal .wmeRcReminderSchedule{gap:10px;}
+      .wmeRcReminderModal .wmeRcReminderQuickRow{gap:7px;margin:0 0 2px;padding:0;min-height:30px;}
+      .wmeRcReminderModal .wmeRcQuick{appearance:none;-webkit-appearance:none;height:30px;padding:0 11px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.11);color:inherit;font:inherit;font-size:12px;line-height:1;font-weight:750;opacity:.86;pointer-events:auto;}
+      .wmeRcReminderModal .wmeRcQuick:hover{background:rgba(var(--pinRGB,75,137,255),.13);border-color:rgba(var(--pinRGB,75,137,255),.28);opacity:1;}
+      .wmeRcReminderModal .wmeRcQuick:focus-visible,.wmeRcReminderModal .wmeRcTab:focus-visible,.wmeRcReminderModal .wmeRcStepBtn:focus-visible,.wmeRcReminderModal .wmeRcReminderUnits .wmeRcWizardBtn:focus-visible{outline:2px solid rgba(var(--pinRGB,75,137,255),.72);outline-offset:2px;}
+      .wmeRcReminderModal .wmeRcReminderUnits{display:inline-flex;align-items:center;align-self:flex-start;width:auto;gap:2px;margin:0;padding:2px;border:1px solid rgba(255,255,255,.11);border-radius:12px;background:rgba(255,255,255,.035);}
+      .wmeRcReminderModal .wmeRcReminderUnits .wmeRcWizardBtn{appearance:none;-webkit-appearance:none;display:flex;align-items:center;justify-content:center;min-width:86px;min-height:30px;padding:0 13px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;font-size:12px;line-height:1;font-weight:800;opacity:.70;pointer-events:auto;}
+      .wmeRcReminderModal .wmeRcReminderUnits .wmeRcWizardBtn:hover{background:rgba(255,255,255,.06);transform:none;}
+      .wmeRcReminderModal .wmeRcReminderUnits .wmeRcWizardBtn.on{background:rgba(255,255,255,.11);border:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.055);opacity:1;}
+      .wmeRcReminderModal .wmeRcDT{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:stretch;}
+      .wmeRcReminderModal .wmeRcDT>*{flex:none;min-width:0;}
+      .wmeRcReminderModal .wmeRcPickerBtn{min-height:68px;padding:10px 12px;border-radius:15px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;text-align:left;background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.025);}
+      .wmeRcReminderModal .wmeRcPickerBtn:hover{background:rgba(255,255,255,.07);border-color:rgba(var(--pinRGB,75,137,255),.30);transform:none;box-shadow:0 0 0 3px rgba(var(--pinRGB,75,137,255),.08);}
+      .wmeRcReminderModal .wmeRcReminderPickerText{display:flex;flex-direction:column;gap:7px;min-width:0;}
+      .wmeRcReminderModal .wmeRcPickerK{font-size:10.5px;line-height:1;font-weight:900;text-transform:uppercase;letter-spacing:.075em;color:rgba(218,228,241,.52);}
+      .wmeRcReminderModal .wmeRcPickerV{font-size:15px;line-height:1.1;font-weight:850;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .wmeRcReminderModal .wmeRcReminderPickerIcon{width:32px;height:32px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;color:rgba(226,236,249,.80);background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.085);}
+      .wmeRcReminderModal .wmeRcReminderPickerIcon svg{width:17px;height:17px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+      .wmeRcReminderModal .wmeRcClockWrap{display:block;}
+      .wmeRcReminderModal .wmeRcClockWrap>.wmeRcClock{display:none!important;}
+      .wmeRcReminderModal .wmeRcClockValue{width:100%;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"main controls" "sub controls";align-items:center;column-gap:12px;row-gap:3px;padding:9px 11px;border:1px solid rgba(var(--pinRGB,75,137,255),.22);border-radius:14px;background:linear-gradient(135deg,rgba(var(--pinRGB,75,137,255),.14),rgba(255,255,255,.025));box-shadow:inset 0 1px 0 rgba(255,255,255,.035);}
+      .wmeRcReminderModal .wmeRcBigValue{grid-area:main;font:850 15px/1.15 var(--font_family_base,var(--font-family-base,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif));letter-spacing:-.012em;}
+      .wmeRcReminderModal .wmeRcReminderInlineEdit{grid-area:main;min-width:0;}
+      .wmeRcReminderModal .wmeRcEditableValue{border-bottom:0;padding-bottom:0;display:inline-flex;align-items:center;gap:4px;width:max-content;}
+      .wmeRcReminderModal .wmeRcEditableValue::after{display:none;}
+      .wmeRcReminderModal .wmeRcReminderValuePrefix,.wmeRcReminderModal .wmeRcReminderValueUnit{pointer-events:none;}
+      .wmeRcReminderModal .wmeRcReminderEditableNumber{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:32px;padding:3px 7px;border-radius:8px;background:rgba(var(--pinRGB,75,137,255),.12);border:1px solid rgba(var(--pinRGB,75,137,255),.34);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);cursor:text;transition:background .14s ease,border-color .14s ease,box-shadow .14s ease;}
+      .wmeRcReminderModal .wmeRcReminderEditableNumber:hover{background:rgba(var(--pinRGB,75,137,255),.19);border-color:rgba(var(--pinRGB,75,137,255),.54);box-shadow:0 0 0 3px rgba(var(--pinRGB,75,137,255),.08);}
+      .wmeRcReminderModal .wmeRcReminderEditableIcon{display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;opacity:.68;pointer-events:none;}
+      .wmeRcReminderModal .wmeRcReminderEditableIcon svg{width:12px;height:12px;display:block;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+      .wmeRcReminderModal .wmeRcBigValueSub{grid-area:sub;font-size:11px;line-height:1.3;opacity:.54;}
+      .wmeRcReminderModal .wmeRcStepper{grid-area:controls;margin:0;padding:0;gap:6px;justify-content:flex-end;align-self:center;flex-wrap:nowrap;border-top:0;}
+      .wmeRcReminderModal .wmeRcStepBtn{appearance:none;-webkit-appearance:none;position:relative;width:32px;height:30px;padding:0;display:grid;place-items:center;border-radius:10px;font-size:0;line-height:0;color:inherit;background:rgba(255,255,255,.055);pointer-events:auto;}
+      .wmeRcReminderModal .wmeRcStepBtn::before{content:"";position:absolute;inset:0;margin:auto;width:10px;height:2px;border-radius:999px;background:currentColor;}
+      .wmeRcReminderModal .wmeRcStepBtn.is-plus::after{content:"";position:absolute;inset:0;margin:auto;width:2px;height:10px;border-radius:999px;background:currentColor;}
+      .wmeRcReminderModal .wmeRcWizardSection:not(.wmeRcReminderSchedule){gap:7px;}
+      .wmeRcReminderModal .wmeRcReminderNoteHead{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+      .wmeRcReminderModal .wmeRcReminderNoteTitle{font-size:13px;font-weight:800;}
+      .wmeRcReminderModal .wmeRcReminderOptional{font-size:11px;font-weight:750;opacity:.44;}
+      .wmeRcReminderModal textarea.wmeRcInput{min-height:82px!important;max-height:82px!important;margin:0;border-radius:15px;background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.13);font-family:var(--font_family_base,var(--font-family-base,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif));}
+      .wmeRcReminderModal .wmeRcModalActions{margin:2px -14px -14px;padding:10px 14px 12px;border-top:1px solid rgba(255,255,255,.08);background:rgba(5,9,16,.25);}
+      .wmeRcReminderModal .wmeRcModalBtn{appearance:none;-webkit-appearance:none;height:34px;padding:0 14px;display:flex;align-items:center;justify-content:center;color:inherit;font:inherit;font-weight:800;line-height:1!important;pointer-events:auto;}
+      .wmeRcReminderModal .wmeRcModalBtn>span{display:inline-flex;align-items:center;justify-content:center;line-height:1;transform:translateY(1px);}
+      .wmeRcReminderModal .wmeRcModalBtn.primary{min-width:108px;}
+      .wmeRcReminderModal.theme-light .wmeRcTabs,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcTabs,
+      .wmeRcReminderModal.theme-light .wmeRcReminderUnits,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcReminderUnits{background:rgba(15,23,42,.035);border-color:rgba(15,23,42,.12);}
+      .wmeRcReminderModal.theme-light .wmeRcTab.on,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcTab.on,
+      .wmeRcReminderModal.theme-light .wmeRcReminderUnits .wmeRcWizardBtn.on,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcReminderUnits .wmeRcWizardBtn.on{background:#fff!important;box-shadow:0 1px 3px rgba(15,23,42,.08)!important;}
+      .wmeRcReminderModal.theme-light .wmeRcClockValue,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcClockValue{background:linear-gradient(135deg,rgba(59,130,246,.10),rgba(255,255,255,.78));border-color:rgba(59,130,246,.20);}
+      .wmeRcReminderModal.theme-light .wmeRcReminderPickerIcon,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcReminderPickerIcon{background:rgba(15,23,42,.035);border-color:rgba(15,23,42,.10);color:#334155;}
+      .wmeRcReminderModal.theme-light .wmeRcPickerK,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcPickerK{color:rgba(15,23,42,.52)!important;-webkit-text-fill-color:rgba(15,23,42,.52)!important;}
+      .wmeRcReminderModal.theme-light textarea.wmeRcInput,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal textarea.wmeRcInput{background:#fff!important;border-color:rgba(15,23,42,.14)!important;}
+      @media(max-width:560px){.wmeRcReminderModal .wmeRcDT{grid-template-columns:1fr}.wmeRcReminderModal .wmeRcQuick{flex:1 1 calc(50% - 7px);text-align:center}.wmeRcReminderModal .wmeRcModalBtn.primary{min-width:96px}}
+
 `;
     document.documentElement.appendChild(s);
   }
@@ -6299,7 +6319,7 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
   function playReminderSoundOnce(soundId, opts = {}) {
     const nowMs = Date.now();
     const force = opts && opts.force === true;
-    if (!force && (nowMs - lastBellAt < 700)) return;
+    if (!force && (nowMs - lastBellAt < 900)) return;
     lastBellAt = nowMs;
 
     try {
@@ -6309,228 +6329,76 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
       const ctx = playReminderSoundOnce._ctx || (playReminderSoundOnce._ctx = new AudioCtx());
       try { if (ctx.state === "suspended") ctx.resume(); } catch {}
 
-      const t0 = ctx.currentTime;
-      const out = ctx.createGain();
-      out.gain.setValueAtTime(0.0001, t0);
-      out.connect(ctx.destination);
-
-      const id = (typeof soundId === "string" ? soundId : "") || getReminderSoundId();
+      const id = normalizeReminderSoundId((typeof soundId === "string" ? soundId : "") || getReminderSoundId());
       if (id === "mute") return;
 
+      const t0 = ctx.currentTime + 0.012;
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.72, t0);
+      master.connect(ctx.destination);
 
-      const env = (attack, peak, decay) => {
-        out.gain.cancelScheduledValues(t0);
-        out.gain.setValueAtTime(0.0001, t0);
-        out.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t0 + attack);
-        out.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + decay);
-      };
-
-      const osc = (type, f0, f1, dur) => {
-        const o = ctx.createOscillator();
-        o.type = type;
-        o.frequency.setValueAtTime(f0, t0);
-        if (f1 && f1 > 0) {
-          try { o.frequency.exponentialRampToValueAtTime(f1, t0 + dur); } catch {}
+      const tone = (freq, offset, duration, peak = 0.12, type = "sine", endFreq = null) => {
+        const startAt = t0 + Math.max(0, Number(offset) || 0);
+        const dur = Math.max(0.06, Number(duration) || 0.3);
+        const gain = ctx.createGain();
+        const osc = ctx.createOscillator();
+        osc.type = type;
+        osc.frequency.setValueAtTime(Math.max(40, Number(freq) || 440), startAt);
+        if (Number.isFinite(Number(endFreq)) && Number(endFreq) > 0) {
+          try { osc.frequency.exponentialRampToValueAtTime(Number(endFreq), startAt + dur); } catch {}
         }
-        o.connect(out);
-        o.start(t0);
-        o.stop(t0 + dur + 0.02);
-        return o;
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), startAt + Math.min(0.018, dur * 0.12));
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+        osc.connect(gain);
+        gain.connect(master);
+        osc.start(startAt);
+        osc.stop(startAt + dur + 0.03);
       };
 
-      if (id === "softBell") {
-        env(0.02, 0.22, 1.1);
-        osc("triangle", 784, 392, 1.05);
-        osc("sine", 1175, 587, 0.9);
-        return;
+      const bell = (base, offset = 0, duration = 0.85, peak = 0.11) => {
+        tone(base, offset, duration, peak, "sine", base * 0.985);
+        tone(base * 1.5, offset + 0.004, duration * 0.72, peak * 0.46, "sine", base * 1.47);
+        tone(base * 2.01, offset + 0.008, duration * 0.48, peak * 0.22, "triangle", base * 1.96);
+      };
+
+      switch (id) {
+        case "bright":
+          bell(1046.5, 0, 0.52, 0.10);
+          tone(1568, 0.03, 0.38, 0.035, "sine", 1480);
+          break;
+        case "double":
+          bell(880, 0, 0.55, 0.105);
+          bell(1046.5, 0.29, 0.62, 0.10);
+          break;
+        case "warm":
+          bell(523.25, 0, 1.18, 0.12);
+          tone(659.25, 0.05, 0.96, 0.055, "sine", 640);
+          break;
+        case "glass":
+          tone(1318.5, 0, 0.72, 0.09, "sine", 1240);
+          tone(1975.5, 0.006, 0.54, 0.045, "sine", 1840);
+          tone(2637, 0.012, 0.36, 0.022, "sine", 2440);
+          break;
+        case "pulse":
+          tone(659.25, 0, 0.22, 0.09, "sine", 622);
+          tone(698.46, 0.24, 0.22, 0.08, "sine", 659);
+          tone(783.99, 0.48, 0.30, 0.085, "sine", 740);
+          break;
+        case "attention":
+          bell(659.25, 0, 0.48, 0.105);
+          bell(783.99, 0.34, 0.62, 0.11);
+          break;
+        case "radar":
+          tone(1568, 0, 0.48, 0.085, "sine", 1046.5);
+          tone(1046.5, 0.27, 0.42, 0.045, "sine", 783.99);
+          break;
+        case "gentle":
+        default:
+          bell(659.25, 0, 0.82, 0.10);
+          bell(783.99, 0.18, 0.72, 0.075);
+          break;
       }
-
-      if (id === "chime") {
-        env(0.01, 0.24, 0.75);
-        osc("sine", 1046, 880, 0.65);
-        osc("sine", 1568, 1320, 0.55);
-        return;
-      }
-
-      if (id === "doubleDing") {
-        env(0.008, 0.26, 0.28);
-        osc("sine", 988, 740, 0.25);
-        const t1 = t0 + 0.32;
-        const out2 = ctx.createGain();
-        out2.gain.setValueAtTime(0.0001, t1);
-        out2.gain.exponentialRampToValueAtTime(0.22, t1 + 0.01);
-        out2.gain.exponentialRampToValueAtTime(0.0001, t1 + 0.32);
-        out2.connect(ctx.destination);
-        const o2 = ctx.createOscillator();
-        o2.type = "sine";
-        o2.frequency.setValueAtTime(880, t1);
-        o2.frequency.exponentialRampToValueAtTime(660, t1 + 0.28);
-        o2.connect(out2);
-        o2.start(t1);
-        o2.stop(t1 + 0.34);
-        return;
-      }
-
-      if (id === "digital") {
-        env(0.002, 0.18, 0.22);
-        osc("square", 880, 880, 0.18);
-        const t1 = t0 + 0.22;
-        const out2 = ctx.createGain();
-        out2.gain.setValueAtTime(0.0001, t1);
-        out2.gain.exponentialRampToValueAtTime(0.16, t1 + 0.002);
-        out2.gain.exponentialRampToValueAtTime(0.0001, t1 + 0.2);
-        out2.connect(ctx.destination);
-        const o2 = ctx.createOscillator();
-        o2.type = "square";
-        o2.frequency.setValueAtTime(660, t1);
-        o2.connect(out2);
-        o2.start(t1);
-        o2.stop(t1 + 0.22);
-        return;
-      }
-
-      if (id === "alarm") {
-        env(0.01, 0.22, 0.55);
-        osc("sawtooth", 660, 440, 0.5);
-        osc("sine", 990, 660, 0.45);
-        return;
-      }
-
-
-      if (id === "alarmFast") {
-        env(0.004, 0.18, 0.22);
-        osc("square", 880, 880, 0.12);
-        const t1 = t0 + 0.16;
-        const g1 = ctx.createGain();
-        g1.gain.setValueAtTime(0.0001, t1);
-        g1.gain.exponentialRampToValueAtTime(0.16, t1 + 0.003);
-        g1.gain.exponentialRampToValueAtTime(0.0001, t1 + 0.18);
-        g1.connect(ctx.destination);
-        const o1 = ctx.createOscillator();
-        o1.type = "square";
-        o1.frequency.setValueAtTime(880, t1);
-        o1.connect(g1);
-        o1.start(t1);
-        o1.stop(t1 + 0.2);
-        const t2 = t0 + 0.34;
-        const g2 = ctx.createGain();
-        g2.gain.setValueAtTime(0.0001, t2);
-        g2.gain.exponentialRampToValueAtTime(0.16, t2 + 0.003);
-        g2.gain.exponentialRampToValueAtTime(0.0001, t2 + 0.18);
-        g2.connect(ctx.destination);
-        const o2 = ctx.createOscillator();
-        o2.type = "square";
-        o2.frequency.setValueAtTime(740, t2);
-        o2.connect(g2);
-        o2.start(t2);
-        o2.stop(t2 + 0.2);
-        return;
-      }
-
-      if (id === "alarmPulse") {
-        env(0.01, 0.20, 0.65);
-        const o = ctx.createOscillator();
-        o.type = "sawtooth";
-        o.frequency.setValueAtTime(520, t0);
-        o.frequency.linearRampToValueAtTime(780, t0 + 0.28);
-        o.frequency.linearRampToValueAtTime(520, t0 + 0.56);
-        o.connect(out);
-        o.start(t0);
-        o.stop(t0 + 0.60);
-        return;
-      }
-
-      if (id === "buzzer") {
-        env(0.003, 0.20, 0.35);
-        osc("square", 220, 220, 0.28);
-        osc("square", 330, 330, 0.22);
-        return;
-      }
-
-      if (id === "radar") {
-        env(0.004, 0.20, 0.55);
-        osc("sine", 1568, 1046, 0.45);
-        osc("triangle", 784, 523, 0.35);
-        return;
-      }
-
-      if (id === "wood") {
-        env(0.002, 0.18, 0.18);
-        osc("triangle", 330, 220, 0.14);
-        osc("triangle", 660, 440, 0.12);
-        return;
-      }
-
-      if (id === "glass") {
-        env(0.008, 0.22, 0.95);
-        osc("sine", 1760, 880, 0.9);
-        osc("sine", 2640, 1320, 0.75);
-        return;
-      }
-
-
-      if (id === "church") {
-        env(0.01, 0.26, 1.55);
-        osc("sine", 659, 330, 1.5);
-        osc("sine", 988, 494, 1.2);
-        osc("triangle", 1319, 660, 1.0);
-        return;
-      }
-
-      if (id === "retro") {
-        env(0.002, 0.16, 0.18);
-        osc("square", 880, 880, 0.10);
-        const t1 = t0 + 0.13;
-        const g1 = ctx.createGain();
-        g1.gain.setValueAtTime(0.0001, t1);
-        g1.gain.exponentialRampToValueAtTime(0.14, t1 + 0.002);
-        g1.gain.exponentialRampToValueAtTime(0.0001, t1 + 0.12);
-        g1.connect(ctx.destination);
-        const o1 = ctx.createOscillator();
-        o1.type = "square";
-        o1.frequency.setValueAtTime(660, t1);
-        o1.connect(g1);
-        o1.start(t1);
-        o1.stop(t1 + 0.14);
-
-        const t2 = t0 + 0.28;
-        const g2 = ctx.createGain();
-        g2.gain.setValueAtTime(0.0001, t2);
-        g2.gain.exponentialRampToValueAtTime(0.13, t2 + 0.002);
-        g2.gain.exponentialRampToValueAtTime(0.0001, t2 + 0.12);
-        g2.connect(ctx.destination);
-        const o2 = ctx.createOscillator();
-        o2.type = "square";
-        o2.frequency.setValueAtTime(784, t2);
-        o2.connect(g2);
-        o2.start(t2);
-        o2.stop(t2 + 0.14);
-        return;
-      }
-
-      if (id === "siren") {
-        env(0.01, 0.18, 0.75);
-        const o = ctx.createOscillator();
-        o.type = "sine";
-        o.frequency.setValueAtTime(520, t0);
-        o.frequency.linearRampToValueAtTime(740, t0 + 0.35);
-        o.frequency.linearRampToValueAtTime(520, t0 + 0.7);
-        o.connect(out);
-        o.start(t0);
-        o.stop(t0 + 0.72);
-        return;
-      }
-
-      if (id === "gong") {
-        env(0.01, 0.22, 1.8);
-        osc("sine", 196, 98, 1.7);
-        osc("triangle", 294, 147, 1.5);
-        osc("sine", 392, 196, 1.2);
-        return;
-      }
-      env(0.015, 0.28, 1.25);
-      osc("sine", 880, 440, 1.2);
-      osc("sine", 1320, 660, 1.0);
     } catch {}
   }
 
@@ -6541,7 +6409,7 @@ function startBellLoop() {
     playReminderSoundOnce(getReminderSoundId());
     bellLoopId = window.setInterval(() => {
       try { playReminderSoundOnce(getReminderSoundId()); } catch {}
-    }, 1600);
+    }, 4200);
   } catch {}
 }
 
@@ -9661,7 +9529,7 @@ function getPinCountdownTooltipText(reminderAt, nowMs, mode){
 
     if (mode === 0) return getPinCountdownExact(at, now);
 
-    const totalSec = Math.max(0, Math.floor(ms / 1000));
+    const totalSec = Math.max(0, Math.ceil(ms / 1000));
     const day = 86400;
     const week = 7 * day;
     const month = 30 * day;
@@ -10057,6 +9925,19 @@ function hidePinNotePreview(delay = 60) {
   } catch {}
 }
 
+function normalizePinSearchText(value) {
+  try {
+    return String(value == null ? "" : value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  } catch {
+    return String(value == null ? "" : value).toLowerCase().trim();
+  }
+}
+
 function renderPinsPanel(force = false) {
   try { hidePinNotePreview(0); } catch {}
   if (!pinsPanelEl) return;
@@ -10067,23 +9948,29 @@ function renderPinsPanel(force = false) {
 
   try { renderPinsMarkers(); } catch {}
 
-  const pinSearchText = String(pinsPanelSearchQuery || "").trim().toLowerCase();
+  const pinSearchText = normalizePinSearchText(pinsPanelSearchQuery || "");
+  const searchActive = pinSearchText.length > 0;
+  const searchTokens = searchActive ? pinSearchText.split(" ").filter(Boolean) : [];
   const pinMatchesSearchAndFilter = (pin) => {
     try {
       if (!pin) return false;
-      if (pinSearchText) {
-        const hay = [
+      if (searchTokens.length) {
+        const hay = normalizePinSearchText([
           pin.name,
           getGroupName(normalizeGroupId(pin.groupId)),
           pin.note,
-          pin.reminderNote
-        ].map(v => String(v || "").toLowerCase()).join(" ");
-        if (!hay.includes(pinSearchText)) return false;
+          pin.reminderNote,
+          pin.id,
+          pin.lat,
+          pin.lon
+        ].map(v => String(v == null ? "" : v)).join(" "));
+        if (!searchTokens.every((token) => hay.includes(token))) return false;
       }
       return true;
-    } catch { return true; }
+    } catch { return false; }
   };
   const filteredPins = allPins.filter(pinMatchesSearchAndFilter);
+  const matchingGroupIds = new Set(filteredPins.map((pin) => normalizeGroupId(pin && pin.groupId)));
 
   const alwaysVisibleEmpty = getPinsPanelAlwaysVisibleEmpty();
   const _panelSig = [
@@ -10120,7 +10007,9 @@ function renderPinsPanel(force = false) {
   }
 
   try { pinsPanelEl.classList.toggle("shareMode", !!pinsShareMode); } catch {}
+  try { pinsPanelEl.classList.toggle("searching", searchActive); } catch {}
   pinsPanelEl.innerHTML = "";
+  try { _pinCountdownEls.clear(); _pinRowEls.clear(); } catch {}
 
   const isCollapsedPinsPanel = !!(pinsPanelEl.classList.contains("collapsed") || (pinsPanelEl.dataset && pinsPanelEl.dataset.collapsed === "1"));
 
@@ -10145,7 +10034,6 @@ try { titleWrap.style.cursor = "default"; } catch {}
 
   const countEl = document.createElement("div");
   countEl.className = "wmeRcPinsCount";
-  const searchActive = !!pinSearchText;
   countEl.textContent = searchActive ? `${filteredPins.length}/${allPins.length}` : String(allPins.length);
   countEl.title = searchActive ? "Search results / total pins" : "Total pins";
 
@@ -10326,7 +10214,7 @@ try { titleWrap.style.cursor = "default"; } catch {}
             nextInput.setSelectionRange(len, len);
           }
         } catch {}
-      }, 90);
+      }, 60);
     } catch { try { renderPinsPanel(true); } catch {} }
   });
   searchInput.addEventListener("keydown", (ev) => {
@@ -10346,6 +10234,10 @@ try { titleWrap.style.cursor = "default"; } catch {}
     try { ev.preventDefault(); ev.stopPropagation(); } catch {}
     pinsPanelSearchQuery = "";
     try { renderPinsPanel(true); } catch {}
+    try {
+      const nextInput = pinsPanelEl && pinsPanelEl.querySelector ? pinsPanelEl.querySelector(".wmeRcPinsSearch") : null;
+      if (nextInput) nextInput.focus();
+    } catch {}
   });
   searchWrap.appendChild(searchInput);
   searchWrap.appendChild(clearSearch);
@@ -10576,6 +10468,13 @@ try { titleWrap.style.cursor = "default"; } catch {}
     cdSpan.dataset.pinCountdown = pin.id;
     try { _pinCountdownEls.set(String(pin.id), cdSpan); } catch {}
     cdSpan.textContent = getPinCountdownTextMode(pin.reminderAt, Date.now(), _pinCountdownModes.get(pin.id) || 0);
+    try {
+      const initialCountdown = String(cdSpan.textContent || "");
+      const initialClock = /^\d{2}:\d{2}(?::\d{2})?$/.test(initialCountdown);
+      cdSpan.classList.toggle("is-clock", initialClock);
+      cdSpan.classList.toggle("is-long-clock", /^\d{2}:\d{2}:\d{2}$/.test(initialCountdown));
+      cdSpan.classList.toggle("is-human", !initialClock);
+    } catch {}
 
 
 
@@ -11164,7 +11063,9 @@ row.addEventListener("pointerdown", (ev) => {
     return row;
   };
 
-  const topLevelGroups = groups.filter(g => g);
+  const topLevelGroups = searchActive
+    ? groups.filter((g) => g && matchingGroupIds.has(normalizeGroupId(g.id)))
+    : groups.filter((g) => g);
   const getDirectChildGroups = (parentId) => [];
 
   const renderGroup = (g, depth = 0) => {
@@ -11175,7 +11076,7 @@ row.addEventListener("pointerdown", (ev) => {
     groupWrap.dataset.depth = String(depth);
     try { groupWrap.style.setProperty("--wmeRcGroupDepth", String(depth)); } catch {}
 
-    if (isGroupCollapsed(gid)) groupWrap.classList.add("collapsed");
+    if (!searchActive && isGroupCollapsed(gid)) groupWrap.classList.add("collapsed");
 
     const gh = document.createElement("div");
     gh.className = "wmeRcPinsGroupHdr";
@@ -11270,6 +11171,7 @@ const nextPins = pins.filter(p => normalizeGroupId(p.groupId) !== "default");
         try { ev.preventDefault(); ev.stopPropagation(); } catch {}
         return;
       }
+      if (searchActive) return;
       const collapsed = groupWrap.classList.toggle("collapsed");
       setGroupCollapsed(gid, collapsed);
       try { requestAnimationFrame(() => { try { applyPinsPanelHeightAuto(); } catch {} }); } catch { try { applyPinsPanelHeightAuto(); } catch {} }
@@ -11420,6 +11322,13 @@ const nextPins = pins.filter(p => normalizeGroupId(p.groupId) !== "default");
     list.appendChild(renderGroup(g, 0));
   }
 
+  if (searchActive && filteredPins.length > 0) {
+    try {
+      list.querySelectorAll(".wmeRcPinRow").forEach((row) => row.classList.add("searchMatch"));
+      requestAnimationFrame(() => { try { list.scrollTop = 0; } catch {} });
+    } catch {}
+  }
+
   pinsPanelEl.appendChild(hdr);
   pinsPanelEl.appendChild(tools);
   if (searchActive && filteredPins.length === 0) {
@@ -11497,7 +11406,7 @@ function getPinCountdownText(reminderAt, nowMs) {
   if (!Number.isFinite(ms)) return "";
   if (ms <= 0) return "";
 
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
 
   const day = 86400;
   const week = 7 * day;
@@ -11524,7 +11433,7 @@ function getPinCountdownExact(reminderAt, nowMs) {
   if (!reminderAt) return "";
   const ms = Number(reminderAt) - Number(nowMs);
   if (!Number.isFinite(ms)) return "";
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
   const day = 86400;
   const days = Math.floor(totalSec / day);
   const rem = totalSec % day;
@@ -11540,7 +11449,7 @@ function getPinCountdownTextMode(reminderAt, nowMs, mode) {
   if (!reminderAt) return "";
   const ms = Number(reminderAt) - Number(nowMs);
   if (!Number.isFinite(ms)) return "";
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
   const days = Math.floor(totalSec / 86400);
   const hours = Math.floor((totalSec % 86400) / 3600);
   const mins = Math.floor((totalSec % 3600) / 60);
@@ -11571,13 +11480,17 @@ function updatePinsCountdowns() {
 
   const now = Date.now();
 
-  const pins = loadPins();
+  const pins = Array.isArray(pinsCache) && pinsCache.length ? pinsCache : loadPins();
   let hasActive = false;
+  let dueFound = false;
 
   for (const p of pins) {
     const id = String(p.id);
     const badge = _pinCountdownEls.get(id);
-    if (!badge) continue;
+    if (!badge || !badge.isConnected) {
+      try { _pinCountdownEls.delete(id); _pinRowEls.delete(id); } catch {}
+      continue;
+    }
 
     const line = badge.parentElement;
     const row = _pinRowEls.get(id);
@@ -11602,19 +11515,33 @@ function updatePinsCountdowns() {
 
     if (ms <= 0) {
       badge.textContent = "00:00";
-      try { checkRemindersNow(); } catch {}
+      dueFound = true;
       continue;
     }
 
-    const next = getPinCountdownText(p.reminderAt, now);
+    const next = getPinCountdownTextMode(p.reminderAt, now, _pinCountdownModes.get(id) || 0);
+    const isClock = /^\d{2}:\d{2}(?::\d{2})?$/.test(next);
+    const isLongClock = /^\d{2}:\d{2}:\d{2}$/.test(next);
+    badge.classList.toggle("is-clock", isClock);
+    badge.classList.toggle("is-long-clock", isLongClock);
+    badge.classList.toggle("is-human", !isClock);
     if (badge.textContent !== next) badge.textContent = next;
+  }
+
+  if (dueFound && !_pinsDueCheckPending) {
+    _pinsDueCheckPending = true;
+    setTimeout(() => {
+      _pinsDueCheckPending = false;
+      try { checkRemindersNow(); } catch {}
+    }, 0);
   }
 
   if (!hasActive) stopPinsCountdownLoop();
 }
 
 function startPinsCountdownLoop() {
-  if (_pinsCountdownTicking) return;
+  if (_pinsCountdownTicking && pinsCountdownTimerId) return;
+  if (pinsCountdownTimerId) { try { clearTimeout(pinsCountdownTimerId); } catch {} pinsCountdownTimerId = null; }
   _pinsCountdownTicking = true;
 
   const tick = () => {
@@ -11630,6 +11557,22 @@ function startPinsCountdownLoop() {
   const d0 = 1000 - (n0 % 1000) + 8;
   pinsCountdownTimerId = setTimeout(tick, d0);
 }
+
+try {
+  document.addEventListener("visibilitychange", () => {
+    try {
+      if (document.hidden) {
+        if (pinsCountdownTimerId) { clearTimeout(pinsCountdownTimerId); pinsCountdownTimerId = null; }
+        return;
+      }
+      updatePinsCountdowns();
+      if (_pinsCountdownTicking) {
+        _pinsCountdownTicking = false;
+        startPinsCountdownLoop();
+      }
+    } catch {}
+  });
+} catch {}
 
 
 function removePinNow(pinId) {
@@ -12646,23 +12589,39 @@ function setExternalNotifyCfg(cfg) {
 
 const REMINDER_SOUND_OPTIONS = [
   { id: "mute", label: "(no sound)" },
-  { id: "bell", label: "Classic bell" },
-  { id: "softBell", label: "Soft bell" },
-  { id: "church", label: "Church bell" },
-  { id: "chime", label: "Chime" },
-  { id: "doubleDing", label: "Double ding" },
-  { id: "digital", label: "Digital beep" },
-  { id: "retro", label: "Retro beep" },
-  { id: "alarm", label: "Alarm" },
-  { id: "alarmFast", label: "Alarm fast" },
-  { id: "alarmPulse", label: "Alarm pulse" },
-  { id: "buzzer", label: "Buzzer" },
+  { id: "gentle", label: "Gentle chime" },
+  { id: "bright", label: "Bright ping" },
+  { id: "double", label: "Double chime" },
+  { id: "warm", label: "Warm bell" },
+  { id: "glass", label: "Glass tone" },
+  { id: "pulse", label: "Soft pulse" },
+  { id: "attention", label: "Attention" },
   { id: "radar", label: "Radar ping" },
-  { id: "siren", label: "Soft siren" },
-  { id: "gong", label: "Gong" },
-  { id: "glass", label: "Glass ping" },
-  { id: "wood", label: "Wood knock" },
 ];
+
+function normalizeReminderSoundId(id) {
+  const value = String(id || "").trim();
+  if (REMINDER_SOUND_OPTIONS.some((o) => o.id === value)) return value;
+  const legacy = {
+    bell: "gentle",
+    softBell: "gentle",
+    chime: "bright",
+    doubleDing: "double",
+    church: "warm",
+    gong: "warm",
+    glass: "glass",
+    digital: "pulse",
+    retro: "pulse",
+    alarm: "attention",
+    alarmFast: "attention",
+    alarmPulse: "attention",
+    buzzer: "attention",
+    siren: "attention",
+    radar: "radar",
+    wood: "gentle",
+  };
+  return legacy[value] || "gentle";
+}
 
 const REMINDER_NOTICE_POSITION_OPTIONS = [
   { id: "right", label: "Right" },
@@ -12750,16 +12709,18 @@ try {
 function getReminderSoundId() {
   const key = `${SCRIPT_ID}:pinsReminderSound:v1`;
   try {
-    const v = String(localStorage.getItem(key) || "").trim();
-    if (REMINDER_SOUND_OPTIONS.some(o => o.id === v)) return v;
+    const stored = String(localStorage.getItem(key) || "").trim();
+    const value = normalizeReminderSoundId(stored);
+    if (stored && stored !== value) localStorage.setItem(key, value);
+    return value;
   } catch {}
-  return "bell";
+  return "gentle";
 }
 
 function setReminderSoundId(id) {
   const key = `${SCRIPT_ID}:pinsReminderSound:v1`;
-  const v = REMINDER_SOUND_OPTIONS.some(o => o.id === id) ? id : "bell";
-  try { localStorage.setItem(key, v); } catch {}
+  const value = normalizeReminderSoundId(id);
+  try { localStorage.setItem(key, value); } catch {}
 }
 
 
@@ -13028,7 +12989,7 @@ function openPinsSettingsModal() {
       let pendingNamesZoom = clampZoom(getPinsNamesMinZoom());
       let pendingAlwaysVisible = !!getPinsPanelAlwaysVisibleEmpty();
       let pendingMinMode = String(getPinsMinimizeMode() || "bubble");
-      let selectedSoundId = String(getReminderSoundId() || "bell");
+      let selectedSoundId = String(getReminderSoundId() || "gentle");
       let selectedPosId = String(getReminderNoticePosition() || "right");
       const markDirty = () => {};
 
@@ -13196,7 +13157,7 @@ function openPinsSettingsModal() {
         try { setPinsLayerVisible(!!pendingLayerVisible); } catch {}
         try { setPinsShowNamesOnMap(!!pendingShowNames); } catch {}
         try { setPinsNamesMinZoom(clampZoom(pendingNamesZoom)); } catch {}
-        try { setReminderSoundId(String(selectedSoundId || "bell")); } catch {}
+        try { setReminderSoundId(String(selectedSoundId || "gentle")); } catch {}
         try { setReminderNoticePosition(String(selectedPosId || "right")); } catch {}
         try { setPinsPanelAlwaysVisibleEmpty(!!pendingAlwaysVisible); } catch {}
         try { setPinsMinimizeMode(String(pendingMinMode || "bubble")); } catch {}
@@ -13755,7 +13716,7 @@ function openReminderModal(pinId) {
   const now = Date.now();
   const currentTs = pin.reminderAt && pin.reminderAt > now ? pin.reminderAt : null;
 
-  let mode = "IN";
+  let mode = (pin.reminderType === "AT") ? "AT" : "IN";
   let unit = (pin.reminderUnit === "HOURS") ? "HOURS" : "MINUTES";
   let inValue = Number.isFinite(pin.reminderValue) ? Math.max(1, Math.round(pin.reminderValue)) : (unit === "HOURS" ? 1 : 30);
 
@@ -13763,7 +13724,7 @@ function openReminderModal(pinId) {
   let atTime = "";
   if (!currentTs) {
     try {
-      const d0 = new Date(now);
+      const d0 = new Date(now + 30 * 60000);
       mode = "AT";
       atDate = `${String(d0.getFullYear())}-${String(d0.getMonth() + 1).padStart(2, "0")}-${String(d0.getDate()).padStart(2, "0")}`;
       atTime = `${String(d0.getHours()).padStart(2, "0")}:${String(d0.getMinutes()).padStart(2, "0")}`;
@@ -13821,6 +13782,20 @@ const calcAtTargetTs = () => {
     } catch {
       return "";
     }
+  };
+
+  const bindReminderPress = (el, handler) => {
+    if (!el || typeof handler !== "function") return;
+    el.addEventListener("pointerdown", (ev) => {
+      try {
+        if (ev.button != null && ev.button !== 0) return;
+        ev.stopPropagation();
+      } catch {}
+    }, true);
+    el.addEventListener("click", (ev) => {
+      try { ev.preventDefault(); ev.stopPropagation(); } catch {}
+      handler(ev);
+    });
   };
 
   const makeClock = ({ getValue, setValue, getMax, getStep, labelFn, getTargetTs, getUnitLabel }) => {
@@ -13942,12 +13917,34 @@ const calcAtTargetTs = () => {
 
     const big = document.createElement("div");
     big.className = "wmeRcBigValue wmeRcEditableValue";
-    big.title = "Click to edit";
+    big.title = "Click the number to change it";
+    big.setAttribute("aria-label", "Change reminder amount");
+
+    const bigPrefix = document.createElement("span");
+    bigPrefix.className = "wmeRcReminderValuePrefix";
+    bigPrefix.textContent = "In";
+
+    const bigNumber = document.createElement("span");
+    bigNumber.className = "wmeRcReminderEditableNumber";
+    bigNumber.title = "Click to change";
+
+    const bigEditIcon = document.createElement("span");
+    bigEditIcon.className = "wmeRcReminderEditableIcon";
+    bigEditIcon.innerHTML = ICONS.edit;
+    bigNumber.appendChild(bigEditIcon);
+
+    const bigUnit = document.createElement("span");
+    bigUnit.className = "wmeRcReminderValueUnit";
+
+    big.appendChild(bigPrefix);
+    big.appendChild(bigNumber);
+    big.appendChild(bigUnit);
 
     const sub = document.createElement("div");
     sub.className = "wmeRcBigValueSub";
 
     const editWrap = document.createElement("div");
+    editWrap.className = "wmeRcReminderInlineEdit";
     editWrap.style.display = "none";
     editWrap.style.alignItems = "center";
     editWrap.style.gap = "8px";
@@ -14024,13 +14021,17 @@ const calcAtTargetTs = () => {
     const stepper = document.createElement("div");
     stepper.className = "wmeRcStepper";
 
-    const btnMinus = document.createElement("div");
-    btnMinus.className = "wmeRcStepBtn";
+    const btnMinus = document.createElement("button");
+    btnMinus.type = "button";
+    btnMinus.className = "wmeRcStepBtn is-minus";
     btnMinus.textContent = "−";
+    btnMinus.setAttribute("aria-label", "Decrease reminder time");
 
-    const btnPlus = document.createElement("div");
-    btnPlus.className = "wmeRcStepBtn";
+    const btnPlus = document.createElement("button");
+    btnPlus.type = "button";
+    btnPlus.className = "wmeRcStepBtn is-plus";
     btnPlus.textContent = "+";
+    btnPlus.setAttribute("aria-label", "Increase reminder time");
 
     stepper.appendChild(btnMinus);
     stepper.appendChild(btnPlus);
@@ -14106,17 +14107,22 @@ const setHandsFromTs = (ts) => {
       const ts = (typeof getTargetTs === "function") ? getTargetTs() : null;
       if (ts) setHandsFromTs(ts);
 
-      big.textContent = labelFn(v);
-      if (ts) sub.textContent = `Will remind at: ${fmtTime(ts)}`;
+      const displayLabel = String(labelFn(v) || v).trim();
+      const labelParts = displayLabel.split(/\s+/);
+      const displayNumber = labelParts.shift() || String(v);
+      if (bigNumber.firstChild && bigNumber.firstChild.nodeType === 3) bigNumber.firstChild.nodeValue = displayNumber;
+      else bigNumber.insertBefore(document.createTextNode(displayNumber), bigEditIcon);
+      bigUnit.textContent = labelParts.join(" ");
+      if (ts) sub.textContent = `${fmtPreview(ts)} • ${fmtTime(ts)}`;
       else sub.textContent = `Use ± • max ${getMax()}`;
     };
 
-    btnMinus.addEventListener("click", () => {
+    bindReminderPress(btnMinus, () => {
       const step = getStep();
       setValue(clamp(Math.round(getValue()) - step, 1, getMax()));
       update();
     });
-    btnPlus.addEventListener("click", () => {
+    bindReminderPress(btnPlus, () => {
       const step = getStep();
       setValue(clamp(Math.round(getValue()) + step, 1, getMax()));
       update();
@@ -14313,17 +14319,27 @@ const setHandsFromTs = (ts) => {
     };
 
     const update = () => {
-      const d = getDate();
-      const tt = getTime();
-  big.textContent = `${d} ${tt || "00:00"}`;
-
       const ts = (typeof getTargetTs === "function") ? getTargetTs() : calcAtTargetTs();
       if (ts) {
+        const dt = new Date(ts);
+        const weekday = dt.toLocaleDateString(undefined, { weekday: "long" });
+        const diffMs = ts - Date.now();
+        const totalMin = Math.max(0, Math.round(diffMs / 60000));
+        const days = Math.floor(totalMin / 1440);
+        const hours = Math.floor((totalMin % 1440) / 60);
+        const mins = totalMin % 60;
+        const relative = days > 0
+          ? `In ${days}d ${hours}h`
+          : hours > 0
+            ? `In ${hours}h ${mins}m`
+            : `In ${Math.max(1, mins)}m`;
         setHandsFromTs(ts);
-        sub.textContent = `Will remind at: ${fmtTime(ts)} • ${fmtPreview(ts)}`;
+        big.textContent = `${weekday} at ${fmtTime(ts)}`;
+        sub.textContent = `${fmtPreview(ts)} • ${relative}`;
       } else {
         setHandsFromTs(Date.now());
-        sub.textContent = "Pick a date & time";
+        big.textContent = "Choose a date and time";
+        sub.textContent = "The reminder must be set in the future.";
       }
     };
 
@@ -14337,6 +14353,7 @@ const setHandsFromTs = (ts) => {
     bodyBuilder: ({ body, close, modal }) => {
       try { applyPinMarkerColors(modal, (pin && pin.color) || "#ff8a00"); } catch {}
       try { const c = normalizePinColor((pin && pin.color) || "#ff8a00"); const rgb = hexToRgb(c); if (rgb) modal.style.setProperty("--pinRGB", `${rgb.r},${rgb.g},${rgb.b}`); } catch {}
+      try { modal.classList.add("wmeRcReminderModal"); } catch {}
       const topRow = document.createElement("div");
       topRow.className = "wmeRcWizardHeader";
       topRow.innerHTML = `
@@ -14349,11 +14366,13 @@ const setHandsFromTs = (ts) => {
       const tabs = document.createElement("div");
       tabs.className = "wmeRcTabs";
 
-      const tabIn = document.createElement("div");
+      const tabIn = document.createElement("button");
+      tabIn.type = "button";
       tabIn.className = "wmeRcTab";
       tabIn.textContent = "In";
 
-      const tabAt = document.createElement("div");
+      const tabAt = document.createElement("button");
+      tabAt.type = "button";
       tabAt.className = "wmeRcTab";
       tabAt.textContent = "At";
 
@@ -14371,8 +14390,8 @@ const setHandsFromTs = (ts) => {
       noteBox.className = "wmeRcWizardSection";
 
       const noteLbl = document.createElement("div");
-      noteLbl.className = "wmeRcHint";
-      noteLbl.textContent = "Notes";
+      noteLbl.className = "wmeRcReminderNoteHead";
+      noteLbl.innerHTML = `<span class="wmeRcReminderNoteTitle">Notes</span><span class="wmeRcReminderOptional">Optional</span>`;
 
       const noteInp = document.createElement("textarea");
       noteInp.className = "wmeRcInput";
@@ -14391,16 +14410,18 @@ const setHandsFromTs = (ts) => {
       noteBox.appendChild(noteInp);
 
       const section = document.createElement("div");
-      section.className = "wmeRcWizardSection";
+      section.className = "wmeRcWizardSection wmeRcReminderSchedule";
 
       const unitRow = document.createElement("div");
-      unitRow.className = "wmeRcSplit";
+      unitRow.className = "wmeRcSplit wmeRcReminderUnits";
 
-      const unitMin = document.createElement("div");
+      const unitMin = document.createElement("button");
+      unitMin.type = "button";
       unitMin.className = "wmeRcWizardBtn";
       unitMin.textContent = "Minutes";
 
-      const unitHr = document.createElement("div");
+      const unitHr = document.createElement("button");
+      unitHr.type = "button";
       unitHr.className = "wmeRcWizardBtn";
       unitHr.textContent = "Hours";
 
@@ -14417,26 +14438,46 @@ const setHandsFromTs = (ts) => {
       });
 
       const quick = document.createElement("div");
-      quick.className = "wmeRcQuickRow";
-      const mkQuick = (label, nextUnit, nextValue) => {
-        const b = document.createElement("div");
+      quick.className = "wmeRcQuickRow wmeRcReminderQuickRow";
+
+      const setAtFromDate = (d) => {
+        if (!(d instanceof Date) || !Number.isFinite(d.getTime())) return;
+        mode = "AT";
+        atDate = `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        atTime = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        try { closePickers(); } catch {}
+        syncUI();
+      };
+
+      const mkQuick = (label, onPress) => {
+        const b = document.createElement("button");
+        b.type = "button";
         b.className = "wmeRcQuick";
         b.textContent = label;
-        b.addEventListener("click", () => {
-          unit = nextUnit;
-          inValue = nextValue;
-          syncUI();
-        });
+        bindReminderPress(b, onPress);
         return b;
       };
-      quick.appendChild(mkQuick("2m", "MINUTES", 2));
-      quick.appendChild(mkQuick("5m", "MINUTES", 5));
-      quick.appendChild(mkQuick("10m", "MINUTES", 10));
-      quick.appendChild(mkQuick("15m", "MINUTES", 15));
-      quick.appendChild(mkQuick("30m", "MINUTES", 30));
-      quick.appendChild(mkQuick("1h", "HOURS", 1));
-      quick.appendChild(mkQuick("2h", "HOURS", 2));
-      quick.appendChild(mkQuick("4h", "HOURS", 4));
+
+      quick.appendChild(mkQuick("In 30 min", () => {
+        mode = "IN";
+        unit = "MINUTES";
+        inValue = 30;
+        syncUI();
+      }));
+      quick.appendChild(mkQuick("In 1 hour", () => {
+        mode = "IN";
+        unit = "HOURS";
+        inValue = 1;
+        syncUI();
+      }));
+      quick.appendChild(mkQuick("Tomorrow", () => {
+        const currentTarget = mode === "AT" ? calcAtTargetTs() : calcInTargetTs();
+        const sourceTime = Number.isFinite(currentTarget) ? new Date(currentTarget) : new Date();
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        d.setHours(sourceTime.getHours(), sourceTime.getMinutes(), 0, 0);
+        setAtFromDate(d);
+      }));
 
 const dt = document.createElement("div");
       dt.className = "wmeRcDT";
@@ -14472,8 +14513,12 @@ const dt = document.createElement("div");
       timeBtn.className = "wmeRcPickerBtn";
 
       const syncPickers = () => {
-        try { dateBtn.innerHTML = `<span class="wmeRcPickerK">Date</span><span class="wmeRcPickerV">${fmtDateLabel()}</span>`; } catch {}
-        try { timeBtn.innerHTML = `<span class="wmeRcPickerK">Time</span><span class="wmeRcPickerV">${fmtTimeLabel()}</span>`; } catch {}
+        try {
+          dateBtn.innerHTML = `<span class="wmeRcReminderPickerText"><span class="wmeRcPickerK">Date</span><span class="wmeRcPickerV">${fmtDateLabel()}</span></span><span class="wmeRcReminderPickerIcon">${ICONS.calendar}</span>`;
+        } catch {}
+        try {
+          timeBtn.innerHTML = `<span class="wmeRcReminderPickerText"><span class="wmeRcPickerK">Time</span><span class="wmeRcPickerV">${fmtTimeLabel()}</span></span><span class="wmeRcReminderPickerIcon">${ICONS.clockSmall}</span>`;
+        } catch {}
       };
       syncPickers();
 
@@ -14595,7 +14640,9 @@ const dt = document.createElement("div");
               const b = document.createElement("button");
               b.type = "button";
               b.className = "wmeRcCalCell";
-              b.textContent = String(d);
+              const dayText = document.createElement("span");
+              dayText.textContent = String(d);
+              b.appendChild(dayText);
               if (sel && sel.y === view.y && sel.m === view.m && sel.d === d) b.classList.add("sel");
               b.addEventListener("click", (ev) => {
                 try { ev.preventDefault(); ev.stopPropagation(); } catch {}
@@ -15130,24 +15177,27 @@ clock.addEventListener("pointerdown", (ev) => {
       const actions = document.createElement("div");
       actions.className = "wmeRcModalActions";
 
-      const btnCancel = document.createElement("div");
+      const btnCancel = document.createElement("button");
+      btnCancel.type = "button";
       btnCancel.className = "wmeRcModalBtn";
-      btnCancel.textContent = "Cancel";
-      btnCancel.addEventListener("click", () => { try { if (typeof cleanupSoundPick === "function") cleanupSoundPick(); } catch {} close(); });
+      btnCancel.innerHTML = "<span>Cancel</span>";
+      bindReminderPress(btnCancel, () => { try { if (typeof cleanupSoundPick === "function") cleanupSoundPick(); } catch {} close(); });
 
-      const btnClear = document.createElement("div");
+      const btnClear = document.createElement("button");
+      btnClear.type = "button";
       btnClear.className = "wmeRcModalBtn danger";
-      btnClear.textContent = "Clear";
-      btnClear.addEventListener("click", () => {
+      btnClear.innerHTML = "<span>Clear</span>";
+      bindReminderPress(btnClear, () => {
         updatePin(pinId, { reminderAt: null, reminderType: null, reminderUnit: null, reminderValue: null, reminderDone: false, reminderNote: "" });
         toast("Reminder cleared");
         close();
       });
 
-      const btnSet = document.createElement("div");
+      const btnSet = document.createElement("button");
+      btnSet.type = "button";
       btnSet.className = "wmeRcModalBtn primary";
-      btnSet.textContent = "Set";
-      btnSet.addEventListener("click", async () => {
+      btnSet.innerHTML = "<span>Set reminder</span>";
+      bindReminderPress(btnSet, async () => {
         let when = null;
 
         if (mode === "IN") {
@@ -15172,28 +15222,31 @@ clock.addEventListener("pointerdown", (ev) => {
       actions.appendChild(btnSet);
 
       const syncUI = () => {
-        tabIn.classList.toggle("on", mode === "IN");
-        tabAt.classList.toggle("on", mode === "AT");
+        const isIn = mode === "IN";
+        tabIn.classList.toggle("on", isIn);
+        tabAt.classList.toggle("on", !isIn);
+        tabIn.setAttribute("aria-pressed", isIn ? "true" : "false");
+        tabAt.setAttribute("aria-pressed", isIn ? "false" : "true");
 
-        unitMin.classList.toggle("on", unit === "MINUTES");
-        unitHr.classList.toggle("on", unit === "HOURS");
+        const isMinutes = unit === "MINUTES";
+        unitMin.classList.toggle("on", isMinutes);
+        unitHr.classList.toggle("on", !isMinutes);
+        unitMin.setAttribute("aria-pressed", isMinutes ? "true" : "false");
+        unitHr.setAttribute("aria-pressed", isMinutes ? "false" : "true");
 
         inValue = clamp(Math.round(inValue), 1, getMaxForUnit());
 
-        section.innerHTML = "";
-        if (mode === "IN") {
-          section.appendChild(unitRow);
-          section.appendChild(clockIn.wrap);
-          section.appendChild(quick);
+        if (isIn) {
+          section.replaceChildren(quick, unitRow, clockIn.wrap);
           clockIn.update();
         } else {
-          section.appendChild(dt);
-          section.appendChild(clockAt.wrap);
+          section.replaceChildren(quick, dt, clockAt.wrap);
+          syncPickers();
           clockAt.update();
         }
 
         try {
-          const ts = mode === "IN" ? calcInTargetTs() : calcAtTargetTs();
+          const ts = isIn ? calcInTargetTs() : calcAtTargetTs();
           if (ts) hint.textContent = `Will remind at: ${fmtPreview(ts)} • ${prettyCurrent()}`;
           else hint.textContent = prettyCurrent();
         } catch {
@@ -15201,11 +15254,11 @@ clock.addEventListener("pointerdown", (ev) => {
         }
       };
 
-      tabIn.addEventListener("click", () => { mode = "IN"; syncUI(); });
-      tabAt.addEventListener("click", () => { mode = "AT"; syncUI(); });
+      bindReminderPress(tabIn, () => { mode = "IN"; syncUI(); });
+      bindReminderPress(tabAt, () => { mode = "AT"; syncUI(); });
 
-      unitMin.addEventListener("click", () => { unit = "MINUTES"; syncUI(); });
-      unitHr.addEventListener("click", () => { unit = "HOURS"; syncUI(); });
+      bindReminderPress(unitMin, () => { unit = "MINUTES"; syncUI(); });
+      bindReminderPress(unitHr, () => { unit = "HOURS"; syncUI(); });
 
       body.appendChild(topRow);
       body.appendChild(section);
@@ -15255,13 +15308,62 @@ function showReminderNotice(pinsDue, opts) {
       wrap.className = "wmeRcNotice";
       activeReminderNotices.add(wrap);
 
-      const title = document.createElement("div");
-      title.className = "wmeRcNoticeTitle";
-      title.textContent = _titleText;
+      const body = document.createElement("div");
+      body.className = "wmeRcNoticeBody";
+
+      const head = document.createElement("div");
+      head.className = "wmeRcNoticeHead";
+
+      const noticeIcon = document.createElement("div");
+      noticeIcon.className = "wmeRcNoticeIcon";
+      noticeIcon.innerHTML = `<span class="wmeRcI">${ICONS.bell}</span>`;
+
+      const textWrap = document.createElement("div");
+      textWrap.className = "wmeRcNoticeText";
+
+      const eyebrow = document.createElement("div");
+      eyebrow.className = "wmeRcNoticeEyebrow";
+
+      const eyebrowTitle = document.createElement("span");
+      eyebrowTitle.textContent = _titleText;
+
+      const dot = document.createElement("span");
+      dot.className = "wmeRcNoticeDot";
+
+      const timeLabel = document.createElement("span");
+      timeLabel.className = "wmeRcNoticeTime";
+      timeLabel.textContent = /missed/i.test(_titleText) ? "Earlier" : "Now";
+
+      eyebrow.appendChild(eyebrowTitle);
+      eyebrow.appendChild(dot);
+      eyebrow.appendChild(timeLabel);
 
       const msg = document.createElement("div");
       msg.className = "wmeRcNoticeMsg";
       msg.textContent = msgText;
+
+      const isMissedReminder = /missed/i.test(_titleText);
+
+      textWrap.appendChild(eyebrow);
+      textWrap.appendChild(msg);
+
+      if (isMissedReminder) {
+        const sub = document.createElement("div");
+        sub.className = "wmeRcNoticeSub";
+        sub.textContent = "This reminder was missed.";
+        textWrap.appendChild(sub);
+      }
+
+      const btnClose = document.createElement("button");
+      btnClose.type = "button";
+      btnClose.className = "wmeRcNoticeDismiss";
+      btnClose.title = "Dismiss";
+      btnClose.setAttribute("aria-label", "Dismiss reminder");
+      btnClose.innerHTML = `<span class="wmeRcI">${svg(`<path d="M7 7l10 10M17 7L7 17"/>`)}</span>`;
+
+      head.appendChild(noticeIcon);
+      head.appendChild(textWrap);
+      head.appendChild(btnClose);
 
       const noteText = (primaryPin && typeof primaryPin.reminderNote === "string") ? primaryPin.reminderNote.trim() : "";
       const note = document.createElement("div");
@@ -15272,26 +15374,28 @@ function showReminderNotice(pinsDue, opts) {
       actions.className = "wmeRcNoticeActions";
 
       const btnSnooze = document.createElement("button");
+      btnSnooze.type = "button";
       btnSnooze.className = "wmeRcNoticeBtn";
-      btnSnooze.textContent = "Snooze";
+      btnSnooze.innerHTML = `<span class="wmeRcI">${ICONS.clockSmall}</span><span>Snooze</span>`;
 
       const btnCancel = document.createElement("button");
+      btnCancel.type = "button";
       btnCancel.className = "wmeRcNoticeBtn";
       btnCancel.textContent = "Dismiss";
 
       const btnGo = document.createElement("button");
+      btnGo.type = "button";
       btnGo.className = "wmeRcNoticeBtn primary";
-      btnGo.textContent = "Take me there";
+      btnGo.innerHTML = `<span>Take me there</span><span class="wmeRcI">${svg(`<path d="M5 12h13M14 7l5 5-5 5"/>`)}</span>`;
 
       try {
-        const col = normalizePinColor(primaryPin && primaryPin.color ? primaryPin.color : "#ff8a00");
+        const col = normalizePinColor(primaryPin && primaryPin.color ? primaryPin.color : "#2f80ed");
         const base = hexToRgb(col);
-        const light = mixRgb(base, { r:255, g:255, b:255 }, 0.25);
-        btnGo.style.background = `linear-gradient(180deg, ${rgbaStr(light, .32)}, ${rgbaStr(base, .28)})`;
-        btnGo.style.borderColor = `${rgbaStr(base, .38)}`;
-        btnGo.style.boxShadow = `0 10px 28px ${rgbaStr(base, .22)}`;
+        const light = mixRgb(base, { r:255, g:255, b:255 }, 0.34);
+        noticeIcon.style.background = `${rgbaStr(base, .14)}`;
+        noticeIcon.style.borderColor = `${rgbaStr(light, .24)}`;
+        noticeIcon.style.color = `${rgbaStr(light, 1)}`;
       } catch {}
-
       let pop = null;
 
       const cleanupPop = () => {
@@ -15354,24 +15458,55 @@ function showReminderNotice(pinsDue, opts) {
       try { applyPinMarkerColors(pop, (pin && pin.color) || "#ff8a00"); } catch {}
       try { const c = normalizePinColor((pin && pin.color) || "#ff8a00"); const rgb = hexToRgb(c); if (rgb) pop.style.setProperty("--pinRGB", `${rgb.r},${rgb.g},${rgb.b}`); } catch {}
 
+      const head = document.createElement("div");
+      head.className = "wmeRcSnoozeHead";
+
+      const headIcon = document.createElement("div");
+      headIcon.className = "wmeRcSnoozeIcon";
+      headIcon.innerHTML = `<span class="wmeRcI">${ICONS.clockSmall}</span>`;
+
+      const headText = document.createElement("div");
+      headText.className = "wmeRcSnoozeHeadText";
+
       const t = document.createElement("div");
       t.className = "wmeRcSnoozeTitle";
-      t.textContent = "Snooze for";
+      t.textContent = "Snooze reminder";
+
+      const subText = document.createElement("div");
+      subText.className = "wmeRcSnoozeSub";
+      subText.textContent = "Choose when to remind you again.";
+
+      const closePop = document.createElement("button");
+      closePop.type = "button";
+      closePop.className = "wmeRcSnoozeClose";
+      closePop.setAttribute("aria-label", "Close snooze options");
+      closePop.innerHTML = `<span class="wmeRcI">${svg(`<path d="M7 7l10 10M17 7L7 17"/>`)}</span>`;
+
+      headText.appendChild(t);
+      headText.appendChild(subText);
+      head.appendChild(headIcon);
+      head.appendChild(headText);
+      head.appendChild(closePop);
 
       const grid = document.createElement("div");
       grid.className = "wmeRcSnoozeGrid";
 
-      const presets = [2,5,10,15,30];
+      const presets = [5,10,15,30,60,120];
       for (const m of presets) {
-        const c = document.createElement("div");
+        const c = document.createElement("button");
+        c.type = "button";
         c.className = "wmeRcSnoozeChip";
-        c.textContent = `${m}m`;
+        c.textContent = m >= 60 ? `${m / 60}h` : `${m} min`;
         c.addEventListener("click", (e) => {
           e.preventDefault(); e.stopPropagation();
           snoozePin(m);
         });
         grid.appendChild(c);
       }
+
+      const customLabel = document.createElement("label");
+      customLabel.className = "wmeRcSnoozeCustomLabel";
+      customLabel.textContent = "Custom minutes";
 
       const row = document.createElement("div");
       row.className = "wmeRcSnoozeRow";
@@ -15382,24 +15517,17 @@ function showReminderNotice(pinsDue, opts) {
       inp.inputMode = "numeric";
       inp.autocomplete = "off";
       inp.maxLength = 3;
-      inp.placeholder = "Minutes…";
+      inp.placeholder = "Enter minutes";
+      inp.setAttribute("aria-label", "Custom snooze minutes");
       inp.addEventListener("input", () => {
         try { inp.value = (inp.value || "").replace(/\D+/g, "").slice(0, 3); } catch {}
       });
 
       const go = document.createElement("button");
+      go.type = "button";
       go.className = "wmeRcSnoozeGo";
-      go.textContent = "Set";
+      go.textContent = "Snooze";
 
-
-      try {
-        const col = normalizePinColor((pin && pin.color) ? pin.color : "#ff8a00");
-        const base = hexToRgb(col);
-        const light = mixRgb(base, { r:255, g:255, b:255 }, 0.25);
-        go.style.background = `linear-gradient(180deg, ${rgbaStr(light, .32)}, ${rgbaStr(base, .28)})`;
-        go.style.borderColor = `${rgbaStr(base, .38)}`;
-        go.style.boxShadow = `0 10px 28px ${rgbaStr(base, .22)}`;
-      } catch {}
       const commit = () => {
         const v = Number(inp.value);
         if (!v || v < 1) return;
@@ -15408,14 +15536,15 @@ function showReminderNotice(pinsDue, opts) {
 
       go.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); commit(); });
       inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); commit(); } });
+      closePop.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); cleanupPop(); });
 
       row.appendChild(inp);
       row.appendChild(go);
 
-      pop.appendChild(t);
+      pop.appendChild(head);
       pop.appendChild(grid);
+      pop.appendChild(customLabel);
       pop.appendChild(row);
-
 
       (document.body || document.documentElement).appendChild(pop);
 
@@ -15473,14 +15602,19 @@ function showReminderNotice(pinsDue, opts) {
       close();
     });
 
+    btnClose.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      close();
+    });
+
       actions.appendChild(btnSnooze);
       actions.appendChild(btnCancel);
       actions.appendChild(btnGo);
 
-      wrap.appendChild(title);
-      wrap.appendChild(msg);
-      if (noteText) wrap.appendChild(note);
-      wrap.appendChild(actions);
+      body.appendChild(head);
+      if (noteText) body.appendChild(note);
+      body.appendChild(actions);
+      wrap.appendChild(body);
 
       stack.appendChild(wrap);
       requestAnimationFrame(() => wrap.classList.add("show"));
@@ -15542,7 +15676,9 @@ function checkRemindersNow() {
       return;
     }
 
-    try { updatePinsCountdowns(); } catch {}
+    if (!_pinsCountdownTicking) {
+      try { updatePinsCountdowns(); } catch {}
+    }
   } catch(e) {
     try { console.error("[WME Pins] checkRemindersNow failed", e); } catch {}
   }
