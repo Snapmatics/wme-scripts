@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - RightClick Functions
 // @author       GreekCaptain
-// @version      1.0.9
+// @version      1.1.0
 // @description  Right-click tools and pinned places for Waze Map Editor
 // @match        https://www.waze.com/*/editor*
 // @match        https://www.waze.com/editor*
@@ -23,7 +23,7 @@
   const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   const SCRIPT_ID = "wme-rightclick-functions";
   const SCRIPT_NAME = "WME - RightClick Functions";
-  const SCRIPT_VERSION = "1.0.9";
+  const SCRIPT_VERSION = "1.1.1";
   const CHANGELOG_SEEN_KEY = `${SCRIPT_ID}:changelogSeenVersion:v2`;
   const CHANGELOG_ITEMS = {
     new: [],
@@ -6556,6 +6556,46 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
       .wmeRcModalActions::after{
         content:none!important;
         display:none!important;
+      }
+
+
+      /* v1.0.18: settings dropdowns are body-portaled, correctly anchored, and theme-aware. */
+      .wmeRcSoundMenuPortal{
+        position:fixed!important;
+        left:-9999px;
+        top:-9999px;
+        right:auto!important;
+        z-index:2147483647!important;
+        backdrop-filter:none!important;
+        -webkit-backdrop-filter:none!important;
+      }
+      .wmeRcSoundMenuPortal.theme-light{
+        background:#ffffff!important;
+        color:#111827!important;
+        border:1px solid rgba(15,23,42,.16)!important;
+        box-shadow:0 14px 34px rgba(15,23,42,.14),0 2px 8px rgba(15,23,42,.08)!important;
+      }
+      .wmeRcSoundMenuPortal.theme-dark{
+        background:#111821!important;
+        color:#f8fafc!important;
+        border:1px solid rgba(255,255,255,.12)!important;
+        box-shadow:0 18px 44px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.24)!important;
+      }
+      .wmeRcSoundMenuPortal.theme-light .wmeRcSoundItem{
+        color:#111827!important;
+        -webkit-text-fill-color:#111827!important;
+      }
+      .wmeRcSoundMenuPortal.theme-dark .wmeRcSoundItem{
+        color:#f8fafc!important;
+        -webkit-text-fill-color:#f8fafc!important;
+      }
+      .wmeRcSoundMenuPortal.theme-light .wmeRcSoundItem:hover,
+      .wmeRcSoundMenuPortal.theme-light .wmeRcSoundItem.is-active{
+        background:rgba(59,130,246,.10)!important;
+      }
+      .wmeRcSoundMenuPortal.theme-dark .wmeRcSoundItem:hover,
+      .wmeRcSoundMenuPortal.theme-dark .wmeRcSoundItem.is-active{
+        background:rgba(96,165,250,.14)!important;
       }
 
       @media(max-width:560px){.wmeRcReminderModal .wmeRcDT{grid-template-columns:1fr}.wmeRcReminderModal .wmeRcQuick{flex:1 1 calc(50% - 7px);text-align:center}.wmeRcReminderModal .wmeRcModalBtn.primary{min-width:96px}}
@@ -13397,11 +13437,74 @@ function openPinsSettingsModal() {
         const menu = document.createElement("div");
         menu.className = "wmeRcSoundMenu wmeRcSoundMenuPortal";
         menu.style.display = "none";
+        menu.style.position = "fixed";
+        menu.style.left = "-9999px";
+        menu.style.top = "-9999px";
         try { document.body.appendChild(menu); } catch {}
 
         let current = initialValue;
         let isOpen = false;
         let isDisabled = false;
+
+        const parseRgb = (str) => {
+          const m = String(str || "").match(/rgba?\(([^)]+)\)/i);
+          if (!m) return null;
+          const parts = m[1].split(",").map((v) => Number.parseFloat(String(v).trim()));
+          if (parts.length < 3 || parts.some((v, i) => i < 3 && !Number.isFinite(v))) return null;
+          return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 && Number.isFinite(parts[3]) ? parts[3] : 1 };
+        };
+        const luminance = (rgb) => {
+          if (!rgb) return 0;
+          const lin = (v) => {
+            v = Math.max(0, Math.min(255, Number(v) || 0)) / 255;
+            return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+          };
+          return 0.2126 * lin(rgb.r) + 0.7152 * lin(rgb.g) + 0.0722 * lin(rgb.b);
+        };
+        const isLightMenuTheme = () => {
+          try {
+            if (modal && (modal.classList.contains("theme-light") || modal.classList.contains("wmeRcLight"))) return true;
+            if (modal && modal.classList.contains("theme-dark")) return false;
+            const host = wrap.closest(".theme-light,.wmeRcLight,.theme-dark,.wmeRcModal,.wmeRcSideCard,.wmeRcSideWrap");
+            if (host) {
+              if (host.classList.contains("theme-light") || host.classList.contains("wmeRcLight")) return true;
+              if (host.classList.contains("theme-dark")) return false;
+            }
+          } catch {}
+          try {
+            const cs = getComputedStyle(modal || wrap || document.body);
+            const bg = parseRgb(cs.backgroundColor);
+            if (bg && bg.a !== 0) return luminance(bg) > 0.62;
+          } catch {}
+          try {
+            const body = document.body || document.documentElement;
+            return !!(body && (body.classList.contains("theme-light") || body.classList.contains("wmeRcLight") || body.classList.contains("waze-light")));
+          } catch {}
+          return false;
+        };
+
+        const applyMenuTheme = () => {
+          try {
+            const light = isLightMenuTheme();
+            menu.classList.toggle("theme-light", light);
+            menu.classList.toggle("theme-dark", !light);
+            menu.style.background = light ? "#ffffff" : "#111821";
+            menu.style.color = light ? "#111827" : "#f8fafc";
+            menu.style.border = light ? "1px solid rgba(15,23,42,.16)" : "1px solid rgba(255,255,255,.12)";
+            menu.style.boxShadow = light
+              ? "0 14px 34px rgba(15,23,42,.14),0 2px 8px rgba(15,23,42,.08)"
+              : "0 18px 44px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.24)";
+            menu.style.backdropFilter = "none";
+            menu.style.webkitBackdropFilter = "none";
+            menu.style.zIndex = "2147483647";
+            Array.from(menu.children || []).forEach((item) => {
+              try {
+                item.style.color = light ? "#111827" : "#f8fafc";
+                item.style.webkitTextFillColor = light ? "#111827" : "#f8fafc";
+              } catch {}
+            });
+          } catch {}
+        };
 
         const labelFor = (value) => {
           const hit = options.find((o) => String(o.value) === String(value));
@@ -13411,25 +13514,65 @@ function openPinsSettingsModal() {
         const closeMenu = () => {
           isOpen = false;
           try { wrap.setAttribute("data-open", "0"); } catch {}
-          try { menu.style.display = "none"; } catch {}
+          try {
+            menu.style.display = "none";
+            menu.style.visibility = "";
+            menu.style.left = "-9999px";
+            menu.style.top = "-9999px";
+          } catch {}
         };
 
         const positionMenu = () => {
           if (!isOpen) return;
           try {
+            applyMenuTheme();
+
             const r = btn.getBoundingClientRect();
             const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
             const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
-            const w = Math.max(cfg.minWidth || 120, Math.min(cfg.maxWidth || Math.max(r.width || 160, cfg.minWidth || 120), vw - 16));
-            let left = Math.max(8, Math.min(r.left, vw - w - 8));
-            let top = (r.bottom || 0) + 6;
-            const maxH = 240;
-            if (top + maxH + 8 > vh) top = Math.max(8, (r.top || 0) - 6 - maxH);
-            menu.style.left = left + "px";
-            menu.style.top = top + "px";
-            menu.style.width = w + "px";
-            menu.style.maxHeight = Math.min(maxH, Math.max(120, vh - top - 10)) + "px";
+            const pad = 8;
+
+            const targetW = Math.max(
+              cfg.minWidth || 120,
+              Math.min(cfg.maxWidth || Math.max(r.width || 160, cfg.minWidth || 120), vw - (pad * 2))
+            );
+
+            const wasHidden = menu.style.display === "none";
+            if (wasHidden) {
+              menu.style.visibility = "hidden";
+              menu.style.display = "block";
+            }
+            menu.style.width = targetW + "px";
+            menu.style.maxHeight = "none";
+            menu.style.left = "-9999px";
+            menu.style.top = "-9999px";
+
+            const measured = menu.getBoundingClientRect();
+            const menuH = Math.max(36, Math.min(measured.height || 0, 260));
+            const spaceBelow = vh - r.bottom - pad;
+            const spaceAbove = r.top - pad;
+
+            let top;
+            if (spaceBelow >= menuH || spaceBelow >= spaceAbove) {
+              top = r.bottom + 6;
+            } else {
+              top = r.top - 6 - menuH;
+            }
+            top = Math.max(pad, Math.min(top, vh - pad - menuH));
+
+            let left = r.left;
+            left = Math.max(pad, Math.min(left, vw - targetW - pad));
+
+            const maxH = Math.max(96, Math.min(260, (top >= r.bottom ? spaceBelow : spaceAbove) - 8 || 260));
+            menu.style.left = Math.round(left) + "px";
+            menu.style.top = Math.round(top) + "px";
+            menu.style.width = Math.round(targetW) + "px";
+            menu.style.maxHeight = Math.max(96, maxH) + "px";
             menu.style.overflow = "auto";
+            if (wasHidden) {
+              menu.style.visibility = "";
+              menu.style.display = "none";
+            }
           } catch {}
         };
 
@@ -13449,6 +13592,7 @@ function openPinsSettingsModal() {
             });
             menu.appendChild(item);
           });
+          applyMenuTheme();
         };
 
         const openMenu = () => {
@@ -13456,8 +13600,17 @@ function openPinsSettingsModal() {
           isOpen = true;
           try { wrap.setAttribute("data-open", "1"); } catch {}
           rebuildMenu();
+          try {
+            menu.style.visibility = "hidden";
+            menu.style.display = "block";
+          } catch {}
           positionMenu();
-          try { menu.style.display = "block"; } catch {}
+          try {
+            menu.style.visibility = "";
+            menu.style.display = "block";
+          } catch {}
+          try { requestAnimationFrame(() => { positionMenu(); applyMenuTheme(); }); } catch {}
+          try { setTimeout(() => { positionMenu(); applyMenuTheme(); }, 40); } catch {}
         };
 
         const toggleMenu = () => {
@@ -13470,7 +13623,7 @@ function openPinsSettingsModal() {
             if (!wrap.contains(ev.target) && !menu.contains(ev.target)) closeMenu();
           } catch {}
         };
-        const onReposition = () => { try { positionMenu(); } catch {} };
+        const onReposition = () => { try { positionMenu(); applyMenuTheme(); } catch {} };
 
         btn.addEventListener("click", (ev) => {
           try { ev.preventDefault(); ev.stopPropagation(); } catch {}
@@ -13487,6 +13640,14 @@ function openPinsSettingsModal() {
         document.addEventListener("pointerdown", onDocDown, true);
         window.addEventListener("resize", onReposition, true);
         window.addEventListener("scroll", onReposition, true);
+
+        try {
+          const mo = new MutationObserver(() => { try { if (isOpen) { applyMenuTheme(); positionMenu(); } } catch {} });
+          mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style"] });
+          if (document.body) mo.observe(document.body, { attributes: true, attributeFilter: ["class", "style"] });
+          if (modal) mo.observe(modal, { attributes: true, attributeFilter: ["class", "style"] });
+          addCleanup(() => { try { mo.disconnect(); } catch {} });
+        } catch {}
 
         addCleanup(() => {
           try { document.removeEventListener("pointerdown", onDocDown, true); } catch {}
