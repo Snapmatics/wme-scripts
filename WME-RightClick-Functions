@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME - RightClick Functions
 // @author       GreekCaptain
-// @version      1.0.8
+// @version      1.0.9
 // @description  Right-click tools and pinned places for Waze Map Editor
 // @match        https://www.waze.com/*/editor*
 // @match        https://www.waze.com/editor*
@@ -23,19 +23,17 @@
   const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   const SCRIPT_ID = "wme-rightclick-functions";
   const SCRIPT_NAME = "WME - RightClick Functions";
-  const SCRIPT_VERSION = "1.0.8";
+  const SCRIPT_VERSION = "1.0.9";
   const CHANGELOG_SEEN_KEY = `${SCRIPT_ID}:changelogSeenVersion:v2`;
   const CHANGELOG_ITEMS = {
     new: [],
-    improved: [
-      "The reminder modal and notification have a new look.",
-      "Improved reminder countdowns, snooze controls, sounds, and pin search.",
-      "Improved the pins and folder dialogs.",
-      "Cleaned up menu icons and Beta/Prod shortcuts.",
-      "Improved permalink handling for selected segments."
-    ],
+    improved: [],
     fixes: [
-      "Fixed saved pins and folders not loading or persisting after refresh."
+      "Fixed the folder icon picker so the native empty icon no longer shows a plus.",
+      "Fixed pin names on the map so changes apply immediately after saving.",
+      "Pin name character limit is now 32 characters, not 28.",
+      "Fixed scrolling while selecting pins so the list no longer jumps back to the top.",
+      "Improved zoomed-out pin clustering so bubbles are fewer and placed more accurately."
     ]
   };
 
@@ -753,6 +751,17 @@
       return 0.2126 * toLin(rgb.r) + 0.7152 * toLin(rgb.g) + 0.0722 * toLin(rgb.b);
     };
     const isLightSurface = () => {
+      const themedHost = wrap.closest('.wmeRcModal, .wmeRcSideWrap, .wmeRcSideCard, .theme-light, .theme-dark, .wmeRcLight');
+      if (themedHost) {
+        if (themedHost.classList.contains('theme-light') || themedHost.classList.contains('wmeRcLight')) return true;
+        if (themedHost.classList.contains('theme-dark')) return false;
+        if (themedHost.closest('.theme-light, .wmeRcLight')) return true;
+        if (themedHost.closest('.theme-dark')) return false;
+      }
+      const lightAncestor = wrap.closest('.theme-light, .wmeRcLight');
+      if (lightAncestor) return true;
+      const darkAncestor = wrap.closest('.theme-dark');
+      if (darkAncestor) return false;
       const cs = getComputedStyle(btn);
       const bg = parseRgb(cs.backgroundColor);
       const fg = parseRgb(cs.color);
@@ -760,63 +769,91 @@
       if (fg) return luminance(fg) < 0.45;
       return false;
     };
+
+    let menu = null;
+    let menuLight = false;
+    const menuListeners = [];
+    const bindMenuListener = (target, type, handler, opts) => {
+      try {
+        target.addEventListener(type, handler, opts);
+        menuListeners.push(() => {
+          try { target.removeEventListener(type, handler, opts); } catch {}
+        });
+      } catch {}
+    };
+    const cleanupMenuListeners = () => {
+      while (menuListeners.length) {
+        try { menuListeners.pop()(); } catch {}
+      }
+    };
+    const positionMenu = () => {
+      if (!menu) return;
+      const rect = btn.getBoundingClientRect();
+      const pad = 8;
+      menu.style.position = 'fixed';
+      menu.style.left = '-9999px';
+      menu.style.top = '-9999px';
+      menu.style.right = 'auto';
+      menu.style.minWidth = Math.max(rect.width, 116) + 'px';
+      menu.style.maxWidth = Math.min(220, Math.max(160, window.innerWidth - pad * 2)) + 'px';
+      const mRect = menu.getBoundingClientRect();
+      let left = rect.left;
+      if (left + mRect.width > window.innerWidth - pad) left = Math.max(pad, window.innerWidth - pad - mRect.width);
+      let top = rect.bottom + 6;
+      if (top + mRect.height > window.innerHeight - pad) {
+        const above = rect.top - 6 - mRect.height;
+        if (above >= pad) top = above;
+        else top = Math.max(pad, window.innerHeight - pad - mRect.height);
+      }
+      menu.style.left = Math.round(left) + 'px';
+      menu.style.top = Math.round(top) + 'px';
+    };
     const applyMenuTheme = () => {
       if (!menu) return;
-      const light = isLightSurface();
-      if (light) {
+      menuLight = isLightSurface();
+      if (menuLight) {
         menu.style.background = '#ffffff';
         menu.style.color = '#111827';
         menu.style.border = '1px solid rgba(40,56,72,.16)';
         menu.style.boxShadow = '0 14px 34px rgba(15,23,42,.14), 0 2px 8px rgba(15,23,42,.08)';
-        menu.style.backdropFilter = 'none';
-        menu.style.webkitBackdropFilter = 'none';
       } else {
-        menu.style.background = 'rgba(20,20,22,.96)';
+        menu.style.background = '#151b26';
         menu.style.color = '#f8fafc';
         menu.style.border = '1px solid rgba(255,255,255,.10)';
         menu.style.boxShadow = '0 14px 34px rgba(0,0,0,.34), 0 2px 8px rgba(0,0,0,.18)';
-        menu.style.backdropFilter = 'blur(14px) saturate(150%)';
-        menu.style.webkitBackdropFilter = 'blur(14px) saturate(150%)';
       }
+      menu.style.backdropFilter = 'none';
+      menu.style.webkitBackdropFilter = 'none';
+      menu.style.opacity = '1';
+      menu.style.pointerEvents = 'auto';
       [...menu.querySelectorAll('.wmeRcSelectOpt')].forEach((item) => {
-        const active = item.classList.contains('is-active');
-        if (light) {
-          item.style.color = active ? '#0f172a' : '#1f2937';
-          item.style.webkitTextFillColor = active ? '#0f172a' : '#1f2937';
-          item.style.background = active ? 'rgba(59,130,246,.12)' : 'transparent';
-        } else {
-          item.style.color = active ? '#ffffff' : '#f3f4f6';
-          item.style.webkitTextFillColor = active ? '#ffffff' : '#f3f4f6';
-          item.style.background = active ? 'rgba(255,255,255,.10)' : 'transparent';
-        }
-        item.addEventListener('mouseenter', () => {
-          item.style.background = light ? 'rgba(59,130,246,.08)' : 'rgba(255,255,255,.08)';
-          item.style.color = light ? '#111827' : '#ffffff';
-          item.style.webkitTextFillColor = light ? '#111827' : '#ffffff';
-        });
-        item.addEventListener('mouseleave', () => {
-          const isActive = item.classList.contains('is-active');
-          if (light) {
-            item.style.background = isActive ? 'rgba(59,130,246,.12)' : 'transparent';
-            item.style.color = isActive ? '#0f172a' : '#1f2937';
-            item.style.webkitTextFillColor = isActive ? '#0f172a' : '#1f2937';
+        const setItemState = (hover = false) => {
+          const active = item.classList.contains('is-active');
+          if (menuLight) {
+            item.style.color = active ? '#0f172a' : '#1f2937';
+            item.style.webkitTextFillColor = active ? '#0f172a' : '#1f2937';
+            item.style.background = hover ? 'rgba(59,130,246,.08)' : (active ? 'rgba(59,130,246,.12)' : 'transparent');
           } else {
-            item.style.background = isActive ? 'rgba(255,255,255,.10)' : 'transparent';
-            item.style.color = isActive ? '#ffffff' : '#f3f4f6';
-            item.style.webkitTextFillColor = isActive ? '#ffffff' : '#f3f4f6';
+            item.style.color = active ? '#ffffff' : '#f3f4f6';
+            item.style.webkitTextFillColor = active ? '#ffffff' : '#f3f4f6';
+            item.style.background = hover ? 'rgba(255,255,255,.08)' : (active ? 'rgba(255,255,255,.10)' : 'transparent');
           }
-        });
+        };
+        setItemState(false);
+        item.onmouseenter = () => setItemState(true);
+        item.onmouseleave = () => setItemState(false);
       });
     };
 
-    let menu = null;
     const closeMenu = () => {
+      cleanupMenuListeners();
       if (menu && menu.parentNode) menu.parentNode.removeChild(menu);
       menu = null;
-      document.removeEventListener('mousedown', onDocDown, true);
     };
     const onDocDown = (e) => {
-      if (!wrap.contains(e.target)) closeMenu();
+      if (!menu) return;
+      if (wrap.contains(e.target) || menu.contains(e.target)) return;
+      closeMenu();
     };
     const openMenu = () => {
       if (menu) return;
@@ -835,11 +872,20 @@
         });
         menu.appendChild(item);
       }
-      wrap.appendChild(menu);
+      document.body.appendChild(menu);
       applyMenuTheme();
-      requestAnimationFrame(applyMenuTheme);
-      setTimeout(applyMenuTheme, 30);
-      document.addEventListener('mousedown', onDocDown, true);
+      positionMenu();
+      bindMenuListener(document, 'mousedown', onDocDown, true);
+      bindMenuListener(window, 'resize', positionMenu, { passive: true });
+      bindMenuListener(window, 'scroll', positionMenu, true);
+      requestAnimationFrame(() => {
+        applyMenuTheme();
+        positionMenu();
+      });
+      setTimeout(() => {
+        applyMenuTheme();
+        positionMenu();
+      }, 30);
     };
     btn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -2591,7 +2637,7 @@ function buildExtensionsSettingsEditor() {
 
 
 
-const PIN_NAME_MAX = 28;
+const PIN_NAME_MAX = 32;
   function validatePinName(name, fallback, excludePinId) {
     const s = String(name ?? "").trim();
     const val = s || String(fallback ?? "").trim() || "Pinned place";
@@ -3244,7 +3290,7 @@ function getPinsShowNamesOnMap() {
 }
 function setPinsShowNamesOnMap(v) {
   try { localStorage.setItem(PINS_NAMES_KEY, v ? "1" : "0"); } catch {}
-  try { renderPinsMarkers(); } catch {}
+  try { forcePinsMarkersFullRefresh(); } catch { try { renderPinsMarkers(true); } catch {} }
 }
 
 const PINS_NAMES_MINZOOM_KEY = `${SCRIPT_ID}:pinsNamesMinZoom:v1`;
@@ -3262,7 +3308,23 @@ function setPinsNamesMinZoom(z){
     const n = Math.min(22, Math.max(1, Math.round(Number(z) || 9)));
     localStorage.setItem(PINS_NAMES_MINZOOM_KEY, String(n));
   }catch{}
-  try{ renderPinsMarkers(); }catch{}
+  try{ renderPinsMarkers(true); }catch{}
+}
+
+function forcePinsMarkersFullRefresh() {
+  try { _pinsMarkersLastSig = ""; } catch {}
+  try {
+    const layer = pinsOlLayer || (typeof ensurePinsOlLayer === "function" ? ensurePinsOlLayer() : null);
+    if (layer) {
+      for (const mk of Array.from(pinsOlMarkers.values())) { try { layer.removeMarker(mk); } catch {} }
+      pinsOlMarkers.clear();
+      for (const mk of Array.from(pinsOlClusterMarkers.values())) { try { layer.removeMarker(mk); } catch {} }
+      pinsOlClusterMarkers.clear();
+    }
+  } catch {}
+  try { cleanupDomPinsMarkers(); } catch {}
+  try { renderPinsMarkers(true); } catch {}
+  try { setTimeout(() => { try { renderPinsMarkers(true); } catch {} }, 80); } catch {}
 }
 
   let pinsDrag = { active:false, startX:0, startY:0, baseLeft:12, baseTop:12, pointerId:null };
@@ -3717,9 +3779,9 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcChip:hover{background:rgba(255,255,255,.10);transform:translate3d(0,-1px,0);}
       .wmeRcChip:active{transform:translate3d(0,0,0);}
       .wmeRcChip.on{border-color:rgba(255,255,255,.30);background:rgba(255,255,255,.14);opacity:1;}
-      .wmeRcModalBackdrop{position:fixed;inset:0;z-index:2147483647;background:var(--wmeRcModalBackdropBg,rgba(5,8,14,.48));backdrop-filter:blur(5px) saturate(118%);-webkit-backdrop-filter:blur(5px) saturate(118%);opacity:0;transition:opacity .18s ease;will-change:opacity;}
+      .wmeRcModalBackdrop{position:fixed;inset:0;z-index:2147483647;background:var(--wmeRcModalBackdropBg,rgba(5,8,14,.48));backdrop-filter:none!important;-webkit-backdrop-filter:none!important;opacity:0;transition:opacity .13s ease;will-change:opacity;}
       .wmeRcModalBackdrop.show{opacity:1;}
-      .wmeRcModal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);opacity:0;z-index:2147483647;width:min(580px,calc(100vw - 24px));background:var(--wmeRcModalBg,linear-gradient(180deg,rgba(16,24,39,.96),rgba(11,18,31,.96)));border:1px solid var(--wmeRcModalBorder,rgba(255,255,255,.12));border-radius:18px;box-shadow:var(--wmeRcModalShadow,0 28px 90px rgba(0,0,0,.44), 0 10px 28px rgba(0,0,0,.28));backdrop-filter:var(--wmeRcModalBackdropFilter,blur(10px) saturate(120%));-webkit-backdrop-filter:var(--wmeRcModalBackdropFilter,blur(10px) saturate(120%));color:var(--wmeRcModalFg,#fff);font:13px/1.3 var(--font_family_base, var(--font-family-base, system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif));overflow:hidden;transition:opacity .16s ease;will-change:opacity;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision;}
+      .wmeRcModal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);opacity:0;z-index:2147483647;width:min(580px,calc(100vw - 24px));background:var(--wmeRcModalBg,linear-gradient(180deg,#172235,#0f1726));border:1px solid var(--wmeRcModalBorder,rgba(255,255,255,.12));border-radius:18px;box-shadow:var(--wmeRcModalShadow,0 28px 90px rgba(0,0,0,.44), 0 10px 28px rgba(0,0,0,.28));backdrop-filter:none!important;-webkit-backdrop-filter:none!important;color:var(--wmeRcModalFg,#fff);font:13px/1.3 var(--font_family_base, var(--font-family-base, system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif));overflow:hidden;transition:opacity .13s ease;will-change:opacity;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision;}
       .wmeRcModal::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.015) 20%,transparent 42%);}
       .wmeRcModal.theme-light{--wmeRcModalFg:#111827;}
       .wmeRcModal.show{opacity:1;}
@@ -3815,7 +3877,7 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       /* Light-theme hardening: readable modals + colored headers */
       .wmeRcModal.theme-light,
       .wmeRcModal.waze-style.theme-light{--wmeRcModalFg:#111827 !important;--wmeRcModalInputFg:#111827 !important;--wmeRcModalInputPlaceholder:rgba(17,24,39,.46) !important;--wmeRcModalInputPlaceholderSoft:rgba(17,24,39,.34) !important;color:#111827 !important;}
-      .wmeRcModal.theme-light,.wmeRcModal.waze-style.theme-light{background:color-mix(in srgb, var(--background_default,#ffffff) 96%, var(--content_default,#111827) 4%) !important;border-color:var(--border_default,rgba(40,56,72,.14)) !important;box-shadow:0 24px 70px rgba(15,23,42,.18),0 8px 22px rgba(15,23,42,.10) !important;backdrop-filter:blur(14px) saturate(125%) !important;-webkit-backdrop-filter:blur(14px) saturate(125%) !important;}
+      .wmeRcModal.theme-light,.wmeRcModal.waze-style.theme-light{background:linear-gradient(180deg,#ffffff 0%,#f4f6f8 100%) !important;border-color:var(--border_default,rgba(40,56,72,.14)) !important;box-shadow:0 24px 70px rgba(15,23,42,.18),0 8px 22px rgba(15,23,42,.10) !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}
       .wmeRcModal.theme-light .wmeRcModalBody,.wmeRcModal.waze-style.theme-light .wmeRcModalBody{background:transparent !important;}
       .wmeRcInlineToggle input,.wmeRcSwitch input{position:absolute !important;opacity:0 !important;pointer-events:none !important;width:1px !important;height:1px !important;margin:0 !important;padding:0 !important;border:0 !important;clip:rect(0 0 0 0) !important;clip-path:inset(50%) !important;overflow:hidden !important;white-space:nowrap !important;-webkit-appearance:none !important;appearance:none !important;}
 
@@ -4218,38 +4280,41 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcModal.theme-light .wmeRcEmojiItem:hover,.wmeRcModal.waze-style.theme-light .wmeRcEmojiItem:hover{background:linear-gradient(180deg,rgba(236,244,255,.98),rgba(229,239,255,.95));}
       .wmeRcModal.theme-light .wmeRcEmojiBtn,.wmeRcModal.waze-style.theme-light .wmeRcEmojiBtn{border-color:rgba(37,99,235,.14);background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(244,247,255,.94));color:#111827;}
       .wmeRcModal.theme-light .wmeRcNoEmojiIcon,.wmeRcModal.waze-style.theme-light .wmeRcNoEmojiIcon{border-color:rgba(37,99,235,.22);background:rgba(59,130,246,.05);color:#1e3a8a;}
-      .wmeRcGroupNameModal{width:min(580px,calc(100vw - 24px));}
-      .wmeRcGroupNameModal .wmeRcModalBody{padding:12px 14px 10px;gap:10px;}
-      .wmeRcGroupNameWrap{display:flex;flex-direction:column;gap:10px;min-width:0;}
-      .wmeRcGroupNameGrid{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;align-items:start;}
-      .wmeRcGroupEmojiPanel{min-height:72px;border-radius:15px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.028));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.045);}
-      .wmeRcGroupEmojiPanel .wmeRcEmojiBtn{width:42px;height:42px;min-width:42px;min-height:42px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin:0 auto;padding:0;font-size:19px;line-height:1;place-items:center;}
+      .wmeRcGroupNameModal{width:min(500px,calc(100vw - 24px));}
+      .wmeRcGroupNameModal .wmeRcModalBody{padding:14px;gap:0;}
+      .wmeRcGroupNameWrap{display:flex;flex-direction:column;min-width:0;}
+      .wmeRcGroupNameGrid{display:grid;grid-template-columns:42px minmax(0,1fr);gap:10px;align-items:end;}
+      .wmeRcGroupEmojiPanel{min-height:42px;border:0;background:transparent;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:none;}
+      .wmeRcGroupEmojiPanel .wmeRcEmojiBtn{width:42px;height:42px;min-width:42px;min-height:42px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;margin:0;padding:0;font-size:19px;line-height:1;place-items:center;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);}
+      .wmeRcGroupEmojiPanel .wmeRcEmojiBtn:hover{background:rgba(255,255,255,.085);border-color:rgba(255,255,255,.20);}
       .wmeRcGroupEmojiPanel .wmeRcEmojiBtn .wmeRcNoEmojiIcon{margin:auto;align-self:center;justify-self:center;}
-      .wmeRcGroupEmojiPanel .wmeRcNoEmojiIcon{width:22px;height:22px;display:grid;place-items:center;}
+      .wmeRcGroupEmojiPanel .wmeRcNoEmojiIcon{width:20px;height:20px;display:grid;place-items:center;border:0;background:transparent;border-radius:0;}
       .wmeRcGroupEmojiPanel .wmeRcNoEmojiIcon::before{inset:0;margin:auto;-webkit-mask-position:center;mask-position:center;}
-      .wmeRcGroupEmojiCaption{font-size:10.5px;font-weight:850;letter-spacing:.02em;color:rgba(230,238,255,.58);line-height:1;text-align:center;white-space:nowrap;}
-      .wmeRcGroupNameField{min-width:0;display:flex;flex-direction:column;gap:7px;}
+      .wmeRcGroupEmojiCaption{display:none!important;}
+      .wmeRcGroupNameField{min-width:0;display:flex;flex-direction:column;gap:6px;}
       .wmeRcGroupLabelRow{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:16px;}
       .wmeRcGroupFieldLabel{font-size:12.5px;font-weight:900;letter-spacing:.02em;color:rgba(240,246,255,.90);line-height:1.1;}
       .wmeRcGroupNameField .wmeRcLenHost{width:100%;}
-      .wmeRcGroupNameField .wmeRcInput{height:42px;padding:0 13px !important;border-radius:14px;background:rgba(12,18,30,.38);font:750 13px/1.25 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
+      .wmeRcGroupNameField .wmeRcInput{height:42px;padding:0 13px !important;border-radius:12px;background:rgba(12,18,30,.38);font:700 13px/1.25 var(--font_family_base,var(--font-family-base,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif));}
       .wmeRcGroupNameField .wmeRcInput.wmeRcHasCount{padding-right:13px !important;}
       .wmeRcLenCountIn.wmeRcGroupLenCount{position:static !important;right:auto !important;top:auto !important;transform:none !important;font-size:11px;font-weight:900;opacity:.56;color:rgba(230,238,255,.72);letter-spacing:.15px;}
       .wmeRcGroupHint{font-size:12px;font-weight:700;color:rgba(230,238,255,.56);line-height:1.35;margin-top:0;}
-      .wmeRcGroupQuickRow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:0;}
+      .wmeRcGroupQuickRow{display:none!important;}
       .wmeRcGroupQuickChip{height:28px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);color:rgba(235,243,255,.82);font-size:12px;font-weight:800;cursor:pointer;user-select:none;transition:background .14s ease,border-color .14s ease,transform .14s ease;}
       .wmeRcGroupQuickChip:hover{background:rgba(255,255,255,.075);border-color:rgba(255,255,255,.18);transform:translateY(-1px);}
       .wmeRcGroupNameModal .wmeRcEmojiPop{margin-top:2px;}
-      .wmeRcGroupNameModal .wmeRcModalActions{margin-top:0;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);}
+      .wmeRcGroupNameModal .wmeRcModalActions{margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);}
       .wmeRcGroupNameModal .wmeRcModalBtn{display:inline-flex;align-items:center;justify-content:center;min-width:84px;height:34px;padding:0 14px;border-radius:12px;font-weight:850;line-height:1;}
-      .wmeRcModal.theme-light .wmeRcGroupEmojiPanel,.wmeRcModal.waze-style.theme-light .wmeRcGroupEmojiPanel{background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(243,247,255,.92));border-color:rgba(37,99,235,.14);}
+      .wmeRcModal.theme-light .wmeRcGroupEmojiPanel,.wmeRcModal.waze-style.theme-light .wmeRcGroupEmojiPanel{background:transparent;border-color:transparent;}
+      .wmeRcModal.theme-light .wmeRcGroupEmojiPanel .wmeRcEmojiBtn,.wmeRcModal.waze-style.theme-light .wmeRcGroupEmojiPanel .wmeRcEmojiBtn{background:#fff;border-color:rgba(15,23,42,.15);color:#111827;box-shadow:inset 0 1px 0 rgba(255,255,255,.86),0 1px 2px rgba(15,23,42,.04);}
+      .wmeRcModal.theme-light .wmeRcGroupEmojiPanel .wmeRcEmojiBtn:hover,.wmeRcModal.waze-style.theme-light .wmeRcGroupEmojiPanel .wmeRcEmojiBtn:hover{background:#f8fafc;border-color:rgba(15,23,42,.22);}
       .wmeRcModal.theme-light .wmeRcGroupEmojiCaption,.wmeRcModal.waze-style.theme-light .wmeRcGroupEmojiCaption{color:rgba(17,24,39,.58) !important;-webkit-text-fill-color:rgba(17,24,39,.58) !important;}
       .wmeRcModal.theme-light .wmeRcGroupFieldLabel,.wmeRcModal.waze-style.theme-light .wmeRcGroupFieldLabel{color:#111827 !important;-webkit-text-fill-color:#111827 !important;}
       .wmeRcModal.theme-light .wmeRcGroupHint,.wmeRcModal.waze-style.theme-light .wmeRcGroupHint{color:rgba(17,24,39,.58) !important;-webkit-text-fill-color:rgba(17,24,39,.58) !important;}
       .wmeRcModal.theme-light .wmeRcLenCountIn.wmeRcGroupLenCount,.wmeRcModal.waze-style.theme-light .wmeRcLenCountIn.wmeRcGroupLenCount{color:rgba(17,24,39,.56) !important;-webkit-text-fill-color:rgba(17,24,39,.56) !important;}
       .wmeRcModal.theme-light .wmeRcGroupQuickChip,.wmeRcModal.waze-style.theme-light .wmeRcGroupQuickChip{background:rgba(255,255,255,.88);border-color:rgba(37,99,235,.13);color:#111827 !important;-webkit-text-fill-color:#111827 !important;}
       .wmeRcModal.theme-light .wmeRcGroupQuickChip:hover,.wmeRcModal.waze-style.theme-light .wmeRcGroupQuickChip:hover{background:rgba(236,244,255,.94);border-color:rgba(37,99,235,.22);}
-      @media (max-width:520px){.wmeRcGroupNameGrid{grid-template-columns:1fr;}.wmeRcGroupEmojiPanel{min-height:58px;flex-direction:row;justify-content:flex-start;padding:8px 10px;}.wmeRcGroupEmojiCaption{text-align:left;}.wmeRcGroupNameModal .wmeRcModalBody{padding:10px;}}
+      @media (max-width:520px){.wmeRcGroupNameGrid{grid-template-columns:42px minmax(0,1fr);gap:8px;}.wmeRcGroupNameModal .wmeRcModalBody{padding:12px;}}
       .wmeRcInput::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.85;cursor:pointer;}
 
       .wmeRcLayerRow{padding:4px 2px;display:flex;align-items:center;}
@@ -4632,7 +4697,7 @@ const pasteCfg = { speed: true, lock: true, direction: true, elevation: true };
       .wmeRcThemeSelect .wmeRcSelectBtn::after{right:8px;width:7px;height:7px;margin-top:-5px;opacity:.68;}
       .wmeRcSelectBtn:hover{background:transparent;}
       .wmeRcSelectBtn::after{content:"";position:absolute;right:10px;top:50%;width:8px;height:8px;margin-top:-6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);opacity:.72;}
-      .wmeRcSelectMenu{position:absolute;left:0;right:auto;top:calc(100% + 6px);z-index:2147483647;min-width:100%;width:max-content;max-width:180px;padding:5px;border-radius:12px;border:none;background:rgba(20,20,22,.96);box-shadow:none;backdrop-filter:blur(14px) saturate(150%);}
+      .wmeRcSelectMenu{position:absolute;left:0;right:auto;top:calc(100% + 6px);z-index:2147483647;min-width:100%;width:max-content;max-width:180px;padding:5px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:#151b26;box-shadow:0 14px 34px rgba(0,0,0,.34),0 2px 8px rgba(0,0,0,.18);backdrop-filter:none;-webkit-backdrop-filter:none;}
       .wmeRcSelectOpt{appearance:none;border:none;background:transparent;color:inherit;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:8px 10px;border-radius:9px;font-weight:700;text-align:left;}
       .wmeRcSelectOpt:hover{background:rgba(255,255,255,.06);}
       .wmeRcSelectOpt.is-active{background:rgba(255,255,255,.08);}
@@ -6194,7 +6259,9 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
       .wmeRcReminderModal .wmeRcTabs{display:inline-flex;align-items:center;flex:0 0 auto;align-self:center;height:34px;gap:2px;margin:0;padding:2px;border:1px solid rgba(255,255,255,.11);border-radius:999px;background:rgba(255,255,255,.045);}
       .wmeRcReminderModal .wmeRcTab{appearance:none;-webkit-appearance:none;min-width:38px;height:28px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:999px;background:transparent;box-shadow:none;color:inherit;font:inherit;font-size:12px;line-height:1;opacity:.78;pointer-events:auto;}
       .wmeRcReminderModal .wmeRcTab:hover{background:rgba(255,255,255,.07);transform:none;}
-      .wmeRcReminderModal .wmeRcTab.on{background:rgba(255,255,255,.12);border:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);opacity:1;}
+      .wmeRcReminderModal .wmeRcTab{transition:background .14s ease,color .14s ease,opacity .14s ease,box-shadow .14s ease;}
+      .wmeRcReminderModal .wmeRcTab:not(.on){opacity:.58;}
+      .wmeRcReminderModal .wmeRcTab.on{background:linear-gradient(180deg,#3b82f6,#2563eb);color:#fff!important;-webkit-text-fill-color:#fff!important;border:0;box-shadow:0 2px 8px rgba(37,99,235,.28),inset 0 1px 0 rgba(255,255,255,.18);opacity:1;font-weight:850;}
       .wmeRcReminderModal .wmeRcReminderSchedule{gap:10px;}
       .wmeRcReminderModal .wmeRcReminderQuickRow{gap:7px;margin:0 0 2px;padding:0;min-height:30px;}
       .wmeRcReminderModal .wmeRcQuick{appearance:none;-webkit-appearance:none;height:30px;padding:0 11px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.11);color:inherit;font:inherit;font-size:12px;line-height:1;font-weight:750;opacity:.86;pointer-events:auto;}
@@ -6247,6 +6314,250 @@ box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
       .wmeRcReminderModal.theme-light .wmeRcReminderPickerIcon,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcReminderPickerIcon{background:rgba(15,23,42,.035);border-color:rgba(15,23,42,.10);color:#334155;}
       .wmeRcReminderModal.theme-light .wmeRcPickerK,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcPickerK{color:rgba(15,23,42,.52)!important;-webkit-text-fill-color:rgba(15,23,42,.52)!important;}
       .wmeRcReminderModal.theme-light textarea.wmeRcInput,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal textarea.wmeRcInput{background:#fff!important;border-color:rgba(15,23,42,.14)!important;}
+      .wmeRcReminderModal.theme-light .wmeRcTabs,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcTabs{background:rgba(15,23,42,.045)!important;border-color:rgba(15,23,42,.13)!important;box-shadow:inset 0 1px 2px rgba(15,23,42,.04)!important;}
+      .wmeRcReminderModal.theme-light .wmeRcTab,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcTab{background:transparent!important;color:#334155!important;-webkit-text-fill-color:#334155!important;box-shadow:none!important;}
+      .wmeRcReminderModal.theme-light .wmeRcTab:not(.on),.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcTab:not(.on){opacity:.62!important;}
+      .wmeRcReminderModal.theme-light .wmeRcTab.on,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcTab.on{background:linear-gradient(180deg,#3b82f6,#2563eb)!important;color:#fff!important;-webkit-text-fill-color:#fff!important;box-shadow:0 2px 8px rgba(37,99,235,.26),inset 0 1px 0 rgba(255,255,255,.20)!important;opacity:1!important;}
+      .wmeRcReminderModal.theme-light .wmeRcModalActions,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcModalActions{background:rgba(248,250,252,.96)!important;border-top-color:rgba(15,23,42,.12)!important;}
+      .wmeRcReminderModal.theme-light .wmeRcModalBtn,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcModalBtn{background:#fff!important;border-color:rgba(15,23,42,.16)!important;color:#0f172a!important;-webkit-text-fill-color:#0f172a!important;}
+      .wmeRcReminderModal.theme-light .wmeRcModalBtn.danger,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcModalBtn.danger{background:#fff1f2!important;border-color:rgba(225,29,72,.28)!important;color:#be123c!important;-webkit-text-fill-color:#be123c!important;}
+      .wmeRcReminderModal.theme-light .wmeRcModalBtn.primary,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcModalBtn.primary{background:linear-gradient(180deg,#3b82f6,#2563eb)!important;border-color:rgba(37,99,235,.58)!important;color:#fff!important;-webkit-text-fill-color:#fff!important;}
+      .wmeRcReminderModal.theme-light .wmeRcTab.on *,
+      .wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcTab.on *,
+      .wmeRcReminderModal.theme-light .wmeRcModalBtn.primary *,
+      .wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcModalBtn.primary *{color:#fff!important;-webkit-text-fill-color:#fff!important;text-shadow:none!important;}
+
+      .wmeRcGroupEmojiPanel .wmeRcNoEmojiIcon::before{
+        content:'' !important;
+        position:absolute !important;
+        inset:0 !important;
+        display:block !important;
+        width:auto !important;
+        height:auto !important;
+        margin:auto !important;
+        padding:0 !important;
+        background:currentColor !important;
+        opacity:.96 !important;
+        -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8'/%3E%3Cpath d='M9 10h.01'/%3E%3Cpath d='M15 10h.01'/%3E%3Cpath d='M8.8 14.2c1.1 1.2 2.2 1.8 3.2 1.8s2.1-.6 3.2-1.8'/%3E%3C/svg%3E") center/18px 18px no-repeat !important;
+        mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8'/%3E%3Cpath d='M9 10h.01'/%3E%3Cpath d='M15 10h.01'/%3E%3Cpath d='M8.8 14.2c1.1 1.2 2.2 1.8 3.2 1.8s2.1-.6 3.2-1.8'/%3E%3C/svg%3E") center/18px 18px no-repeat !important;
+      }
+      .wmeRcNoEmojiIconSm::before{
+        content:'' !important;
+        display:block !important;
+        position:absolute !important;
+        inset:0 !important;
+        background:currentColor !important;
+        opacity:.96 !important;
+        -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7L7 17'/%3E%3C/svg%3E") center/16px 16px no-repeat !important;
+        mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7L7 17'/%3E%3C/svg%3E") center/16px 16px no-repeat !important;
+        font-size:0 !important;
+        line-height:0 !important;
+        transform:none !important;
+      }
+
+      /* Picker popups are attached to <body>, so they need their own theme scope. */
+      .wmeRcPickerPop.theme-light{color:#0f172a!important;background:#f8fafc!important;border:1px solid rgba(15,23,42,.14)!important;box-shadow:0 22px 54px rgba(15,23,42,.20)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+      .wmeRcPickerPop.theme-light.wmeRcCalPop,.wmeRcPickerPop.theme-light.wmeRcTimePop{background:linear-gradient(180deg,#ffffff,#f8fafc)!important;border-color:rgba(15,23,42,.14)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcCalTitle,.wmeRcPickerPop.theme-light .wmeRcTimeHdr{color:#0f172a!important;-webkit-text-fill-color:#0f172a!important;}
+      .wmeRcPickerPop.theme-light .wmeRcCalDow,.wmeRcPickerPop.theme-light .wmeRcTimeClockHelp{color:#64748b!important;-webkit-text-fill-color:#64748b!important;opacity:1!important;}
+      .wmeRcPickerPop.theme-light .wmeRcCalNav{background:#fff!important;border-color:rgba(15,23,42,.14)!important;color:#334155!important;-webkit-text-fill-color:#334155!important;box-shadow:0 1px 2px rgba(15,23,42,.06)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcCalNav:hover{background:#f1f5f9!important;border-color:rgba(37,99,235,.28)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcCalCell{background:#fff!important;border-color:rgba(15,23,42,.13)!important;color:#0f172a!important;-webkit-text-fill-color:#0f172a!important;box-shadow:0 1px 2px rgba(15,23,42,.04)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcCalCell:hover{background:#eff6ff!important;border-color:rgba(37,99,235,.26)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcCalCell.off{background:transparent!important;border-color:transparent!important;box-shadow:none!important;}
+      .wmeRcPickerPop.theme-light .wmeRcCalCell.sel{background:linear-gradient(180deg,#3b82f6,#2563eb)!important;border-color:#2563eb!important;color:#fff!important;-webkit-text-fill-color:#fff!important;box-shadow:0 0 0 3px rgba(37,99,235,.12)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcTimeClockInput{background:#fff!important;color:#0f172a!important;-webkit-text-fill-color:#0f172a!important;caret-color:#0f172a!important;box-shadow:inset 0 0 0 1px rgba(15,23,42,.16)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcTimeClockInput:focus{box-shadow:inset 0 0 0 1px rgba(37,99,235,.50),0 0 0 4px rgba(37,99,235,.10)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcClock{background:radial-gradient(circle at 30% 25%,#ffffff,#f1f5f9 58%,#e2e8f0)!important;border-color:rgba(15,23,42,.14)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.9),0 12px 28px rgba(15,23,42,.13)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcClock::after{border-color:rgba(15,23,42,.12)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcClockTick{background:rgba(15,23,42,.30)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcClockNum{color:#334155!important;-webkit-text-fill-color:#334155!important;text-shadow:none!important;}
+      .wmeRcPickerPop.theme-light .wmeRcClockCenter{background:#2563eb!important;box-shadow:0 3px 10px rgba(37,99,235,.28)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcClockHand{background:linear-gradient(180deg,#2563eb,#60a5fa)!important;filter:drop-shadow(0 4px 7px rgba(37,99,235,.22))!important;}
+      .wmeRcPickerPop.theme-light .wmeRcClockHand::after{background:#2563eb!important;box-shadow:0 3px 9px rgba(37,99,235,.24)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcTimeDoneBtn,.wmeRcPickerPop.theme-light .wmeRcTimeResetBtn{background:#fff!important;border-color:rgba(15,23,42,.16)!important;color:#0f172a!important;-webkit-text-fill-color:#0f172a!important;box-shadow:0 1px 2px rgba(15,23,42,.05)!important;}
+      .wmeRcPickerPop.theme-light .wmeRcTimeDoneBtn:not(.wmeRcTimeResetBtn){background:linear-gradient(180deg,#3b82f6,#2563eb)!important;border-color:rgba(37,99,235,.56)!important;color:#fff!important;-webkit-text-fill-color:#fff!important;}
+      .wmeRcModalBackdrop{background:rgba(6,10,18,.62)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+      .wmeRcModal,.wmeRcModal.waze-style{background:#0b1320!important;background-image:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+      .wmeRcModal .wmeRcModalHdr,.wmeRcModal.waze-style .wmeRcModalHdr{background:#162235!important;}
+      .wmeRcReminderModal{background:#0b1320!important;background-image:none!important;}
+      .wmeRcReminderModal .wmeRcModalActions{background:#09111c!important;}
+      .wmeRcModal.theme-light,.wmeRcModal.waze-style.theme-light{background:#f5f6f8!important;background-image:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+      .wmeRcModal.theme-light .wmeRcModalHdr,.wmeRcModal.waze-style.theme-light .wmeRcModalHdr{background:#f3f4f6!important;border-bottom-color:rgba(15,23,42,.12)!important;}
+      .wmeRcReminderModal.theme-light,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal{background:#f5f6f8!important;background-image:none!important;}
+      .wmeRcReminderModal.theme-light .wmeRcModalActions,.wmeRcModal.waze-style.theme-light.wmeRcReminderModal .wmeRcModalActions{background:#eceff3!important;}
+      .wmeRcSelectMenu{position:fixed!important;left:-9999px;top:-9999px;right:auto!important;max-width:min(220px,calc(100vw - 16px));backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+      .wmeRcModal.theme-light .wmeRcSelectMenu,.wmeRcModal.wmeRcLight .wmeRcSelectMenu,.wmeRcModal.waze-style.theme-light .wmeRcSelectMenu,.wmeRcSideCard.theme-light .wmeRcSelectMenu,.theme-light .wmeRcSelectMenu,.wmeRcLight .wmeRcSelectMenu{background:#ffffff!important;color:#111827!important;border:1px solid rgba(40,56,72,.16)!important;box-shadow:0 14px 34px rgba(15,23,42,.14),0 2px 8px rgba(15,23,42,.08)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+      .wmeRcModal.theme-light .wmeRcSelectOpt,.wmeRcModal.waze-style.theme-light .wmeRcSelectOpt,.theme-light .wmeRcSelectOpt,.wmeRcLight .wmeRcSelectOpt{color:#111827!important;-webkit-text-fill-color:#111827!important;}
+      .wmeRcModal.theme-light .wmeRcSelectOpt:hover,.wmeRcModal.waze-style.theme-light .wmeRcSelectOpt:hover,.theme-light .wmeRcSelectOpt:hover,.wmeRcLight .wmeRcSelectOpt:hover{background:rgba(59,130,246,.08)!important;}
+      /* v1.0.14: import pin pills + remove stray empty modal squares. */
+      .wmeRcImportPinsPreview{
+        display:flex;
+        flex-wrap:wrap;
+        gap:7px;
+        max-height:190px;
+        overflow:auto;
+        padding:2px;
+        line-height:1.2;
+      }
+      .wmeRcImportPinPill{
+        --pinColor:#ff8a00;
+        min-height:28px;
+        max-width:100%;
+        display:inline-flex;
+        align-items:center;
+        gap:7px;
+        padding:0 10px 0 8px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.12);
+        background:rgba(255,255,255,.055);
+        color:inherit;
+        font-weight:800;
+        font-size:12px;
+      }
+      .wmeRcImportPinPill.more{
+        color:rgba(235,243,255,.72);
+        padding:0 10px;
+      }
+      .wmeRcImportPinDot{
+        width:10px;
+        height:10px;
+        border-radius:999px;
+        background:var(--pinColor);
+        box-shadow:0 0 0 2px rgba(255,255,255,.12);
+        flex:0 0 auto;
+      }
+      .wmeRcImportPinName{
+        min-width:0;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+      }
+      .wmeRcModal.theme-light .wmeRcImportPinPill,
+      .wmeRcModal.waze-style.theme-light .wmeRcImportPinPill{
+        background:rgba(255,255,255,.96);
+        border-color:rgba(15,23,42,.13);
+        color:#111827;
+      }
+      .wmeRcModal.theme-light .wmeRcImportPinPill.more,
+      .wmeRcModal.waze-style.theme-light .wmeRcImportPinPill.more{
+        color:rgba(17,24,39,.62);
+      }
+      .wmeRcModalActions > .wmeRcI:empty,
+      .wmeRcModalActions > .wmeRcNoEmojiIcon,
+      .wmeRcModalActions > .wmeRcEmojiPop.hidden,
+      .wmeRcModalActions > .wmeRcEmojiPop:empty,
+      .wmeRcModalActions > :empty:not(.wmeRcModalBtn):not(button):not(input):not(textarea):not(select){
+        display:none!important;
+        width:0!important;
+        height:0!important;
+        margin:0!important;
+        padding:0!important;
+        border:0!important;
+      }
+      .wmeRcModalTitleBlock > .wmeRcI:empty{
+        display:none!important;
+      }
+
+      /* v1.0.13: solid modals and no blue glow/shadow styling. */
+      .wmeRcModalBackdrop{
+        background:rgba(4,8,14,.76)!important;
+        backdrop-filter:none!important;
+        -webkit-backdrop-filter:none!important;
+      }
+      .wmeRcModal,
+      .wmeRcModal.theme-dark,
+      .wmeRcModal.waze-style,
+      .wmeRcModal.waze-style.theme-dark{
+        background:#0b1320!important;
+        background-image:none!important;
+        backdrop-filter:none!important;
+        -webkit-backdrop-filter:none!important;
+        box-shadow:0 28px 84px rgba(0,0,0,.52),0 8px 24px rgba(0,0,0,.34)!important;
+      }
+      .wmeRcModal .wmeRcModalHdr,
+      .wmeRcModal.theme-dark .wmeRcModalHdr,
+      .wmeRcModal.waze-style.theme-dark .wmeRcModalHdr{
+        background:#111b2a!important;
+        background-image:none!important;
+      }
+      .wmeRcModal .wmeRcModalBody,
+      .wmeRcModal.theme-dark .wmeRcModalBody,
+      .wmeRcModal.waze-style.theme-dark .wmeRcModalBody{
+        background:#0b1320!important;
+      }
+      .wmeRcModal .wmeRcModalActions,
+      .wmeRcReminderModal .wmeRcModalActions,
+      .wmeRcModal.theme-dark .wmeRcModalActions,
+      .wmeRcModal.waze-style.theme-dark .wmeRcModalActions{
+        background:#09111c!important;
+        background-image:none!important;
+      }
+      .wmeRcModal.theme-light,
+      .wmeRcModal.waze-style.theme-light{
+        box-shadow:0 24px 70px rgba(15,23,42,.18),0 8px 22px rgba(15,23,42,.10)!important;
+      }
+      .wmeRcModal :where(
+        .wmeRcModalBtn,
+        .wmeRcTab,
+        .wmeRcChip,
+        .wmeRcQuick,
+        .wmeRcStepBtn,
+        .wmeRcPickerBtn,
+        .wmeRcSoundBtn,
+        .wmeRcSelectBtn,
+        .wmeRcInput,
+        textarea,
+        .wmeRcReminderEditableNumber,
+        .wmeRcClockValue
+      ){
+        box-shadow:none!important;
+      }
+      .wmeRcModal :where(
+        .wmeRcTab.on,
+        .wmeRcChip.on,
+        .wmeRcModalBtn.primary,
+        .wmeRcQuick:hover,
+        .wmeRcPickerBtn:hover,
+        .wmeRcStepBtn:hover,
+        .wmeRcReminderEditableNumber:hover,
+        .wmeRcSelectBtn:focus,
+        .wmeRcInput:focus,
+        textarea:focus
+      ){
+        box-shadow:none!important;
+      }
+
+
+      /* v1.0.15: remove the visible boxed/strip background behind modal action buttons. */
+      .wmeRcModal .wmeRcModalActions,
+      .wmeRcModal.theme-dark .wmeRcModalActions,
+      .wmeRcModal.theme-light .wmeRcModalActions,
+      .wmeRcModal.waze-style .wmeRcModalActions,
+      .wmeRcModal.waze-style.theme-dark .wmeRcModalActions,
+      .wmeRcModal.waze-style.theme-light .wmeRcModalActions,
+      .wmeRcReminderModal .wmeRcModalActions,
+      .wmeRcGroupNameModal .wmeRcModalActions{
+        background:transparent!important;
+        background-image:none!important;
+        border:0!important;
+        box-shadow:none!important;
+      }
+      .wmeRcModalBody > .wmeRcModalActions,
+      .wmeRcGroupNameModal .wmeRcModalBody > .wmeRcModalActions{
+        margin-top:14px!important;
+        padding:0!important;
+      }
+      .wmeRcReminderModal .wmeRcModalActions{
+        margin:8px 0 0!important;
+        padding:0!important;
+      }
+      .wmeRcModalActions::before,
+      .wmeRcModalActions::after{
+        content:none!important;
+        display:none!important;
+      }
+
       @media(max-width:560px){.wmeRcReminderModal .wmeRcDT{grid-template-columns:1fr}.wmeRcReminderModal .wmeRcQuick{flex:1 1 calc(50% - 7px);text-align:center}.wmeRcReminderModal .wmeRcModalBtn.primary{min-width:96px}}
 
 `;
@@ -7117,18 +7428,172 @@ function _pinsShareEncode(obj) {
 function _pinsShareDecode(s) {
   try { return JSON.parse(decodeURIComponent(escape(atob(String(s || ""))))); } catch { return null; }
 }
+function _pinsShareB64UrlEncode(obj) {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+  } catch { return ""; }
+}
+function _pinsShareB64UrlDecode(s) {
+  try {
+    let v = String(s || "").trim().replace(/-/g, "+").replace(/_/g, "/");
+    while (v.length % 4) v += "=";
+    return JSON.parse(decodeURIComponent(escape(atob(v))));
+  } catch { return null; }
+}
+function _pinsShareRoundCoord(v) {
+  try {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    return Math.round(n * 1e6) / 1e6;
+  } catch { return null; }
+}
+function _pinsShareColorToCompact(color) {
+  try {
+    const c = normalizePinColor(color);
+    const idx = (PIN_COLOR_PRESETS || []).map(normalizePinColor).indexOf(c);
+    return idx >= 0 ? idx : c;
+  } catch { return normalizePinColor(color); }
+}
+function _pinsShareCompactToColor(v) {
+  try {
+    if (typeof v === "number" && (PIN_COLOR_PRESETS || [])[v]) return normalizePinColor(PIN_COLOR_PRESETS[v]);
+    return normalizePinColor(v);
+  } catch { return normalizePinColor(v); }
+}
+function _pinsShareSymbolToCompact(symbol) {
+  const s = normalizePinMapSymbol(symbol);
+  if (!s || s === "default") return null;
+  return s;
+}
+function _pinsShareCompactToSymbol(v) {
+  try { return normalizePinMapSymbol(v || "default"); } catch { return "default"; }
+}
+function _pinsShareBuildCompactPayload(pins, groups) {
+  try {
+    const groupNames = [];
+    const groupIndex = new Map();
+    const groupIdxFor = (name) => {
+      const nm = String(name || "").trim();
+      if (!nm) return null;
+      const key = nm.toLowerCase();
+      if (groupIndex.has(key)) return groupIndex.get(key);
+      const idx = groupNames.length;
+      groupIndex.set(key, idx);
+      groupNames.push(nm);
+      return idx;
+    };
+
+    const outPins = [];
+    for (const p of (Array.isArray(pins) ? pins : [])) {
+      if (!p || !Number.isFinite(Number(p.lon)) || !Number.isFinite(Number(p.lat))) continue;
+      const gid = normalizeGroupId(p.groupId);
+      const grp = (groups || []).find((g) => normalizeGroupId(g.id) === gid);
+      const gidx = groupIdxFor(grp && grp.name);
+      const row = [
+        String(p.name || "Pinned place"),
+        _pinsShareRoundCoord(p.lon),
+        _pinsShareRoundCoord(p.lat)
+      ];
+
+      const zoom = Number.isFinite(Number(p.zoom)) ? Math.round(Number(p.zoom)) : null;
+      const color = _pinsShareColorToCompact(p.color);
+      const sym = _pinsShareSymbolToCompact(p.mapSymbol);
+      const hide = p.hideOnMap === true ? 1 : null;
+      const note = String(p.note || "");
+
+      if (zoom != null || color !== 0 || sym || gidx != null || hide || note) row[3] = zoom;
+      if (color !== 0 || sym || gidx != null || hide || note) row[4] = color;
+      if (sym || gidx != null || hide || note) row[5] = sym || "";
+      if (gidx != null || hide || note) row[6] = gidx;
+      if (hide || note) row[7] = hide ? 1 : 0;
+      if (note) row[8] = note;
+
+      outPins.push(row);
+    }
+
+    return { v: 2, g: groupNames, p: outPins };
+  } catch {
+    return { v: 2, g: [], p: [] };
+  }
+}
+function _pinsShareExpandCompactPayload(payload) {
+  try {
+    if (!payload || Number(payload.v) !== 2 || !Array.isArray(payload.p)) return null;
+    const groups = Array.isArray(payload.g) ? payload.g : [];
+    return {
+      v: 1,
+      pins: payload.p.map((r) => {
+        const row = Array.isArray(r) ? r : [];
+        const gidx = Number.isFinite(Number(row[6])) ? Number(row[6]) : null;
+        const groupName = gidx != null ? String(groups[gidx] || "") : "";
+        return {
+          name: String(row[0] || "Pinned place"),
+          lon: Number(row[1]),
+          lat: Number(row[2]),
+          zoom: Number.isFinite(Number(row[3])) ? Number(row[3]) : null,
+          color: _pinsShareCompactToColor(row.length > 4 ? row[4] : 0),
+          mapSymbol: _pinsShareCompactToSymbol(row[5] || "default"),
+          groupName,
+          hideOnMap: row[7] === 1 || row[7] === true,
+          note: String(row[8] || "")
+        };
+      }).filter((p) => Number.isFinite(Number(p.lon)) && Number.isFinite(Number(p.lat)))
+    };
+  } catch { return null; }
+}
+function _getShortSharedPinsImportParam() {
+  try {
+    const hash = String(location.hash || "").replace(/^#/, "");
+    if (!hash) return "";
+    if (hash.startsWith("rcf=")) return decodeURIComponent(hash.slice(4));
+    const params = new URLSearchParams(hash);
+    return params.get("rcf") || "";
+  } catch { return ""; }
+}
 function _getSharedPinsImportParam() {
   try {
+    const short = _getShortSharedPinsImportParam();
+    if (short) return { type: "short", raw: short };
+  } catch {}
+  try {
     const u = new URL(location.href);
-    return u.searchParams.get("wmeRcPinsImport") || "";
-  } catch { return ""; }
+    const raw = u.searchParams.get("wmeRcPinsImport") || "";
+    return raw ? { type: "legacy", raw } : null;
+  } catch { return null; }
+}
+function _decodeSharedPinsImportParam(param) {
+  try {
+    if (!param) return null;
+    if (typeof param === "string") return _pinsShareDecode(param);
+    if (param.type === "short") return _pinsShareExpandCompactPayload(_pinsShareB64UrlDecode(param.raw));
+    return _pinsShareDecode(param.raw);
+  } catch { return null; }
 }
 function _clearSharedPinsImportParam() {
   try {
     const u = new URL(location.href);
-    if (!u.searchParams.has("wmeRcPinsImport")) return;
-    u.searchParams.delete("wmeRcPinsImport");
-    history.replaceState(null, "", u.toString());
+    let changed = false;
+    if (u.searchParams.has("wmeRcPinsImport")) {
+      u.searchParams.delete("wmeRcPinsImport");
+      changed = true;
+    }
+    const hash = String(u.hash || "").replace(/^#/, "");
+    if (hash) {
+      const params = new URLSearchParams(hash);
+      if (params.has("rcf")) {
+        params.delete("rcf");
+        const next = params.toString();
+        u.hash = next ? `#${next}` : "";
+        changed = true;
+      } else if (hash.startsWith("rcf=")) {
+        u.hash = "";
+        changed = true;
+      }
+    }
+    if (changed) history.replaceState(null, "", u.toString());
   } catch {}
 }
 function _findOrCreatePinGroupByName(name) {
@@ -7152,28 +7617,12 @@ function buildSharedPinsLink(pinIds) {
     const pins = loadPins().filter((p) => ids.includes(String(p.id)));
     if (!pins.length) return "";
     const groups = loadPinGroups();
-    const payload = {
-      v: 1,
-      pins: pins.map((p) => {
-        const gid = normalizeGroupId(p.groupId);
-        const grp = groups.find((g) => normalizeGroupId(g.id) === gid);
-        return {
-          name: String(p.name || "Pinned place"),
-          lon: Number(p.lon),
-          lat: Number(p.lat),
-          zoom: Number.isFinite(Number(p.zoom)) ? Number(p.zoom) : null,
-          color: normalizePinColor(p.color),
-          mapSymbol: normalizePinMapSymbol(p.mapSymbol),
-          groupName: String(grp && grp.name || ""),
-          hideOnMap: p.hideOnMap === true,
-          note: String(p.note || "")
-        };
-      })
-    };
-    const enc = _pinsShareEncode(payload);
+    const payload = _pinsShareBuildCompactPayload(pins, groups);
+    const enc = _pinsShareB64UrlEncode(payload);
     if (!enc) return "";
     const u = new URL(location.href);
-    u.searchParams.set("wmeRcPinsImport", enc);
+    u.searchParams.delete("wmeRcPinsImport");
+    u.hash = `rcf=${enc}`;
     return u.toString();
   } catch {
     return "";
@@ -7228,7 +7677,7 @@ function maybePromptImportSharedPins() {
     _pinsShareImportPrompted = true;
     const raw = _getSharedPinsImportParam();
     if (!raw) return;
-    const payload = _pinsShareDecode(raw);
+    const payload = _decodeSharedPinsImportParam(raw);
     const arr = Array.isArray(payload && payload.pins) ? payload.pins : [];
     if (!arr.length) { _clearSharedPinsImportParam(); return; }
     openModal({
@@ -7244,11 +7693,27 @@ function maybePromptImportSharedPins() {
         hint.textContent = `Add ${arr.length} shared map pin${arr.length === 1 ? "" : "s"} to your panel?`;
         wrap.appendChild(hint);
         const preview = document.createElement("div");
-        preview.className = "wmeRcHint";
-        preview.style.maxHeight = "180px";
-        preview.style.overflow = "auto";
-        preview.style.lineHeight = "1.45";
-        preview.textContent = arr.slice(0, 8).map((p) => String(p && p.name || "Pinned place")).join(" • ") + (arr.length > 8 ? ` • +${arr.length - 8} more` : "");
+        preview.className = "wmeRcImportPinsPreview";
+        const shownPins = arr.slice(0, 18);
+        for (const p of shownPins) {
+          const pill = document.createElement("span");
+          pill.className = "wmeRcImportPinPill";
+          try { pill.style.setProperty("--pinColor", normalizePinColor(p && p.color)); } catch {}
+          const dot = document.createElement("span");
+          dot.className = "wmeRcImportPinDot";
+          const label = document.createElement("span");
+          label.className = "wmeRcImportPinName";
+          label.textContent = String(p && p.name || "Pinned place");
+          pill.appendChild(dot);
+          pill.appendChild(label);
+          preview.appendChild(pill);
+        }
+        if (arr.length > shownPins.length) {
+          const more = document.createElement("span");
+          more.className = "wmeRcImportPinPill more";
+          more.textContent = `+${arr.length - shownPins.length} more`;
+          preview.appendChild(more);
+        }
         wrap.appendChild(preview);
         const actions = document.createElement("div");
         actions.className = "wmeRcModalActions";
@@ -8301,37 +8766,112 @@ function makeClusterSvgDataUri(count, colors) {
 }
 
 function clusterByPixel(items, distPx) {
-  const dist2 = (distPx || 36) * (distPx || 36);
+  const dist = Math.max(18, Number(distPx) || 36);
+  const dist2 = dist * dist;
+  const remaining = (Array.isArray(items) ? items : [])
+    .filter((it) => it && it.id != null && it.px && Number.isFinite(Number(it.px.x)) && Number.isFinite(Number(it.px.y)))
+    .slice();
   const out = [];
-  const used = new Set();
-  for (let i = 0; i < items.length; i++) {
-    if (used.has(items[i].id)) continue;
-    const a = items[i];
-    const cluster = [a];
-    used.add(a.id);
-    for (let j = i + 1; j < items.length; j++) {
-      const b = items[j];
-      if (used.has(b.id)) continue;
-      const dx = (b.px.x - a.px.x);
-      const dy = (b.px.y - a.px.y);
-      if ((dx*dx + dy*dy) <= dist2) {
-        cluster.push(b);
-        used.add(b.id);
+
+  while (remaining.length) {
+    const cluster = [remaining.shift()];
+    let changed = true;
+
+    // Grow around the live centroid instead of only comparing to the first item.
+    // This prevents zoomed-out pins from splitting into too many small bubbles.
+    while (changed) {
+      changed = false;
+      let cx = 0, cy = 0;
+      for (const it of cluster) {
+        cx += Number(it.px.x);
+        cy += Number(it.px.y);
+      }
+      cx /= cluster.length;
+      cy /= cluster.length;
+
+      for (let i = remaining.length - 1; i >= 0; i--) {
+        const b = remaining[i];
+        const dx = Number(b.px.x) - cx;
+        const dy = Number(b.px.y) - cy;
+        if ((dx * dx + dy * dy) <= dist2) {
+          cluster.push(b);
+          remaining.splice(i, 1);
+          changed = true;
+        }
       }
     }
+
     out.push(cluster);
   }
+
   return out;
 }
 
 function getNormalPinClusterDistancePx(zoom) {
   const z = Number(zoom);
-  if (!Number.isFinite(z)) return 40;
-  if (z >= 15) return 16;
-  if (z >= 14) return 20;
-  if (z >= 13) return 26;
-  if (z >= 12) return 32;
-  return 40;
+  if (!Number.isFinite(z)) return 96;
+  if (z >= 16) return 0;
+  if (z >= 15) return 22;
+  if (z >= 14) return 34;
+  if (z >= 13) return 46;
+  if (z >= 12) return 60;
+  if (z >= 11) return 76;
+  if (z >= 10) return 94;
+  if (z >= 9) return 112;
+  if (z >= 8) return 132;
+  return 154;
+}
+
+function getClusterLonLatFromItems(items, map, ol) {
+  try {
+    const arr = Array.isArray(items) ? items.filter(Boolean) : [];
+    if (!arr.length) return null;
+
+    let pxSumX = 0, pxSumY = 0, pxCount = 0;
+    for (const it of arr) {
+      if (it && it.px && Number.isFinite(Number(it.px.x)) && Number.isFinite(Number(it.px.y))) {
+        pxSumX += Number(it.px.x);
+        pxSumY += Number(it.px.y);
+        pxCount++;
+      }
+    }
+
+    if (pxCount && map && ol && typeof map.getLonLatFromLayerPx === "function" && typeof ol.Pixel === "function") {
+      const ll = map.getLonLatFromLayerPx(new ol.Pixel(pxSumX / pxCount, pxSumY / pxCount));
+      if (ll && Number.isFinite(Number(ll.lon)) && Number.isFinite(Number(ll.lat))) return ll;
+    }
+
+    let lonSum = 0, latSum = 0, llCount = 0;
+    for (const it of arr) {
+      const ll = it && it.ll;
+      if (ll && Number.isFinite(Number(ll.lon)) && Number.isFinite(Number(ll.lat))) {
+        lonSum += Number(ll.lon);
+        latSum += Number(ll.lat);
+        llCount++;
+      }
+    }
+
+    if (llCount && ol && typeof ol.LonLat === "function") {
+      return new ol.LonLat(lonSum / llCount, latSum / llCount);
+    }
+  } catch {}
+  return null;
+}
+
+function getClusterPixelFromItems(items) {
+  try {
+    const arr = Array.isArray(items) ? items.filter(Boolean) : [];
+    let x = 0, y = 0, n = 0;
+    for (const it of arr) {
+      if (it && it.px && Number.isFinite(Number(it.px.x)) && Number.isFinite(Number(it.px.y))) {
+        x += Number(it.px.x);
+        y += Number(it.px.y);
+        n++;
+      }
+    }
+    if (n) return { x: x / n, y: y / n };
+  } catch {}
+  return null;
 }
 
 function shouldClusterNormalPinsAtZoom(zoom) {
@@ -8988,9 +9528,8 @@ function renderPinsMarkers(force = false) {
                 keepClusters.add(cid);
                 ids.forEach((x) => clusteredIds.add(x));
 
-                let lonSum = 0, latSum = 0;
-                for (const it of arr) { lonSum += Number(it.ll.lon); latSum += Number(it.ll.lat); }
-                const llc = new ol.LonLat(lonSum / arr.length, latSum / arr.length);
+                const llc = getClusterLonLatFromItems(arr, map, ol);
+                if (!llc) continue;
 
                 const url = makeCameraClusterSvgDataUri(arr.length);
                 let mk = pinsOlClusterMarkers.get(cid);
@@ -9032,13 +9571,12 @@ function renderPinsMarkers(force = false) {
                 keepClusters.add(cid);
                 ids.forEach((x) => clusteredIds.add(x));
 
-                let lonSum = 0, latSum = 0;
-                for (const it of cl) { lonSum += Number(it.ll.lon); latSum += Number(it.ll.lat); }
-                const llc = new ol.LonLat(lonSum / cl.length, latSum / cl.length);
+                const llc = getClusterLonLatFromItems(cl, map, ol);
+                if (!llc) continue;
 
                 const url = makeClusterSvgDataUri(cl.length, cl.map((x) => x?.pin?.color).filter(Boolean));
                 let mk = pinsOlClusterMarkers.get(cid);
-                const needsRecreate = !mk || !mk.icon || mk.icon.url !== url || String(mk.mapSymbol || "default") !== String(normalizePinMapSymbol(pin.mapSymbol));
+                const needsRecreate = !mk || !mk.icon || mk.icon.url !== url || String(mk.mapSymbol || "cluster") !== "cluster";
 
                 if (needsRecreate) {
                   try { if (mk) olLayer.removeMarker(mk); } catch {}
@@ -9047,6 +9585,7 @@ function renderPinsMarkers(force = false) {
                   const icon = new ol.Icon(url, size, offset);
                   mk = new ol.Marker(llc, icon);
                   mk.clusterId = cid;
+                  mk.mapSymbol = "cluster";
                   mk.clusterLat = (cl[0]?.pin?.lat);
                   mk.clusterLon = (cl[0]?.pin?.lon);
 
@@ -9304,7 +9843,7 @@ function renderPinsMarkers(force = false) {
       el.style.backgroundSize = "contain";
       el.style.width = "42px";
       el.style.height = "42px";
-      const px = first.px || getMapPixelFromLonLat(first.pin.lon, first.pin.lat);
+      const px = getClusterPixelFromItems(arr) || first.px || getMapPixelFromLonLat(first.pin.lon, first.pin.lat);
       if (px) {
         const x = Math.round(px.x - 21);
         const y = Math.round(px.y - 21);
@@ -9938,6 +10477,67 @@ function normalizePinSearchText(value) {
   }
 }
 
+function _capturePinsPanelScrollState() {
+  try {
+    if (!pinsPanelEl) return null;
+    const list = pinsPanelEl.querySelector(".wmeRcPinsList");
+    const groups = [];
+    try {
+      (list || pinsPanelEl).querySelectorAll(".wmeRcPinsGroupPins").forEach((el) => {
+        const gid = String(el.dataset.groupId || (el.closest(".wmeRcPinsGroupBody") && el.closest(".wmeRcPinsGroupBody").dataset.groupId) || "");
+        groups.push({ gid, top: Number(el.scrollTop || 0), left: Number(el.scrollLeft || 0) });
+      });
+    } catch {}
+    return {
+      panelTop: Number(pinsPanelEl.scrollTop || 0),
+      panelLeft: Number(pinsPanelEl.scrollLeft || 0),
+      listTop: list ? Number(list.scrollTop || 0) : 0,
+      listLeft: list ? Number(list.scrollLeft || 0) : 0,
+      groups
+    };
+  } catch {
+    return null;
+  }
+}
+
+function _restorePinsPanelScrollState(snap) {
+  try {
+    if (!snap || !pinsPanelEl) return;
+    pinsPanelEl.scrollTop = Number(snap.panelTop || 0);
+    pinsPanelEl.scrollLeft = Number(snap.panelLeft || 0);
+    const list = pinsPanelEl.querySelector(".wmeRcPinsList");
+    if (list) {
+      list.scrollTop = Number(snap.listTop || 0);
+      list.scrollLeft = Number(snap.listLeft || 0);
+    }
+    try {
+      for (const g of (snap.groups || [])) {
+        let el = null;
+        try { el = pinsPanelEl.querySelector(`.wmeRcPinsGroupPins[data-group-id="${CSS.escape(String(g.gid || ""))}"]`); } catch {}
+        if (!el) {
+          try {
+            const body = pinsPanelEl.querySelector(`.wmeRcPinsGroupBody[data-group-id="${CSS.escape(String(g.gid || ""))}"]`);
+            el = body && body.querySelector(".wmeRcPinsGroupPins");
+          } catch {}
+        }
+        if (el) {
+          el.scrollTop = Number(g.top || 0);
+          el.scrollLeft = Number(g.left || 0);
+        }
+      }
+    } catch {}
+  } catch {}
+}
+
+function renderPinsPanelPreserveScroll(force = true) {
+  const snap = _capturePinsPanelScrollState();
+  try { renderPinsPanel(!!force); } catch {}
+  try { _restorePinsPanelScrollState(snap); } catch {}
+  try { requestAnimationFrame(() => { try { _restorePinsPanelScrollState(snap); } catch {} }); } catch {}
+  try { setTimeout(() => { try { _restorePinsPanelScrollState(snap); } catch {} }, 0); } catch {}
+  try { setTimeout(() => { try { _restorePinsPanelScrollState(snap); } catch {} }, 80); } catch {}
+}
+
 function renderPinsPanel(force = false) {
   try { hidePinNotePreview(0); } catch {}
   if (!pinsPanelEl) return;
@@ -10411,7 +11011,7 @@ try { titleWrap.style.cursor = "default"; } catch {}
       const pid = String(pin.id);
       if (pinsShareSelected.has(pid)) pinsShareSelected.delete(pid);
       else pinsShareSelected.add(pid);
-      try { renderPinsPanel(); } catch {}
+      try { renderPinsPanelPreserveScroll(true); } catch {}
     });
 
     const name = document.createElement("div");
@@ -10987,7 +11587,7 @@ row.addEventListener("pointerdown", (ev) => {
                 const pid = String(pin.id);
                 if (pinsShareSelected.has(pid)) pinsShareSelected.delete(pid);
                 else pinsShareSelected.add(pid);
-                try { renderPinsPanel(); } catch {}
+                try { renderPinsPanelPreserveScroll(true); } catch {}
                 return;
               }
               if (_needsRename) { toast(`Rename this pin (max ${PIN_NAME_MAX} chars)`); try { openRenamePinModal(pin.id); } catch {} return; }
@@ -11016,7 +11616,7 @@ row.addEventListener("pointerdown", (ev) => {
         if (pinsShareSelected.has(pid)) pinsShareSelected.delete(pid);
         else pinsShareSelected.add(pid);
         try { selBox.setAttribute("aria-checked", pinsShareSelected.has(pid) ? "true" : "false"); } catch {}
-        try { renderPinsPanel(); } catch {}
+        try { renderPinsPanelPreserveScroll(true); } catch {}
         return;
       }
       if (_needsRename) {
@@ -11038,7 +11638,7 @@ row.addEventListener("pointerdown", (ev) => {
           const pid = String(pin.id);
           if (pinsShareSelected.has(pid)) pinsShareSelected.delete(pid);
           else pinsShareSelected.add(pid);
-          try { renderPinsPanel(); } catch {}
+          try { renderPinsPanelPreserveScroll(true); } catch {}
           return;
         }
         if (_needsRename) {
@@ -11677,7 +12277,7 @@ function openRenamePinModal(pinId) {
       inp.className = "wmeRcInput";
       inp.placeholder = "Name…";
       inp.value = pin.name || "";
-      const pinNameLimitMsg = attachMaxLen(inp, 28);
+      const pinNameLimitMsg = attachMaxLen(inp, 32);
 
       const hint = document.createElement("div");
       hint.className = "wmeRcHint";
@@ -13162,6 +13762,7 @@ function openPinsSettingsModal() {
         try { setPinsPanelAlwaysVisibleEmpty(!!pendingAlwaysVisible); } catch {}
         try { setPinsMinimizeMode(String(pendingMinMode || "bubble")); } catch {}
         try { setDefaultGroupName(defInput ? defInput.value : "(no folder)"); } catch {}
+        try { forcePinsMarkersFullRefresh(); } catch { try { renderPinsMarkers(true); } catch {} }
         try { refreshPinsMarkers(true); } catch {}
         try { renderPinsPanel(); } catch {}
         try { applyReminderNoticePosition(); } catch {}
@@ -14485,6 +15086,18 @@ const dt = document.createElement("div");
       let calPop = null;
       let timePop = null;
 
+      const applyReminderPickerAppearance = (pop) => {
+        if (!pop) return;
+        try {
+          const st = loadPermalinkSettings();
+          const resolvedTheme = getResolvedRcMenuTheme();
+          pop.classList.remove("theme-light", "theme-dark", "waze-style", "reduced-motion");
+          pop.classList.add(`theme-${resolvedTheme}`);
+          if (st.wazeStyle !== false) pop.classList.add("waze-style");
+          if (st.reducedMotion) pop.classList.add("reduced-motion");
+        } catch {}
+      };
+
       const fmtDateLabel = () => {
         try {
           const parts = String(atDate || "").split("-");
@@ -14559,6 +15172,7 @@ const dt = document.createElement("div");
           closePickers();
           calPop = document.createElement("div");
           calPop.className = "wmeRcPickerPop wmeRcCalPop";
+          applyReminderPickerAppearance(calPop);
           try { applyPinMarkerColors(calPop, (pin && pin.color) || "#ff8a00"); } catch {}
           try { const c = normalizePinColor((pin && pin.color) || "#ff8a00"); const rgb = hexToRgb(c); if (rgb) calPop.style.setProperty("--pinRGB", `${rgb.r},${rgb.g},${rgb.b}`); } catch {}
 
@@ -14695,6 +15309,7 @@ const dt = document.createElement("div");
 
           timePop = document.createElement("div");
           timePop.className = "wmeRcPickerPop wmeRcTimePop";
+          applyReminderPickerAppearance(timePop);
 
           try { applyPinMarkerColors(timePop, (pin && pin.color) || "#ff8a00"); } catch {}
 
@@ -14824,8 +15439,9 @@ const dt = document.createElement("div");
             if (closeAfter) { try { closePickers(); } catch {} }
           };
 try {
-  label.style.color = "#fff";
-  label.style.caretColor = "#fff";
+  const pickerIsLight = getResolvedRcMenuTheme() === "light";
+  label.style.color = pickerIsLight ? "#0f172a" : "#fff";
+  label.style.caretColor = pickerIsLight ? "#0f172a" : "#fff";
 } catch {}
 
 let _editHH = "00";
@@ -16669,7 +17285,7 @@ setColor(chosenColor);
       actions.appendChild(btnCancel);
       actions.appendChild(btnPin);
 
-      const nameLimitMsg = attachMaxLen(nameInp, 32);
+      const nameLimitMsg = attachMaxLen(nameInp, PIN_NAME_MAX);
       body.appendChild(nameLimitMsg ? nameLimitMsg.wrap : nameInp);
       if (nameLimitMsg && nameLimitMsg.msg) body.appendChild(nameLimitMsg.msg);
       body.appendChild(colorRow);
@@ -17130,7 +17746,7 @@ setColor(chosenColor);
       setTimeout(() => {
         backdrop.remove();
         modal.remove();
-      }, 180);
+      }, 140);
     };
     try {
       const closeBtn = header.querySelector('.wmeRcModalClose');
@@ -17139,7 +17755,6 @@ setColor(chosenColor);
     backdrop.addEventListener("click", (ev) => { try { ev.preventDefault(); ev.stopPropagation(); } catch {} close(); });
     (document.body || document.documentElement).appendChild(backdrop);
     (document.body || document.documentElement).appendChild(modal);
-    try { applyLiveRcAppearance(); } catch {}
 
     if (spec && (spec.description || spec.descriptionTitle)) {
       try {
@@ -17167,55 +17782,11 @@ setColor(chosenColor);
       _onResize = () => snapModalToPixels();
       window.addEventListener("resize", _onResize, true);
     } catch {}
+    snapModalToPixels();
     requestAnimationFrame(() => {
-      snapModalToPixels();
-      requestAnimationFrame(() => {
-        snapModalToPixels();
-        backdrop.classList.add("show");
-        modal.classList.add("show");
-        setTimeout(snapModalToPixels, 80);
-      });
+      backdrop.classList.add("show");
+      modal.classList.add("show");
     });
-    try {
-      const forceLightModalContent = () => {
-        try {
-          if (!modal || !modal.classList || !modal.classList.contains('theme-light')) return;
-          const strongText = (node, color = '#111827') => {
-            try {
-              if (!node || node.nodeType !== 1) return;
-              const tag = String(node.tagName || '').toLowerCase();
-              if (!tag || ['svg','path','circle','rect','line','polyline','polygon'].includes(tag)) return;
-              node.style.setProperty('color', color, 'important');
-              node.style.setProperty('-webkit-text-fill-color', color, 'important');
-              node.style.setProperty('text-shadow', 'none', 'important');
-              node.style.setProperty('opacity', '1', 'important');
-              if (tag === 'input' || tag === 'textarea' || tag === 'select') {
-                node.style.setProperty('caret-color', color, 'important');
-              }
-            } catch {}
-          };
-          modal.style.setProperty('--content_default', '#111827', 'important');
-          modal.style.setProperty('--content_secondary', 'rgba(17,24,39,.72)', 'important');
-          modal.style.setProperty('--wmeRcModalFg', '#111827', 'important');
-          modal.style.setProperty('--wmeRcModalInputFg', '#111827', 'important');
-          modal.style.setProperty('--wmeRcToggleLabel', '#111827', 'important');
-          strongText(modal);
-          modal.querySelectorAll('*').forEach((n) => strongText(n));
-          modal.querySelectorAll('input,textarea').forEach((n) => {
-            try {
-              n.style.setProperty('color', '#111827', 'important');
-              n.style.setProperty('-webkit-text-fill-color', '#111827', 'important');
-              n.style.setProperty('caret-color', '#111827', 'important');
-            } catch {}
-          });
-        } catch {}
-      };
-      forceLightModalContent();
-      requestAnimationFrame(forceLightModalContent);
-      requestAnimationFrame(() => requestAnimationFrame(forceLightModalContent));
-      setTimeout(forceLightModalContent, 80);
-      setTimeout(forceLightModalContent, 240);
-    } catch {}
 
     _onKey = (ev) => {
       try {
@@ -17440,7 +18011,7 @@ setColor(chosenColor);
           let selectedEmoji = (opts && typeof opts.initialEmoji === "string") ? String(opts.initialEmoji) : "";
 
           const renderEmojiButton = () => {
-            try { emojiBtn.innerHTML = selectedEmoji ? selectedEmoji : "<span class='wmeRcNoEmojiIcon' aria-label='Add emoji'></span>"; } catch {}
+            try { emojiBtn.innerHTML = selectedEmoji ? selectedEmoji : "<span class='wmeRcNoEmojiIcon' aria-label='Pick emoji'></span>"; } catch {}
           };
           renderEmojiButton();
 
@@ -17473,47 +18044,17 @@ setColor(chosenColor);
           field.appendChild(labelRow);
           field.appendChild(groupNameLimitMsg ? groupNameLimitMsg.wrap : inp);
 
-          const hint = document.createElement("div");
-          hint.className = "wmeRcGroupHint";
-          hint.textContent = "Emojis and symbols are allowed.";
-          field.appendChild(hint);
 
           grid.appendChild(emojiPanel);
           grid.appendChild(field);
           root.appendChild(grid);
 
-          if (isCreateMode) {
-            const quick = document.createElement("div");
-            quick.className = "wmeRcGroupQuickRow";
-            const suggestions = [
-              ["⭐", "Favorites"],
-              ["🛠️", "Work"],
-              ["📍", "Places"],
-              ["🚧", "Fix later"],
-            ];
-            suggestions.forEach(([em, name]) => {
-              const chip = document.createElement("button");
-              chip.type = "button";
-              chip.className = "wmeRcGroupQuickChip";
-              chip.textContent = `${em} ${name}`;
-              chip.addEventListener("click", (ev) => {
-                try { ev.preventDefault(); ev.stopPropagation(); } catch {}
-                selectedEmoji = em;
-                renderEmojiButton();
-                inp.value = name;
-                try { groupNameLimitMsg && groupNameLimitMsg.update && groupNameLimitMsg.update(); } catch {}
-                try { inp.focus(); inp.select(); } catch {}
-              });
-              quick.appendChild(chip);
-            });
-            root.appendChild(quick);
-          }
 
           const emojiPop = document.createElement("div");
           emojiPop.className = "wmeRcEmojiPop hidden";
           const emojiGrid = document.createElement("div");
           emojiGrid.className = "wmeRcEmojiGrid";
-          const EMOJIS = ["📍","📌","🗺️","🛣️","🛤️","🚧","⛔","🚫","🛑","⚠️","🚦","🚥","📷","🅿️","🚏","🚸","🌉","🌊","🏞️","✈️","🛫","🛬"];
+          const EMOJIS = ["📍","📌","🗺️","🛣️","🛤️","🚧","⛔","🚫","🛑","⚠️","🚦","🚥","📷","📸","🎥","📹","🚨","🅿️","🚏","🚸","🌉","🌊","🏞️","✈️","🛫","🛬"];
           const setEmoji = (em) => {
             try { selectedEmoji = String(em || ""); } catch { selectedEmoji = ""; }
             renderEmojiButton();
@@ -19551,7 +20092,9 @@ function getDefaultPinZoom() {
         } catch {}
       });
 
-      const modalBg = `linear-gradient(180deg, ${editorColors.bgElevated || getEditorCssVar('--surface_default', editorColors.bgDefault)} 0%, ${editorColors.bgDefault || getEditorCssVar('--background_default', light ? '#ffffff' : '#202124')} 100%)`;
+      const modalBg = light
+        ? 'linear-gradient(180deg,#ffffff 0%,#f4f6f8 100%)'
+        : 'linear-gradient(180deg,#172235 0%,#0f1726 100%)';
       const modalDivider = useWazeStyle
         ? (light ? 'color-mix(in srgb, var(--border_default, rgba(40,56,72,.12)) 70%, #3b82f6 30%)' : 'color-mix(in srgb, var(--border_default, rgba(255,255,255,.10)) 70%, #60a5fa 30%)')
         : (editorColors.borderDefault || (light ? 'rgba(40,56,72,.10)' : 'rgba(255,255,255,.10)'));
@@ -19637,10 +20180,19 @@ function getDefaultPinZoom() {
               el.style.setProperty('--wmeRcModalFg', wmeFg);
               el.style.setProperty('--wmeRcModalInputFg', wmeFg);
               el.style.setProperty('--wmeRcToggleLabel', wmeFg);
-              el.style.setProperty('--wmeRcModalBg', `linear-gradient(180deg, ${wmeSurface}, ${wmeBg})`);
+              el.style.setProperty('--wmeRcModalBg', 'linear-gradient(180deg,#172235 0%,#0f1726 100%)');
               el.style.setProperty('--wmeRcModalBorder', wmeBorder);
             } catch {}
           }
+        } catch {}
+      });
+
+      document.querySelectorAll('.wmeRcPickerPop').forEach((el) => {
+        try {
+          el.classList.remove('theme-dark', 'theme-light', 'reduced-motion', 'waze-style');
+          el.classList.add(`theme-${resolved}`);
+          if (st.reducedMotion) el.classList.add('reduced-motion');
+          if (st.wazeStyle !== false) el.classList.add('waze-style');
         } catch {}
       });
 
