@@ -1,19 +1,15 @@
-CURRENT RULES ALIGNMENT FIX
+FRIENDS ONLINE/OFFLINE — FIRESTORE RULES UPDATE
 
-1. Replace userscript.js in the extension.
-2. Open Firebase Console.
-3. Select project: wme-rightclick-function
-4. Open Firestore Database > Rules.
-5. Replace all deployed rules with firestore.rules from this ZIP.
-6. Click Publish.
-7. Reload the extension for both users.
-8. Hard-refresh all open WME tabs.
-9. Leave WME open for several seconds so each users/{WME-ID} profile is
-   recreated or refreshed before searching and sending pins.
+The new presence indicator uses a separate realtimeSignals/presence-{WME-ID}
+document so it cannot overwrite friend-request or pin notifications.
 
-What this fixes:
-- profile writes rejected because of old optional rank fields;
-- request writes rejected because avatar fields were not permitted;
-- accepted-friend pin delivery blocked when the recipient profile was absent;
-- stale authBindings when the current users/{WME-ID} profile still proves
-  ownership.
+1. Open Firebase Console.
+2. Select project: wme-rightclick-function
+3. Open Firestore Database > Rules.
+4. Replace the deployed rules with firestore.rules from this ZIP.
+5. Click Publish.
+6. Replace the extension files on every computer.
+7. Reload the extension and hard-refresh WME.
+
+Both friends need the updated userscript for live Online/Offline heartbeats.
+Without the new rules, the visual redesign works but users remain Offline.

@@ -292,7 +292,14 @@ service cloud.firestore {
           'nonce',
           'updatedAt'
         ]) &&
-        signalId == request.resource.data.targetUid &&
+        (
+          signalId == request.resource.data.targetUid ||
+          (
+            signalId == ('presence-' + request.resource.data.targetUid) &&
+            ownsWmeId(request.resource.data.targetUid) &&
+            request.resource.data.eventType in ['presence-online', 'presence-offline']
+          )
+        ) &&
         request.resource.data.targetUid is string &&
         request.resource.data.targetUid.size() > 0 &&
         request.resource.data.targetUid.size() <= 64 &&
@@ -305,7 +312,6 @@ service cloud.firestore {
         request.resource.data.updatedAt is timestamp;
 
       allow update: if signedIn() &&
-        resource.data.targetUid == signalId &&
         request.resource.data.keys().hasOnly([
           'targetUid',
           'eventType',
@@ -313,7 +319,14 @@ service cloud.firestore {
           'updatedAt'
         ]) &&
         request.resource.data.targetUid == resource.data.targetUid &&
-        request.resource.data.targetUid == signalId &&
+        (
+          signalId == request.resource.data.targetUid ||
+          (
+            signalId == ('presence-' + request.resource.data.targetUid) &&
+            ownsWmeId(request.resource.data.targetUid) &&
+            request.resource.data.eventType in ['presence-online', 'presence-offline']
+          )
+        ) &&
         request.resource.data.eventType is string &&
         request.resource.data.eventType.size() > 0 &&
         request.resource.data.eventType.size() <= 48 &&

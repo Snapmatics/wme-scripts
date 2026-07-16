@@ -13,6 +13,18 @@
     "www.googleapis.com"
   ]);
 
+  function isGoogleApiHost(hostname) {
+    const host = String(hostname || "").toLowerCase();
+    return (
+      host === "accounts.google.com" ||
+      host === "identitytoolkit.googleapis.com" ||
+      host === "securetoken.googleapis.com" ||
+      host === "firestore.googleapis.com" ||
+      host === "www.googleapis.com" ||
+      host.endsWith(".googleapis.com")
+    );
+  }
+
   function requestKey(sender, requestId) {
     const tabId = sender?.tab?.id ?? "extension";
     const frameId = sender?.frameId ?? 0;
@@ -59,7 +71,7 @@
       error: {
         name: String(error?.name || "Error"),
         message: String(error?.message || error || "Network request failed."),
-        code
+        code: String(error?.code || code || "network_error")
       }
     };
   }
@@ -87,6 +99,7 @@
     }
 
     try {
+      const parsedUrl = new URL(url);
       const method = String(options.method || "GET").toUpperCase();
       const headers = normalizeHeaders(options.headers);
       const init = {
@@ -94,7 +107,12 @@
         headers,
         signal: controller.signal,
         redirect: "follow",
-        credentials: options.anonymous === true ? "omit" : "include"
+        cache: "no-store",
+        credentials:
+          isGoogleApiHost(parsedUrl.hostname) || options.anonymous === true
+            ? "omit"
+            : "include",
+        referrerPolicy: "no-referrer"
       };
 
       if (options.data != null && method !== "GET" && method !== "HEAD") {

@@ -12,6 +12,50 @@
   let requestSequence = 1;
   let started = false;
   let bootstrapTimer = null;
+  let extensionBridgeInvalidated = false;
+
+  function isExtensionContextInvalidatedError(error) {
+    const message = String(
+      error?.message ||
+      error?.error?.message ||
+      error?.details?.message ||
+      error ||
+      ""
+    ).toLowerCase();
+
+    const code = String(
+      error?.code ||
+      error?.error?.code ||
+      error?.details?.code ||
+      ""
+    ).toLowerCase();
+
+    return (
+      code.includes("extension_context_invalidated") ||
+      code.includes("extension-context-invalidated") ||
+      message.includes("extension context invalidated") ||
+      message.includes("receiving end does not exist") ||
+      message.includes("message port closed before a response was received")
+    );
+  }
+
+  function invalidateExtensionBridge(error = null) {
+    if (extensionBridgeInvalidated) return;
+    extensionBridgeInvalidated = true;
+
+    const bridgeError = {
+      name: "ExtensionContextInvalidatedError",
+      code: "extension_context_invalidated",
+      message:
+        "The extension was reloaded while WME was open. Reload this WME tab to reconnect extension services.",
+      cause: error || null
+    };
+
+    for (const callbacks of xhrCallbacks.values()) {
+      try { callbacks?.onerror?.(bridgeError); } catch {}
+    }
+    xhrCallbacks.clear();
+  }
 
   function cloneValue(value) {
     try { return structuredClone(value); } catch {}
@@ -96,6 +140,21 @@
   function GM_xmlhttpRequest(details) {
     const requestId = `xhr-${Date.now().toString(36)}-${requestSequence++}`;
     const source = details && typeof details === "object" ? details : {};
+
+    if (extensionBridgeInvalidated) {
+      queueMicrotask(() => {
+        try {
+          source.onerror?.({
+            name: "ExtensionContextInvalidatedError",
+            code: "extension_context_invalidated",
+            message:
+              "The extension was reloaded while WME was open. Reload this WME tab to reconnect extension services."
+          });
+        } catch {}
+      });
+      return { abort() {} };
+    }
+
     xhrCallbacks.set(requestId, {
       onload: source.onload,
       onerror: source.onerror,
@@ -132,7 +191,7 @@
   const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   const SCRIPT_ID = "wme-rightclick-functions";
   const SCRIPT_NAME = "WME - RightClick Functions";
-  const SCRIPT_VERSION = "1.4.25";
+  const SCRIPT_VERSION = "1.4.28";
   const CHANGELOG_SEEN_KEY = `${SCRIPT_ID}:changelogSeenVersion:v4`;
   const FRIENDS_FIREBASE_CONFIG = Object.freeze({
     apiKey: "AIzaSyB4wllXR0Bv05Q5jNLGBw5fgWUbsYxMAeA",
@@ -145,6 +204,9 @@
   const FRIENDS_FIREBASE_APP_NAME = "wmeRightClickFriends";
   const FRIENDS_SEEN_REQUESTS_KEY = `${SCRIPT_ID}:friendsSeenRequests:v1`;
   const FRIENDS_SEEN_SHARES_KEY = `${SCRIPT_ID}:friendsSeenShares:v1`;
+  const FRIENDS_PERSISTENT_NOTIFICATIONS_KEY = `${SCRIPT_ID}:friendsPersistentNotifications:v1`;
+  const FRIENDS_DISMISSED_NOTIFICATIONS_KEY = `${SCRIPT_ID}:friendsDismissedNotifications:v1`;
+  const FRIENDS_REQUEST_STATUS_HISTORY_KEY = `${SCRIPT_ID}:friendsRequestStatusHistory:v1`;
   const FRIENDS_LAST_PROFILE_KEY = `${SCRIPT_ID}:friendsLastProfile:v1`;
   const FRIENDS_QUOTA_BACKOFF_KEY = `${SCRIPT_ID}:friendsQuotaBackoff:v1`;
   const FRIENDS_PROFILE_VERIFY_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -229,6 +291,10 @@
       "Removed the generic bottom-right activity toast and added dedicated automatic success, partial-success, and failure notifications only when pins are sent to friends.",
       "Polished the Friends hub counters, removed the You badge, made Unfriend a red-outline native user-minus action, and upgraded received-pin notifications with sender avatars, darker list surfaces, and an inset custom scrollbar.",
       "Added a dedicated avatar-based notification for every new friend request, and made Friends search results clear automatically after a request is sent or whenever the search text is changed or emptied.",
+      "Added persistent friend-request sent, received, approved, and rejected notifications; incoming-pin notifications now survive page refreshes and remain visible while the RC tab is open.",
+      "Made friend and pin notifications react immediately to request snapshots, removed the laggy notification entrance effect, and added clear hover/press feedback to notification action buttons.",
+      "Added a notification health watcher that restores missing friend-request popups when WME or the RC panel removes their DOM, while preserving manual dismissals.",
+      "Moved all Friends Firestore reads, writes, and live updates to the bundled Firebase SDK with direct onSnapshot listeners and removed Firebase polling/fallback checks.",
       "Added sender filters to received pins in both the floating notification and Friends tab, added per-pin decline controls, tightened the selection boxes, and moved the five-row scrollable received-pins list below the active Friends or Requests list.",
       "Converted both received-pin sender filters into true overlay dropdowns, made per-pin decline buttons solid red, and preserved the floating list scroll position while selecting pins.",
       "Fixed stale sender-filter and pending-count state when a received-pin batch shrinks to one sender or one pin, and prevented sender filters from leaving no sender selected.",
@@ -1046,6 +1112,11 @@
   const friendsPinShareKnownSenderKeys = new Set();
   let friendsPinShareNotification = null;
   let friendsNotificationPositionTimer = null;
+  let friendsNotificationHealthTimer = null;
+  let friendsNotificationMutationObserver = null;
+  let friendsNotificationResizeObserver = null;
+  let friendsPersistentNotificationScope = "";
+  let friendsRequestOutcomeRecheckTimer = null;
   const friendsUiSubscribers = new Set();
   const friendsProfileCache = new Map();
   const FRIENDS_MUTATION_GUARD_MS = 12000;
@@ -1056,6 +1127,9 @@
 
   let friendsRestCompat = null;
   let friendsRestCompatBindingKey = "";
+  let friendsSdkCompat = null;
+  let friendsSdkCompatBindingKey = "";
+  const friendsSdkSnapshotCallbacks = new Map();
   let friendsActiveWmeBindingKey = "";
   let friendsIdentityWatcherTimer = null;
   let friendsIdentityResetPromise = null;
@@ -1081,6 +1155,53 @@
     return error;
   }
 
+  function isFriendsTransportError(error) {
+    if (isExtensionContextInvalidatedError(error)) return true;
+
+    const code = String(
+      error?.code ||
+      error?.error?.code ||
+      error?.details?.code ||
+      ""
+    ).toLowerCase();
+
+    const message = String(
+      error?.message ||
+      error?.error?.message ||
+      error ||
+      ""
+    ).toLowerCase();
+
+    return (
+      code.includes("network-request-failed") ||
+      code.includes("network_error") ||
+      code.includes("extension_request_failed") ||
+      message.includes("firebase could not be reached") ||
+      message.includes("failed to fetch") ||
+      message.includes("networkerror")
+    );
+  }
+
+  let friendsTransportNoticeAt = 0;
+
+  function noteFriendsTransportFailure(error) {
+    if (isExtensionContextInvalidatedError(error)) {
+      invalidateExtensionBridge(error);
+      return;
+    }
+
+    // Keep retrying silently. Chrome records console.warn/error calls from
+    // extension pages as persistent errors, so one transient outage must not
+    // create separate entries for every Friends query.
+    const now = Date.now();
+    if (now - friendsTransportNoticeAt > 60000) {
+      friendsTransportNoticeAt = now;
+      try {
+        console.debug(`${SCRIPT_NAME}: Friends transport temporarily unavailable`, error);
+      } catch {}
+    }
+  }
+
   let friendsRealtimeRefreshRetryTimer = null;
 
   function currentFriendsRealtimeTargetId(identity = readCurrentWmeIdentity()) {
@@ -1092,80 +1213,32 @@
     ).trim();
   }
 
-  async function pollFriendsRealtimeSignal({ forceRefresh = false } = {}) {
-    if (friendsRealtimeSignalPollRunning || document.hidden || !friendsDb) return false;
-    const targetId = currentFriendsRealtimeTargetId();
-    if (!targetId) return false;
-
-    friendsRealtimeSignalPollRunning = true;
-    try {
-      const snapshot = await friendsDb
-        .collection(FRIENDS_REALTIME_SIGNAL_COLLECTION)
-        .doc(friendsRealtimeSignalDocId(targetId))
-        .get();
-      const data = snapshot?.exists ? (snapshot.data?.() || {}) : {};
-      const nonce = String(data?.nonce || "");
-      const targetChanged = friendsRealtimeSignalTargetId !== targetId;
-      const nonceChanged = !!nonce && !!friendsRealtimeSignalLastNonce && nonce !== friendsRealtimeSignalLastNonce;
-
-      friendsRealtimeSignalTargetId = targetId;
-      if (nonce) friendsRealtimeSignalLastNonce = nonce;
-      if (forceRefresh || targetChanged || nonceChanged) triggerFriendsRealtimeRefresh();
-      return true;
-    } catch (error) {
-      try { console.warn(`${SCRIPT_NAME}: Friends realtime fallback check failed`, error); } catch {}
-      return false;
-    } finally {
-      friendsRealtimeSignalPollRunning = false;
-    }
+  async function pollFriendsRealtimeSignal() {
+    // Removed: direct Firebase SDK onSnapshot listeners are the only realtime path.
+    return false;
   }
+
 
   function updateFriendsRealtimeSignalFallback() {
     if (friendsRealtimeSignalPollTimer) {
       clearInterval(friendsRealtimeSignalPollTimer);
       friendsRealtimeSignalPollTimer = null;
     }
-    if (friendsRealtimeActive) return;
-
-    pollFriendsRealtimeSignal({ forceRefresh: false }).catch(() => {});
-    friendsRealtimeSignalPollTimer = setInterval(() => {
-      if (friendsRealtimeActive || document.hidden) return;
-      pollFriendsRealtimeSignal().catch(() => {});
-    }, FRIENDS_REALTIME_SIGNAL_FALLBACK_MS);
   }
+
 
   function ensureFriendsRealtimeHealthMonitor() {
-    if (friendsRealtimeHealthTimer) return;
-    friendsRealtimeHealthTimer = setInterval(() => {
-      if (document.hidden) return;
-      const identity = readCurrentWmeIdentity();
-      configureFriendsRealtimeExtension(identity, { force: true })
-        .then(() => updateFriendsRealtimeSignalFallback())
-        .catch(() => {
-          friendsRealtimeActive = false;
-          friendsRealtimeBindingKey = "";
-          updateFriendsRealtimeSignalFallback();
-        });
-    }, FRIENDS_REALTIME_HEALTHCHECK_MS);
+    if (friendsRealtimeHealthTimer) {
+      clearInterval(friendsRealtimeHealthTimer);
+      friendsRealtimeHealthTimer = null;
+    }
   }
+
 
   function triggerFriendsRealtimeRefresh() {
-    const refresh = () => {
-      try { friendsDb?.refreshAllQueries?.(); } catch {}
-    };
-
-    // Refresh immediately when the extension reports a Firestore change, then
-    // repeat once after the write has fully settled. This is event-driven and
-    // does not introduce background polling.
-    refresh();
-    if (friendsRealtimeRefreshRetryTimer) {
-      clearTimeout(friendsRealtimeRefreshRetryTimer);
-    }
-    friendsRealtimeRefreshRetryTimer = setTimeout(() => {
-      friendsRealtimeRefreshRetryTimer = null;
-      refresh();
-    }, 1400);
+    // Direct SDK snapshots update each active query without synthetic refreshes.
   }
+
 
   function scheduleFriendsRealtimeConfigure(delay = 120) {
     if (friendsRealtimeConfigureTimer) clearTimeout(friendsRealtimeConfigureTimer);
@@ -1193,7 +1266,6 @@
         friendsRealtimeInstalled = true;
         friendsRealtimeBackendReady = true;
         friendsRealtimeVersion = String(data.version || data.payload?.extensionVersion || friendsRealtimeVersion || "");
-        scheduleFriendsRealtimeConfigure();
         return;
       }
       if (data.kind === "backend-error" || data.kind === "disconnected") {
@@ -1201,25 +1273,32 @@
         friendsRealtimeBackendReady = false;
         friendsRealtimeActive = false;
         friendsRealtimeBindingKey = "";
-        updateFriendsRealtimeSignalFallback();
         return;
       }
 
       const message = data.message || {};
       if (message.kind === "event") {
         const eventName = String(message.event || "");
-        if (eventName === "realtime-ready") {
+        const payload = message.payload || {};
+        if (eventName === "firestore-snapshot") {
           friendsRealtimeActive = true;
-          updateFriendsRealtimeSignalFallback();
-          triggerFriendsRealtimeRefresh();
-        } else if (eventName === "realtime-change") {
+          const listenerId = String(payload.listenerId || "");
+          const callbacks = friendsSdkSnapshotCallbacks.get(listenerId);
+          if (callbacks?.next) {
+            try { callbacks.next(payload.snapshot || { docs: [], changes: [] }); } catch (error) {
+              try { callbacks.error?.(error); } catch {}
+            }
+          }
+        } else if (eventName === "firestore-listener-error") {
+          const listenerId = String(payload.listenerId || "");
+          const callbacks = friendsSdkSnapshotCallbacks.get(listenerId);
+          const error = makeFriendsRealtimeError(payload.error?.message, payload.error?.code);
+          try { callbacks?.error?.(error); } catch {}
+        } else if (eventName === "realtime-ready" || eventName === "realtime-change") {
           friendsRealtimeActive = true;
-          updateFriendsRealtimeSignalFallback();
-          triggerFriendsRealtimeRefresh();
         } else if (eventName === "realtime-error") {
           friendsRealtimeActive = false;
-          updateFriendsRealtimeSignalFallback();
-          try { console.warn(`${SCRIPT_NAME}: Friends realtime listener error`, message.payload || {}); } catch {}
+          try { console.warn(`${SCRIPT_NAME}: Friends Firebase SDK listener error`, payload || {}); } catch {}
         }
         return;
       }
@@ -1262,16 +1341,15 @@
         direction: "to-extension",
         message: { requestId, action, payload }
       };
-      const hasDomBridge = !!document.documentElement?.getAttribute?.(FRIENDS_REALTIME_MARKER_ATTR);
-      if (hasDomBridge) {
-        try {
-          document.dispatchEvent(new CustomEvent(FRIENDS_REALTIME_REQUEST_EVENT, {
-            detail: JSON.stringify(envelope)
-          }));
-        } catch {}
-      } else {
-        try { window.postMessage(envelope, "*"); } catch {}
-      }
+      // Send through both bridges. Chrome isolated worlds and WME's MAIN world
+      // do not always deliver CustomEvents consistently. The content backend
+      // deduplicates the shared requestId, so dual delivery is safe.
+      try { window.postMessage(envelope, "*"); } catch {}
+      try {
+        document.dispatchEvent(new CustomEvent(FRIENDS_REALTIME_REQUEST_EVENT, {
+          detail: JSON.stringify(envelope)
+        }));
+      } catch {}
     });
 
     friendsRealtimeBridge = { request };
@@ -1285,41 +1363,29 @@
       identity?.bindingKey ||
       (identity?.userId ? `wme-id:${identity.userId}` : "")
     );
-    const signalTargetId = currentFriendsRealtimeTargetId(identity);
-    const configureKey = signalTargetId ? `${bindingKey}::${signalTargetId}` : "";
-    if (!bindingKey || !normalizedUsername || !signalTargetId) return false;
+    const wmeUserId = String(identity?.userId || friendsOwnWmeId() || "").trim();
+    const configureKey = wmeUserId ? `${bindingKey}::${wmeUserId}` : "";
+    if (!bindingKey || !normalizedUsername || !wmeUserId) return false;
     if (!force && friendsRealtimeActive && friendsRealtimeBindingKey === configureKey) return true;
 
-    const root = document.documentElement;
-    const markerVersion = String(root?.getAttribute?.(FRIENDS_REALTIME_MARKER_ATTR) || "").trim();
-    const markerBackend = String(root?.getAttribute?.(FRIENDS_REALTIME_BACKEND_ATTR) || "").trim();
-    if (markerVersion) {
-      friendsRealtimeInstalled = true;
-      friendsRealtimeVersion = markerVersion;
-      if (markerBackend === "ready") friendsRealtimeBackendReady = true;
-    }
-
     const bridge = createFriendsRealtimeBridge();
-    const ping = await bridge.request("ping", {}, 3500);
+    const ping = await bridge.request("ping", {}, 5000);
     friendsRealtimeInstalled = true;
     friendsRealtimeBackendReady = true;
     friendsRealtimeVersion = String(ping?.extensionVersion || friendsRealtimeVersion || "");
 
     const result = await bridge.request("configureIdentity", {
-      wmeUsername: String(identity?.username || "").trim(),
-      wmeUsernameNormalized: normalizedUsername,
-      wmeUserId: signalTargetId,
-      signalTargetId,
-      wmeBindingKey: bindingKey,
-      // Kept for extension v1.0.0 compatibility. It now intentionally carries
-      // the canonical WME ID rather than a Firebase anonymous UID.
-      friendsUid: signalTargetId
+      identity: {
+        wmeUsername: String(identity?.username || "").trim(),
+        wmeUsernameNormalized: normalizedUsername,
+        wmeUserId,
+        userId: wmeUserId,
+        wmeBindingKey: bindingKey,
+        bindingKey
+      }
     }, 15000);
     friendsRealtimeBindingKey = configureKey;
     friendsRealtimeActive = result?.active !== false;
-    updateFriendsRealtimeSignalFallback();
-    ensureFriendsRealtimeHealthMonitor();
-    if (friendsRealtimeActive) triggerFriendsRealtimeRefresh();
     return friendsRealtimeActive;
   }
 
@@ -1327,640 +1393,259 @@
     return encodeURIComponent(String(uid || "").trim());
   }
 
-  async function signalFriendsRealtimeChange(targetUid, eventType = "friends-change") {
-    const uid = String(targetUid || "").trim();
-    if (!uid || !friendsDb) return false;
-
-    try {
-      await friendsDb.collection(FRIENDS_REALTIME_SIGNAL_COLLECTION)
-        .doc(friendsRealtimeSignalDocId(uid))
-        .set({
-          targetUid: uid,
-          eventType: String(eventType || "friends-change").slice(0, 48),
-          nonce: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
-          updatedAt: friendsServerTimestamp()
-        }, { merge: true });
-      return true;
-    } catch (error) {
-      try { console.warn(`${SCRIPT_NAME}: Could not send Friends realtime signal`, error); } catch {}
-      return false;
-    }
+  async function signalFriendsRealtimeChange(_targetUid, _eventType = "friends-change") {
+    // Direct Firestore SDK onSnapshot listeners deliver collection changes.
+    // No wake-up document, polling read, or synthetic refresh is required.
+    return true;
   }
 
-  function friendsOtherRequestUid(request, ownUid = friendsOwnWmeId()) {
-    const me = String(ownUid || "");
-    const fromUid = String(request?.fromUid || "");
-    const toUid = String(request?.toUid || "");
-    if (fromUid && fromUid !== me) return fromUid;
-    if (toUid && toUid !== me) return toUid;
-    return "";
-  }
-
-  function friendsGmRequest({ method = "GET", url, headers = {}, body = null, timeout = 30000 }) {
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const fail = (message, code = "friends/network-request-failed", details = null) => {
-        if (settled) return;
-        settled = true;
-        const error = new Error(message || "Firebase request failed.");
-        error.code = code;
-        error.details = details;
-        reject(error);
-      };
-
-      try {
-        GM_xmlhttpRequest({
-          method,
-          url,
-          headers,
-          data: body == null
-            ? undefined
-            : (typeof body === "string" ? body : JSON.stringify(body)),
-          timeout,
-          anonymous: false,
-          onload: (response) => {
-            if (settled) return;
-            let parsed = null;
-            try {
-              parsed = response.responseText ? JSON.parse(response.responseText) : null;
-            } catch {}
-
-            if (response.status >= 200 && response.status < 300) {
-              settled = true;
-              resolve(parsed);
-              return;
-            }
-
-            const serverMessage =
-              parsed?.error?.message ||
-              parsed?.error?.status ||
-              parsed?.message ||
-              `HTTP ${response.status}`;
-            const normalizedCode = String(serverMessage || "")
-              .trim()
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "-")
-              .replace(/^-+|-+$/g, "");
-            fail(
-              String(serverMessage || "Firebase request failed."),
-              normalizedCode ? `firebase/${normalizedCode}` : "friends/http-error",
-              { status: response.status, response: parsed }
-            );
-          },
-          onerror: () => fail("Firebase could not be reached.", "friends/network-request-failed"),
-          ontimeout: () => fail("Firebase request timed out.", "friends/network-timeout"),
-          onabort: () => fail("Firebase request was cancelled.", "friends/request-aborted")
-        });
-      } catch (error) {
-        fail(error?.message || "Firebase request failed.", "friends/network-request-failed", error);
-      }
-    });
-  }
-
-  function friendsRestAuthStorageKey(identity = readCurrentWmeIdentity()) {
-    const bindingKey = String(identity?.bindingKey || "").trim();
-    if (!bindingKey) return "";
-    return `${FRIENDS_WME_AUTH_PREFIX}:${encodeURIComponent(bindingKey)}`;
-  }
-
-  function friendsReadRestAuth(identity = readCurrentWmeIdentity()) {
-    try {
-      const storageKey = friendsRestAuthStorageKey(identity);
-      if (!storageKey) return null;
-      const raw = GM_getValue(storageKey, "");
-      if (!raw) return null;
-      const value = typeof raw === "string" ? JSON.parse(raw) : raw;
-      if (!value || typeof value !== "object") return null;
-      if (
-        value.wmeBindingKey &&
-        String(value.wmeBindingKey) !== String(identity?.bindingKey || "")
-      ) return null;
-      return value;
-    } catch {
-      return null;
-    }
-  }
-
-  function friendsWriteRestAuth(value, identity = readCurrentWmeIdentity()) {
-    try {
-      const storageKey = friendsRestAuthStorageKey(identity);
-      if (!storageKey) return;
-      const storedValue = value ? {
-        ...value,
-        wmeBindingKey: String(identity?.bindingKey || ""),
-        wmeUserId: String(identity?.userId || ""),
-        wmeUsernameNormalized: normalizeFriendsUsername(identity?.username || "")
-      } : null;
-      GM_setValue(storageKey, storedValue ? JSON.stringify(storedValue) : "");
-    } catch {}
-  }
-
-  function clearLegacyFriendsAuthOnce() {
-    try {
-      if (GM_getValue(FRIENDS_LEGACY_AUTH_CLEARED_KEY, "") === "1") return;
-      GM_setValue(FRIENDS_REST_AUTH_KEY, "");
-      GM_setValue(FRIENDS_LEGACY_AUTH_CLEARED_KEY, "1");
-    } catch {}
-  }
 
   function createFriendsRestCompat(identity = readCurrentWmeIdentity()) {
-    const bindingKey = String(identity?.bindingKey || "").trim();
-    if (!bindingKey) {
-      throw makeFriendsError("WME identity is not available yet.", "friends/wme-identity-missing");
+    // Legacy name retained only for compatibility with older internal calls.
+    // The extension now uses the bundled Firebase SDK for auth, CRUD, and snapshots.
+    return createFriendsSdkCompat(identity);
+  }
+
+  function prepareFriendsSdkValue(value, seen = new WeakSet()) {
+    if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+    if (value instanceof Date) {
+      return { __wmeRcFirebaseType: "date", millis: value.getTime() };
     }
-    if (friendsRestCompat && friendsRestCompatBindingKey === bindingKey) {
-      return friendsRestCompat;
-    }
-
-    friendsRestCompatBindingKey = bindingKey;
-    const config = FRIENDS_FIREBASE_CONFIG;
-    const projectId = encodeURIComponent(config.projectId);
-    const databaseRoot =
-      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
-
-    let authState = friendsReadRestAuth(identity);
-    let authUser = null;
-    const authListeners = new Set();
-    const queryRefreshers = new Set();
-    const apps = [];
-
-    const makeUser = (state) => {
-      if (!state?.localId) return null;
-      return {
-        uid: String(state.localId),
-        isAnonymous: true,
-        providerId: "anonymous",
-        async getIdToken(forceRefresh = false) {
-          const current = await ensureAuthToken(forceRefresh);
-          return current.idToken;
-        }
-      };
-    };
-
-    authUser = makeUser(authState);
-
-    const notifyAuth = () => {
-      authUser = makeUser(authState);
-      for (const listener of Array.from(authListeners)) {
-        try { listener(authUser); } catch {}
-      }
-    };
-
-    const saveAuthResponse = (payload, previous = null) => {
-      const expiresSeconds = Math.max(60, Number(payload?.expiresIn || payload?.expires_in || 3600));
-      authState = {
-        localId: String(payload?.localId || payload?.user_id || previous?.localId || ""),
-        idToken: String(payload?.idToken || payload?.id_token || ""),
-        refreshToken: String(payload?.refreshToken || payload?.refresh_token || previous?.refreshToken || ""),
-        expiresAt: Date.now() + expiresSeconds * 1000 - 60000,
-        providerId: "anonymous",
-        isAnonymous: true
-      };
-      if (!authState.localId || !authState.idToken || !authState.refreshToken) {
-        throw new Error("Firebase returned incomplete authentication data.");
-      }
-      friendsWriteRestAuth(authState, identity);
-      notifyAuth();
-      return authState;
-    };
-
-    const refreshAuthToken = async () => {
-      if (!authState?.refreshToken) throw new Error("Friends is not connected.");
-      const body = new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: authState.refreshToken
-      }).toString();
-
-      const payload = await friendsGmRequest({
-        method: "POST",
-        url: `https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(config.apiKey)}`,
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body
-      });
-      return saveAuthResponse(payload, authState);
-    };
-
-    const ensureAuthToken = async (forceRefresh = false) => {
-      if (!authState?.localId) throw new Error("Friends is not connected.");
-      if (
-        forceRefresh ||
-        !authState.idToken ||
-        !Number.isFinite(Number(authState.expiresAt)) ||
-        Number(authState.expiresAt) <= Date.now()
-      ) {
-        return refreshAuthToken();
-      }
-      return authState;
-    };
-
-    const signInAnonymously = async () => {
-      const payload = await friendsGmRequest({
-        method: "POST",
-        url:
-          `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=` +
-          encodeURIComponent(config.apiKey),
-        headers: { "Content-Type": "application/json" },
-        body: { returnSecureToken: true }
-      });
-      saveAuthResponse(payload, null);
-      return { user: authUser };
-    };
-
-    const auth = {
-      get currentUser() {
-        return authUser;
-      },
-      setPersistence() {
-        return Promise.resolve();
-      },
-      onAuthStateChanged(callback) {
-        authListeners.add(callback);
-        queueMicrotask(() => {
-          try { callback(authUser); } catch {}
-        });
-        return () => authListeners.delete(callback);
-      },
-      signInAnonymously,
-      async signOut() {
-        authState = null;
-        friendsWriteRestAuth(null, identity);
-        notifyAuth();
-      }
-    };
-
-    function encodeFirestoreValue(value) {
-      if (value && value.__friendsServerTimestamp === true) {
-        return { timestampValue: new Date().toISOString() };
-      }
-      if (value instanceof Date) return { timestampValue: value.toISOString() };
-      if (value === null || value === undefined) return { nullValue: null };
-      if (typeof value === "boolean") return { booleanValue: value };
-      if (typeof value === "number") {
-        return Number.isInteger(value)
-          ? { integerValue: String(value) }
-          : { doubleValue: value };
-      }
-      if (typeof value === "string") return { stringValue: value };
-      if (Array.isArray(value)) {
-        return { arrayValue: { values: value.map(encodeFirestoreValue) } };
-      }
-      if (typeof value === "object") {
-        const fields = {};
-        for (const [key, child] of Object.entries(value)) {
-          if (child === undefined) continue;
-          fields[key] = encodeFirestoreValue(child);
-        }
-        return { mapValue: { fields } };
-      }
-      return { stringValue: String(value) };
-    }
-
-    function decodeFirestoreValue(value) {
-      if (!value || typeof value !== "object") return null;
-      if ("nullValue" in value) return null;
-      if ("booleanValue" in value) return !!value.booleanValue;
-      if ("integerValue" in value) return Number(value.integerValue);
-      if ("doubleValue" in value) return Number(value.doubleValue);
-      if ("timestampValue" in value) return new Date(value.timestampValue);
-      if ("stringValue" in value) return String(value.stringValue);
-      if ("arrayValue" in value) {
-        return (value.arrayValue?.values || []).map(decodeFirestoreValue);
-      }
-      if ("mapValue" in value) return decodeFirestoreFields(value.mapValue?.fields || {});
-      return null;
-    }
-
-    function encodeFirestoreFields(data) {
-      const fields = {};
-      for (const [key, value] of Object.entries(data || {})) {
-        if (value === undefined) continue;
-        fields[key] = encodeFirestoreValue(value);
-      }
-      return fields;
-    }
-
-    function decodeFirestoreFields(fields) {
-      const data = {};
-      for (const [key, value] of Object.entries(fields || {})) {
-        data[key] = decodeFirestoreValue(value);
-      }
-      return data;
-    }
-
-    function encodePath(path) {
-      return String(path || "")
-        .split("/")
-        .filter(Boolean)
-        .map((segment) => encodeURIComponent(segment))
-        .join("/");
-    }
-
-    function documentIdFromName(name) {
-      const parts = String(name || "").split("/");
-      return decodeURIComponent(parts[parts.length - 1] || "");
-    }
-
-    function makeDocumentSnapshot(path, document = null) {
-      const id = document ? documentIdFromName(document.name) : String(path).split("/").pop();
-      const data = document ? decodeFirestoreFields(document.fields || {}) : null;
-      return {
-        id,
-        exists: !!document,
-        data() {
-          return data;
-        }
-      };
-    }
-
-    async function firestoreRequest({ method = "GET", suffix = "", body = null, query = "" }) {
-      const quotaBackoffUntil = getFriendsQuotaBackoffUntil();
-      if (quotaBackoffUntil > Date.now()) {
-        const error = new Error("Friends is temporarily paused while the shared Firebase quota cools down.");
-        error.code = "friends/quota-backoff";
-        error.details = { status: 429, backoffUntil: quotaBackoffUntil };
-        throw error;
-      }
-
-      const token = await ensureAuthToken(false);
-      const separator = query ? `?${query}` : "";
+    if (typeof value?.toDate === "function") {
       try {
-        return await friendsGmRequest({
-          method,
-          url: `${databaseRoot}${suffix}${separator}`,
-          headers: {
-            "Authorization": `Bearer ${token.idToken}`,
-            "Content-Type": "application/json"
-          },
-          body
-        });
-      } catch (error) {
-        const message = String(error?.message || "");
-        if (/UNAUTHENTICATED|INVALID_ID_TOKEN|TOKEN_EXPIRED/i.test(message)) {
-          const refreshed = await ensureAuthToken(true);
-          return friendsGmRequest({
-            method,
-            url: `${databaseRoot}${suffix}${separator}`,
-            headers: {
-              "Authorization": `Bearer ${refreshed.idToken}`,
-              "Content-Type": "application/json"
-            },
-            body
-          });
-        }
-        throw error;
-      }
+        const date = value.toDate();
+        if (date instanceof Date) return { __wmeRcFirebaseType: "date", millis: date.getTime() };
+      } catch {}
     }
+    if (Array.isArray(value)) return value.map((entry) => prepareFriendsSdkValue(entry, seen));
+    if (typeof value === "object") {
+      if (seen.has(value)) return null;
+      seen.add(value);
+      const output = {};
+      for (const [key, entry] of Object.entries(value)) {
+        if (typeof entry === "undefined" || typeof entry === "function") continue;
+        output[key] = prepareFriendsSdkValue(entry, seen);
+      }
+      seen.delete(value);
+      return output;
+    }
+    return String(value);
+  }
 
-    let refreshAllQueriesTimer = null;
-    const refreshAllQueries = () => {
-      // Coalesce bursts of writes (especially sending several selected pins)
-      // into one refresh instead of re-running every query after each write.
-      if (refreshAllQueriesTimer) clearTimeout(refreshAllQueriesTimer);
-      refreshAllQueriesTimer = setTimeout(() => {
-        refreshAllQueriesTimer = null;
-        if (getFriendsQuotaBackoffUntil() > Date.now()) return;
-        for (const refresh of Array.from(queryRefreshers)) {
-          try { refresh(); } catch {}
-        }
-      }, 750);
+  function reviveFriendsSdkValue(value) {
+    if (Array.isArray(value)) return value.map(reviveFriendsSdkValue);
+    if (!value || typeof value !== "object") return value;
+    if (value.__wmeRcFirebaseType === "date" && Number.isFinite(Number(value.millis))) {
+      return new Date(Number(value.millis));
+    }
+    const output = {};
+    for (const [key, entry] of Object.entries(value)) output[key] = reviveFriendsSdkValue(entry);
+    return output;
+  }
+
+  function makeFriendsSdkDocumentSnapshot(payload = {}, path = "") {
+    const exists = !!payload.exists;
+    const data = exists ? reviveFriendsSdkValue(payload.data || {}) : null;
+    return {
+      id: String(payload.id || String(path || "").split("/").pop() || ""),
+      exists,
+      data() { return data; }
+    };
+  }
+
+  function makeFriendsSdkQuerySnapshot(payload = {}) {
+    const docs = (Array.isArray(payload.docs) ? payload.docs : []).map((item) => {
+      const data = reviveFriendsSdkValue(item?.data || {});
+      return { id: String(item?.id || ""), data() { return data; } };
+    });
+    const changes = (Array.isArray(payload.changes) ? payload.changes : []).map((change) => {
+      const data = reviveFriendsSdkValue(change?.doc?.data || {});
+      return {
+        type: String(change?.type || "modified"),
+        oldIndex: Number(change?.oldIndex ?? -1),
+        newIndex: Number(change?.newIndex ?? -1),
+        doc: { id: String(change?.doc?.id || ""), data() { return data; } }
+      };
+    });
+    return {
+      docs,
+      size: docs.length,
+      empty: docs.length === 0,
+      metadata: {
+        fromCache: !!payload.fromCache,
+        hasPendingWrites: !!payload.hasPendingWrites
+      },
+      docChanges() { return changes; },
+      forEach(callback, thisArg) { docs.forEach((item) => callback.call(thisArg, item)); }
+    };
+  }
+
+  function friendsSdkIdentityPayload(identity = readCurrentWmeIdentity()) {
+    const wmeUserId = String(identity?.userId || friendsOwnWmeId() || "").trim();
+    const bindingKey = String(identity?.bindingKey || (wmeUserId ? `wme-id:${wmeUserId}` : ""));
+    return {
+      wmeUsername: String(identity?.username || readCurrentWmeUsername() || "").trim(),
+      wmeUsernameNormalized: normalizeFriendsUsername(identity?.username || readCurrentWmeUsername() || ""),
+      wmeUserId,
+      userId: wmeUserId,
+      wmeBindingKey: bindingKey,
+      bindingKey
+    };
+  }
+
+  function createFriendsSdkCompat(identity = readCurrentWmeIdentity()) {
+    const identityPayload = friendsSdkIdentityPayload(identity);
+    const bindingKey = String(identityPayload.bindingKey || "");
+    if (friendsSdkCompat && friendsSdkCompatBindingKey === bindingKey) return friendsSdkCompat;
+
+    const bridge = createFriendsRealtimeBridge();
+    const authObservers = new Set();
+    let currentUser = null;
+    let signInPromise = null;
+    let listenerSequence = 0;
+
+    const notifyAuthObservers = () => {
+      for (const callback of Array.from(authObservers)) {
+        try { callback(currentUser); } catch {}
+      }
     };
 
-    class RestDocumentReference {
+    const ensureSignedIn = async () => {
+      if (currentUser) return currentUser;
+      if (!signInPromise) {
+        signInPromise = bridge.request("authSignInAnonymously", { identity: identityPayload }, 20000)
+          .then((result) => {
+            const user = result?.user || null;
+            currentUser = user?.uid ? {
+              uid: String(user.uid),
+              isAnonymous: user.isAnonymous !== false
+            } : null;
+            notifyAuthObservers();
+            return currentUser;
+          })
+          .finally(() => { signInPromise = null; });
+      }
+      return signInPromise;
+    };
+
+    class SdkDocumentReference {
       constructor(path) {
         this.path = String(path || "").replace(/^\/+|\/+$/g, "");
         this.id = this.path.split("/").pop() || "";
       }
-
       async get() {
-        try {
-          const document = await firestoreRequest({
-            suffix: `/${encodePath(this.path)}`
-          });
-          return makeDocumentSnapshot(this.path, document);
-        } catch (error) {
-          const message = String(error?.message || "");
-          const status = Number(error?.details?.status || 0);
-          const serverStatus = String(
-            error?.details?.response?.error?.status ||
-            error?.details?.response?.status ||
-            ""
-          );
-
-          // A missing Firestore document is normal during first-time profile
-          // registration and exact username lookup. Return exists=false just
-          // like the Firebase SDK instead of surfacing it as an error.
-          if (
-            status === 404 ||
-            serverStatus === "NOT_FOUND" ||
-            /\bnot[\s_-]*found\b|HTTP\s*404/i.test(message)
-          ) {
-            return makeDocumentSnapshot(this.path, null);
-          }
-          throw error;
-        }
+        await ensureSignedIn();
+        const result = await bridge.request("getDoc", { identity: identityPayload, path: this.path }, 20000);
+        return makeFriendsSdkDocumentSnapshot(result, this.path);
       }
-
-      async set(data) {
-        await firestoreRequest({
-          method: "PATCH",
-          suffix: `/${encodePath(this.path)}`,
-          body: { fields: encodeFirestoreFields(data) }
-        });
-        refreshAllQueries();
+      async set(data, options) {
+        await ensureSignedIn();
+        await bridge.request("setDoc", { identity: identityPayload, path: this.path, data: prepareFriendsSdkValue(data), options }, 20000);
       }
-
       async update(data) {
-        const keys = Object.keys(data || {});
-        const params = new URLSearchParams();
-        for (const key of keys) params.append("updateMask.fieldPaths", key);
-        await firestoreRequest({
-          method: "PATCH",
-          suffix: `/${encodePath(this.path)}`,
-          query: params.toString(),
-          body: { fields: encodeFirestoreFields(data) }
-        });
-        refreshAllQueries();
+        await ensureSignedIn();
+        await bridge.request("updateDoc", { identity: identityPayload, path: this.path, data: prepareFriendsSdkValue(data) }, 20000);
       }
-
       async delete() {
-        await firestoreRequest({
-          method: "DELETE",
-          suffix: `/${encodePath(this.path)}`
-        });
-        refreshAllQueries();
+        await ensureSignedIn();
+        await bridge.request("deleteDoc", { identity: identityPayload, path: this.path }, 20000);
       }
     }
 
-    class RestQuery {
-      constructor(collectionPath, field = "", op = "==", value = null) {
-        this.collectionPath = collectionPath;
-        this.field = field;
-        this.op = op;
-        this.value = value;
+    class SdkQuery {
+      constructor(collectionPath, filters = []) {
+        this.collectionPath = String(collectionPath || "").replace(/^\/+|\/+$/g, "");
+        this.filters = Array.isArray(filters) ? filters : [];
       }
-
-      async get() {
-        const collectionParts = this.collectionPath.split("/").filter(Boolean);
-        const collectionId = collectionParts.pop();
-        const parentPath = collectionParts.join("/");
-        const structuredQuery = {
-          from: [{ collectionId }]
-        };
-
-        if (this.field) {
-          structuredQuery.where = {
-            fieldFilter: {
-              field: { fieldPath: this.field },
-              op: this.op === "==" ? "EQUAL" : "EQUAL",
-              value: encodeFirestoreValue(this.value)
-            }
-          };
-        }
-
-        const response = await firestoreRequest({
-          method: "POST",
-          suffix: `${parentPath ? `/${encodePath(parentPath)}` : ""}:runQuery`,
-          body: { structuredQuery }
-        });
-
-        const documents = (Array.isArray(response) ? response : [])
-          .map((entry) => entry?.document)
-          .filter(Boolean);
-
-        return {
-          docs: documents.map((document) =>
-            makeDocumentSnapshot(`${this.collectionPath}/${documentIdFromName(document.name)}`, document)
-          )
-        };
-      }
-
-      onSnapshot(onNext, onError) {
-        let stopped = false;
-        let running = false;
-        let rerunRequested = false;
-        let timer = null;
-
-        const refresh = async () => {
-          if (stopped) return;
-          if (running) {
-            // A realtime event can arrive while the REST query is still in
-            // flight. Remember it instead of dropping the only refresh signal.
-            rerunRequested = true;
-            return;
-          }
-          if (getFriendsQuotaBackoffUntil() > Date.now()) return;
-          running = true;
-          try {
-            const snapshot = await this.get();
-            if (!stopped) onNext(snapshot);
-          } catch (error) {
-            if (!stopped && onError) onError(error);
-          } finally {
-            running = false;
-            if (!stopped && rerunRequested) {
-              rerunRequested = false;
-              queueMicrotask(() => refresh());
-            }
-          }
-        };
-
-        queryRefreshers.add(refresh);
-        refresh();
-
-        timer = setInterval(() => {
-          if (document.hidden || friendsRealtimeActive) return;
-          refresh();
-        }, FRIENDS_POLL_INTERVAL_MS);
-
-        return () => {
-          stopped = true;
-          if (timer) clearInterval(timer);
-          queryRefreshers.delete(refresh);
-        };
-      }
-    }
-
-    if (!window.__wmeRcFriendsFocusRefreshBound) {
-      window.__wmeRcFriendsFocusRefreshBound = true;
-      let lastFallbackFocusRefresh = 0;
-      const healRealtime = () => {
-        scheduleFriendsRealtimeConfigure(0);
-        if (!friendsRealtimeActive) pollFriendsRealtimeSignal({ forceRefresh: true }).catch(() => {});
-      };
-      window.addEventListener("focus", () => {
-        healRealtime();
-        if (friendsRealtimeActive) return;
-        if (getFriendsQuotaBackoffUntil() > Date.now()) return;
-        if (Date.now() - lastFallbackFocusRefresh < FRIENDS_POLL_INTERVAL_MS) return;
-        lastFallbackFocusRefresh = Date.now();
-        for (const refresh of Array.from(queryRefreshers)) {
-          try { refresh(); } catch {}
-        }
-      }, true);
-      document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) healRealtime();
-      }, true);
-      window.addEventListener("pageshow", healRealtime, true);
-    }
-
-    class RestCollectionReference {
-      constructor(path) {
-        this.path = String(path || "").replace(/^\/+|\/+$/g, "");
-      }
-
-      doc(id = "") {
-        const documentId = String(id || "").trim() ||
-          `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-        return new RestDocumentReference(`${this.path}/${documentId}`);
-      }
-
       where(field, op, value) {
-        return new RestQuery(this.path, field, op, value);
+        return new SdkQuery(this.collectionPath, [...this.filters, { field, op, value }]);
       }
-
-      get() {
-        return new RestQuery(this.path).get();
+      spec() {
+        return {
+          collectionPath: this.collectionPath,
+          where: this.filters.map((item) => ({ ...item, value: prepareFriendsSdkValue(item.value) }))
+        };
+      }
+      async get() {
+        await ensureSignedIn();
+        const result = await bridge.request("getQuery", { identity: identityPayload, query: this.spec() }, 20000);
+        return makeFriendsSdkQuerySnapshot(result);
+      }
+      onSnapshot(onNext, onError) {
+        const listenerId = `${bindingKey}:${Date.now().toString(36)}:${(++listenerSequence).toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+        let stopped = false;
+        friendsSdkSnapshotCallbacks.set(listenerId, {
+          next: (payload) => { if (!stopped) onNext(makeFriendsSdkQuerySnapshot(payload)); },
+          error: (error) => { if (!stopped) onError?.(error); }
+        });
+        ensureSignedIn()
+          .then(() => bridge.request("subscribeQuery", {
+            identity: identityPayload,
+            listenerId,
+            query: this.spec()
+          }, 20000))
+          .catch((error) => {
+            friendsSdkSnapshotCallbacks.delete(listenerId);
+            if (!stopped) onError?.(error);
+          });
+        return () => {
+          if (stopped) return;
+          stopped = true;
+          friendsSdkSnapshotCallbacks.delete(listenerId);
+          bridge.request("unsubscribe", { identity: identityPayload, listenerId }, 5000).catch(() => {});
+        };
       }
     }
+
+    class SdkCollectionReference extends SdkQuery {
+      constructor(path) { super(path, []); this.path = this.collectionPath; }
+      doc(id = "") {
+        const documentId = String(id || "").trim() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+        return new SdkDocumentReference(`${this.collectionPath}/${documentId}`);
+      }
+    }
+
+    const auth = {
+      get currentUser() { return currentUser; },
+      async setPersistence() { return true; },
+      onAuthStateChanged(callback) {
+        authObservers.add(callback);
+        queueMicrotask(() => { try { callback(currentUser); } catch {} });
+        return () => authObservers.delete(callback);
+      },
+      async signInAnonymously() {
+        const user = await ensureSignedIn();
+        return { user };
+      },
+      async signOut() {
+        await bridge.request("authSignOut", { identity: identityPayload }, 15000);
+        currentUser = null;
+        notifyAuthObservers();
+      }
+    };
 
     const db = {
-      refreshAllQueries,
-      collection(path) {
-        return new RestCollectionReference(path);
-      },
+      collection(path) { return new SdkCollectionReference(path); },
       batch() {
-        const writes = [];
+        const operations = [];
         return {
-          delete(reference) {
-            const path = String(reference?.path || "").replace(/^\/+|\/+$/g, "");
-            if (!path) return;
-            writes.push({
-              delete: `projects/${config.projectId}/databases/(default)/documents/${path}`
-            });
-          },
+          delete(reference) { if (reference?.path) operations.push({ type: "delete", path: reference.path }); },
+          set(reference, data, options) { if (reference?.path) operations.push({ type: "set", path: reference.path, data: prepareFriendsSdkValue(data), options }); },
+          update(reference, data) { if (reference?.path) operations.push({ type: "update", path: reference.path, data: prepareFriendsSdkValue(data) }); },
           async commit() {
-            if (!writes.length) return;
-            await firestoreRequest({
-              method: "POST",
-              suffix: ":commit",
-              body: { writes }
-            });
-            refreshAllQueries();
+            await ensureSignedIn();
+            if (!operations.length) return;
+            await bridge.request("batchCommit", { identity: identityPayload, operations }, 30000);
           }
         };
       },
       async runTransaction(callback) {
         const writes = [];
         const tx = {
-          get(reference) {
-            return reference.get();
-          },
-          set(reference, data) {
-            writes.push(() => reference.set(data));
-          },
-          delete(reference) {
-            writes.push(() => reference.delete());
-          }
+          get(reference) { return reference.get(); },
+          set(reference, data, options) { writes.push(() => reference.set(data, options)); },
+          update(reference, data) { writes.push(() => reference.update(data)); },
+          delete(reference) { writes.push(() => reference.delete()); }
         };
         const result = await callback(tx);
         for (const write of writes) await write();
@@ -1968,41 +1653,26 @@
       }
     };
 
-    const app = {
-      name: FRIENDS_FIREBASE_APP_NAME,
-      auth() {
-        return auth;
-      },
-      firestore() {
-        return db;
-      }
-    };
-    apps.push(app);
-
+    const app = { name: FRIENDS_FIREBASE_APP_NAME, auth: () => auth, firestore: () => db };
     const authFactory = () => auth;
     authFactory.Auth = { Persistence: { LOCAL: "local" } };
-
     const firestoreFactory = () => db;
-    firestoreFactory.FieldValue = {
-      serverTimestamp() {
-        return { __friendsServerTimestamp: true };
-      }
-    };
+    firestoreFactory.FieldValue = { serverTimestamp: () => ({ __friendsServerTimestamp: true }) };
 
-    friendsRestCompat = {
-      apps,
-      initializeApp() {
-        return app;
-      },
+    friendsSdkCompatBindingKey = bindingKey;
+    friendsSdkCompat = {
+      apps: [app],
+      initializeApp() { return app; },
       auth: authFactory,
       firestore: firestoreFactory
     };
-    return friendsRestCompat;
+    return friendsSdkCompat;
   }
 
   function getFirebaseCompatGlobal() {
-    return createFriendsRestCompat(readCurrentWmeIdentity());
+    return createFriendsSdkCompat(readCurrentWmeIdentity());
   }
+
 
   function normalizeFriendsUsername(value) {
     try {
@@ -2268,6 +1938,298 @@
     } catch {}
   }
 
+  function friendsNotificationStorageScope() {
+    const identity = readCurrentWmeIdentity();
+    return String(
+      friendsActiveWmeBindingKey ||
+      identity?.bindingKey ||
+      friendsProfile?.wmeUserId ||
+      friendsProfile?.uid ||
+      friendsAuthUser?.uid ||
+      ""
+    ).trim();
+  }
+
+  function friendsScopedNotificationStorageKey(baseKey) {
+    const scope = friendsNotificationStorageScope();
+    if (!scope) return "";
+    return `${baseKey}:${encodeURIComponent(scope)}`;
+  }
+
+  function readFriendsScopedJson(baseKey, fallback) {
+    const key = friendsScopedNotificationStorageKey(baseKey);
+    if (!key) return fallback;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "null");
+      return parsed == null ? fallback : parsed;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeFriendsScopedJson(baseKey, value) {
+    const key = friendsScopedNotificationStorageKey(baseKey);
+    if (!key) return;
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  }
+
+  function plainFriendsNotificationValue(value, depth = 0, seen = new WeakSet()) {
+    if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "function") return undefined;
+    if (value instanceof Date) return value.getTime();
+    try {
+      if (typeof value?.toMillis === "function") return Number(value.toMillis()) || 0;
+    } catch {}
+    if (depth > 7) return undefined;
+    if (Array.isArray(value)) {
+      return value.slice(0, 150).map((item) => plainFriendsNotificationValue(item, depth + 1, seen));
+    }
+    if (typeof value === "object") {
+      if (seen.has(value)) return undefined;
+      seen.add(value);
+      const result = {};
+      for (const [key, item] of Object.entries(value).slice(0, 120)) {
+        const next = plainFriendsNotificationValue(item, depth + 1, seen);
+        if (next !== undefined) result[key] = next;
+      }
+      seen.delete(value);
+      return result;
+    }
+    return String(value);
+  }
+
+  function readFriendsPersistentNotifications() {
+    const stored = readFriendsScopedJson(FRIENDS_PERSISTENT_NOTIFICATIONS_KEY, []);
+    return Array.isArray(stored) ? stored.filter((item) => item?.id && item?.type).slice(-120) : [];
+  }
+
+  function writeFriendsPersistentNotifications(items) {
+    writeFriendsScopedJson(
+      FRIENDS_PERSISTENT_NOTIFICATIONS_KEY,
+      (Array.isArray(items) ? items : []).filter((item) => item?.id && item?.type).slice(-120)
+    );
+  }
+
+  function friendsPersistentNotificationKey(type, id) {
+    return `${String(type || "notification")}::${String(id || "")}`;
+  }
+
+  function readFriendsDismissedNotifications() {
+    const stored = readFriendsScopedJson(FRIENDS_DISMISSED_NOTIFICATIONS_KEY, []);
+    return new Set(Array.isArray(stored) ? stored.map(String) : []);
+  }
+
+  function isFriendsNotificationDismissed(type, id) {
+    return readFriendsDismissedNotifications().has(friendsPersistentNotificationKey(type, id));
+  }
+
+  function rememberFriendsNotificationDismissed(type, id) {
+    const key = friendsPersistentNotificationKey(type, id);
+    if (!id) return;
+    const dismissed = readFriendsDismissedNotifications();
+    dismissed.add(key);
+    writeFriendsScopedJson(FRIENDS_DISMISSED_NOTIFICATIONS_KEY, Array.from(dismissed).slice(-500));
+  }
+
+  function forgetFriendsNotificationDismissed(type, id) {
+    const key = friendsPersistentNotificationKey(type, id);
+    const dismissed = readFriendsDismissedNotifications();
+    if (!dismissed.delete(key)) return;
+    writeFriendsScopedJson(FRIENDS_DISMISSED_NOTIFICATIONS_KEY, Array.from(dismissed).slice(-500));
+  }
+
+  function persistFriendsNotification(item) {
+    const type = String(item?.type || "");
+    const id = String(item?.id || "");
+    if (!type || !id) return;
+    const key = friendsPersistentNotificationKey(type, id);
+    const existing = readFriendsPersistentNotifications();
+    const previous = existing.find((entry) => friendsPersistentNotificationKey(entry?.type, entry?.id) === key);
+    const record = {
+      type,
+      id,
+      createdAt: Number(previous?.createdAt || item?.createdAt || Date.now()),
+      data: plainFriendsNotificationValue(item?.data || {}) || {}
+    };
+    writeFriendsPersistentNotifications([
+      ...existing.filter((entry) => friendsPersistentNotificationKey(entry?.type, entry?.id) !== key),
+      record
+    ]);
+  }
+
+  function removeFriendsPersistentNotification(type, id) {
+    const key = friendsPersistentNotificationKey(type, id);
+    const existing = readFriendsPersistentNotifications();
+    const next = existing.filter((entry) => friendsPersistentNotificationKey(entry?.type, entry?.id) !== key);
+    if (next.length !== existing.length) writeFriendsPersistentNotifications(next);
+  }
+
+  function dismissFriendsNotificationStorage(type, id) {
+    rememberFriendsNotificationDismissed(type, id);
+    removeFriendsPersistentNotification(type, id);
+  }
+
+  function hydrateFriendsPersistentNotifications() {
+    const scope = friendsNotificationStorageScope();
+    if (!scope || friendsPersistentNotificationScope === scope) return;
+    friendsPersistentNotificationScope = scope;
+    for (const item of readFriendsPersistentNotifications()) {
+      if (isFriendsNotificationDismissed(item.type, item.id)) continue;
+      enqueueFriendsNotification({ ...item, persist: false, restored: true });
+    }
+  }
+
+  function readFriendsRequestStatusHistory() {
+    const stored = readFriendsScopedJson(FRIENDS_REQUEST_STATUS_HISTORY_KEY, null);
+    if (!stored || typeof stored !== "object") return { initialized: false, requests: {} };
+    return {
+      initialized: !!stored.initialized,
+      requests: stored.requests && typeof stored.requests === "object" ? stored.requests : {}
+    };
+  }
+
+  function writeFriendsRequestStatusHistory(history) {
+    const requests = history?.requests && typeof history.requests === "object" ? history.requests : {};
+    const entries = Object.entries(requests)
+      .sort((a, b) => Number(b?.[1]?.lastSeenAt || 0) - Number(a?.[1]?.lastSeenAt || 0))
+      .slice(0, 300);
+    writeFriendsScopedJson(FRIENDS_REQUEST_STATUS_HISTORY_KEY, {
+      initialized: true,
+      requests: Object.fromEntries(entries)
+    });
+  }
+
+  function friendsRequestNotificationProfile(request, direction = "outgoing") {
+    const profile = direction === "incoming"
+      ? (request?.fromProfile || friendsEmbeddedRequestProfile(request, "from"))
+      : (request?.toProfile || friendsEmbeddedRequestProfile(request, "to"));
+    return {
+      wmeUsername: String(
+        profile?.wmeUsername ||
+        (direction === "incoming" ? request?.fromUsername : request?.toUsername) ||
+        "WME editor"
+      ),
+      wmeAvatarUrl: normalizeWmeAvatarUrl(
+        profile?.wmeAvatarUrl ||
+        (direction === "incoming" ? request?.fromAvatarUrl : request?.toAvatarUrl) ||
+        ""
+      )
+    };
+  }
+
+  function makeFriendsRequestNotificationData(request, direction = "outgoing") {
+    const profile = friendsRequestNotificationProfile(request, direction);
+    return {
+      ...plainFriendsNotificationValue(request || {}),
+      id: String(request?.id || ""),
+      status: String(request?.status || ""),
+      notificationProfile: profile,
+      fromProfile: direction === "incoming" ? profile : plainFriendsNotificationValue(request?.fromProfile || {}),
+      toProfile: direction === "outgoing" ? profile : plainFriendsNotificationValue(request?.toProfile || {})
+    };
+  }
+
+  function scheduleFriendsRequestOutcomeRecheck(delay = 900) {
+    if (friendsRequestOutcomeRecheckTimer) return;
+    friendsRequestOutcomeRecheckTimer = setTimeout(() => {
+      friendsRequestOutcomeRecheckTimer = null;
+      try { reconcileFriendsRequestLifecycleNotifications(); } catch {}
+    }, Math.max(250, Number(delay) || 900));
+  }
+
+  function reconcileFriendsRequestLifecycleNotifications() {
+    if (!friendsAuthUser) return;
+    hydrateFriendsPersistentNotifications();
+
+    const history = readFriendsRequestStatusHistory();
+    const previous = history.requests || {};
+    const next = { ...previous };
+    const current = new Map(
+      friendsOutgoingRequests
+        .filter((request) => request?.id)
+        .map((request) => [String(request.id), request])
+    );
+    const now = Date.now();
+
+    for (const [id, request] of current.entries()) {
+      const status = String(request?.status || "pending").toLowerCase();
+      const old = previous[id] || null;
+      const data = makeFriendsRequestNotificationData(request, "outgoing");
+
+      if (status === "pending") {
+        if (!old || old.status !== "pending") {
+          forgetFriendsNotificationDismissed("friend-request-sent", id);
+          forgetFriendsNotificationDismissed("friend-request-approved", id);
+          forgetFriendsNotificationDismissed("friend-request-rejected", id);
+        }
+        enqueueFriendsNotification({ type: "friend-request-sent", id, data });
+      } else if (status === "accepted") {
+        dismissFriendsNotification("friend-request-sent", id, { remember: true });
+        if (old?.status === "pending" || (history.initialized && old && old.status !== "accepted")) {
+          enqueueFriendsNotification({ type: "friend-request-approved", id, data });
+        }
+      }
+
+      next[id] = {
+        status,
+        request: data,
+        missingSince: 0,
+        lastSeenAt: now
+      };
+    }
+
+    for (const [id, old] of Object.entries(previous)) {
+      if (current.has(id) || old?.status !== "pending") continue;
+      const missingSince = Number(old?.missingSince || 0);
+      if (!missingSince) {
+        next[id] = { ...old, missingSince: now, lastSeenAt: now };
+        scheduleFriendsRequestOutcomeRecheck();
+        continue;
+      }
+      if (now - missingSince < 850) {
+        scheduleFriendsRequestOutcomeRecheck(950 - (now - missingSince));
+        continue;
+      }
+
+      dismissFriendsNotification("friend-request-sent", id, { remember: true });
+      enqueueFriendsNotification({
+        type: "friend-request-rejected",
+        id,
+        data: { ...(old?.request || {}), id, status: "declined" }
+      });
+      next[id] = { ...old, status: "declined", missingSince: 0, lastSeenAt: now };
+    }
+
+    writeFriendsRequestStatusHistory({ initialized: true, requests: next });
+  }
+
+  function resetFriendsNotificationRuntime() {
+    stopFriendsNotificationHealthWatcher();
+    if (friendsRequestOutcomeRecheckTimer) {
+      try { clearTimeout(friendsRequestOutcomeRecheckTimer); } catch {}
+      friendsRequestOutcomeRecheckTimer = null;
+    }
+    const handles = new Set();
+    for (const active of friendsActiveNotifications.values()) {
+      if (active?.close) handles.add(active.close);
+    }
+    if (friendsPinShareNotification?.close) handles.add(friendsPinShareNotification.close);
+    for (const close of handles) {
+      try { close(); } catch {}
+    }
+    friendsNotificationQueue = [];
+    friendsActiveNotifications.clear();
+    friendsPinShareNotificationItems.clear();
+    friendsPinShareSelectedIds.clear();
+    friendsPinShareKnownIds.clear();
+    friendsPinShareSelectedSenderKeys.clear();
+    friendsPinShareKnownSenderKeys.clear();
+    friendsPinShareNotification = null;
+    friendsPersistentNotificationScope = "";
+  }
+
   function getFriendsStateSnapshot() {
     const identity = readCurrentWmeIdentity();
     return {
@@ -2358,6 +2320,7 @@
 
   function stopFriendsListeners(clearState = true) {
     stopFastOutgoingRequestPoll();
+    stopFriendsNotificationHealthWatcher();
     if (friendsDerivedRefreshTimer) {
       try { clearTimeout(friendsDerivedRefreshTimer); } catch {}
       friendsDerivedRefreshTimer = null;
@@ -2563,6 +2526,14 @@
     return friendsProfile;
   }
 
+  function clearLegacyFriendsAuthOnce() {
+    try {
+      if (GM_getValue(FRIENDS_LEGACY_AUTH_CLEARED_KEY, "") === "1") return;
+      GM_setValue(FRIENDS_REST_AUTH_KEY, "");
+      GM_setValue(FRIENDS_LEGACY_AUTH_CLEARED_KEY, "1");
+    } catch {}
+  }
+
   function friendsRequestStatusRank(status) {
     const value = String(status || "").toLowerCase();
     if (value === "accepted") return 3;
@@ -2592,24 +2563,21 @@
 
       clearLegacyFriendsAuthOnce();
       friendsActiveWmeBindingKey = identity.bindingKey;
+      hydrateFriendsPersistentNotifications();
       const initBindingKey = identity.bindingKey;
       const initGeneration = ++friendsIdentityGeneration;
-      const fb = createFriendsRestCompat(identity);
+      const fb = createFriendsSdkCompat(identity);
       const app = fb.initializeApp(FRIENDS_FIREBASE_CONFIG, FRIENDS_FIREBASE_APP_NAME);
 
       friendsFirebaseApp = app;
       friendsAuth = app.auth();
       friendsDb = app.firestore();
-      friendsUsesNativeFirebase = false;
-      friendsRealtimeActive = false;
-      friendsRealtimeBindingKey = "";
-      friendsRealtimeSignalLastNonce = "";
-      friendsRealtimeSignalTargetId = "";
-      updateFriendsRealtimeSignalFallback();
-      ensureFriendsRealtimeHealthMonitor();
-      configureFriendsRealtimeExtension(identity)
-        .then(() => updateFriendsRealtimeSignalFallback())
-        .catch(() => updateFriendsRealtimeSignalFallback());
+      friendsUsesNativeFirebase = true;
+      friendsRealtimeActive = true;
+      friendsRealtimeBindingKey = String(identity.bindingKey || "");
+      configureFriendsRealtimeExtension(identity).catch((error) => {
+        console.debug(`${SCRIPT_NAME}: Firebase SDK bridge configuration is still starting`, error);
+      });
 
       try { await friendsAuth.setPersistence?.("local"); } catch {}
 
@@ -2635,7 +2603,6 @@
             initGeneration !== friendsIdentityGeneration ||
             initBindingKey !== friendsActiveWmeBindingKey
           ) return;
-          scheduleFriendsRealtimeConfigure(0);
           startFriendsRealtimeListeners();
           cleanupFriendsHistoricalData().catch(() => {});
         } catch (error) {
@@ -2783,6 +2750,7 @@
   async function disconnectFriendsAccount() {
     friendsAuthTransitioning = true;
     try {
+      resetFriendsNotificationRuntime();
       stopFriendsListeners();
       try { await friendsAuth?.signOut?.(); } catch {}
       friendsAuthUser = null;
@@ -2795,6 +2763,8 @@
       friendsInitPromise = null;
       friendsRestCompat = null;
       friendsRestCompatBindingKey = "";
+      friendsSdkCompat = null;
+      friendsSdkCompatBindingKey = "";
       toast("Friends local session reset for this WME account.");
     } finally {
       friendsAuthTransitioning = false;
@@ -2808,6 +2778,7 @@
       friendsAuthTransitioning = true;
       friendsIdentityGeneration += 1;
       try {
+        resetFriendsNotificationRuntime();
         stopFriendsListeners();
         friendsFirebaseApp = null;
         friendsAuth = null;
@@ -2822,6 +2793,8 @@
         friendsConnectPromise = null;
         friendsRestCompat = null;
         friendsRestCompatBindingKey = "";
+        friendsSdkCompat = null;
+        friendsSdkCompatBindingKey = "";
         friendsActiveWmeBindingKey = String(nextIdentity?.bindingKey || "");
         friendsMissingIdentityChecks = 0;
         clearFriendsLocalBindingCache();
@@ -3051,6 +3024,22 @@
       (fromUid === a && toUid === b) ||
       (fromUid === b && toUid === a)
     );
+  }
+
+  function friendsOtherRequestUid(request, ownUid = friendsOwnWmeId()) {
+    const meUid = String(ownUid || "").trim();
+    const fromUid = String(request?.fromUid || "").trim();
+    const toUid = String(request?.toUid || "").trim();
+
+    if (meUid && fromUid === meUid) return toUid;
+    if (meUid && toUid === meUid) return fromUid;
+
+    // Compatibility fallback for older request documents or a briefly stale
+    // local identity during startup. Return the populated participant that is
+    // not the currently detected account whenever possible.
+    if (fromUid && fromUid !== meUid) return fromUid;
+    if (toUid && toUid !== meUid) return toUid;
+    return "";
   }
 
   async function findExistingFriendRequestBetween(uidA, uidB) {
@@ -3295,13 +3284,191 @@
     return profile;
   }
 
-  async function sendFriendRequest(username, knownTarget = null) {
-    if (!friendsDb || !friendsAuth) await initFriendsFirebase();
+  async function ensureFriendsMutationReady() {
+    await initFriendsFirebase();
+
+    if (!friendsAuth || !friendsDb) {
+      throw makeFriendsError(
+        "Friends is not connected.",
+        "friends/not-connected"
+      );
+    }
+
+    let user = friendsAuth.currentUser || friendsAuthUser || null;
+    if (!user) {
+      const credential = await friendsAuth.signInAnonymously();
+      user = credential?.user || friendsAuth.currentUser || null;
+    }
+    if (!user?.uid) {
+      throw makeFriendsError(
+        "Firebase returned no active Friends session.",
+        "friends/auth-session-missing"
+      );
+    }
+
+    // Keep the page-side auth mirror synchronized with the SDK backend before
+    // any create/update/delete operation. The realtime listener may already be
+    // rendering cached data while this mirror is still null after a reload.
+    friendsAuthUser = user;
+
+    const identity = await waitForWmeIdentity();
+    const meUid = friendsCanonicalWmeId(identity);
+    if (!meUid) {
+      throw makeFriendsError(
+        "The numeric WME user ID could not be detected.",
+        "friends/wme-identity-missing"
+      );
+    }
+
+    const activeProfileUid = String(friendsProfile?.wmeUserId || friendsProfile?.uid || "");
+    const activeProfileAuthUid = String(friendsProfile?.authUid || "");
+    if (activeProfileUid !== String(meUid) || activeProfileAuthUid !== String(user.uid)) {
+      clearFriendsLocalBindingCache();
+      await ensureFriendsProfile();
+    }
+
+    // Firestore rules authorize mutations through this WME-ID binding. Await a
+    // fresh SDK write on the user action itself so a mutation cannot race the
+    // initial profile/listener bootstrap after a page or extension reload.
+    const currentUsername = String(
+      identity?.username || friendsProfile?.wmeUsername || readCurrentWmeUsername() || ""
+    ).trim();
+    await friendsDb.collection("authBindings").doc(String(user.uid)).set({
+      authUid: String(user.uid),
+      wmeUserId: String(meUid),
+      wmeUsername: currentUsername,
+      wmeUsernameNormalized: normalizeFriendsUsername(currentUsername),
+      wmeBindingKey: `wme-id:${String(meUid)}`,
+      updatedAt: friendsServerTimestamp()
+    });
+
+    return { user, meUid: String(meUid), identity };
+  }
+
+  function normalizeFriendsMutationError(error, fallbackMessage) {
+    const code = String(error?.code || error?.error?.code || "").toLowerCase();
+    const message = String(error?.message || error || "");
+    if (code.includes("permission-denied") || /missing or insufficient permissions|permission[_ -]?denied/i.test(message)) {
+      return makeFriendsError(
+        "Firebase blocked this Friends change. Reload the extension and WME, then try again.",
+        "friends/firestore-write-denied"
+      );
+    }
+    if (code.includes("unauthenticated")) {
+      return makeFriendsError(
+        "The Friends Firebase session expired. Reload WME and try again.",
+        "friends/auth-session-expired"
+      );
+    }
+    if (isFriendsTransportError(error)) {
+      return makeFriendsError(
+        "The Firebase extension connection was interrupted. Reload the extension and WME.",
+        "friends/firebase-transport-failed"
+      );
+    }
+    if (error instanceof Error) return error;
+    return makeFriendsError(message || fallbackMessage || "The Friends change failed.", "friends/mutation-failed");
+  }
+
+  async function resolveFriendRequestIdForRemoval(requestId, otherUid = "") {
+    const directId = String(requestId || "").trim();
+    if (directId && directId !== "undefined" && directId !== "null") return directId;
 
     const meUid = friendsOwnWmeId();
-    if (!friendsAuth.currentUser || !meUid) throw new Error("Friends is not connected.");
+    const targetUid = String(otherUid || "").trim();
+    const cached = [...friendsIncomingRequests, ...friendsOutgoingRequests].find((request) =>
+      request?.id &&
+      String(request.status || "") === "accepted" &&
+      (!targetUid || isFriendRequestBetween(request, meUid, targetUid))
+    );
+    if (cached?.id) return String(cached.id);
 
-    const target = knownTarget || await findFriendsUserByUsername(username);
+    if (meUid && targetUid) {
+      const existing = await findExistingFriendRequestBetween(meUid, targetUid);
+      if (existing?.id) return String(existing.id);
+      return friendsPairRequestId(meUid, targetUid);
+    }
+
+    throw makeFriendsError(
+      "The friendship record could not be found.",
+      "friends/request-record-missing"
+    );
+  }
+
+  async function resolveFreshFriendsRequestTarget(username, fallbackTarget = null) {
+    const normalized = normalizeFriendsUsername(
+      username || fallbackTarget?.wmeUsername || fallbackTarget?.wmeUsernameNormalized || ""
+    );
+    if (!normalized) return fallbackTarget || null;
+
+    // A cached friend/profile can contain an older WME ID or anonymous Auth UID
+    // after the other editor reconnects their account. Resolve the exact public
+    // user profile again only when Send Request is pressed, so the write targets
+    // the recipient's current SDK session without introducing any polling.
+    try {
+      const snapshot = await friendsDb.collection("users")
+        .where("wmeUsernameNormalized", "==", normalized)
+        .get();
+
+      const timestampMs = (value) => {
+        if (value instanceof Date) return value.getTime();
+        if (typeof value?.toDate === "function") {
+          try { return value.toDate().getTime(); } catch {}
+        }
+        const parsed = Date.parse(String(value || ""));
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+
+      const candidates = (snapshot?.docs || [])
+        .map((doc) => ({ id: String(doc.id || ""), ...(doc.data() || {}) }))
+        .map((profile) => {
+          const uid = String(profile.wmeUserId || profile.uid || profile.id || "").trim();
+          if (!uid) return null;
+          return {
+            ...profile,
+            id: uid,
+            uid,
+            wmeUserId: uid,
+            authUid: String(profile.authUid || "").trim(),
+            wmeUsername: String(profile.wmeUsername || username || "WME editor").trim(),
+            wmeUsernameNormalized: normalizeFriendsUsername(
+              profile.wmeUsernameNormalized || profile.wmeUsername || username
+            ),
+            wmeAvatarUrl: normalizeWmeAvatarUrl(profile.wmeAvatarUrl)
+          };
+        })
+        .filter((profile) =>
+          profile &&
+          profile.active !== false &&
+          String(profile.accountMode || "wme-id-direct") === "wme-id-direct" &&
+          profile.wmeUsernameNormalized === normalized
+        )
+        .sort((a, b) => {
+          // Prefer a profile with a live Firebase Auth binding, then the most
+          // recently refreshed WME profile document.
+          const authDelta = Number(!!b.authUid) - Number(!!a.authUid);
+          if (authDelta) return authDelta;
+          return timestampMs(b.updatedAt || b.createdAt) - timestampMs(a.updatedAt || a.createdAt);
+        });
+
+      const target = candidates[0] || null;
+      if (target) {
+        friendsProfileCache.set(String(target.uid), target);
+        return target;
+      }
+    } catch (error) {
+      if (isFriendsQuotaError(error)) notifyFriendsQuotaExceeded(error);
+      else console.debug(`${SCRIPT_NAME}: Could not refresh request recipient profile`, error);
+    }
+
+    return fallbackTarget || null;
+  }
+
+  async function sendFriendRequest(username, knownTarget = null) {
+    const { user, meUid } = await ensureFriendsMutationReady();
+
+    const searchedTarget = knownTarget || await findFriendsUserByUsername(username);
+    const target = await resolveFreshFriendsRequestTarget(username, searchedTarget);
     if (!target) throw new Error("No Friends user was found with that WME username.");
 
     const targetUid = String(target.wmeUserId || target.uid || target.id || "").trim();
@@ -3326,7 +3493,7 @@
     const requestData = {
       fromUid: meUid,
       toUid: targetUid,
-      fromAuthUid: String(friendsAuth.currentUser?.uid || friendsProfile?.authUid || ""),
+      fromAuthUid: String(user.uid || friendsProfile?.authUid || ""),
       toAuthUid: String(target.authUid || ""),
       fromUsername: String(friendsProfile?.wmeUsername || readCurrentWmeUsername() || "WME editor"),
       fromUsernameNormalized: normalizeFriendsUsername(friendsProfile?.wmeUsername || readCurrentWmeUsername()),
@@ -3359,11 +3526,7 @@
     try {
       await ref.set(requestData);
     } catch (error) {
-      const message = String(error?.message || "");
-      if (/missing or insufficient permissions|permission[_ -]?denied/i.test(message)) {
-        throw new Error("Firebase blocked the friend request. Publish the v1.4.1 Friends rules and reload WME.");
-      }
-      throw error;
+      throw normalizeFriendsMutationError(error, "Could not send the friend request.");
     }
 
     // Only show Pending after Firestore confirms that the request exists.
@@ -3375,13 +3538,19 @@
     ];
     notifyFriendsUi();
 
+    forgetFriendsNotificationDismissed("friend-request-sent", requestId);
+    enqueueFriendsNotification({
+      type: "friend-request-sent",
+      id: requestId,
+      data: makeFriendsRequestNotificationData(confirmed, "outgoing")
+    });
+    reconcileFriendsRequestLifecycleNotifications();
+
     await signalFriendsRealtimeChange(targetUid, "friend-request");
-    toast(`Friend request sent to ${target.wmeUsername || username}`);
   }
 
   async function updateFriendRequestStatus(requestId, status) {
-    if (!friendsDb || !friendsAuth) await initFriendsFirebase();
-    if (!friendsAuthUser) throw new Error("Friends is not connected.");
+    await ensureFriendsMutationReady();
     if (!["accepted", "declined"].includes(status)) {
       throw new Error("Invalid friend request status.");
     }
@@ -3422,23 +3591,30 @@
       friendsIncomingRequests = previousIncoming;
       friendsOutgoingRequests = previousOutgoing;
       notifyFriendsUi();
-
-      const message = String(error?.message || "");
-      if (/missing or insufficient permissions|permission[_ -]?denied/i.test(message)) {
-        throw new Error(
-          "Firestore blocked accepting this request. Publish the included firestore.rules file, then reload WME."
-        );
+      if (affectedRequest?.id) {
+        forgetFriendsNotificationDismissed("friend-request", affectedRequest.id);
+        enqueueFriendsNotification({
+          type: "friend-request",
+          id: String(affectedRequest.id),
+          data: makeFriendsRequestNotificationData(affectedRequest, "incoming")
+        });
       }
-      throw error;
+
+      throw normalizeFriendsMutationError(
+        error,
+        status === "accepted"
+          ? "Could not accept the friend request."
+          : "Could not decline the friend request."
+      );
     }
 
     if (otherUid) void signalFriendsRealtimeChange(otherUid, `friend-request-${status}`);
     toast(status === "accepted" ? "Friend request accepted" : "Friend request declined");
   }
 
-  async function removeFriendByRequestId(requestId) {
-    if (!friendsDb || !friendsAuth) await initFriendsFirebase();
-    if (!friendsAuthUser) throw new Error("Friends is not connected.");
+  async function removeFriendByRequestId(requestId, friendUid = "") {
+    await ensureFriendsMutationReady();
+    requestId = await resolveFriendRequestIdForRemoval(requestId, friendUid);
 
     const previousIncoming = friendsIncomingRequests.slice();
     const previousOutgoing = friendsOutgoingRequests.slice();
@@ -3470,7 +3646,7 @@
       friendsOutgoingRequests = previousOutgoing;
       friendsAccepted = previousAccepted;
       notifyFriendsUi();
-      throw error;
+      throw normalizeFriendsMutationError(error, "Could not remove this friend.");
     }
 
     if (otherUid) void signalFriendsRealtimeChange(otherUid, "friend-removed");
@@ -3554,7 +3730,33 @@
     };
   }
 
+  function enqueueFriendsSnapshotNotificationsFast() {
+    if (!friendsAuthUser) return;
+
+    // Do not wait for profile hydration before showing notifications. Request
+    // documents already contain enough embedded identity data for an immediate
+    // card, and a later derived refresh upgrades the avatar/text in place.
+    for (const request of friendsIncomingRequests) {
+      if (String(request?.status || "") !== "pending" || !request?.id) continue;
+      enqueueFriendsNotification({
+        type: "friend-request",
+        id: String(request.id),
+        data: makeFriendsRequestNotificationData(request, "incoming")
+      });
+    }
+
+    for (const share of friendsIncomingShares) {
+      if (String(share?.status || "") !== "pending" || !share?.id) continue;
+      enqueueFriendsNotification({ type: "pin-share", id: String(share.id), data: share });
+    }
+
+    // Sent/approved/rejected notifications also use the raw request snapshot so
+    // status changes are visible immediately instead of after profile loading.
+    reconcileFriendsRequestLifecycleNotifications();
+  }
+
   async function refreshFriendsDerivedState() {
+    enqueueFriendsSnapshotNotificationsFast();
     const generation = ++friendsDerivedGeneration;
     const meUid = friendsOwnWmeId();
     if (!meUid) return;
@@ -3681,6 +3883,7 @@
 
     notifyFriendsUi();
     enqueueUnseenFriendsNotifications();
+    reconcileFriendsRequestLifecycleNotifications();
   }
 
   function stopFastOutgoingRequestPoll() {
@@ -3795,25 +3998,39 @@
     );
     const mergedById = new Map();
 
+    // A real SDK `removed` change is authoritative. Mutation guards exist only
+    // to hide brief local/server ordering differences; they must never restore
+    // a friendship or request after Firestore confirms that its document was
+    // deleted. Without this, an accepted-status or send-request guard could
+    // resurrect the removed row indefinitely because no later snapshot is
+    // guaranteed after the guard expires.
+    const removedIds = new Set();
+    try {
+      for (const change of snapshot?.docChanges?.() || []) {
+        if (String(change?.type || "") !== "removed") continue;
+        const id = String(change?.doc?.id || "");
+        if (!id) continue;
+        removedIds.add(id);
+        clearFriendsRequestMutationGuards(id);
+      }
+    } catch {}
+
     for (const item of mapFriendsSnapshot(snapshot, previous)) {
       const id = String(item?.id || "");
-      if (!id || friendsRequestDeleteGuards.has(id)) continue;
+      if (!id || removedIds.has(id) || friendsRequestDeleteGuards.has(id)) continue;
       const statusGuard = friendsRequestStatusGuards.get(id);
       mergedById.set(id, statusGuard ? { ...item, status: statusGuard.status } : item);
     }
 
-    // Keep local status changes visible while a stale query still omits or
-    // returns the previous version of the document.
-    for (const [id, guard] of friendsRequestStatusGuards.entries()) {
-      if (friendsRequestDeleteGuards.has(id) || mergedById.has(id)) continue;
-      const old = previousById.get(id);
-      if (!old || !friendRequestMatchesDirection(old, direction)) continue;
-      mergedById.set(id, { ...old, status: guard.status });
-    }
+    // A status guard may override a stale status value on a document that is
+    // still present, but it must not recreate a document missing from the SDK
+    // snapshot. The fromUid/toUid listener query is unaffected by status, so a
+    // missing document means the relationship no longer exists.
 
-    // Keep newly-created requests visible until Firestore queries have caught up.
+    // Keep newly-created requests visible only until Firestore reports them.
+    // Explicit SDK removals always win over this optimistic upsert guard.
     for (const [id, guard] of friendsRequestUpsertGuards.entries()) {
-      if (friendsRequestDeleteGuards.has(id)) continue;
+      if (removedIds.has(id) || friendsRequestDeleteGuards.has(id)) continue;
       const optimistic = guard?.request;
       if (!optimistic || !friendRequestMatchesDirection(optimistic, direction)) continue;
       const existing = mergedById.get(id);
@@ -3849,69 +4066,22 @@
     friendsDerivedRefreshTimer = setTimeout(() => {
       friendsDerivedRefreshTimer = null;
       refreshFriendsDerivedState().catch(() => {});
-    }, 60);
+    }, 12);
   }
 
-  async function refreshFriendRequestsOnce({ preserveOnEmpty = false } = {}) {
-    if (friendsRequestFallbackRunning || !friendsDb || !friendsAuthUser) return false;
-
-    const ownUid = friendsOwnWmeId();
-    if (!ownUid) return false;
-
-    friendsRequestFallbackRunning = true;
-    try {
-      const [incomingSnapshot, outgoingSnapshot] = await Promise.all([
-        friendsDb.collection("friendRequests").where("toUid", "==", ownUid).get(),
-        friendsDb.collection("friendRequests").where("fromUid", "==", ownUid).get()
-      ]);
-
-      const nextIncoming = mapFriendRequestSnapshot(
-        incomingSnapshot,
-        friendsIncomingRequests,
-        "incoming"
-      );
-      const nextOutgoing = mapFriendRequestSnapshot(
-        outgoingSnapshot,
-        friendsOutgoingRequests,
-        "outgoing"
-      );
-
-      // A temporary empty listener/query result must not erase an already-known
-      // accepted friendship. This is especially important while Firestore is
-      // reconnecting or when the extension was reloaded with WME still open.
-      const hasKnownAccepted = [...friendsIncomingRequests, ...friendsOutgoingRequests]
-        .some((request) => String(request?.status || "") === "accepted");
-      const hasNextAccepted = [...nextIncoming, ...nextOutgoing]
-        .some((request) => String(request?.status || "") === "accepted");
-
-      if (!(preserveOnEmpty && hasKnownAccepted && !hasNextAccepted)) {
-        friendsIncomingRequests = nextIncoming;
-        friendsOutgoingRequests = nextOutgoing;
-      }
-
-      await refreshFriendsDerivedState();
-      return true;
-    } catch (error) {
-      if (isFriendsQuotaError(error)) notifyFriendsQuotaExceeded(error);
-      else console.warn(`${SCRIPT_NAME}: Friends list fallback refresh failed`, error);
-      return false;
-    } finally {
-      friendsRequestFallbackRunning = false;
-    }
+  async function refreshFriendRequestsOnce() {
+    // Removed: the initial onSnapshot emission is the initial Friends state.
+    return false;
   }
 
-  function scheduleFriendRequestsFallbackRefresh(delayMs = 45000) {
+
+  function scheduleFriendRequestsFallbackRefresh(_delayMs = 45000) {
     if (friendsRequestFallbackTimer) {
       try { clearTimeout(friendsRequestFallbackTimer); } catch {}
-    }
-
-    friendsRequestFallbackTimer = setTimeout(async () => {
       friendsRequestFallbackTimer = null;
-      if (!friendsAuthUser || !friendsDb) return;
-      await refreshFriendRequestsOnce({ preserveOnEmpty: true });
-      scheduleFriendRequestsFallbackRefresh(45000);
-    }, Math.max(1000, Number(delayMs) || 45000));
+    }
   }
+
 
   function startFriendsRealtimeListeners() {
     stopFriendsListeners(false);
@@ -3927,53 +4097,71 @@
     const handleListenerError = (label, error) => {
       if (isFriendsQuotaError(error)) {
         notifyFriendsQuotaExceeded(error);
+      } else if (isFriendsTransportError(error)) {
+        noteFriendsTransportFailure(error);
       } else {
-        console.error(`${SCRIPT_NAME}: ${label} failed`, error);
+        console.debug(`${SCRIPT_NAME}: ${label} failed`, error);
       }
 
-      // The one-shot queries use the same data model as username search and
-      // recover the list when a realtime listener silently fails or reconnects.
-      void refreshFriendRequestsOnce({ preserveOnEmpty: true });
-      scheduleFriendRequestsFallbackRefresh(12000);
+      if (isExtensionContextInvalidatedError(error)) {
+        stopFriendsListeners(false);
+        if (friendsRequestFallbackTimer) {
+          try { clearTimeout(friendsRequestFallbackTimer); } catch {}
+          friendsRequestFallbackTimer = null;
+        }
+        return;
+      }
+
+      // Firebase SDK listeners reconnect internally. Do not add polling or
+      // one-shot fallback reads on listener errors.
     };
 
-    // Populate accepted friends immediately instead of waiting exclusively for
-    // realtime snapshots. Profile lookup failure must never hide the friendship.
-    void refreshFriendRequestsOnce({ preserveOnEmpty: true });
-    scheduleFriendRequestsFallbackRefresh(45000);
+    // WME user ID is the canonical cross-browser identity for friendships,
+    // requests, and pin shares. Firebase Auth UID is browser/session-specific,
+    // so querying only Auth UID hides existing accepted relationships created
+    // by older sessions or another browser profile.
+    const incomingRequestQuery = friendsDb.collection("friendRequests")
+      .where("toUid", "==", ownUid);
+    const outgoingRequestQuery = friendsDb.collection("friendRequests")
+      .where("fromUid", "==", ownUid);
+    const incomingShareQuery = friendsDb.collection("pinShares")
+      .where("toUid", "==", ownUid);
 
-    const incomingUnsub = friendsDb.collection("friendRequests")
-      .where("toUid", "==", ownUid)
+    const incomingUnsub = incomingRequestQuery
       .onSnapshot((snapshot) => {
-        const next = mapFriendRequestSnapshot(snapshot, friendsIncomingRequests, "incoming");
-        const keepAccepted = friendsIncomingRequests.filter((request) =>
-          String(request?.status || "") === "accepted" &&
-          !next.some((item) => String(item?.id || "") === String(request?.id || ""))
+        // The SDK snapshot is the source of truth. When an accepted friendship
+        // document is deleted, it must disappear for the other editor too.
+        friendsIncomingRequests = mapFriendRequestSnapshot(
+          snapshot,
+          friendsIncomingRequests,
+          "incoming"
         );
-        friendsIncomingRequests = [...next, ...keepAccepted];
+        enqueueFriendsSnapshotNotificationsFast();
         scheduleFriendsDerivedRefresh();
       }, (error) => handleListenerError("incoming Friends listener", error));
 
-    const outgoingUnsub = friendsDb.collection("friendRequests")
-      .where("fromUid", "==", ownUid)
+    const outgoingUnsub = outgoingRequestQuery
       .onSnapshot((snapshot) => {
-        const next = mapFriendRequestSnapshot(snapshot, friendsOutgoingRequests, "outgoing");
-        const keepAccepted = friendsOutgoingRequests.filter((request) =>
-          String(request?.status || "") === "accepted" &&
-          !next.some((item) => String(item?.id || "") === String(request?.id || ""))
+        // Do not retain accepted records that are absent from the current
+        // snapshot. Their absence is the realtime SDK deletion event.
+        friendsOutgoingRequests = mapFriendRequestSnapshot(
+          snapshot,
+          friendsOutgoingRequests,
+          "outgoing"
         );
-        friendsOutgoingRequests = [...next, ...keepAccepted];
+        enqueueFriendsSnapshotNotificationsFast();
         scheduleFriendsDerivedRefresh();
       }, (error) => handleListenerError("outgoing Friends listener", error));
 
-    const sharesUnsub = friendsDb.collection("pinShares")
-      .where("toUid", "==", ownUid)
+    const sharesUnsub = incomingShareQuery
       .onSnapshot((snapshot) => {
         friendsIncomingShares = mapFriendsShareSnapshot(snapshot, friendsIncomingShares);
+        enqueueFriendsSnapshotNotificationsFast();
         scheduleFriendsDerivedRefresh();
       }, (error) => handleListenerError("incoming pin listener", error));
 
     friendsListeners.push(incomingUnsub, outgoingUnsub, sharesUnsub);
+    startFriendsNotificationHealthWatcher();
   }
 
   function getAcceptedFriends() {
@@ -4187,14 +4375,145 @@
     if (!options?.silent) toast("Shared pin declined");
   }
 
+  function friendsNotificationElementIsUsable(active) {
+    const element = active?.element;
+    return !!(
+      element instanceof Element &&
+      element.isConnected &&
+      document.documentElement.contains(element)
+    );
+  }
+
+  function forceFriendsNotificationVisible(active) {
+    const element = active?.element;
+    if (!(element instanceof Element) || !element.isConnected) return false;
+    try {
+      element.hidden = false;
+      element.removeAttribute("hidden");
+      element.style.removeProperty("display");
+      element.style.removeProperty("visibility");
+      element.style.removeProperty("opacity");
+      element.classList.add("is-visible");
+      const stack = element.closest(".wmeRcFriendsNotificationStack");
+      if (stack) {
+        stack.hidden = false;
+        stack.removeAttribute("hidden");
+        stack.style.setProperty("display", "flex", "important");
+        stack.style.setProperty("visibility", "visible", "important");
+        stack.style.setProperty("opacity", "1", "important");
+        stack.style.setProperty("z-index", "2147483647", "important");
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function pruneFriendsNotificationHandles() {
+    for (const [key, active] of Array.from(friendsActiveNotifications.entries())) {
+      if (friendsNotificationElementIsUsable(active)) {
+        forceFriendsNotificationVisible(active);
+        continue;
+      }
+      friendsActiveNotifications.delete(key);
+      if (active === friendsPinShareNotification || key === friendsNotificationKey("pin-share", "batch")) {
+        friendsPinShareNotification = null;
+      }
+    }
+
+    if (friendsPinShareNotification && !friendsNotificationElementIsUsable(friendsPinShareNotification)) {
+      friendsPinShareNotification = null;
+      friendsActiveNotifications.delete(friendsNotificationKey("pin-share", "batch"));
+    }
+  }
+
+  function ensurePendingFriendsNotificationPopups() {
+    if (!friendsAuthUser) return;
+    pruneFriendsNotificationHandles();
+
+    for (const request of friendsIncomingRequests) {
+      if (String(request?.status || "").toLowerCase() !== "pending" || !request?.id) continue;
+      const id = String(request.id);
+      const key = friendsNotificationKey("friend-request", id);
+      const active = friendsActiveNotifications.get(key);
+      if (active) {
+        forceFriendsNotificationVisible(active);
+        continue;
+      }
+      if (friendsNotificationQueue.some((queued) => friendsNotificationKey(queued?.type, queued?.id) === key)) continue;
+      if (isFriendsNotificationDismissed("friend-request", id)) continue;
+      enqueueFriendsNotification({
+        type: "friend-request",
+        id,
+        data: makeFriendsRequestNotificationData(request, "incoming")
+      });
+    }
+
+    for (const share of friendsIncomingShares) {
+      if (String(share?.status || "").toLowerCase() !== "pending" || !share?.id) continue;
+      const id = String(share.id);
+      if (isFriendsNotificationDismissed("pin-share", id)) continue;
+      if (!friendsPinShareNotificationItems.has(id)) {
+        enqueueFriendsNotification({ type: "pin-share", id, data: share });
+      }
+    }
+
+    if (friendsNotificationQueue.length) processFriendsNotificationQueue();
+    if (friendsPinShareNotificationItems.size && !friendsPinShareNotification) {
+      renderFriendsPinShareNotification();
+    }
+  }
+
+  function stopFriendsNotificationHealthWatcher() {
+    if (friendsNotificationHealthTimer) {
+      try { clearInterval(friendsNotificationHealthTimer); } catch {}
+      friendsNotificationHealthTimer = null;
+    }
+    try { friendsNotificationMutationObserver?.disconnect?.(); } catch {}
+    friendsNotificationMutationObserver = null;
+  }
+
+  function startFriendsNotificationHealthWatcher() {
+    stopFriendsNotificationHealthWatcher();
+    const restore = () => {
+      queueMicrotask(() => {
+        try { ensurePendingFriendsNotificationPopups(); } catch (error) {
+          console.debug(`${SCRIPT_NAME}: Friends notification DOM restore failed`, error);
+        }
+      });
+    };
+    restore();
+    friendsNotificationMutationObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type !== "childList" || !mutation.removedNodes?.length) continue;
+        for (const node of mutation.removedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (
+            node.id === "wmeRcFriendsNotificationStack" ||
+            node.matches?.(".wmeRcFriendsNotification,.wmeRcFriendsNotificationStack") ||
+            node.querySelector?.("#wmeRcFriendsNotificationStack,.wmeRcFriendsNotification")
+          ) {
+            restore();
+            return;
+          }
+        }
+      }
+    });
+    friendsNotificationMutationObserver.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
   function friendsNotificationKey(type, id) {
     return `${String(type || "notification")}::${String(id || "")}`;
   }
 
-  function dismissFriendsNotification(type, id) {
+  function dismissFriendsNotification(type, id, options = {}) {
     const notificationType = String(type || "");
     const notificationId = String(id || "");
     const key = friendsNotificationKey(notificationType, notificationId);
+    const remember = options?.remember !== false;
+
+    if (remember) rememberFriendsNotificationDismissed(notificationType, notificationId);
+    removeFriendsPersistentNotification(notificationType, notificationId);
 
     friendsNotificationQueue = friendsNotificationQueue.filter(
       (item) => friendsNotificationKey(item?.type, item?.id) !== key
@@ -4223,8 +4542,11 @@
 
   function enqueueFriendsNotification(item) {
     if (!item?.id) return;
+    pruneFriendsNotificationHandles();
     const type = String(item.type || "");
     const id = String(item.id || "");
+    if (!type || isFriendsNotificationDismissed(type, id)) return;
+    if (item?.persist !== false) persistFriendsNotification(item);
 
     if (type === "pin-share") {
       if (String(item?.data?.status || "pending") !== "pending") return;
@@ -4245,34 +4567,43 @@
 
   function enqueueUnseenFriendsNotifications() {
     if (!friendsAuthUser) return;
+    hydrateFriendsPersistentNotifications();
 
-    const seenRequests = getStoredFriendSeen(FRIENDS_SEEN_REQUESTS_KEY);
+    const pendingRequestIds = new Set();
     for (const request of friendsIncomingRequests) {
-      if (request.status !== "pending" || seenRequests.has(String(request.id))) continue;
-      markFriendSeen(FRIENDS_SEEN_REQUESTS_KEY, request.id);
-      enqueueFriendsNotification({ type: "friend-request", id: request.id, data: request });
+      if (String(request?.status || "") !== "pending" || !request?.id) continue;
+      const id = String(request.id);
+      pendingRequestIds.add(id);
+      enqueueFriendsNotification({
+        type: "friend-request",
+        id,
+        data: makeFriendsRequestNotificationData(request, "incoming")
+      });
     }
 
-    const seenShares = getStoredFriendSeen(FRIENDS_SEEN_SHARES_KEY);
+    for (const record of readFriendsPersistentNotifications()) {
+      if (record.type !== "friend-request" || pendingRequestIds.has(String(record.id))) continue;
+      removeFriendsPersistentNotification(record.type, record.id);
+      const active = friendsActiveNotifications.get(friendsNotificationKey(record.type, record.id));
+      if (active?.close) active.close();
+    }
+
+    const pendingShareIds = new Set();
     for (const share of friendsIncomingShares) {
-      if (share.status !== "pending" || seenShares.has(String(share.id))) continue;
-      markFriendSeen(FRIENDS_SEEN_SHARES_KEY, share.id);
-      enqueueFriendsNotification({ type: "pin-share", id: share.id, data: share });
+      if (String(share?.status || "") !== "pending" || !share?.id) continue;
+      const id = String(share.id);
+      pendingShareIds.add(id);
+      enqueueFriendsNotification({ type: "pin-share", id, data: share });
     }
 
     if (friendsPinShareNotificationItems.size) {
-      const pendingIds = new Set(
-        friendsIncomingShares
-          .filter((share) => String(share?.status || "") === "pending")
-          .map((share) => String(share?.id || ""))
-          .filter(Boolean)
-      );
       let changed = false;
       for (const id of Array.from(friendsPinShareNotificationItems.keys())) {
-        if (pendingIds.has(id)) continue;
+        if (pendingShareIds.has(id)) continue;
         friendsPinShareNotificationItems.delete(id);
         friendsPinShareSelectedIds.delete(id);
         friendsPinShareKnownIds.delete(id);
+        removeFriendsPersistentNotification("pin-share", id);
         changed = true;
       }
       if (changed) renderFriendsPinShareNotification();
@@ -4342,28 +4673,39 @@
   }
 
   function startFriendsNotificationPositionWatcher() {
-    if (friendsNotificationPositionTimer) return;
-    friendsNotificationPositionTimer = setInterval(() => {
-      const stack = document.getElementById("wmeRcFriendsNotificationStack");
-      if (!stack?.childElementCount) {
-        clearInterval(friendsNotificationPositionTimer);
-        friendsNotificationPositionTimer = null;
-        return;
-      }
-      updateFriendsNotificationStackPosition();
-    }, 900);
+    const stack = document.getElementById("wmeRcFriendsNotificationStack");
+    if (!stack) return;
+    try { friendsNotificationResizeObserver?.disconnect?.(); } catch {}
+    friendsNotificationResizeObserver = typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => scheduleFriendsNotificationPositionUpdate())
+      : null;
+    try { friendsNotificationResizeObserver?.observe?.(stack); } catch {}
+    scheduleFriendsNotificationPositionUpdate();
   }
 
   function ensureFriendsNotificationStack() {
     ensureFriendsStyles();
     let stack = document.getElementById("wmeRcFriendsNotificationStack");
-    if (stack) return stack;
+    if (stack) {
+      stack.hidden = false;
+      stack.removeAttribute("hidden");
+      stack.style.setProperty("display", "flex", "important");
+      stack.style.setProperty("visibility", "visible", "important");
+      stack.style.setProperty("opacity", "1", "important");
+      stack.style.setProperty("z-index", "2147483647", "important");
+      if (stack.parentElement !== document.body && document.body) document.body.appendChild(stack);
+      return stack;
+    }
 
     stack = document.createElement("div");
     stack.id = "wmeRcFriendsNotificationStack";
     stack.className = "wmeRcFriendsNotificationStack";
-    stack.setAttribute("aria-live", "polite");
+    stack.setAttribute("aria-live", "assertive");
     stack.setAttribute("aria-atomic", "false");
+    stack.style.setProperty("display", "flex", "important");
+    stack.style.setProperty("visibility", "visible", "important");
+    stack.style.setProperty("opacity", "1", "important");
+    stack.style.setProperty("z-index", "2147483647", "important");
     (document.body || document.documentElement).appendChild(stack);
     if (!window.__wmeRcFriendsNotificationResizeBound) {
       window.__wmeRcFriendsNotificationResizeBound = true;
@@ -4594,9 +4936,12 @@
 
     let handleSenderFilterOutsidePointer = null;
 
-    const finish = () => {
+    const finish = (reason = "programmatic") => {
       if (closed) return;
       closed = true;
+      if (reason === "dismiss") {
+        try { currentConfig.onDismiss?.(); } catch {}
+      }
       if (handleSenderFilterOutsidePointer) {
         try { document.removeEventListener("pointerdown", handleSenderFilterOutsidePointer, true); } catch {}
       }
@@ -4606,7 +4951,7 @@
         try { card.remove(); } catch {}
         try { currentConfig.onClose?.(); } catch {}
         scheduleFriendsNotificationPositionUpdate();
-      }, 220);
+      }, 130);
     };
 
     const appendTextBlock = (className, value) => {
@@ -4855,7 +5200,7 @@
         button.addEventListener("click", (event) => {
           try { event.preventDefault(); event.stopPropagation(); } catch {}
           if (closed || button.disabled) return;
-          if (action.closeAfter !== false) finish();
+          if (action.closeAfter !== false) finish("action");
           Promise.resolve()
             .then(() => action.run?.())
             .catch((error) => toast(error?.message || "Could not complete the action."));
@@ -4876,6 +5221,7 @@
       const lifecycle = {
         onBeforeClose: currentConfig.onBeforeClose,
         onClose: currentConfig.onClose,
+        onDismiss: currentConfig.onDismiss,
         role: currentConfig.role
       };
       currentConfig = {
@@ -4922,20 +5268,25 @@
 
     closeButton.addEventListener("click", (event) => {
       try { event.preventDefault(); event.stopPropagation(); } catch {}
-      finish();
+      finish("dismiss");
     });
 
     card.appendChild(header);
     card.appendChild(content);
     stack.appendChild(card);
     applyConfig(currentConfig);
-
-    requestAnimationFrame(() => {
-      card.classList.add("is-visible");
-      updateFriendsNotificationStackPosition();
-    });
+    updateFriendsNotificationStackPosition();
+    // Force the initial opacity/offset state to be committed once, then reveal
+    // on the next frame. This avoids the delayed/stepped entrance seen when the
+    // stack was repositioned during the same animation frame.
+    void card.offsetWidth;
+    const reveal = () => {
+      if (!closed && card.isConnected) card.classList.add("is-visible");
+    };
+    requestAnimationFrame(reveal);
+    setTimeout(reveal, 24);
     startFriendsNotificationPositionWatcher();
-    return { close: finish, update: applyConfig, element: card };
+    return { close: () => finish("programmatic"), update: applyConfig, element: card };
   }
 
   function makeUniquePinNameForBatch(desiredName, usedNames) {
@@ -4987,6 +5338,7 @@
 
     for (const id of ids) {
       setFriendsShareStatusGuard(id, status, 30000);
+      dismissFriendsNotificationStorage("pin-share", id);
       friendsPinShareNotificationItems.delete(id);
       friendsPinShareSelectedIds.delete(id);
       friendsPinShareKnownIds.delete(id);
@@ -5004,6 +5356,8 @@
     friendsIncomingShares = previous.incomingShares;
     friendsPinShareNotificationItems.clear();
     for (const [id, share] of previous.notificationItems) {
+      forgetFriendsNotificationDismissed("pin-share", id);
+      persistFriendsNotification({ type: "pin-share", id, data: share });
       friendsPinShareNotificationItems.set(id, share);
     }
     friendsPinShareSelectedIds.clear();
@@ -5412,6 +5766,11 @@
     let handle = null;
     handle = showFriendsSideNotification({
       ...config,
+      onDismiss: () => {
+        for (const id of Array.from(friendsPinShareNotificationItems.keys())) {
+          dismissFriendsNotificationStorage("pin-share", id);
+        }
+      },
       onBeforeClose: () => {
         if (friendsPinShareNotification !== handle) return;
         friendsPinShareNotification = null;
@@ -5450,34 +5809,77 @@
         friendsActiveNotifications.delete(key);
         scheduleFriendsNotificationPositionUpdate();
       };
+      const dismissStorage = () => dismissFriendsNotificationStorage(item.type, item.id);
 
       let handle = null;
+      const request = item.data || {};
+      const direction = item.type === "friend-request" ? "incoming" : "outgoing";
+      const profile = request?.notificationProfile || friendsRequestNotificationProfile(request, direction);
+      const username = String(profile?.wmeUsername || "A WME editor");
+      const avatarUrl = normalizeWmeAvatarUrl(profile?.wmeAvatarUrl || "");
 
       if (item.type === "friend-request") {
-        const request = item.data;
-        const username = request?.fromProfile?.wmeUsername || "A WME user";
-
         handle = showFriendsSideNotification({
           variant: "friend-request",
           role: "alert",
           title: "New friend request",
           message: username,
           meta: "Wants to connect with you",
-          avatarUrl: request?.fromProfile?.wmeAvatarUrl || "",
+          avatarUrl,
           avatarName: username,
           icon: ICONS.user || ICONS.friends || ICONS.person,
           actions: [
             {
               label: "Decline",
               danger: true,
-              run: () => updateFriendRequestStatus(request.id, "declined")
+              run: () => updateFriendRequestStatus(request.id || item.id, "declined")
             },
             {
               label: "Accept",
               success: true,
-              run: () => updateFriendRequestStatus(request.id, "accepted")
+              run: () => updateFriendRequestStatus(request.id || item.id, "accepted")
             }
           ],
+          onDismiss: dismissStorage,
+          onClose: finish
+        });
+      } else if (item.type === "friend-request-sent") {
+        handle = showFriendsSideNotification({
+          variant: "friend-request-sent",
+          role: "status",
+          title: "Friend request sent",
+          message: username,
+          meta: "Waiting for approval",
+          avatarUrl,
+          avatarName: username,
+          icon: ICONS.send || ICONS.user || ICONS.friends,
+          onDismiss: dismissStorage,
+          onClose: finish
+        });
+      } else if (item.type === "friend-request-approved") {
+        handle = showFriendsSideNotification({
+          variant: "friend-request-approved",
+          role: "status",
+          title: "Friend request approved",
+          message: username,
+          meta: "You are now friends",
+          avatarUrl,
+          avatarName: username,
+          icon: ICONS.check || ICONS.user || ICONS.friends,
+          onDismiss: dismissStorage,
+          onClose: finish
+        });
+      } else if (item.type === "friend-request-rejected") {
+        handle = showFriendsSideNotification({
+          variant: "friend-request-rejected",
+          role: "status",
+          title: "Friend request rejected",
+          message: username,
+          meta: "Your request was declined",
+          avatarUrl,
+          avatarName: username,
+          icon: ICONS.close || ICONS.user || ICONS.friends,
+          onDismiss: dismissStorage,
           onClose: finish
         });
       }
@@ -5539,7 +5941,28 @@
         fill:none!important;
       }
       .wmeRcFriendsIconBtn:disabled{opacity:.38;cursor:default;background:transparent}
-      .wmeRcFriendsIconBtn svg{width:15px;height:15px;display:block;pointer-events:none}
+      .wmeRcFriendsIconBtn svg{position:absolute;top:50%;left:50%;width:15px;height:15px;margin:0;display:block;pointer-events:none;transform:translate(-50%,-50%);transform-origin:center;overflow:visible}
+      .wmeRcFriendsIconBtn{position:relative;align-self:center;line-height:0}
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsActions{height:29px;min-height:29px;align-items:center}
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn:hover,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn:focus-visible,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn:active{align-self:center;transform:none!important}
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn svg path,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn svg line,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn svg polyline{stroke-linecap:round;stroke-linejoin:round}
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsActions,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn:hover,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn:focus,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn:focus-visible,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn:active,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn::before,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn::after{animation:none!important;transition:none!important;transform:none!important;translate:none!important;scale:none!important;rotate:none!important;filter:none!important}
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn > svg,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn:hover > svg,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn:focus-visible > svg,
+      .wmeRcFriendsHubList[data-active-tab="requests"] .wmeRcFriendsIconBtn:active > svg{animation:none!important;transition:none!important;transform:translate(-50%,-50%)!important;filter:none!important}
       .wmeRcFriendsBtn{height:28px;min-height:28px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(127,127,127,.28);border-radius:6px;background:rgba(127,127,127,.08);font:600 10px/1 "Segoe UI",system-ui,sans-serif;cursor:pointer}
       .wmeRcFriendsBtn:hover{background:rgba(127,127,127,.15)}
       .wmeRcFriendsBtn.primary{background:#0099ff;border-color:#0099ff;color:#fff;-webkit-text-fill-color:#fff}
@@ -5885,12 +6308,18 @@
       .wmeRcFriendsSharedPinSummary strong{font-size:13px;font-weight:650}
       .wmeRcFriendsSharedPinSummary span{font-size:10px;opacity:.62}
       .wmeRcFriendsSharedPinSummary p{margin:7px 0 0;font-size:11px;line-height:1.4;opacity:.82}
-      .wmeRcFriendsNotificationStack{position:fixed;right:92px;bottom:66px;top:auto;z-index:2147483646;width:min(330px,calc(100vw - 32px));display:flex;flex-direction:column;gap:9px;pointer-events:none;transition:bottom .16s ease,right .16s ease,left .16s ease,top .16s ease}
+      .wmeRcFriendsNotificationStack{position:fixed!important;right:92px;bottom:66px;top:auto;z-index:2147483647!important;width:min(330px,calc(100vw - 32px));display:flex!important;visibility:visible!important;opacity:1!important;flex-direction:column;gap:9px;pointer-events:none;transition:bottom .16s ease,right .16s ease,left .16s ease,top .16s ease}
       .wmeRcFriendsNotificationStack.is-dragging{transition:none!important;user-select:none!important}
-      .wmeRcFriendsSideNotification{pointer-events:auto;overflow:visible;border:1px solid var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14)));border-radius:12px!important;background:var(--wmeRcFriendsNoticeBg,var(--background_default,#202020));background-clip:padding-box;color:var(--wmeRcFriendsNoticeFg,var(--content_default,#f3f3f3));-webkit-text-fill-color:var(--wmeRcFriendsNoticeFg,var(--content_default,#f3f3f3));box-shadow:0 14px 38px rgba(0,0,0,.24);backdrop-filter:blur(16px) saturate(145%);-webkit-backdrop-filter:blur(16px) saturate(145%);opacity:0;transform:translate3d(18px,0,0) scale(.985);transition:opacity .18s ease,transform .18s ease,background-color .14s ease,color .14s ease,border-color .14s ease;font-family:"Segoe UI",system-ui,-apple-system,sans-serif}
-      .wmeRcFriendsSideNotification.is-friend-request{border-color:color-mix(in srgb,#0099ff 45%,var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14))));box-shadow:inset 3px 0 0 #0099ff,0 14px 38px rgba(0,0,0,.24)}
-      .wmeRcFriendsSideNotification.is-friend-request .wmeRcFriendsSideNotificationIcon:not(.has-avatar){background:rgba(0,153,255,.16);color:#0099ff}
-      .wmeRcFriendsSideNotification.is-visible{opacity:1;transform:translate3d(0,0,0) scale(1)}
+      .wmeRcFriendsSideNotification{pointer-events:auto;overflow:visible;border:1px solid var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14)));border-radius:12px!important;background:var(--wmeRcFriendsNoticeBg,var(--background_default,#202020));background-clip:padding-box;color:var(--wmeRcFriendsNoticeFg,var(--content_default,#f3f3f3));-webkit-text-fill-color:var(--wmeRcFriendsNoticeFg,var(--content_default,#f3f3f3));box-shadow:0 14px 38px rgba(0,0,0,.24);opacity:0;transform:translate3d(10px,0,0);will-change:opacity,transform;transition:opacity .12s cubic-bezier(.2,.8,.2,1),transform .12s cubic-bezier(.2,.8,.2,1),background-color .1s ease,color .1s ease,border-color .1s ease;font-family:"Segoe UI",system-ui,-apple-system,sans-serif}
+      .wmeRcFriendsSideNotification.is-friend-request,
+      .wmeRcFriendsSideNotification.is-friend-request-sent{border-color:color-mix(in srgb,#0099ff 45%,var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14))));box-shadow:inset 3px 0 0 #0099ff,0 14px 38px rgba(0,0,0,.24)}
+      .wmeRcFriendsSideNotification.is-friend-request .wmeRcFriendsSideNotificationIcon:not(.has-avatar),
+      .wmeRcFriendsSideNotification.is-friend-request-sent .wmeRcFriendsSideNotificationIcon:not(.has-avatar){background:rgba(0,153,255,.16);color:#0099ff}
+      .wmeRcFriendsSideNotification.is-friend-request-approved{border-color:color-mix(in srgb,#35b85a 48%,var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14))));box-shadow:inset 3px 0 0 #35b85a,0 14px 38px rgba(0,0,0,.24)}
+      .wmeRcFriendsSideNotification.is-friend-request-approved .wmeRcFriendsSideNotificationIcon:not(.has-avatar){background:rgba(53,184,90,.15);color:#35b85a}
+      .wmeRcFriendsSideNotification.is-friend-request-rejected{border-color:color-mix(in srgb,#e0524d 48%,var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14))));box-shadow:inset 3px 0 0 #e0524d,0 14px 38px rgba(0,0,0,.24)}
+      .wmeRcFriendsSideNotification.is-friend-request-rejected .wmeRcFriendsSideNotificationIcon:not(.has-avatar){background:rgba(224,82,77,.15);color:#e0524d}
+      .wmeRcFriendsSideNotification.is-visible{opacity:1;transform:translate3d(0,0,0)}
       .wmeRcFriendsSideNotification.theme-light,.wmeRcFriendsSideNotification.theme-dark{background:var(--wmeRcFriendsNoticeBg,var(--background_default,#202020));color:var(--wmeRcFriendsNoticeFg,var(--content_default,#f3f3f3));-webkit-text-fill-color:var(--wmeRcFriendsNoticeFg,var(--content_default,#f3f3f3));border-color:var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14)))}
       .wmeRcFriendsSideNotificationHeader{min-height:42px;padding:9px 9px 6px 11px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-radius:11px 11px 0 0;background:var(--wmeRcFriendsNoticeBg,var(--background_default,#202020));cursor:grab;user-select:none;touch-action:none}
       .wmeRcFriendsNotificationStack.is-dragging .wmeRcFriendsSideNotificationHeader{cursor:grabbing}
@@ -5958,17 +6387,45 @@
       .wmeRcFriendsSideNotificationSelect:hover{border-color:color-mix(in srgb,#35b85a 55%,var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14))))}
       .wmeRcFriendsSideNotificationSelect.is-selected:hover{background:color-mix(in srgb,#35b85a 8%,var(--wmeRcFriendsNoticeSurfaceAlt,var(--background_default,#202020)))!important;color:#43ca68!important;-webkit-text-fill-color:#43ca68!important}
       .wmeRcFriendsSideNotificationActions{padding:8px 9px 9px;display:flex;justify-content:flex-end;gap:7px;border-top:1px solid var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14)));border-radius:0 0 11px 11px;background:var(--wmeRcFriendsNoticeBg,var(--background_default,#202020))}
-      .wmeRcFriendsSideNotificationBtn{height:29px;min-height:29px;padding:0 11px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14)));border-radius:7px;background:var(--wmeRcFriendsNoticeSurfaceAlt,var(--surface_variant,var(--surface_default,var(--background_elevated,var(--background_default,#202020)))));color:var(--wmeRcFriendsNoticeFg,var(--content_default,inherit));-webkit-text-fill-color:var(--wmeRcFriendsNoticeFg,var(--content_default,inherit));font:650 10.5px/1 "Segoe UI",system-ui,sans-serif;cursor:pointer}
-      .wmeRcFriendsSideNotificationBtn:hover{background:color-mix(in srgb,var(--wmeRcFriendsNoticeFg,var(--content_default,#f3f3f3)) 8%,var(--wmeRcFriendsNoticeSurfaceAlt,var(--background_default,#202020)))}
+      .wmeRcFriendsSideNotificationBtn{position:relative;height:29px;min-height:29px;padding:0 11px;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--wmeRcFriendsNoticeBorder,var(--separator_default,rgba(255,255,255,.14)));border-radius:7px;background:var(--wmeRcFriendsNoticeSurfaceAlt,var(--surface_variant,var(--surface_default,var(--background_elevated,var(--background_default,#202020)))));color:var(--wmeRcFriendsNoticeFg,var(--content_default,inherit));-webkit-text-fill-color:var(--wmeRcFriendsNoticeFg,var(--content_default,inherit));font:650 10.5px/1 "Segoe UI",system-ui,sans-serif;cursor:pointer;transform:translateY(0);transition:transform .12s ease,box-shadow .12s ease,filter .12s ease,background-color .12s ease,border-color .12s ease}
+      .wmeRcFriendsSideNotificationBtn::after{content:"";position:absolute;inset:-40% auto -40% -55%;width:36%;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);transform:skewX(-18deg) translateX(-180%);opacity:0}
+      .wmeRcFriendsSideNotificationBtn:hover{background:color-mix(in srgb,var(--wmeRcFriendsNoticeFg,var(--content_default,#f3f3f3)) 8%,var(--wmeRcFriendsNoticeSurfaceAlt,var(--background_default,#202020)));transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.18)}
+      .wmeRcFriendsSideNotificationBtn:hover::after{opacity:1;animation:wmeRcFriendsNoticeButtonShine .5s ease-out 1}
+      .wmeRcFriendsSideNotificationBtn:active{transform:translateY(0) scale(.97);box-shadow:0 1px 4px rgba(0,0,0,.14)}
+      @keyframes wmeRcFriendsNoticeButtonShine{from{transform:skewX(-18deg) translateX(-180%)}to{transform:skewX(-18deg) translateX(520%)}}
       .wmeRcFriendsSideNotificationBtn.primary{background:#0099ff!important;border-color:#0099ff!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
       .wmeRcFriendsSideNotificationBtn.success{background:#238636!important;border-color:#2ea043!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
       .wmeRcFriendsSideNotificationBtn.danger{background:#c9362f!important;border-color:#e0524d!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
-      .wmeRcFriendsSideNotificationBtn.primary:hover,.wmeRcFriendsSideNotificationBtn.primary:focus,.wmeRcFriendsSideNotificationBtn.primary:active{background:#0099ff!important;border-color:#0099ff!important;filter:none!important;transform:none!important}
-      .wmeRcFriendsSideNotificationBtn.success:hover,.wmeRcFriendsSideNotificationBtn.success:focus,.wmeRcFriendsSideNotificationBtn.success:active{background:#238636!important;border-color:#2ea043!important;filter:none!important;transform:none!important}
-      .wmeRcFriendsSideNotificationBtn.danger:hover,.wmeRcFriendsSideNotificationBtn.danger:focus,.wmeRcFriendsSideNotificationBtn.danger:active{background:#c9362f!important;border-color:#e0524d!important;filter:none!important;transform:none!important}
+      .wmeRcFriendsSideNotificationBtn.primary:hover,.wmeRcFriendsSideNotificationBtn.primary:focus{background:#0aa2ff!important;border-color:#20adff!important;filter:brightness(1.04)!important}
+      .wmeRcFriendsSideNotificationBtn.success:hover,.wmeRcFriendsSideNotificationBtn.success:focus{background:#2b9540!important;border-color:#43b65a!important;filter:brightness(1.04)!important}
+      .wmeRcFriendsSideNotificationBtn.danger:hover,.wmeRcFriendsSideNotificationBtn.danger:focus{background:#db4038!important;border-color:#f0645e!important;filter:brightness(1.04)!important}
+      .wmeRcFriendsSideNotificationBtn.primary:active,.wmeRcFriendsSideNotificationBtn.success:active,.wmeRcFriendsSideNotificationBtn.danger:active{filter:brightness(.94)!important;transform:translateY(0) scale(.97)!important}
       .wmeRcFriendsSideNotificationBtn:disabled,.wmeRcFriendsSideNotificationClose:disabled{opacity:.5;cursor:default}
       @media(max-width:700px){.wmeRcFriendsNotificationStack{right:22px;bottom:18px;top:auto;width:min(320px,calc(100vw - 20px))}}
       .wmeRcPinsContextItem.is-disabled{opacity:.48;pointer-events:none}
+      /* Darker integrated pin card and exact title/action alignment. */
+      .wmeRcFriendsPinSenderGroup{background:rgba(127,127,127,.025)!important;background-image:none!important}
+      .wmeRcFriendsPinItem{min-height:40px!important;padding-right:68px!important}
+      .wmeRcFriendsPinItemCopy{min-height:28px!important;display:flex!important;align-items:center!important;gap:8px!important}
+      .wmeRcFriendsPinItemCopy strong{min-height:28px!important;display:flex!important;align-items:center!important;line-height:1.15!important}
+      .wmeRcFriendsPinItemTime{margin-left:auto!important;align-self:center!important}
+      .wmeRcFriendsPinItemActions,
+      .wmeRcFriendsPinItem:hover .wmeRcFriendsPinItemActions,
+      .wmeRcFriendsPinItem:focus-within .wmeRcFriendsPinItemActions{transform:translate(0,-50%)!important;transition:opacity .13s ease!important}
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn,
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn:hover,
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn:focus,
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn:focus-visible,
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn:active,
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn::before,
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn::after{animation:none!important;transform:none!important;translate:none!important;scale:none!important;rotate:none!important;transition:background-color .13s ease,border-color .13s ease,color .13s ease,opacity .13s ease!important}
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn > svg,
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn:hover > svg,
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn:focus-visible > svg,
+      .wmeRcFriendsPinItemActions .wmeRcFriendsIconBtn:active > svg{animation:none!important;transition:none!important;transform:translate(-50%,-50%)!important}
+      .wmeRcFriendsSearch .wmeRcFriendsAddFriendButton{animation:none!important}
+      .wmeRcFriendsSearch .wmeRcFriendsAddFriendButton.is-searching{animation:wmeRcAddFriendSearching 1s ease-in-out infinite!important}
+
       @media(max-width:520px){
         .wmeRcFriendsSearch{grid-template-columns:1fr}
         .wmeRcFriendsRow{grid-template-columns:1fr}
@@ -6071,6 +6528,7 @@
     let friendsHubPinSenderFilterOpen = false;
     const friendsHubPinSelectedSenderKeys = new Set();
     const friendsHubPinKnownSenderKeys = new Set();
+    const friendsHubCollapsedPinSenderKeys = new Set();
 
     const friendsHubPinSenderKey = (share) => {
       const uid = String(share?.fromUid || "").trim();
@@ -6128,6 +6586,12 @@
       const avatarFallback = initialsFor(username);
       const originalAvatarUrl = normalizeWmeAvatarUrl(options.avatarUrl);
       const avatarUrl = improveWmeAvatarUrl(originalAvatarUrl);
+
+      const showFallback = () => {
+        avatar.classList.remove("has-image");
+        avatar.replaceChildren(document.createTextNode(avatarFallback));
+      };
+
       if (avatarUrl) {
         avatar.classList.add("has-image");
         const image = document.createElement("img");
@@ -6143,13 +6607,11 @@
             image.src = originalAvatarUrl;
             return;
           }
-          try { image.remove(); } catch {}
-          avatar.classList.remove("has-image");
-          avatar.textContent = avatarFallback;
+          showFallback();
         });
         avatar.appendChild(image);
       } else {
-        avatar.textContent = avatarFallback;
+        showFallback();
       }
 
       const copy = document.createElement("div");
@@ -6158,6 +6620,7 @@
       title.className = "wmeRcFriendsRowTitle";
       title.textContent = String(username || "WME user");
       copy.appendChild(title);
+
       if (sub) {
         const subtitle = document.createElement("div");
         subtitle.className = "wmeRcFriendsRowSub";
@@ -6187,8 +6650,6 @@
         ? (activeElement.selectionDirection || "none")
         : "none";
 
-      wrap.innerHTML = "";
-
       const pendingIncoming = state.incomingRequests.filter((request) => request.status === "pending");
       const pendingOutgoing = state.outgoingRequests.filter((request) => request.status === "pending");
       const pendingShares = state.incomingShares.filter((share) => share.status === "pending");
@@ -6214,6 +6675,61 @@
       const requestCount = pendingIncoming.length + pendingOutgoing.length;
 
       if (!friendsHubTabTouched && pendingIncoming.length) friendsHubTab = "requests";
+
+      // Keep the currently visible list DOM when its actual contents did not change.
+      // Search/result updates used to rebuild every avatar and row, which caused the
+      // Friends list to blink and made Add Friend look like it flashed the list.
+      const stableTimestampKey = (value) => {
+        if (value?.toMillis instanceof Function) {
+          try { return value.toMillis(); } catch {}
+        }
+        if (Number.isFinite(Number(value?.seconds))) {
+          return `${Number(value.seconds)}:${Number(value.nanoseconds || 0)}`;
+        }
+        return String(value || "");
+      };
+      const listRenderSignature = JSON.stringify({
+        tab: friendsHubTab,
+        friends: friendsHubTab === "friends"
+          ? state.friends.map((friend) => ({
+              id: String(friend?.uid || friend?.wmeUserId || ""),
+              requestId: String(friend?.requestId || ""),
+              username: String(friend?.wmeUsername || ""),
+              avatar: String(friend?.profile?.wmeAvatarUrl || friend?.wmeAvatarUrl || "")
+            })).sort((a, b) => `${a.id}|${a.username}`.localeCompare(`${b.id}|${b.username}`))
+          : null,
+        requests: friendsHubTab === "requests"
+          ? {
+              incoming: pendingIncoming.map((request) => ({
+                id: String(request?.id || ""),
+                username: String(request?.fromProfile?.wmeUsername || request?.fromUsername || ""),
+                avatar: String(request?.fromProfile?.wmeAvatarUrl || request?.fromAvatarUrl || "")
+              })).sort((a, b) => `${a.id}|${a.username}`.localeCompare(`${b.id}|${b.username}`)),
+              outgoing: pendingOutgoing.map((request) => ({
+                id: String(request?.id || ""),
+                username: String(request?.toProfile?.wmeUsername || request?.toUsername || ""),
+                avatar: String(request?.toProfile?.wmeAvatarUrl || request?.toAvatarUrl || "")
+              })).sort((a, b) => `${a.id}|${a.username}`.localeCompare(`${b.id}|${b.username}`))
+            }
+          : null,
+        pins: friendsHubTab === "pins"
+          ? pendingShares.map((share) => ({
+              id: String(share?.id || ""),
+              sender: friendsHubPinSenderKey(share),
+              username: String(share?.fromProfile?.wmeUsername || ""),
+              avatar: String(share?.fromProfile?.wmeAvatarUrl || ""),
+              name: String(share?.pin?.name || share?.pin?.title || share?.pin?.placeName || share?.pin?.venueName || share?.pin?.note || ""),
+              createdAt: stableTimestampKey(share?.createdAt)
+            })).sort((a, b) => `${a.id}|${a.sender}`.localeCompare(`${b.id}|${b.sender}`))
+          : null
+      });
+      const existingListCard = wrap.querySelector(":scope > .wmeRcFriendsHubList");
+      const reusableListCard = state.connected &&
+        existingListCard?.__wmeRcFriendsRenderSignature === listRenderSignature
+          ? existingListCard
+          : null;
+      if (reusableListCard) reusableListCard.remove();
+      wrap.replaceChildren();
 
       const profileCard = document.createElement("section");
       profileCard.className = "wmeRcFriendsHubProfile";
@@ -6305,7 +6821,7 @@
                 friendSearchStatus = "not-found";
                 friendSearchResult = null;
                 friendSearchMessage =
-                  "They may not have installed RC Functions";
+                  "No editor was found with that exact WME username. Check the spelling and try again.";
               } else {
                 friendSearchStatus = "found";
                 friendSearchResult = result;
@@ -6396,12 +6912,15 @@
         const actions = document.createElement("div");
         actions.className = "wmeRcFriendsActions";
 
+        actions.classList.add("wmeRcFriendsSearchActions");
+
         if (incomingRequest) {
-          actions.appendChild(makeFriendsIconButton(ICONS.check, "Accept request", {
-            success: true,
+          const acceptRequestButton = makeFriendsButton("Accept Request", {
+            primary: true,
             onClick: async (event) => {
               const button = event.currentTarget;
               button.disabled = true;
+              button.textContent = "Accepting…";
               try {
                 await updateFriendRequestStatus(incomingRequest.id, "accepted");
                 friendSearchStatus = "found";
@@ -6409,28 +6928,29 @@
               } catch (error) {
                 toast(error?.message || "Could not accept request.");
                 button.disabled = false;
+                button.textContent = "Accept Request";
               }
             }
-          }));
-          actions.appendChild(makeFriendsIconButton(friendsDeclineIcon(), "Decline request", {
-            danger: true,
-            onClick: () => updateFriendRequestStatus(incomingRequest.id, "declined")
-              .catch((error) => toast(error?.message || "Could not decline request."))
-          }));
+          });
+          acceptRequestButton.classList.add("wmeRcFriendsSearchRequestButton");
+          actions.appendChild(acceptRequestButton);
         } else if (outgoingRequest) {
           const pending = makeFriendsButton("Sent");
+          pending.classList.add("wmeRcFriendsSearchRequestButton");
           pending.disabled = true;
           actions.appendChild(pending);
         } else if (acceptedFriend) {
           const connected = makeFriendsButton("Friends");
+          connected.classList.add("wmeRcFriendsSearchRequestButton");
           connected.disabled = true;
           actions.appendChild(connected);
         } else if (isSelf) {
           const own = makeFriendsButton("Your account");
+          own.classList.add("wmeRcFriendsSearchRequestButton");
           own.disabled = true;
           actions.appendChild(own);
         } else {
-          actions.appendChild(makeFriendsButton("Send request", {
+          const sendRequestButton = makeFriendsButton("Send Request", {
             primary: true,
             onClick: async (event) => {
               const button = event.currentTarget;
@@ -6466,7 +6986,9 @@
                 toast(error?.message || "Could not send friend request.");
               }
             }
-          }));
+          });
+          sendRequestButton.classList.add("wmeRcFriendsSearchRequestButton");
+          actions.appendChild(sendRequestButton);
         }
 
         row.appendChild(actions);
@@ -6484,26 +7006,68 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = "wmeRcFriendsSegment" + (friendsHubTab === id ? " active" : "");
+        button.dataset.friendsTab = id;
         button.innerHTML = `<span>${escapeHtml(label)}</span><span class="wmeRcFriendsCount">${count}</span>`;
         button.addEventListener("click", () => {
           friendsHubTab = id;
           friendsHubTabTouched = true;
+          friendsHubPinSenderFilterOpen = false;
           render(getFriendsStateSnapshot());
         });
         return button;
       };
 
       segmented.appendChild(makeSegment("friends", "Friends", state.friends.length));
+      segmented.appendChild(makeSegment("pins", "Pins", pendingShares.length));
       segmented.appendChild(makeSegment("requests", "Requests", requestCount));
       wrap.appendChild(segmented);
 
+      if (reusableListCard) {
+        wrap.appendChild(reusableListCard);
+        if (restoreSearchFocus) {
+          const restoredInput = wrap.querySelector(".wmeRcFriendsInput");
+          if (restoredInput) {
+            try {
+              restoredInput.focus({ preventScroll: true });
+              const maxPosition = String(restoredInput.value || "").length;
+              restoredInput.setSelectionRange(
+                Math.min(restoreSelectionStart, maxPosition),
+                Math.min(restoreSelectionEnd, maxPosition),
+                restoreSelectionDirection
+              );
+            } catch {}
+          }
+        }
+        return;
+      }
+
       const listCard = document.createElement("section");
       listCard.className = "wmeRcFriendsCard wmeRcFriendsHubList";
+      listCard.dataset.activeTab = friendsHubTab;
+      listCard.__wmeRcFriendsRenderSignature = listRenderSignature;
+
       const listHead = document.createElement("div");
       listHead.className = "wmeRcFriendsHubListHead";
-      listHead.innerHTML = friendsHubTab === "friends"
-        ? `<span>Your friends</span><span class="wmeRcFriendsHubMeta">${state.friends.length} editor${state.friends.length === 1 ? "" : "s"}</span>`
-        : `<span>Requests</span><span class="wmeRcFriendsHubMeta">${requestCount} pending</span>`;
+
+      const headTitle = document.createElement("span");
+      const headMeta = document.createElement("span");
+      headMeta.className = "wmeRcFriendsHubMeta";
+
+      if (friendsHubTab === "friends") {
+        headTitle.textContent = "Your friends";
+        headMeta.textContent = `${state.friends.length} editor${state.friends.length === 1 ? "" : "s"}`;
+      } else if (friendsHubTab === "pins") {
+        headTitle.textContent = "Pins";
+        headMeta.textContent = pendingShares.length
+          ? `${pendingShares.length} new pin${pendingShares.length === 1 ? "" : "s"} from ${pendingShareSenders.length} editor${pendingShareSenders.length === 1 ? "" : "s"}`
+          : "No new pins";
+      } else {
+        headTitle.textContent = "Friend requests";
+        headMeta.textContent = `${requestCount} pending`;
+      }
+
+      listHead.appendChild(headTitle);
+      listHead.appendChild(headMeta);
       listCard.appendChild(listHead);
 
       const listBody = document.createElement("div");
@@ -6519,6 +7083,7 @@
           for (const friend of state.friends) {
             const row = document.createElement("div");
             row.className = "wmeRcFriendsRow";
+            row.dataset.friendUid = String(friend?.uid || friend?.wmeUserId || "").trim();
             row.appendChild(makePerson(
               friend.wmeUsername,
               "",
@@ -6533,14 +7098,16 @@
             actions.className = "wmeRcFriendsActions";
             actions.appendChild(makeFriendsIconButton(friendsUnfriendIcon(), "Unfriend", {
               unfriend: true,
-              onClick: () => removeFriendByRequestId(friend.requestId)
-                .catch((error) => toast(error?.message || "Could not unfriend this editor."))
+              onClick: () => removeFriendByRequestId(
+                friend.requestId,
+                friend.uid || friend.wmeUserId || friend.legacyUid || ""
+              ).catch((error) => toast(error?.message || "Could not unfriend this editor."))
             }));
             row.appendChild(actions);
             listBody.appendChild(row);
           }
         }
-      } else {
+      } else if (friendsHubTab === "requests") {
         if (!requestCount) {
           const empty = document.createElement("div");
           empty.className = "wmeRcFriendsEmpty wmeRcFriendsHubEmpty";
@@ -6553,8 +7120,13 @@
           row.className = "wmeRcFriendsRow";
           row.appendChild(makePerson(
             request.fromProfile?.wmeUsername || request.fromUsername || "WME user",
-            "Incoming request",
-            { avatarUrl: request.fromProfile?.wmeAvatarUrl }
+            "WME editor",
+            {
+              avatarUrl:
+                request.fromProfile?.wmeAvatarUrl ||
+                request.fromAvatarUrl ||
+                ""
+            }
           ));
           const actions = document.createElement("div");
           actions.className = "wmeRcFriendsActions";
@@ -6578,7 +7150,12 @@
           row.appendChild(makePerson(
             request.toProfile?.wmeUsername || request.toUsername || "WME user",
             "Request sent",
-            { avatarUrl: request.toProfile?.wmeAvatarUrl }
+            {
+              avatarUrl:
+                request.toProfile?.wmeAvatarUrl ||
+                request.toAvatarUrl ||
+                ""
+            }
           ));
           const actions = document.createElement("div");
           actions.className = "wmeRcFriendsActions";
@@ -6590,134 +7167,161 @@
           row.appendChild(actions);
           listBody.appendChild(row);
         }
+      } else {
+        const timestampMs = (value) => {
+          if (value instanceof Date) return value.getTime();
+          if (value?.toMillis instanceof Function) {
+            try { return value.toMillis(); } catch {}
+          }
+          if (value?.toDate instanceof Function) {
+            try { return value.toDate().getTime(); } catch {}
+          }
+          if (Number.isFinite(Number(value?.seconds))) {
+            return Number(value.seconds) * 1000;
+          }
+          const numeric = Number(value);
+          if (Number.isFinite(numeric) && numeric > 0) return numeric;
+          const parsed = Date.parse(String(value || ""));
+          return Number.isFinite(parsed) ? parsed : 0;
+        };
+
+        const relativeAge = (value) => {
+          const time = timestampMs(value);
+          if (!time) return "New";
+          const seconds = Math.max(0, Math.floor((Date.now() - time) / 1000));
+          if (seconds < 60) return "Just now";
+          const minutes = Math.floor(seconds / 60);
+          if (minutes < 60) return `${minutes}m ago`;
+          const hours = Math.floor(minutes / 60);
+          if (hours < 24) return `${hours}h ago`;
+          return `${Math.floor(hours / 24)}d ago`;
+        };
+
+        const cleanSharedPinTitle = (share) => {
+          const pin = share?.pin || {};
+          const values = [
+            pin.name,
+            pin.title,
+            pin.placeName,
+            pin.venueName,
+            pin.note
+          ];
+
+          const isUsable = (value) => {
+            const text = String(value || "").trim();
+            if (!text) return false;
+            return !/^\(?unknown\)?(?:\s*,\s*\(?unknown\)?)?$/i.test(text);
+          };
+
+          const selected = values.find(isUsable);
+          if (selected) {
+            const text = String(selected).trim();
+            return text.length > 72 ? `${text.slice(0, 69)}…` : text;
+          }
+
+          return "Shared location";
+        };
+
+        if (!pendingShares.length) {
+          const empty = document.createElement("div");
+          empty.className = "wmeRcFriendsEmpty wmeRcFriendsHubEmpty";
+          empty.textContent = "No new pins.";
+          listBody.appendChild(empty);
+        } else {
+          listBody.classList.add("wmeRcFriendsPinsDirectory");
+
+          for (const sender of pendingShareSenders) {
+            const senderShares = pendingShares.filter(
+              (share) => friendsHubPinSenderKey(share) === sender.key
+            );
+            const collapsed = friendsHubCollapsedPinSenderKeys.has(sender.key);
+
+            const group = document.createElement("section");
+            group.className = "wmeRcFriendsPinSenderGroup" + (collapsed ? " is-collapsed" : "");
+
+            const groupHeader = document.createElement("button");
+            groupHeader.type = "button";
+            groupHeader.className = "wmeRcFriendsPinSenderHeader";
+            groupHeader.setAttribute(
+              "aria-expanded",
+              collapsed ? "false" : "true"
+            );
+            groupHeader.appendChild(makePerson(
+              sender.username || "A friend",
+              `${senderShares.length} new pin${senderShares.length === 1 ? "" : "s"}`,
+              { avatarUrl: sender.avatarUrl }
+            ));
+
+            const chevron = document.createElement("span");
+            chevron.className = "wmeRcFriendsPinSenderChevron";
+            chevron.innerHTML =
+              '<svg viewBox="0 0 20 20" aria-hidden="true" fill="none" ' +
+              'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" ' +
+              'stroke-linejoin="round"><path d="m6.3 7.5 3.7 3.7 3.7-3.7"/></svg>';
+            groupHeader.appendChild(chevron);
+            group.appendChild(groupHeader);
+
+            const groupBody = document.createElement("div");
+            groupBody.className = "wmeRcFriendsPinSenderBody";
+
+            groupHeader.addEventListener("click", () => {
+              const nextCollapsed = !group.classList.contains("is-collapsed");
+              group.classList.toggle("is-collapsed", nextCollapsed);
+              groupHeader.setAttribute(
+                "aria-expanded",
+                nextCollapsed ? "false" : "true"
+              );
+
+              if (nextCollapsed) {
+                friendsHubCollapsedPinSenderKeys.add(sender.key);
+              } else {
+                friendsHubCollapsedPinSenderKeys.delete(sender.key);
+              }
+            });
+
+            for (const share of senderShares) {
+              const row = document.createElement("div");
+              row.className = "wmeRcFriendsPinItem";
+
+              const dot = document.createElement("span");
+              dot.className = "wmeRcFriendsPinItemDot";
+              row.appendChild(dot);
+
+              const copy = document.createElement("div");
+              copy.className = "wmeRcFriendsPinItemCopy";
+              const title = document.createElement("strong");
+              title.textContent = cleanSharedPinTitle(share);
+              const meta = document.createElement("small");
+              meta.className = "wmeRcFriendsPinItemTime";
+              meta.textContent = relativeAge(share.createdAt);
+              copy.appendChild(title);
+              copy.appendChild(meta);
+              row.appendChild(copy);
+
+              const actions = document.createElement("div");
+              actions.className = "wmeRcFriendsActions wmeRcFriendsPinItemActions";
+              actions.appendChild(makeFriendsIconButton(friendsDeclineIcon(), "Decline pin", {
+                danger: true,
+                onClick: () => declineSharedPin(share.id)
+                  .catch((error) => toast(error?.message || "Could not decline pin."))
+              }));
+              actions.appendChild(makeFriendsIconButton(ICONS.check, "Add pin", {
+                success: true,
+                onClick: () => acceptSharedPin(share)
+                  .catch((error) => toast(error?.message || "Could not add pin."))
+              }));
+              row.appendChild(actions);
+              groupBody.appendChild(row);
+            }
+
+            group.appendChild(groupBody);
+            listBody.appendChild(group);
+          }
+        }
       }
 
       listCard.appendChild(listBody);
       wrap.appendChild(listCard);
-
-      if (pendingShares.length) {
-        const pinsCard = document.createElement("section");
-        pinsCard.className = "wmeRcFriendsCard wmeRcFriendsReceivedPinsCard";
-
-        const pinsHead = document.createElement("div");
-        pinsHead.className = "wmeRcFriendsHubListHead wmeRcFriendsReceivedPinsHead";
-        const pinsTitle = document.createElement("div");
-        pinsTitle.className = "wmeRcFriendsReceivedPinsTitle";
-        pinsTitle.innerHTML = `<span>Received pins</span><span class="wmeRcFriendsCount">${pendingShares.length}</span>`;
-        pinsHead.appendChild(pinsTitle);
-
-        if (pendingShareSenders.length > 1) {
-          const selectedSenderCount = pendingShareSenders.filter((sender) =>
-            friendsHubPinSelectedSenderKeys.has(sender.key)
-          ).length;
-          const filterWrap = document.createElement("div");
-          filterWrap.className = "wmeRcFriendsSenderFilterWrap";
-
-          const filterButton = document.createElement("button");
-          filterButton.type = "button";
-          filterButton.className = "wmeRcFriendsSenderFilterPill" +
-            (friendsHubPinSenderFilterOpen ? " is-open" : "");
-          filterButton.innerHTML = `<span>${selectedSenderCount === pendingShareSenders.length
-            ? `${pendingShareSenders.length} senders`
-            : `${selectedSenderCount} of ${pendingShareSenders.length} senders`}</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6.3 7.5 3.7 3.7 3.7-3.7"/></svg>`;
-          filterButton.addEventListener("click", (event) => {
-            try { event.preventDefault(); event.stopPropagation(); } catch {}
-            friendsHubPinSenderFilterOpen = !friendsHubPinSenderFilterOpen;
-            render(getFriendsStateSnapshot());
-          });
-          filterWrap.appendChild(filterButton);
-
-          if (friendsHubPinSenderFilterOpen) {
-            const senderMenu = document.createElement("div");
-            senderMenu.className = "wmeRcFriendsSenderFilterMenu";
-            senderMenu.addEventListener("wheel", (event) => {
-              try { event.stopPropagation(); } catch {}
-            }, { passive: true, capture: true });
-
-            for (const sender of pendingShareSenders) {
-              const selected = friendsHubPinSelectedSenderKeys.has(sender.key);
-              const option = document.createElement("button");
-              option.type = "button";
-              option.className = "wmeRcFriendsSenderFilterOption" + (selected ? " is-selected" : "");
-
-              const avatar = document.createElement("span");
-              avatar.className = "wmeRcFriendsSenderFilterAvatar";
-              renderFriendsNotificationAvatar(avatar, sender.avatarUrl, sender.username || "WME user");
-              option.appendChild(avatar);
-
-              const copy = document.createElement("span");
-              copy.className = "wmeRcFriendsSenderFilterCopy";
-              const name = document.createElement("strong");
-              name.textContent = String(sender.username || "A friend");
-              const meta = document.createElement("small");
-              meta.textContent = `${sender.count} pin${sender.count === 1 ? "" : "s"}`;
-              copy.appendChild(name);
-              copy.appendChild(meta);
-              option.appendChild(copy);
-
-              const check = document.createElement("span");
-              check.className = "wmeRcFriendsSenderFilterCheck" + (selected ? " is-selected" : "");
-              if (selected) {
-                check.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.1 10.4 2.55 2.55L14.9 5.7"/></svg>';
-              }
-              option.appendChild(check);
-              option.addEventListener("click", (event) => {
-                try { event.preventDefault(); event.stopPropagation(); } catch {}
-                if (friendsHubPinSelectedSenderKeys.has(sender.key)) {
-                  if (friendsHubPinSelectedSenderKeys.size <= 1) return;
-                  friendsHubPinSelectedSenderKeys.delete(sender.key);
-                } else {
-                  friendsHubPinSelectedSenderKeys.add(sender.key);
-                }
-                render(getFriendsStateSnapshot());
-              });
-              senderMenu.appendChild(option);
-            }
-            filterWrap.appendChild(senderMenu);
-          }
-
-          pinsHead.appendChild(filterWrap);
-        }
-        pinsCard.appendChild(pinsHead);
-
-        const pinsBody = document.createElement("div");
-        pinsBody.className = "wmeRcFriendsCardBody wmeRcFriendsReceivedPinsBody";
-
-        if (!visiblePendingShares.length) {
-          const empty = document.createElement("div");
-          empty.className = "wmeRcFriendsEmpty wmeRcFriendsHubEmpty";
-          empty.textContent = "No senders selected.";
-          pinsBody.appendChild(empty);
-        } else {
-          for (const share of visiblePendingShares) {
-            const row = document.createElement("div");
-            row.className = "wmeRcFriendsRow";
-            row.appendChild(makePerson(
-              share.pin?.name || "Shared pin",
-              `From ${share.fromProfile?.wmeUsername || "a friend"}`,
-              { avatarUrl: share.fromProfile?.wmeAvatarUrl }
-            ));
-            const actions = document.createElement("div");
-            actions.className = "wmeRcFriendsActions";
-            actions.appendChild(makeFriendsIconButton(friendsDeclineIcon(), "Decline pin", {
-              danger: true,
-              onClick: () => declineSharedPin(share.id)
-                .catch((error) => toast(error?.message || "Could not decline pin."))
-            }));
-            actions.appendChild(makeFriendsIconButton(ICONS.check, "Add pin", {
-              success: true,
-              onClick: () => acceptSharedPin(share)
-                .catch((error) => toast(error?.message || "Could not add pin."))
-            }));
-            row.appendChild(actions);
-            pinsBody.appendChild(row);
-          }
-        }
-
-        pinsCard.appendChild(pinsBody);
-        wrap.appendChild(pinsCard);
-      }
-
       if (restoreSearchFocus) {
         const restoredInput = wrap.querySelector(".wmeRcFriendsInput");
         if (restoredInput) {
@@ -6990,13 +7594,13 @@
       .wmeRcPinsContextItem{
         appearance:none;
         width:100%;
-        min-height:34px;
+        min-height:36px;
         display:grid;
         grid-template-columns:18px minmax(0,1fr) 14px;
         align-items:center;
         gap:8px;
         margin:0;
-        padding:0 9px;
+        padding:2px 9px;
         border:0;
         border-radius:5px;
         background:transparent;
@@ -7004,6 +7608,7 @@
         text-align:left;
         cursor:pointer;
         font:inherit;
+        line-height:1.3;
       }
       .wmeRcPinsContextItem:hover,
       .wmeRcPinsContextItem.is-open{
@@ -7030,6 +7635,9 @@
       }
       .wmeRcPinsContextLabel{
         min-width:0;
+        display:block;
+        padding-bottom:1px;
+        line-height:1.35;
         white-space:nowrap;
         overflow:hidden;
         text-overflow:ellipsis;
@@ -28025,6 +28633,7 @@ let _wmeRcPinsContextSubmenuEl = null;
 let _wmeRcPinsContextSubmenuAnchorEl = null;
 let _wmeRcPinsContextSubmenuCloseTimer = null;
 let _wmeRcPinsContextCleanup = [];
+let _wmeRcPinsDeferredPanelRender = false;
 
 function _cancelPinsContextSubmenuClose() {
   if (_wmeRcPinsContextSubmenuCloseTimer) {
@@ -28066,6 +28675,20 @@ function closePinsItemContextMenu() {
   closePinsContextSubmenu();
   try { _wmeRcPinsContextMenuEl?.remove(); } catch {}
   _wmeRcPinsContextMenuEl = null;
+
+  /* A background refresh may have been requested while the context menu was
+     open. Re-check the panel only after the user closes the menu, and use a
+     normal signature-based render so an unchanged panel is never rebuilt. */
+  if (_wmeRcPinsDeferredPanelRender) {
+    _wmeRcPinsDeferredPanelRender = false;
+    try {
+      requestAnimationFrame(() => {
+        try { renderPinsPanel(false); } catch {}
+      });
+    } catch {
+      try { setTimeout(() => renderPinsPanel(false), 0); } catch {}
+    }
+  }
 }
 
 function _bindPinsContextCleanup(target, type, fn, options) {
@@ -28572,7 +29195,6 @@ function renderPinsPanelPreserveScroll(force = true) {
 }
 
 function renderPinsPanel(force = false) {
-  try { closePinsItemContextMenu(); } catch {}
   try { ensureRcDropdownAndPinsContextStyles(); } catch {}
   try { ensurePinFolderReorderStyles(); } catch {}
   try { hidePinNotePreview(0); } catch {}
@@ -28623,6 +29245,18 @@ function renderPinsPanel(force = false) {
     Array.from(pinsMultiSelected || []).map((x) => String(x)).sort().join(","),
     pinsPanelEl.classList.contains("collapsed") || (pinsPanelEl.dataset && pinsPanelEl.dataset.collapsed === "1") ? "1" : "0"
   ].join("::");
+
+  /* Never let polling, theme checks, cloud sync, or another background task
+     dismiss the Map Pins context menu or rebuild the panel beneath it. The
+     menu is user-owned UI and remains open until an actual outside click,
+     Escape, blur, scroll, or a selected action closes it. */
+  if (_wmeRcPinsContextMenuEl?.isConnected) {
+    if (_pinsPanelLastSig !== _panelSig || pinsPanelEl.childNodes.length === 0) {
+      _wmeRcPinsDeferredPanelRender = true;
+    }
+    return;
+  }
+
   if (!force && _pinsPanelLastSig === _panelSig && pinsPanelEl.childNodes.length > 0) return;
   _pinsPanelLastSig = _panelSig;
   pinsPanelEl.classList.toggle("hidden", allPins.length === 0 && !alwaysVisibleEmpty);
@@ -34915,7 +35549,8 @@ setColor(chosenColor);
             closeAllMenus();
             close();
           } catch (error) {
-            console.error(`${SCRIPT_NAME}: direct place share failed`, error);
+            if (isFriendsTransportError(error)) noteFriendsTransportFailure(error);
+            else console.debug(`${SCRIPT_NAME}: direct place share failed`, error);
             if (!String(error?.message || "").includes("selected friends")) {
               showPinSendNotification({ sent: 0, failed: shareFriends.length || 1, error });
             }
@@ -49755,7 +50390,12 @@ function onContextMenuCapture(e) {
       }, 750);
     } catch {}
     try { startReminderLoop(); } catch {}
-    try { initFriendsFirebase().catch((error) => console.error(`${SCRIPT_NAME}: Friends initialization failed`, error)); } catch {}
+    try {
+      initFriendsFirebase().catch((error) => {
+        if (isFriendsTransportError(error)) noteFriendsTransportFailure(error);
+        else console.debug(`${SCRIPT_NAME}: Friends initialization failed`, error);
+      });
+    } catch {}
 
 
         const tryMount = () => mountSidebarPanelBestEffort();
@@ -49821,17 +50461,28 @@ function onContextMenuCapture(e) {
       return;
     }
 
+    if (payload.kind === "bridge-disconnected") {
+      invalidateExtensionBridge(payload.error || null);
+      return;
+    }
+
     if (payload.kind === "gm-xhr-result") {
       const requestId = String(payload.requestId || "");
       const callbacks = xhrCallbacks.get(requestId);
       if (!callbacks) return;
       xhrCallbacks.delete(requestId);
       const result = payload.result || {};
+      const error = result.error || result.response || {};
+
+      if (isExtensionContextInvalidatedError(error)) {
+        invalidateExtensionBridge(error);
+      }
+
       try {
         if (result.event === "load") callbacks.onload?.(result.response || {});
         else if (result.event === "timeout") callbacks.ontimeout?.(result.response || {});
         else if (result.event === "abort") callbacks.onabort?.(result.response || {});
-        else callbacks.onerror?.(result.error || result.response || {});
+        else callbacks.onerror?.(error);
       } catch {}
     }
   }
