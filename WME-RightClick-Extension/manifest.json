@@ -42,7 +42,8 @@
         "https://beta.waze.com/*/editor*",
         "https://beta.waze.com/editor*"
       ],
-      "js": ["userscript.js"],
+      "css": ["friends-clean-directory.css"],
+      "js": ["userscript.js", "friends-clean-directory.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
