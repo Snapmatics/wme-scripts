@@ -2946,8 +2946,6 @@
     identity.username = wmeUsername;
     identity.normalizedUsername = normalizeFriendsUsername(wmeUsername);
     identity.bindingKey = `wme-id:${wmeUserId}`;
-    const wmeRank = readCurrentWmeRankRaw();
-
     if (friendsActiveWmeBindingKey && identity.bindingKey !== friendsActiveWmeBindingKey) {
       throw makeFriendsError(
         "The WME account changed while Friends was loading.",
@@ -2997,7 +2995,6 @@
         wmeUsernameNormalized: normalized,
         wmeUserId,
         wmeAvatarUrl,
-        ...(Number.isFinite(wmeRank) ? { wmeRank } : {}),
         wmeBindingKey: identity.bindingKey,
         authProvider: "wme-anonymous",
         accountMode: "wme-id-direct",
@@ -3015,7 +3012,6 @@
         wmeUsernameNormalized: normalized,
         wmeUserId,
         wmeAvatarUrl,
-        ...(Number.isFinite(wmeRank) ? { wmeRank } : {}),
         wmeBindingKey: identity.bindingKey,
         authProvider: "wme-anonymous",
         accountMode: "wme-id-direct"
@@ -3090,10 +3086,6 @@
     const normalized = normalizeFriendsUsername(username);
     if (!normalized) throw new Error("Enter a WME username.");
 
-    const snapshot = await friendsDb.collection("users")
-      .where("wmeUsernameNormalized", "==", normalized)
-      .get();
-
     const timestampMs = (value) => {
       if (value instanceof Date) return value.getTime();
       if (value?.toDate instanceof Function) {
@@ -3103,36 +3095,202 @@
       return Number.isFinite(parsed) ? parsed : 0;
     };
 
+    const normalizeProfile = (data, fallbackUsername = username) => {
+      if (!data || typeof data !== "object") return null;
+
+      const wmeUserId = String(
+        data.wmeUserId ||
+        data.uid ||
+        data.id ||
+        ""
+      ).trim();
+
+      if (!wmeUserId) return null;
+
+      return {
+        ...data,
+        id: wmeUserId,
+        uid: wmeUserId,
+        wmeUserId,
+        wmeUsername: String(
+          data.wmeUsername ||
+          fallbackUsername ||
+          "WME editor"
+        ).trim(),
+        wmeUsernameNormalized: normalizeFriendsUsername(
+          data.wmeUsernameNormalized ||
+          data.wmeUsername ||
+          fallbackUsername
+        ),
+        wmeAvatarUrl: normalizeWmeAvatarUrl(data.wmeAvatarUrl),
+        active: data.active !== false,
+        accountMode: String(data.accountMode || "wme-id-direct")
+      };
+    };
+
+    const usernameMatches = (value) =>
+      normalizeFriendsUsername(value || "") === normalized;
+
+    const ownProfile =
+      usernameMatches(friendsProfile?.wmeUsername)
+        ? normalizeProfile(friendsProfile, username)
+        : null;
+
+    if (ownProfile) {
+      friendsProfileCache.set(ownProfile.uid, ownProfile);
+      return ownProfile;
+    }
+
+    // Existing relationships are the strongest source of truth. An accepted
+    // friend must never be reported as not having RC Functions simply because
+    // their public username index is missing, stale, or delayed.
+    const relationship = [
+      ...friendsAccepted,
+      ...friendsIncomingRequests,
+      ...friendsOutgoingRequests
+    ].find((item) => {
+      const usernames = [
+        item?.wmeUsername,
+        item?.profile?.wmeUsername,
+        item?.fromUsername,
+        item?.toUsername,
+        item?.fromProfile?.wmeUsername,
+        item?.toProfile?.wmeUsername
+      ];
+      return usernames.some(usernameMatches);
+    }) || null;
+
+    if (relationship) {
+      const ownUid = friendsOwnWmeId();
+      const fromUid = String(relationship?.fromUid || "").trim();
+      const toUid = String(relationship?.toUid || "").trim();
+
+      const relationshipUid = String(
+        relationship?.uid ||
+        relationship?.wmeUserId ||
+        (
+          fromUid === ownUid
+            ? toUid
+            : fromUid
+        ) ||
+        ""
+      ).trim();
+
+      const isFromSide = fromUid && fromUid === relationshipUid;
+      const embeddedProfile =
+        relationship?.profile ||
+        (isFromSide ? relationship?.fromProfile : relationship?.toProfile) ||
+        {};
+
+      let directProfile = null;
+
+      if (relationshipUid) {
+        directProfile =
+          friendsProfileCache.get(relationshipUid) ||
+          null;
+
+        if (!directProfile) {
+          try {
+            const directSnap = await friendsDb
+              .collection("users")
+              .doc(relationshipUid)
+              .get();
+
+            if (directSnap.exists) {
+              directProfile = {
+                id: String(directSnap.id || relationshipUid),
+                ...(directSnap.data() || {})
+              };
+            }
+          } catch {
+            // The relationship itself still proves that this editor uses
+            // Friends. Profile details are optional for rendering/search.
+          }
+        }
+      }
+
+      const relationshipProfile = normalizeProfile({
+        ...(embeddedProfile || {}),
+        ...(directProfile || {}),
+        id: relationshipUid,
+        uid: relationshipUid,
+        wmeUserId: relationshipUid,
+        wmeUsername:
+          directProfile?.wmeUsername ||
+          embeddedProfile?.wmeUsername ||
+          relationship?.wmeUsername ||
+          (isFromSide
+            ? relationship?.fromUsername
+            : relationship?.toUsername) ||
+          username,
+        wmeUsernameNormalized: normalized,
+        wmeAvatarUrl:
+          directProfile?.wmeAvatarUrl ||
+          embeddedProfile?.wmeAvatarUrl ||
+          relationship?.wmeAvatarUrl ||
+          (isFromSide
+            ? relationship?.fromAvatarUrl
+            : relationship?.toAvatarUrl) ||
+          "",
+        active: true,
+        accountMode: "wme-id-direct",
+        relationshipFallback: true
+      }, username);
+
+      if (relationshipProfile) {
+        friendsProfileCache.set(
+          relationshipProfile.uid,
+          relationshipProfile
+        );
+        return relationshipProfile;
+      }
+    }
+
+    // Also search profiles already loaded during the current session before
+    // spending another Firestore query.
+    for (const cachedProfile of friendsProfileCache.values()) {
+      if (!usernameMatches(
+        cachedProfile?.wmeUsernameNormalized ||
+        cachedProfile?.wmeUsername
+      )) {
+        continue;
+      }
+
+      const profile = normalizeProfile(cachedProfile, username);
+      if (profile) return profile;
+    }
+
+    // Public username lookup is only needed for editors who are not already
+    // represented by a local friendship/request/profile.
+    const snapshot = await friendsDb.collection("users")
+      .where("wmeUsernameNormalized", "==", normalized)
+      .get();
+
     const candidates = (snapshot?.docs || [])
-      .map((doc) => ({ id: String(doc.id || ""), ...(doc.data() || {}) }))
-      .map((profile) => {
-        const wmeUserId = String(profile.wmeUserId || profile.uid || profile.id || "").trim();
-        return {
-          ...profile,
-          id: wmeUserId,
-          uid: wmeUserId,
-          wmeUserId
-        };
-      })
+      .map((doc) => ({
+        id: String(doc.id || ""),
+        ...(doc.data() || {})
+      }))
+      .map((profile) => normalizeProfile(profile, username))
       .filter((profile) =>
+        profile &&
         profile.uid &&
         profile.active !== false &&
         String(profile.accountMode || "") === "wme-id-direct" &&
-        normalizeFriendsUsername(profile.wmeUsernameNormalized || profile.wmeUsername || "") === normalized
+        usernameMatches(
+          profile.wmeUsernameNormalized ||
+          profile.wmeUsername
+        )
       )
-      .sort((a, b) => timestampMs(b.updatedAt || b.createdAt) - timestampMs(a.updatedAt || a.createdAt));
+      .sort(
+        (a, b) =>
+          timestampMs(b.updatedAt || b.createdAt) -
+          timestampMs(a.updatedAt || a.createdAt)
+      );
 
-    const data = candidates[0] || null;
-    if (!data) return null;
+    const profile = candidates[0] || null;
+    if (!profile) return null;
 
-    const profile = {
-      ...data,
-      id: String(data.wmeUserId || data.uid || data.id || ""),
-      uid: String(data.wmeUserId || data.uid || data.id || ""),
-      wmeUserId: String(data.wmeUserId || data.uid || data.id || ""),
-      wmeUsername: String(data.wmeUsername || username).trim(),
-      wmeUsernameNormalized: String(data.wmeUsernameNormalized || normalized)
-    };
     friendsProfileCache.set(profile.uid, profile);
     return profile;
   }
@@ -3849,6 +4007,16 @@
       await shareRef.set({
       fromUid: meUid,
       toUid: friend.uid,
+      fromAuthUid: String(
+        friendsAuth.currentUser?.uid ||
+        friendsProfile?.authUid ||
+        ""
+      ),
+      toAuthUid: String(
+        friend?.profile?.authUid ||
+        friend?.authUid ||
+        ""
+      ),
       fromUsername: String(friendsProfile?.wmeUsername || readCurrentWmeUsername() || "WME editor"),
       fromUsernameNormalized: normalizeFriendsUsername(friendsProfile?.wmeUsername || readCurrentWmeUsername()),
       toUsername: String(friend.wmeUsername || "WME editor"),
@@ -3867,15 +4035,23 @@
       }
       });
     } catch (error) {
+      const message = String(error?.message || "");
+      const normalizedError =
+        /missing or insufficient permissions|permission[_ -]?denied/i.test(message)
+          ? new Error(
+              "Firestore blocked pin delivery. Publish the included firestore.rules file, then reload WME."
+            )
+          : error;
+
       if (!options?.silent) {
         showPinSendNotification({
           sent: 0,
           failed: 1,
           recipient: friend.wmeUsername,
-          error
+          error: normalizedError
         });
       }
-      throw error;
+      throw normalizedError;
     }
 
     void signalFriendsRealtimeChange(friend.uid, "pin-share");
@@ -39110,7 +39286,7 @@ function getDefaultPinZoom() {
   function buildWindowsCompactOpenInSubmenu(ll) {
     const has = !!(ll && Number.isFinite(ll.lat) && Number.isFinite(ll.lon));
     const disabledSub = !has;
-    return [
+    const allItems = [
       {
         label: withIcon(ICONS.googleMapsBrand, "Google Maps", "brand"),
         sub: has ? "Open location" : "Move mouse on map first",
@@ -39121,6 +39297,7 @@ function getDefaultPinZoom() {
         }
       },
       {
+        hidden: true,
         label: withIcon(ICONS.appleMapsBrand, "Apple Maps", "brand"),
         sub: has ? "Open location" : "Move mouse on map first",
         disabled: disabledSub,
@@ -39130,6 +39307,7 @@ function getDefaultPinZoom() {
         }
       },
       {
+        hidden: true,
         label: withIcon(ICONS.mapillaryBrand, "Mapillary", "brand"),
         sub: has ? "Open street-level imagery" : "Move mouse on map first",
         disabled: disabledSub,
@@ -39148,6 +39326,7 @@ function getDefaultPinZoom() {
         }
       },
       {
+        hidden: true,
         label: withIcon(ICONS.openStreetMapBrand, "OpenStreetMap", "brand"),
         sub: has ? "Open location" : "Move mouse on map first",
         disabled: disabledSub,
@@ -39166,6 +39345,10 @@ function getDefaultPinZoom() {
         }
       },
     ];
+
+    // These services remain fully implemented above, but are intentionally
+    // hidden from the visible Open in menu.
+    return allItems.filter((item) => item.hidden !== true);
   }
 
   function normalizeNativeActionText(value) {
@@ -45134,7 +45317,7 @@ function getDefaultPinZoom() {
 
     items.push(makeNativeMenuItem("openIn", "Open in", {
       label: withIcon(ICONS.ext, "Open in"),
-      sub: has ? "6 map services" : "Move mouse on map first",
+      sub: has ? "3 map services" : "Move mouse on map first",
       disabled: !has,
       submenu: true,
       submenuKind: "windows-open-in",

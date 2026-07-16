@@ -67,5 +67,6 @@
       ],
       "run_at": "document_start"
     }
-  ]
+  ],
+  "author": "Snapmatics / GreekCaptain"
 }

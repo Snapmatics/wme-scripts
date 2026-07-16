@@ -1,10 +1,19 @@
-IMPORTANT: The permission fix is server-side.
+CURRENT RULES ALIGNMENT FIX
 
-1. Open Firebase Console.
-2. Select project: wme-rightclick-function
-3. Open Firestore Database > Rules.
-4. Replace the current rules with the contents of firestore.rules.
-5. Click Publish.
-6. Reload the extension and hard-refresh WME for both users.
+1. Replace userscript.js in the extension.
+2. Open Firebase Console.
+3. Select project: wme-rightclick-function
+4. Open Firestore Database > Rules.
+5. Replace all deployed rules with firestore.rules from this ZIP.
+6. Click Publish.
+7. Reload the extension for both users.
+8. Hard-refresh all open WME tabs.
+9. Leave WME open for several seconds so each users/{WME-ID} profile is
+   recreated or refreshed before searching and sending pins.
 
-The extension file alone cannot override Firestore's deployed security rules.
+What this fixes:
+- profile writes rejected because of old optional rank fields;
+- request writes rejected because avatar fields were not permitted;
+- accepted-friend pin delivery blocked when the recipient profile was absent;
+- stale authBindings when the current users/{WME-ID} profile still proves
+  ownership.
