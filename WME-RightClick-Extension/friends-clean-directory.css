@@ -330,3 +330,460 @@ html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsRowMenu{
   max-height:none!important;
   overflow:visible!important;
 }
+
+/* Friends / Requests — underline tab design. */
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegmented{
+  box-sizing:border-box!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  gap:0!important;
+  width:100%!important;
+  min-height:39px!important;
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  border-bottom:1px solid rgba(127,127,127,.18)!important;
+  border-radius:0!important;
+  background:transparent!important;
+  background-image:none!important;
+  box-shadow:none!important;
+  overflow:visible!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment:hover,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment:focus,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment:focus-visible,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment:active{
+  position:relative!important;
+  box-sizing:border-box!important;
+  width:100%!important;
+  min-width:0!important;
+  height:39px!important;
+  min-height:39px!important;
+  margin:0!important;
+  padding:0 10px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:6px!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  background-image:none!important;
+  color:inherit!important;
+  -webkit-text-fill-color:currentColor!important;
+  box-shadow:none!important;
+  filter:none!important;
+  transform:none!important;
+  outline:0!important;
+  opacity:.58!important;
+  cursor:pointer!important;
+  font:650 10px/1 "Segoe UI",system-ui,sans-serif!important;
+  transition:color .14s ease,opacity .14s ease,background-color .14s ease!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment::after{
+  content:""!important;
+  position:absolute!important;
+  left:24%!important;
+  right:24%!important;
+  bottom:-1px!important;
+  height:2px!important;
+  border-radius:999px 999px 0 0!important;
+  background:#0099ff!important;
+  box-shadow:0 -1px 8px rgba(0,153,255,.24)!important;
+  opacity:0!important;
+  transform:scaleX(.55)!important;
+  transform-origin:center!important;
+  transition:opacity .14s ease,transform .18s ease!important;
+  pointer-events:none!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment:hover,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment:focus-visible{
+  border:0!important;
+  background:rgba(127,127,127,.045)!important;
+  opacity:.86!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment.active,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment.active:hover,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment.active:focus,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment.active:focus-visible,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment.active:active{
+  border:0!important;
+  background:transparent!important;
+  background-image:none!important;
+  color:inherit!important;
+  -webkit-text-fill-color:currentColor!important;
+  box-shadow:none!important;
+  opacity:1!important;
+  font-weight:750!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment.active::after{
+  opacity:1!important;
+  transform:scaleX(1)!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment .wmeRcFriendsCount{
+  box-sizing:border-box!important;
+  display:inline-grid!important;
+  place-items:center!important;
+  flex:0 0 auto!important;
+  align-self:center!important;
+  height:16px!important;
+  min-width:16px!important;
+  padding:0 4px!important;
+  border:0!important;
+  border-radius:999px!important;
+  background:transparent!important;
+  color:inherit!important;
+  -webkit-text-fill-color:currentColor!important;
+  font:750 8.5px/1 "Segoe UI",system-ui,sans-serif!important;
+  opacity:.55!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment.active .wmeRcFriendsCount{
+  background:rgba(0,153,255,.15)!important;
+  color:#28adff!important;
+  -webkit-text-fill-color:#28adff!important;
+  opacity:1!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsSegment > span:first-child{
+  min-width:0!important;
+  height:16px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  line-height:16px!important;
+  white-space:nowrap!important;
+}
+
+/* Friend-request / shared-pin action colors — nicer green tick and red X. */
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.success,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.success{
+  background:rgba(39,174,96,.10)!important;
+  border-color:rgba(39,174,96,.32)!important;
+  color:#35d06f!important;
+  -webkit-text-fill-color:#35d06f!important;
+  box-shadow:none!important;
+}
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.success:hover,
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.success:focus-visible,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.success:hover,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.success:focus-visible{
+  background:rgba(39,174,96,.16)!important;
+  border-color:rgba(53,208,111,.46)!important;
+  color:#49df81!important;
+  -webkit-text-fill-color:#49df81!important;
+}
+
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.danger,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.danger{
+  background:rgba(224,82,77,.10)!important;
+  border-color:rgba(224,82,77,.32)!important;
+  color:#ff5f5a!important;
+  -webkit-text-fill-color:#ff5f5a!important;
+  box-shadow:none!important;
+}
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.danger:hover,
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.danger:focus-visible,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.danger:hover,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.danger:focus-visible{
+  background:rgba(224,82,77,.16)!important;
+  border-color:rgba(255,95,90,.46)!important;
+  color:#ff766f!important;
+  -webkit-text-fill-color:#ff766f!important;
+}
+
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.success svg,
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.success svg path,
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.success svg polyline,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.success svg,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.success svg path,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.success svg polyline{
+  stroke:currentColor!important;
+  fill:none!important;
+}
+
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.danger svg,
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.danger svg path,
+html body .wmeRcFriendsTab .wmeRcFriendsIconBtn.danger svg line,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.danger svg,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.danger svg path,
+html body .wmeRcFriendsNotification .wmeRcFriendsIconBtn.danger svg line{
+  stroke:currentColor!important;
+  fill:none!important;
+}
+
+/* Received pins toggle overlap fix. */
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle{
+  grid-template-columns:28px minmax(0,1fr) auto 12px!important;
+  gap:9px!important;
+  padding:8px 11px 8px 9px!important;
+  overflow:hidden!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCopy{
+  min-width:0!important;
+  overflow:hidden!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCopy strong{
+  display:block!important;
+  margin:0!important;
+  padding:0!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCopy small{
+  display:block!important;
+  max-width:100%!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+  line-height:1.2!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle .wmeRcFriendsCount{
+  justify-self:end!important;
+  align-self:center!important;
+  min-width:20px!important;
+  height:20px!important;
+  padding:0 6px!important;
+  margin:0!important;
+  flex:none!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsChevron{
+  justify-self:end!important;
+  align-self:center!important;
+  width:12px!important;
+  min-width:12px!important;
+  height:12px!important;
+  margin:0!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsChevron svg{
+  width:12px!important;
+  height:12px!important;
+}
+
+/* Floating received-pin notification — explicit red X and green tick. */
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationDelete{
+  background:rgba(255,88,82,.08)!important;
+  background-image:none!important;
+  border-color:rgba(255,88,82,.30)!important;
+  color:#ff625c!important;
+  -webkit-text-fill-color:#ff625c!important;
+  box-shadow:none!important;
+  opacity:1!important;
+}
+
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationDelete:hover,
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationDelete:focus,
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationDelete:focus-visible,
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationDelete:active{
+  background:rgba(255,88,82,.15)!important;
+  background-image:none!important;
+  border-color:rgba(255,98,92,.52)!important;
+  color:#ff7771!important;
+  -webkit-text-fill-color:#ff7771!important;
+  filter:none!important;
+  transform:none!important;
+  outline:none!important;
+}
+
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationSelect.is-selected{
+  background:rgba(49,205,105,.08)!important;
+  background-image:none!important;
+  border-color:rgba(49,205,105,.34)!important;
+  color:#3dd875!important;
+  -webkit-text-fill-color:#3dd875!important;
+  box-shadow:none!important;
+  opacity:1!important;
+}
+
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationSelect.is-selected:hover,
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationSelect.is-selected:focus,
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationSelect.is-selected:focus-visible,
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationSelect.is-selected:active{
+  background:rgba(49,205,105,.15)!important;
+  background-image:none!important;
+  border-color:rgba(61,216,117,.54)!important;
+  color:#50e387!important;
+  -webkit-text-fill-color:#50e387!important;
+  filter:none!important;
+  transform:none!important;
+  outline:none!important;
+}
+
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationDelete svg,
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationDelete svg path{
+  fill:none!important;
+  stroke:currentColor!important;
+  stroke-width:2.35!important;
+  stroke-linecap:round!important;
+  stroke-linejoin:round!important;
+}
+
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationSelect.is-selected svg,
+html body #wmeRcFriendsNotificationStack .wmeRcFriendsSideNotificationSelect.is-selected svg path{
+  fill:none!important;
+  stroke:currentColor!important;
+  stroke-width:2.35!important;
+  stroke-linecap:round!important;
+  stroke-linejoin:round!important;
+}
+
+/* Received pins title/subtitle vertical overlap fix. */
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle{
+  min-height:48px!important;
+  padding:7px 10px 7px 9px!important;
+  align-items:center!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCopy{
+  min-height:32px!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:flex-start!important;
+  justify-content:center!important;
+  gap:3px!important;
+  overflow:hidden!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCopy strong{
+  display:block!important;
+  width:100%!important;
+  height:auto!important;
+  min-height:13px!important;
+  margin:0!important;
+  padding:0!important;
+  font-size:10.5px!important;
+  font-weight:750!important;
+  line-height:13px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCopy small{
+  display:block!important;
+  width:100%!important;
+  height:auto!important;
+  min-height:11px!important;
+  margin:0!important;
+  padding:0!important;
+  font-size:9px!important;
+  line-height:11px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+
+/* Received pins header bleed-through fix. */
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard{
+  position:relative!important;
+  overflow:hidden!important;
+  isolation:isolate!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle{
+  position:relative!important;
+  z-index:3!important;
+  background:var(--background_default, rgba(36,39,44,.96))!important;
+  background-image:none!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle::before{
+  content:""!important;
+  position:absolute!important;
+  inset:0!important;
+  border-radius:inherit!important;
+  background:inherit!important;
+  z-index:-1!important;
+  pointer-events:none!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsBody{
+  position:relative!important;
+  z-index:1!important;
+  margin-top:0!important;
+  background:transparent!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsBody > .wmeRcFriendsRow:first-of-type{
+  margin-top:0!important;
+}
+
+/* Received pins card glow / focus-ring removal. */
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard:hover,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard:focus,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard:focus-visible,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard:focus-within{
+  outline:0!important;
+  outline-offset:0!important;
+  box-shadow:none!important;
+  filter:none!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle:hover,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle:focus,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle:focus-visible,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle:active{
+  outline:0!important;
+  outline-offset:0!important;
+  box-shadow:none!important;
+  filter:none!important;
+  transform:none!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle::before,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle::after{
+  box-shadow:none!important;
+  outline:0!important;
+  filter:none!important;
+}
+
+/* Received pins — remove the remaining outline that looked like a glow. */
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard:hover,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard:focus,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard:focus-visible,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsCard:focus-within{
+  border:0!important;
+  outline:0!important;
+  outline-offset:0!important;
+  box-shadow:none!important;
+  filter:none!important;
+  background:rgba(127,127,127,.045)!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle:hover,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle:focus,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle:focus-visible,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle:active{
+  border:0!important;
+  outline:0!important;
+  outline-offset:0!important;
+  box-shadow:none!important;
+  filter:none!important;
+  background:rgba(127,127,127,.045)!important;
+}
+
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle::before,
+html body .wmeRcFriendsTab.wmeRcFriendsHub .wmeRcFriendsReceivedPinsToggle::after{
+  content:none!important;
+  display:none!important;
+  border:0!important;
+  outline:0!important;
+  box-shadow:none!important;
+  filter:none!important;
+}
+

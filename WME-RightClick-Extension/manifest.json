@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "WME - RightClick Functions",
-  "version": "1.4.25",
+  "version": "1.4.26",
+  "version_name": "Beta",
   "description": "Right-click tools, Map Pins, Friends sharing, reminders, backups and WME integrations without Tampermonkey.",
   "permissions": [
     "storage",
@@ -32,7 +33,9 @@
         "https://beta.waze.com/*/editor*",
         "https://beta.waze.com/editor*"
       ],
-      "js": ["bridge.js"],
+      "js": [
+        "bridge.js"
+      ],
       "run_at": "document_start"
     },
     {
@@ -42,8 +45,13 @@
         "https://beta.waze.com/*/editor*",
         "https://beta.waze.com/editor*"
       ],
-      "css": ["friends-clean-directory.css"],
-      "js": ["userscript.js", "friends-clean-directory.js"],
+      "css": [
+        "friends-clean-directory.css"
+      ],
+      "js": [
+        "userscript.js",
+        "friends-clean-directory.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
@@ -54,7 +62,9 @@
         "https://beta.waze.com/*/editor*",
         "https://beta.waze.com/editor*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start"
     }
   ]

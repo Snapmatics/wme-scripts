@@ -13,10 +13,49 @@
   let storageReadyResolve = null;
   const storageReadyPromise = new Promise((resolve) => { storageReadyResolve = resolve; });
 
+  let contextInvalidated = false;
+
   function safeClone(value) {
     try { return structuredClone(value); } catch {}
     try { return JSON.parse(JSON.stringify(value)); } catch {}
     return value;
+  }
+
+  function isContextInvalidatedError(error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    return (
+      message.includes("extension context invalidated") ||
+      message.includes("receiving end does not exist") ||
+      message.includes("message port closed before a response was received")
+    );
+  }
+
+  function extensionVersion() {
+    try {
+      if (!chrome?.runtime?.id) return "";
+      return String(
+        chrome.runtime.getManifest().version_name ||
+        chrome.runtime.getManifest().version ||
+        ""
+      );
+    } catch {
+      return "";
+    }
+  }
+
+  function emitContextInvalidated(error = null) {
+    if (contextInvalidated) return;
+    contextInvalidated = true;
+    emit({
+      kind: "bridge-disconnected",
+      error: {
+        name: "ExtensionContextInvalidatedError",
+        code: "extension_context_invalidated",
+        message:
+          "The extension was reloaded while WME was open. Reload the WME tab to reconnect extension services.",
+        originalMessage: String(error?.message || error || "")
+      }
+    });
   }
 
   function emit(payload) {
@@ -56,7 +95,7 @@
       emit({
         kind: "bootstrap",
         requestId,
-        version: String(chrome.runtime.getManifest().version || ""),
+        version: extensionVersion(),
         storage: safeClone(storageSnapshot)
       });
       return;
@@ -104,6 +143,23 @@
     }
 
     if (kind === "gm-xhr") {
+      if (contextInvalidated) {
+        emit({
+          kind: "gm-xhr-result",
+          requestId,
+          result: {
+            event: "error",
+            error: {
+              name: "ExtensionContextInvalidatedError",
+              code: "extension_context_invalidated",
+              message:
+                "The extension was reloaded while WME was open. Reload the WME tab to reconnect extension services."
+            }
+          }
+        });
+        return;
+      }
+
       try {
         const reply = await chrome.runtime.sendMessage({
           channel: CHANNEL,
@@ -114,9 +170,13 @@
         emit({
           kind: "gm-xhr-result",
           requestId,
-          result: reply?.result || { event: "error", error: { message: "No response from extension service worker." } }
+          result: reply?.result || {
+            event: "error",
+            error: { message: "No response from extension service worker." }
+          }
         });
       } catch (error) {
+        if (isContextInvalidatedError(error)) emitContextInvalidated(error);
         emit({
           kind: "gm-xhr-result",
           requestId,
@@ -124,7 +184,12 @@
             event: "error",
             error: {
               name: String(error?.name || "Error"),
-              message: String(error?.message || error || "Extension request failed.")
+              code: isContextInvalidatedError(error)
+                ? "extension_context_invalidated"
+                : "extension_request_failed",
+              message: isContextInvalidatedError(error)
+                ? "The extension was reloaded while WME was open. Reload the WME tab to reconnect extension services."
+                : String(error?.message || error || "Extension request failed.")
             }
           }
         });
@@ -165,6 +230,6 @@
   });
 
   initializeStorage().then(() => {
-    emit({ kind: "bridge-ready", version: String(chrome.runtime.getManifest().version || "") });
+    emit({ kind: "bridge-ready", version: extensionVersion() });
   });
 })();

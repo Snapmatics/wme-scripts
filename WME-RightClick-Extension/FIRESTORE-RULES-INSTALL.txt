@@ -1,0 +1,10 @@
+IMPORTANT: The permission fix is server-side.
+
+1. Open Firebase Console.
+2. Select project: wme-rightclick-function
+3. Open Firestore Database > Rules.
+4. Replace the current rules with the contents of firestore.rules.
+5. Click Publish.
+6. Reload the extension and hard-refresh WME for both users.
+
+The extension file alone cannot override Firestore's deployed security rules.

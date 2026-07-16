@@ -1,0 +1,126 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function bindingExists() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/authBindings/$(request.auth.uid));
+    }
+
+    function ownWmeId() {
+      return get(
+        /databases/$(database)/documents/authBindings/$(request.auth.uid)
+      ).data.wmeUserId;
+    }
+
+    function ownsWmeId(wmeId) {
+      return bindingExists() && ownWmeId() == wmeId;
+    }
+
+    match /authBindings/{authUid} {
+      allow read: if signedIn() && request.auth.uid == authUid;
+      allow create, update: if signedIn()
+        && request.auth.uid == authUid
+        && request.resource.data.authUid == request.auth.uid;
+      allow delete: if signedIn() && request.auth.uid == authUid;
+    }
+
+    match /users/{wmeUserId} {
+      // Friends must be able to resolve username/avatar details.
+      allow read: if signedIn();
+
+      allow create, update: if signedIn()
+        && ownsWmeId(wmeUserId)
+        && request.resource.data.wmeUserId == wmeUserId
+        && request.resource.data.uid == wmeUserId
+        && request.resource.data.authUid == request.auth.uid;
+
+      allow delete: if signedIn() && ownsWmeId(wmeUserId);
+    }
+
+    match /friendRequests/{requestId} {
+      allow read: if signedIn()
+        && bindingExists()
+        && (
+          resource.data.fromUid == ownWmeId() ||
+          resource.data.toUid == ownWmeId()
+        );
+
+      // Only the sender can create a pending request.
+      allow create: if signedIn()
+        && bindingExists()
+        && request.resource.data.fromUid == ownWmeId()
+        && request.resource.data.fromAuthUid == request.auth.uid
+        && request.resource.data.status == "pending"
+        && request.resource.data.fromUid != request.resource.data.toUid;
+
+      // Only the recipient can accept/decline. Identity fields cannot change.
+      allow update: if signedIn()
+        && bindingExists()
+        && resource.data.toUid == ownWmeId()
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && request.resource.data.fromAuthUid == resource.data.fromAuthUid
+        && request.resource.data.toAuthUid == resource.data.toAuthUid
+        && resource.data.status == "pending"
+        && request.resource.data.status in ["accepted", "declined"];
+
+      // Either participant may remove the friendship/request.
+      allow delete: if signedIn()
+        && bindingExists()
+        && (
+          resource.data.fromUid == ownWmeId() ||
+          resource.data.toUid == ownWmeId()
+        );
+    }
+
+    match /pinShares/{shareId} {
+      allow read: if signedIn()
+        && bindingExists()
+        && (
+          resource.data.fromUid == ownWmeId() ||
+          resource.data.toUid == ownWmeId()
+        );
+
+      allow create: if signedIn()
+        && bindingExists()
+        && request.resource.data.fromUid == ownWmeId()
+        && request.resource.data.fromUid != request.resource.data.toUid;
+
+      allow update: if signedIn()
+        && bindingExists()
+        && resource.data.toUid == ownWmeId()
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid;
+
+      allow delete: if signedIn()
+        && bindingExists()
+        && (
+          resource.data.fromUid == ownWmeId() ||
+          resource.data.toUid == ownWmeId()
+        );
+    }
+
+    match /realtimeSignals/{signalId} {
+      allow read: if signedIn();
+
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "targetUid",
+          "eventType",
+          "nonce",
+          "updatedAt"
+        ])
+        && request.resource.data.targetUid is string
+        && request.resource.data.eventType is string
+        && request.resource.data.nonce is string
+        && request.resource.data.updatedAt is timestamp;
+
+      allow delete: if false;
+    }
+  }
+}

@@ -38,6 +38,7 @@
       <path d="m6.3 7.5 3.7 3.7 3.7-3.7"></path>
     </svg>`;
 
+
   function makeSearchIcon() {
     const icon = document.createElement("span");
     icon.className = "wmeRcFriendsSearchIcon";
@@ -142,14 +143,6 @@
 
       row.setAttribute(ENHANCED_ATTR, "friend-row");
       row.classList.add("wmeRcFriendsDirectoryRow");
-
-      const personCopy = row.querySelector(".wmeRcFriendsRowCopy");
-      if (personCopy && !personCopy.querySelector(".wmeRcFriendsRowSub")) {
-        const subtitle = document.createElement("div");
-        subtitle.className = "wmeRcFriendsRowSub";
-        subtitle.textContent = "WME editor";
-        personCopy.appendChild(subtitle);
-      }
 
       const username = getRowUsername(row);
       const menuWrap = document.createElement("div");
