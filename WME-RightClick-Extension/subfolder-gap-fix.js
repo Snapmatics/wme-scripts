@@ -48,22 +48,30 @@
     (document.head || document.documentElement).appendChild(style);
   }
 
+  function candidateNodes(group) {
+    if (!group) return [];
+    const header = group.querySelector?.(HEADER_SELECTOR);
+    return header ? [group, header] : [group];
+  }
+
   function getParentMarker(group) {
-    if (!group) return "";
     const attrs = [
       "data-parent-id",
       "data-parent-group-id",
       "data-folder-parent-id",
       "data-parent-folder-id"
     ];
-    for (const attr of attrs) {
-      const value = String(group.getAttribute(attr) || "").trim();
-      if (value) return value;
-    }
-    for (const [key, value] of Object.entries(group.dataset || {})) {
-      if (!/parent/i.test(key)) continue;
-      const normalized = String(value || "").trim();
-      if (normalized) return normalized;
+
+    for (const node of candidateNodes(group)) {
+      for (const attr of attrs) {
+        const value = String(node.getAttribute?.(attr) || "").trim();
+        if (value) return value;
+      }
+      for (const [key, value] of Object.entries(node.dataset || {})) {
+        if (!/parent/i.test(key)) continue;
+        const normalized = String(value || "").trim();
+        if (normalized) return normalized;
+      }
     }
     return "";
   }
@@ -71,7 +79,8 @@
   function explicitSubfolder(group) {
     if (!group) return false;
     try {
-      if (group.matches(EXPLICIT_SUBFOLDER_SELECTOR)) return true;
+      if (candidateNodes(group).some((node) => node.matches?.(EXPLICIT_SUBFOLDER_SELECTOR))) return true;
+      if (group.querySelector?.(EXPLICIT_SUBFOLDER_SELECTOR)) return true;
     } catch {}
 
     const marker = getParentMarker(group).toLowerCase();
@@ -82,7 +91,8 @@
     const header = group?.querySelector?.(HEADER_SELECTOR) || group;
     const anchor = header?.querySelector?.(HANDLE_SELECTOR) || header?.firstElementChild || header;
     const rect = anchor?.getBoundingClientRect?.();
-    return rect && Number.isFinite(rect.left) ? rect.left : NaN;
+    if (!rect || (!rect.width && !rect.height)) return NaN;
+    return Number.isFinite(rect.left) ? rect.left : NaN;
   }
 
   function classifyGroups(groups) {
@@ -133,21 +143,21 @@
     if (groups.length < 2) return;
 
     const subfolderFlags = classifyGroups(groups);
-    groups.forEach((group) => group.classList.remove("wmeRcSubfolderRunEnd", "wmeRcAfterSubfolderRun"));
+    const runEnds = new Set();
+    const afterRuns = new Set();
 
     for (let index = 0; index < groups.length - 1; index += 1) {
       if (!subfolderFlags[index] || subfolderFlags[index + 1]) continue;
-
       const lastSubfolder = groups[index];
       const nextGroup = groups[index + 1];
-      lastSubfolder.classList.add("wmeRcSubfolderRunEnd");
-      nextGroup.classList.add("wmeRcAfterSubfolderRun");
-
-      setZero(lastSubfolder, "margin-bottom");
-      setZero(lastSubfolder, "padding-bottom");
-      setZero(nextGroup, "margin-top");
-      setZero(nextGroup, "padding-top");
+      runEnds.add(lastSubfolder);
+      afterRuns.add(nextGroup);
       clearTrailingWrapperSpacing(lastSubfolder, nextGroup, panel);
+    }
+
+    for (const group of groups) {
+      group.classList.toggle("wmeRcSubfolderRunEnd", runEnds.has(group));
+      group.classList.toggle("wmeRcAfterSubfolderRun", afterRuns.has(group));
     }
   }
 
@@ -169,7 +179,6 @@
     subtree: true,
     attributes: true,
     attributeFilter: [
-      "class",
       "data-parent-id",
       "data-parent-group-id",
       "data-folder-parent-id",
@@ -179,6 +188,7 @@
     ]
   });
 
+  document.addEventListener("click", schedule, true);
   document.addEventListener("dragend", schedule, true);
   document.addEventListener("drop", schedule, true);
   window.addEventListener("resize", schedule, { passive: true });
