@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/subfolder-gap-v1.4.53
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -30,7 +33,6 @@ jobs:
           for i, line in enumerate(lines, 1):
               if any(t.lower() in line.lower() for t in terms):
                   found.append(i)
-          # Merge nearby matches into readable windows.
           windows = []
           for n in found:
               start, end = max(1, n - 4), min(len(lines), n + 8)
