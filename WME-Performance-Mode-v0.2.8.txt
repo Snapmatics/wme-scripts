@@ -1,0 +1,849 @@
+// ==UserScript==
+// @name         WME Performance Mode
+// @namespace    https://www.waze.com/
+// @version      0.2.8
+// @description  Shows cameras, traffic lights, and hazards only at mode-specific zoom levels. Road closures, tasks, roads, and segments are fully excluded.
+// @author       GreekCaptain
+// @match        https://www.waze.com/*editor*
+// @match        https://beta.waze.com/*editor*
+// @exclude      https://www.waze.com/*user/*editor/*
+// @exclude      https://www.waze.com/discuss/*
+// @run-at       document-end
+// @grant        none
+// ==/UserScript==
+
+(() => {
+    'use strict';
+
+    const SCRIPT_ID = 'greekcaptain-wme-performance-mode';
+    const SCRIPT_NAME = 'WME Performance Mode';
+    const VERSION = '0.2.8';
+    const STORAGE_KEY = 'wme-performance-mode.settings.v2';
+    const INSTANCE_KEY = '__greekcaptainWmePerformanceMode';
+
+    if (window[INSTANCE_KEY]) return;
+    Object.defineProperty(window, INSTANCE_KEY, {
+        value: VERSION,
+        configurable: false,
+        enumerable: false,
+        writable: false,
+    });
+
+    const MODES = Object.freeze(['off', 'safe', 'balanced', 'aggressive']);
+    const MODE_LABELS = Object.freeze({
+        off: 'Off',
+        safe: 'Safe',
+        balanced: 'Balanced',
+        aggressive: 'Aggressive',
+    });
+    const ZOOM_RANGES = Object.freeze({
+        safe: Object.freeze({ min: 14, max: 22 }),
+        balanced: Object.freeze({ min: 17, max: 22 }),
+        aggressive: Object.freeze({ min: 19, max: 22 }),
+    });
+
+    const TASK_PATTERN = /(^|[^a-z])(task|tasks|map.?task|editing.?task|area.?task|campaign.?task)([^a-z]|$)/i;
+    const CLOSURE_PATTERN = /(^|[^a-z])(road.?closure|road.?closures|closure|closures|closure.?icon|closure.?marker)([^a-z]|$)/i;
+    const ROAD_LAYER_PATTERN = /(^|[^a-z])(road|roads|road.?layer|road.?segments?|segment|segments|street|streets|lane|lanes|turn|turns|junction.?box|restriction|restrictions|route|routes)([^a-z]|$)/i;
+    const TARGET_CONTEXT_PATTERN = /(traffic.?light|traffic.?signal|signalized|speed.?camera|red.?light.?camera|average.?speed.?camera|camera|permanent.?hazard|road.?hazard|hazard|hazards|alert|alerts)/i;
+    const FILTER_LAYER_PATTERN = /(^|[^a-z])(node|nodes|marker|markers|traffic.?light|traffic.?signal|signal|signals|camera|cameras|permanent.?hazard|road.?hazard|hazard|hazards|alert|alerts)([^a-z]|$)/i;
+
+    const state = {
+        sdk: null,
+        map: null,
+        mode: loadMode(),
+        zoom: null,
+        showIcons: true,
+        dedicatedLayers: new Set(),
+        featureLayers: new Set(),
+        hiddenLayers: new Map(),
+        patchedRenderers: new WeakSet(),
+        rendererLayer: new WeakMap(),
+        rendererHooks: 0,
+        suppressedFeatures: 0,
+        sdkEventsAttached: false,
+        legacyEventsAttached: false,
+        nativeHazardsState: null,
+        uiTimer: 0,
+    };
+
+    let root = null;
+    let panel = null;
+    let statsNode = null;
+    let modeLabelNode = null;
+    let tabLabelNode = null;
+    let tabPromise = null;
+
+    function loadMode() {
+        try {
+            const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}').mode;
+            return MODES.includes(value) ? value : 'balanced';
+        } catch (_) {
+            return 'balanced';
+        }
+    }
+
+    function saveMode() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: state.mode }));
+        } catch (error) {
+            console.warn(`[${SCRIPT_NAME}] Could not save settings.`, error);
+        }
+    }
+
+    function getMap() {
+        const candidates = [
+            window.W?.map?.olMap,
+            window.W?.map,
+            window.Waze?.map?.olMap,
+            window.Waze?.map,
+        ];
+        return candidates.find(candidate => candidate && (
+            Array.isArray(candidate.layers) ||
+            typeof candidate.getLayers === 'function' ||
+            candidate.events
+        )) || null;
+    }
+
+    function getLayers(map = getMap()) {
+        if (!map) return [];
+        if (Array.isArray(map.layers)) return map.layers.filter(Boolean);
+        try {
+            const layers = map.getLayers?.();
+            if (Array.isArray(layers)) return layers.filter(Boolean);
+            if (typeof layers?.getArray === 'function') return layers.getArray().filter(Boolean);
+        } catch (_) {}
+        return [];
+    }
+
+    function layerText(layer) {
+        return String([
+            layer?.uniqueName,
+            layer?.name,
+            layer?.id,
+            layer?.CLASS_NAME,
+            layer?.constructor?.name,
+        ].filter(Boolean).join(' ')).toLowerCase();
+    }
+
+    function featureText(feature) {
+        if (!feature) return '';
+        const model = feature.model || feature.data?.model || feature.attributes?.model;
+        const objects = [
+            feature,
+            feature.attributes,
+            feature.data,
+            feature.style,
+            model,
+            model?.attributes,
+        ].filter(Boolean);
+        const fields = [
+            'type', 'featureType', 'objectType', 'modelType', 'subtype', 'kind',
+            'name', 'layerName', 'CLASS_NAME', 'externalGraphic', 'graphicName',
+            'icon', 'iconName', 'hazardType', 'cameraType', 'alertType',
+            'closureType', 'eventType',
+        ];
+
+        let text = '';
+        for (const object of objects) {
+            for (const field of fields) {
+                const value = object?.[field];
+                if (value == null || typeof value === 'object') continue;
+                text += ` ${Array.isArray(value) ? value.join(' ') : String(value)}`;
+            }
+        }
+        return text.toLowerCase();
+    }
+
+    function isTaskLayer(layer) {
+        return TASK_PATTERN.test(layerText(layer));
+    }
+
+    function isTaskFeature(feature) {
+        return TASK_PATTERN.test(featureText(feature));
+    }
+
+    function isRoadClosureLayer(layer) {
+        return CLOSURE_PATTERN.test(layerText(layer));
+    }
+
+    function isRoadClosureFeature(feature) {
+        return CLOSURE_PATTERN.test(featureText(feature));
+    }
+
+    function isRoadOrSegmentLayer(layer) {
+        const text = layerText(layer);
+        if (TARGET_CONTEXT_PATTERN.test(text)) return false;
+        return ROAD_LAYER_PATTERN.test(text);
+    }
+
+    function dedicatedLayerType(layer) {
+        if (
+            !layer ||
+            isTaskLayer(layer) ||
+            isRoadClosureLayer(layer) ||
+            isRoadOrSegmentLayer(layer)
+        ) {
+            return null;
+        }
+
+        const text = layerText(layer);
+        if (/(traffic.?light|traffic.?signal|signalized)/i.test(text)) return 'trafficLight';
+        if (/(speed.?camera|red.?light.?camera|average.?speed.?camera|camera)/i.test(text)) return 'camera';
+        if (/(permanent.?hazard|road.?hazard|hazard|hazards|alert|alerts)/i.test(text)) return 'hazard';
+        return null;
+    }
+
+    function isFilterLayer(layer) {
+        if (
+            !layer ||
+            isTaskLayer(layer) ||
+            isRoadClosureLayer(layer) ||
+            isRoadOrSegmentLayer(layer)
+        ) {
+            return false;
+        }
+        return Boolean(dedicatedLayerType(layer)) || FILTER_LAYER_PATTERN.test(layerText(layer));
+    }
+
+    function isPointGeometry(geometry) {
+        if (!geometry) return true;
+        if (geometry.type === 'Point') return true;
+        if (Number.isFinite(geometry.x) && Number.isFinite(geometry.y)) return true;
+        return /point/i.test(String(geometry.CLASS_NAME || geometry.constructor?.name || ''));
+    }
+
+    function modelHasTrafficLight(model) {
+        if (!model) return false;
+        try {
+            if (typeof model.hasTrafficLight === 'function' && model.hasTrafficLight()) return true;
+            if (typeof model.isTrafficLight === 'function' && model.isTrafficLight()) return true;
+        } catch (_) {}
+
+        const attributes = model.attributes || model;
+        return [
+            attributes.trafficLight,
+            attributes.trafficLights,
+            attributes.hasTrafficLight,
+            attributes.isTrafficLight,
+            attributes.signalized,
+            attributes.isSignalized,
+        ].some(value => value === true || value === 1 || value === 'true');
+    }
+
+    function targetFeatureType(feature) {
+        if (
+            !feature ||
+            isTaskFeature(feature) ||
+            isRoadClosureFeature(feature)
+        ) {
+            return null;
+        }
+
+        const model = feature.model || feature.data?.model || feature.attributes?.model;
+        const geometry = feature.geometry || model?.geometry || model?.attributes?.geometry;
+        if (geometry && !isPointGeometry(geometry)) return null;
+        if (modelHasTrafficLight(model)) return 'trafficLight';
+
+        const text = featureText(feature);
+        if (/(traffic.?light|traffic.?signal|signalized)/i.test(text)) return 'trafficLight';
+        if (/(speed.?camera|red.?light.?camera|average.?speed.?camera|camera)/i.test(text)) return 'camera';
+        if (/(permanent.?hazard|road.?hazard|hazard|alert|danger|accident|pothole|object.?on.?road|obstruction|roadkill|animal|flood|fog|hail|ice|weather|construction|lane.?blocked|shoulder.?blocked|missing.?sign|broken.?traffic.?light)/i.test(text)) return 'hazard';
+        return null;
+    }
+
+    function readVisibility(layer) {
+        try {
+            if (typeof layer?.getVisibility === 'function') return Boolean(layer.getVisibility());
+            if (typeof layer?.getVisible === 'function') return Boolean(layer.getVisible());
+            if ('visibility' in (layer || {})) return Boolean(layer.visibility);
+            if ('visible' in (layer || {})) return Boolean(layer.visible);
+        } catch (_) {}
+        return false;
+    }
+
+    function setVisibility(layer, visible) {
+        if (isRoadClosureLayer(layer)) return false;
+        try {
+            if (typeof layer?.setVisibility === 'function') {
+                layer.setVisibility(visible);
+                return true;
+            }
+            if (typeof layer?.setVisible === 'function') {
+                layer.setVisible(visible);
+                return true;
+            }
+        } catch (error) {
+            console.debug(`[${SCRIPT_NAME}] Could not change a target icon layer.`, error);
+        }
+        return false;
+    }
+
+    function readZoom() {
+        try {
+            const zoom = Number(state.sdk?.Map?.getZoomLevel?.());
+            if (Number.isFinite(zoom)) return zoom;
+        } catch (_) {}
+
+        try {
+            const map = getMap();
+            const zoom = Number(typeof map?.getZoom === 'function' ? map.getZoom() : map?.zoom);
+            if (Number.isFinite(zoom)) return zoom <= 10 ? zoom + 13 : zoom;
+        } catch (_) {}
+        return null;
+    }
+
+    function activeRange() {
+        return ZOOM_RANGES[state.mode] || null;
+    }
+
+    function shouldShowAtZoom(zoom) {
+        if (state.mode === 'off') return true;
+        const range = activeRange();
+        if (!range || !Number.isFinite(zoom)) return true;
+        return zoom >= range.min && zoom <= range.max;
+    }
+
+    function applyNativeHazardsLayer() {
+        const setter = state.sdk?.LayerSwitcher?.setHazardsLayerCheckboxChecked;
+        if (typeof setter !== 'function') return;
+
+        if (state.mode === 'off') {
+            if (state.nativeHazardsState === false) {
+                try {
+                    setter.call(state.sdk.LayerSwitcher, { isChecked: true });
+                } catch (_) {}
+            }
+            state.nativeHazardsState = null;
+            return;
+        }
+
+        if (state.nativeHazardsState === state.showIcons) return;
+        try {
+            setter.call(state.sdk.LayerSwitcher, { isChecked: state.showIcons });
+            state.nativeHazardsState = state.showIcons;
+        } catch (error) {
+            console.debug(`[${SCRIPT_NAME}] Could not toggle WME hazards layer.`, error);
+        }
+    }
+
+    function rendererCandidates(layer) {
+        return [
+            layer?.renderer,
+            layer?.renderer?.renderer,
+            layer?.div?.renderer,
+        ].filter(Boolean);
+    }
+
+    function shouldSuppress(renderer, feature) {
+        if (state.mode === 'off' || state.showIcons) return false;
+
+        const layer = state.rendererLayer.get(renderer);
+        if (
+            !layer ||
+            isTaskLayer(layer) ||
+            isRoadClosureLayer(layer) ||
+            isRoadOrSegmentLayer(layer) ||
+            isTaskFeature(feature) ||
+            isRoadClosureFeature(feature)
+        ) {
+            return false;
+        }
+
+        if (dedicatedLayerType(layer)) return true;
+        return Boolean(targetFeatureType(feature));
+    }
+
+    function patchRenderer(renderer, layer) {
+        if (!renderer || state.patchedRenderers.has(renderer)) return;
+        if (!isFilterLayer(layer)) return;
+        if (typeof renderer.drawFeature !== 'function') return;
+
+        const original = renderer.drawFeature;
+        const wrapped = function (feature, ...rest) {
+            if (shouldSuppress(this, feature)) {
+                state.suppressedFeatures += 1;
+                updateUiSoon();
+                return false;
+            }
+            return original.apply(this, [feature, ...rest]);
+        };
+
+        Object.defineProperty(wrapped, '__wmePerformanceModeOriginal', {
+            value: original,
+            configurable: false,
+            enumerable: false,
+            writable: false,
+        });
+
+        try {
+            renderer.drawFeature = wrapped;
+            state.patchedRenderers.add(renderer);
+            state.rendererLayer.set(renderer, layer);
+            state.rendererHooks += 1;
+        } catch (error) {
+            console.debug(`[${SCRIPT_NAME}] Could not patch a target icon renderer.`, error);
+        }
+    }
+
+    function discoverLayers() {
+        const map = getMap();
+        if (!map) return;
+        state.map = map;
+
+        for (const layer of getLayers(map)) {
+            if (
+                !layer ||
+                isTaskLayer(layer) ||
+                isRoadClosureLayer(layer) ||
+                isRoadOrSegmentLayer(layer)
+            ) {
+                continue;
+            }
+
+            if (dedicatedLayerType(layer)) state.dedicatedLayers.add(layer);
+            if (!isFilterLayer(layer)) continue;
+
+            state.featureLayers.add(layer);
+            for (const renderer of rendererCandidates(layer)) {
+                patchRenderer(renderer, layer);
+            }
+        }
+    }
+
+    function hideDedicatedLayers() {
+        for (const layer of state.dedicatedLayers) {
+            if (
+                !layer ||
+                isTaskLayer(layer) ||
+                isRoadClosureLayer(layer) ||
+                isRoadOrSegmentLayer(layer)
+            ) {
+                continue;
+            }
+            if (state.hiddenLayers.has(layer) || !readVisibility(layer)) continue;
+            if (setVisibility(layer, false)) state.hiddenLayers.set(layer, true);
+        }
+    }
+
+    function restoreDedicatedLayers() {
+        for (const [layer, wasVisible] of state.hiddenLayers.entries()) {
+            if (
+                wasVisible &&
+                !isTaskLayer(layer) &&
+                !isRoadClosureLayer(layer) &&
+                !isRoadOrSegmentLayer(layer)
+            ) {
+                setVisibility(layer, true);
+            }
+        }
+        state.hiddenLayers.clear();
+    }
+
+    function redrawTargetLayers() {
+        for (const layer of state.featureLayers) {
+            if (
+                !layer ||
+                isTaskLayer(layer) ||
+                isRoadClosureLayer(layer) ||
+                isRoadOrSegmentLayer(layer) ||
+                !isFilterLayer(layer)
+            ) {
+                continue;
+            }
+
+            try {
+                if (readVisibility(layer) && typeof layer.redraw === 'function') {
+                    layer.redraw(true);
+                }
+            } catch (error) {
+                console.debug(`[${SCRIPT_NAME}] Could not redraw a target icon layer.`, error);
+            }
+        }
+    }
+
+    function applyZoomVisibility(forceRedraw = false) {
+        const previous = state.showIcons;
+        state.zoom = readZoom();
+        state.showIcons = shouldShowAtZoom(state.zoom);
+
+        if (state.mode === 'off' || state.showIcons) restoreDedicatedLayers();
+        else hideDedicatedLayers();
+
+        applyNativeHazardsLayer();
+
+        if (forceRedraw || previous !== state.showIcons) redrawTargetLayers();
+        updateUiSoon();
+    }
+
+    function onMapChanged() {
+        discoverLayers();
+        applyZoomVisibility(false);
+    }
+
+    function attachSdkEvents() {
+        if (state.sdkEventsAttached || !state.sdk?.Events?.on) return;
+        state.sdkEventsAttached = true;
+
+        const on = (eventName, eventHandler) => {
+            try {
+                state.sdk.Events.on({ eventName, eventHandler });
+            } catch (_) {}
+        };
+
+        on('wme-map-zoom-changed', onMapChanged);
+        on('wme-map-data-loaded', onMapChanged);
+        on('wme-map-layer-added', onMapChanged);
+        on('wme-map-layer-changed', onMapChanged);
+        on('wme-map-move-end', () => applyZoomVisibility(false));
+    }
+
+    function attachLegacyEvents() {
+        if (state.legacyEventsAttached) return;
+        const map = getMap();
+        if (!map?.events?.register) return;
+
+        try {
+            map.events.register('zoomend', null, onMapChanged);
+            map.events.register('moveend', null, () => applyZoomVisibility(false));
+            state.legacyEventsAttached = true;
+        } catch (_) {}
+    }
+
+    function initializeSdk() {
+        if (state.sdk) {
+            registerSidebarUi();
+            return true;
+        }
+
+        try {
+            if (typeof window.getWmeSdk !== 'function') return false;
+            state.sdk = window.getWmeSdk({
+                scriptId: SCRIPT_ID,
+                scriptName: SCRIPT_NAME,
+            });
+            attachSdkEvents();
+            registerSidebarUi();
+            return true;
+        } catch (error) {
+            console.warn(`[${SCRIPT_NAME}] SDK initialization failed.`, error);
+            return false;
+        }
+    }
+
+    function setMode(mode) {
+        if (!MODES.includes(mode)) return;
+        state.mode = mode;
+        saveMode();
+        document.documentElement.dataset.wmePerformanceMode = state.mode;
+        applyZoomVisibility(true);
+        updateUi();
+    }
+
+    function installShortcut() {
+        window.addEventListener('keydown', event => {
+            if (!(event.altKey && event.shiftKey && event.code === 'KeyP')) return;
+            event.preventDefault();
+            setMode(state.mode === 'off' ? 'balanced' : 'off');
+        }, true);
+    }
+
+    function detectTheme() {
+        const light = document.documentElement.classList.contains('light') ||
+            document.body?.classList.contains('light') ||
+            getComputedStyle(document.body || document.documentElement).colorScheme === 'light';
+        return light ? 'light' : 'dark';
+    }
+
+    function installStyles() {
+        if (document.getElementById('wme-performance-mode-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'wme-performance-mode-styles';
+        style.textContent = `
+            #wme-performance-mode-root {
+                --wpm-text: var(--waze-text-color, #f5f7fa);
+                --wpm-muted: color-mix(in srgb, var(--wpm-text) 62%, transparent);
+                --wpm-border: color-mix(in srgb, var(--wpm-text) 18%, transparent);
+                --wpm-accent: #00a8e8;
+                width: 100%;
+                min-width: 0;
+                padding: 12px;
+                box-sizing: border-box;
+                color: var(--wpm-text);
+                font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            }
+            #wme-performance-mode-root[data-theme="light"] {
+                --wpm-text: #17212b;
+                --wpm-muted: rgba(23, 33, 43, 0.64);
+                --wpm-border: rgba(23, 33, 43, 0.15);
+            }
+            .wpm-sidebar-heading {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+                margin-bottom: 12px;
+            }
+            .wpm-title { font-size: 13px; font-weight: 700; }
+            .wpm-sidebar-subtitle { margin-top: 3px; color: var(--wpm-muted); font-size: 10px; }
+            .wpm-status-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                min-height: 28px;
+                padding: 0 9px;
+                border: 1px solid var(--wpm-border);
+                border-radius: 999px;
+                white-space: nowrap;
+                font-size: 11px;
+            }
+            .wpm-dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7280; }
+            #wme-performance-mode-root[data-mode="safe"] .wpm-dot { background: #2ea043; }
+            #wme-performance-mode-root[data-mode="balanced"] .wpm-dot { background: #f59e0b; }
+            #wme-performance-mode-root[data-mode="aggressive"] .wpm-dot { background: #ef4444; }
+            .wpm-mode-grid {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 5px;
+            }
+            .wpm-mode-button {
+                appearance: none;
+                min-height: 30px;
+                padding: 0 6px;
+                border: 1px solid var(--wpm-border);
+                border-radius: 8px;
+                background: transparent;
+                color: var(--wpm-text);
+                font: inherit;
+                cursor: pointer;
+            }
+            .wpm-mode-button[aria-pressed="true"] {
+                border-color: color-mix(in srgb, var(--wpm-accent) 56%, transparent);
+                background: color-mix(in srgb, var(--wpm-accent) 18%, transparent);
+            }
+            .wpm-section {
+                margin-top: 12px;
+                padding-top: 12px;
+                border-top: 1px solid var(--wpm-border);
+            }
+            .wpm-range-row {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                gap: 12px;
+                padding: 5px 0;
+                color: var(--wpm-muted);
+            }
+            .wpm-range-row strong { color: var(--wpm-text); font-weight: 600; }
+            .wpm-stats {
+                padding: 9px;
+                border: 1px solid var(--wpm-border);
+                border-radius: 9px;
+                color: var(--wpm-muted);
+                font-variant-numeric: tabular-nums;
+                white-space: pre-line;
+            }
+            .wpm-note, .wpm-version {
+                margin-top: 9px;
+                color: var(--wpm-muted);
+                font-size: 10px;
+            }
+            .wpm-tab-label-content { display: inline-flex; align-items: center; gap: 5px; }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function registerSidebarUi() {
+        if (root) return Promise.resolve(true);
+        if (tabPromise) return tabPromise;
+        if (!state.sdk?.Sidebar?.registerScriptTab) return Promise.resolve(false);
+
+        tabPromise = state.sdk.Sidebar.registerScriptTab()
+            .then(({ tabLabel, tabPane }) => {
+                tabLabelNode = tabLabel;
+                tabLabel.textContent = '';
+                tabLabel.title = SCRIPT_NAME;
+                tabLabel.setAttribute('aria-label', SCRIPT_NAME);
+
+                const content = document.createElement('span');
+                content.className = 'wpm-tab-label-content';
+                content.innerHTML = '<span aria-hidden="true">⚡</span><span>Performance</span>';
+                tabLabel.appendChild(content);
+
+                createUi(tabPane);
+                return true;
+            })
+            .catch(error => {
+                tabPromise = null;
+                console.warn(`[${SCRIPT_NAME}] Could not register the Scripts tab.`, error);
+                return false;
+            });
+
+        return tabPromise;
+    }
+
+    function createUi(container) {
+        if (root || !container) return;
+
+        root = document.createElement('div');
+        root.id = 'wme-performance-mode-root';
+        root.dataset.mode = state.mode;
+        root.dataset.theme = detectTheme();
+
+        panel = document.createElement('div');
+        panel.innerHTML = `
+            <div class="wpm-sidebar-heading">
+                <div>
+                    <div class="wpm-title">WME Performance Mode</div>
+                    <div class="wpm-sidebar-subtitle">Camera, traffic-light, and hazard visibility</div>
+                </div>
+                <div class="wpm-status-badge" title="Current mode">
+                    <span class="wpm-dot" aria-hidden="true"></span>
+                    <span class="wpm-mode-label"></span>
+                </div>
+            </div>
+
+            <div class="wpm-mode-grid" role="group" aria-label="Performance mode">
+                ${MODES.map(mode => `<button type="button" class="wpm-mode-button" data-mode-choice="${mode}">${MODE_LABELS[mode]}</button>`).join('')}
+            </div>
+
+            <div class="wpm-section">
+                <div class="wpm-range-row"><strong>Safe</strong><span>Visible at zoom 14–22</span></div>
+                <div class="wpm-range-row"><strong>Balanced</strong><span>Visible at zoom 17–22</span></div>
+                <div class="wpm-range-row"><strong>Aggressive</strong><span>Visible at zoom 19–22</span></div>
+                <div class="wpm-range-row"><strong>Off</strong><span>Native WME visibility</span></div>
+            </div>
+
+            <div class="wpm-section">
+                <div class="wpm-stats"></div>
+                <div class="wpm-note">Road closures are fully excluded: the script never detects, patches, hides, restores, redraws, or toggles the Road Closures layer or its icons. Tasks, roads, and segments are also excluded.</div>
+                <div class="wpm-version">v${VERSION}</div>
+            </div>
+        `;
+
+        root.appendChild(panel);
+        container.appendChild(root);
+
+        statsNode = panel.querySelector('.wpm-stats');
+        modeLabelNode = panel.querySelector('.wpm-mode-label');
+
+        panel.addEventListener('click', event => {
+            const button = event.target.closest('[data-mode-choice]');
+            if (button) setMode(button.dataset.modeChoice);
+        });
+
+        updateUi();
+    }
+
+    function updateUiSoon() {
+        if (state.uiTimer) return;
+        state.uiTimer = window.setTimeout(() => {
+            state.uiTimer = 0;
+            updateUi();
+        }, 150);
+    }
+
+    function updateUi() {
+        if (!root || !panel) return;
+
+        root.dataset.mode = state.mode;
+        root.dataset.theme = detectTheme();
+        if (modeLabelNode) modeLabelNode.textContent = MODE_LABELS[state.mode];
+
+        for (const button of panel.querySelectorAll('[data-mode-choice]')) {
+            button.setAttribute('aria-pressed', String(button.dataset.modeChoice === state.mode));
+        }
+
+        if (tabLabelNode) {
+            tabLabelNode.dataset.mode = state.mode;
+            tabLabelNode.title = `${SCRIPT_NAME} — ${MODE_LABELS[state.mode]}`;
+            tabLabelNode.setAttribute('aria-label', `${SCRIPT_NAME}: ${MODE_LABELS[state.mode]}`);
+        }
+
+        if (statsNode) {
+            const range = activeRange();
+            const zoomText = Number.isFinite(state.zoom) ? Number(state.zoom.toFixed(2)).toString() : '—';
+            const visibility = state.mode === 'off'
+                ? 'Native WME behavior'
+                : state.showIcons ? 'Target icons visible' : 'Target icons hidden';
+            const rangeText = range ? `${range.min}–${range.max}` : 'Native';
+
+            statsNode.textContent = [
+                `Current zoom: ${zoomText}`,
+                `Active range: ${rangeText}`,
+                visibility,
+                `Target layers: ${state.featureLayers.size} · Hooks: ${state.rendererHooks}`,
+            ].join('\n');
+        }
+    }
+
+    function observeTheme() {
+        const observer = new MutationObserver(() => updateUiSoon());
+        observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['class', 'data-theme'],
+        });
+        if (document.body) {
+            observer.observe(document.body, {
+                attributes: true,
+                attributeFilter: ['class', 'data-theme'],
+            });
+        }
+    }
+
+    function waitForWme() {
+        const startedAt = performance.now();
+
+        const attempt = () => {
+            const sdkReady = initializeSdk();
+            const map = getMap();
+
+            if (map) {
+                state.map = map;
+                if (!sdkReady) attachLegacyEvents();
+                discoverLayers();
+                applyZoomVisibility(true);
+                console.info(`[${SCRIPT_NAME}] v${VERSION} ready in ${state.mode} mode.`);
+                return;
+            }
+
+            if (performance.now() - startedAt < 30000) {
+                window.setTimeout(attempt, 400);
+            } else {
+                console.warn(`[${SCRIPT_NAME}] WME map was not detected.`);
+            }
+        };
+
+        if (window.SDK_INITIALIZED?.then) {
+            window.SDK_INITIALIZED.then(attempt).catch(attempt);
+        } else {
+            attempt();
+        }
+    }
+
+    function boot() {
+        installStyles();
+        document.documentElement.dataset.wmePerformanceMode = state.mode;
+        installShortcut();
+        observeTheme();
+        waitForWme();
+
+        window.setInterval(() => {
+            initializeSdk();
+            discoverLayers();
+            applyZoomVisibility(false);
+        }, 5000);
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                discoverLayers();
+                applyZoomVisibility(true);
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot, { once: true });
+    } else {
+        boot();
+    }
+})();
