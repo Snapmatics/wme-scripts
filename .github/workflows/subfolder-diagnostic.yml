@@ -1,0 +1,48 @@
+name: Subfolder diagnostic
+
+on:
+  push:
+    branches:
+      - fix/subfolder-gap-v1.4.53
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect map pin folder code
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('WME-RightClick-Extension/userscript.js')
+          lines = p.read_text(encoding='utf-8').splitlines()
+          terms = [
+              'PIN_GROUP', 'pinGroup', 'pinGroups', 'folderId', 'folder-id',
+              'Map Pins', 'map pins', 'wmeRcPin', 'renderPins', 'renderPin',
+              'createFolder', 'addFolder', 'deleteFolder', 'moveFolder',
+              'Sortable', 'dragHandle', 'folder-row', 'folderRow'
+          ]
+          found = []
+          for i, line in enumerate(lines, 1):
+              if any(t.lower() in line.lower() for t in terms):
+                  found.append(i)
+          # Merge nearby matches into readable windows.
+          windows = []
+          for n in found:
+              start, end = max(1, n - 4), min(len(lines), n + 8)
+              if windows and start <= windows[-1][1] + 2:
+                  windows[-1] = (windows[-1][0], max(windows[-1][1], end))
+              else:
+                  windows.append((start, end))
+          print(f'FILE_LINES={len(lines)} MATCHES={len(found)} WINDOWS={len(windows)}')
+          for start, end in windows[:160]:
+              print(f'\n===== L{start}-L{end} =====')
+              for n in range(start, end + 1):
+                  print(f'{n:06d}: {lines[n-1]}')
+          print('\n===== MANIFEST =====')
+          print(Path('WME-RightClick-Extension/manifest.json').read_text(encoding='utf-8'))
+          PY
