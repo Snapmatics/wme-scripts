@@ -381,6 +381,7 @@
     try {
       if (await ensureWmeConnection()) {
         pendingAction = null;
+        if ('disabled' in action) action.disabled = wasDisabled;
         bypassOnce.add(action);
         action.click();
       }
