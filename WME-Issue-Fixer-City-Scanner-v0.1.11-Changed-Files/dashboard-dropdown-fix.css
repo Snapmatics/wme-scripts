@@ -1,0 +1,153 @@
+/* Reliable dashboard dropdown layer. Loaded after dashboard.css. */
+.wif-select {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.wif-native-select {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
+.wif-select__trigger {
+  position: relative;
+  width: 100%;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 38px 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 11px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+
+.wif-select__trigger::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: translateY(-65%) rotate(45deg);
+  transition: transform .15s ease;
+}
+
+.wif-select--open .wif-select__trigger,
+.wif-select__trigger:hover {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border-strong));
+}
+
+.wif-select--open .wif-select__trigger {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+.wif-select--open .wif-select__trigger::after {
+  transform: translateY(-25%) rotate(225deg);
+}
+
+.wif-select__menu {
+  position: fixed;
+  z-index: 1000;
+  max-height: min(300px, calc(100vh - 24px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 18px 55px rgba(0, 0, 0, .28);
+  font-size: 14px;
+}
+
+.wif-select__menu[hidden] {
+  display: none !important;
+}
+
+.wif-select__option {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wif-select__option:hover,
+.wif-select__option:focus-visible {
+  background: var(--panel-3);
+  outline: none;
+}
+
+.wif-select__option[aria-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+.wif-select__option:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+/* Suppress artifacts produced by the old custom-select renderer. */
+.select-options:not(.wif-select__menu),
+.custom-select-options:not(.wif-select__menu),
+.custom-select > [role="listbox"],
+.select-shell > [role="listbox"] {
+  display: none !important;
+  position: fixed !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
+.scan-fields > .field,
+.filters-main > select,
+.filters-main > .wif-select,
+.live-zoom-field > .wif-select {
+  min-width: 0;
+}
+
+.filters-main > .wif-select {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .wif-select__menu {
+    max-height: min(260px, calc(100vh - 20px));
+  }
+}
