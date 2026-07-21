@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WME Issue Fixer Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body data-theme="system" data-density="comfortable">
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" role="img"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H12l-4.4 3.3A1 1 0 0 1 6 18.5V16A2.5 2.5 0 0 1 4 13.5v-7Z"/><path d="m8.2 10.1 2.1 2.1 5-5"/></svg>
+        </div>
+        <div class="brand-copy">
+          <div class="brand-line">
+            <h1>WME Issue Fixer</h1>
+            <span class="profile-badge">Greece profile</span>
+          </div>
+          <p>Scan, review, fix, save and verify — without leaving WME.</p>
+        </div>
+      </div>
+
+      <div class="command-bar" aria-label="Dashboard commands">
+        <button id="scan-current" class="button secondary command-button">
+          <span class="button-icon" aria-hidden="true">⌖</span><span>Scan view</span>
+        </button>
+        <button id="open-wme" class="button primary command-button">Open WME</button>
+        <button id="open-beta" class="button secondary command-button">WME Beta</button>
+        <span class="command-separator" aria-hidden="true"></span>
+        <button id="density-toggle" class="icon-button" type="button" title="Switch density" aria-label="Switch dashboard density">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
+        </button>
+        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change dashboard theme">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="workspace-grid">
+        <article class="panel scanner-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">CITY SCANNER</span>
+              <h2>Scan an entire city at editing zoom</h2>
+              <p>WME moves tile by tile and appends unique issues to the local dashboard.</p>
+            </div>
+            <span id="scanner-state" class="state-badge idle"><i></i>Idle</span>
+          </div>
+
+          <div class="scan-fields">
+            <label class="field city-field">
+              <span>City or municipality</span>
+              <input id="city" placeholder="Athens, Greece" autocomplete="off">
+            </label>
+            <label class="field">
+              <span>Radius</span>
+              <select id="radius" data-custom-select>
+                <option value="3">3 km</option>
+                <option value="5">5 km</option>
+                <option value="8">8 km</option>
+                <option value="12">12 km</option>
+                <option value="20">20 km</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Zoom</span>
+              <select id="zoom" data-custom-select>
+                <option value="17">17</option>
+                <option value="18">18</option>
+                <option value="19">19</option>
+                <option value="20">20</option>
+              </select>
+            </label>
+            <button id="start-city" class="button primary scan-button">Start scan</button>
+            <button id="stop-scan" class="button danger ghost scan-button">Stop</button>
+          </div>
+
+          <div class="scan-status">
+            <div class="status-copy">
+              <strong id="status-text">Ready</strong>
+              <span id="status-meta"></span>
+            </div>
+            <span id="issue-total">0 issues</span>
+          </div>
+          <div class="progress" aria-label="Scan progress"><i id="progress-bar"></i></div>
+        </article>
+
+        <aside class="panel live-panel">
+          <div class="live-heading">
+            <div>
+              <span class="eyebrow">LIVE MAP SCAN</span>
+              <h2>Scan while panning</h2>
+            </div>
+            <button id="pan-scan-toggle" class="toggle" type="button" role="switch" aria-checked="false"><span></span></button>
+          </div>
+          <p>After each completed pan, the loaded area is scanned once and new unique issues are appended.</p>
+          <label class="field live-zoom-field">
+            <span>Minimum zoom</span>
+            <select id="pan-min-zoom" data-custom-select>
+              <option value="16">16</option>
+              <option value="17">17</option>
+              <option value="18">18</option>
+              <option value="19">19</option>
+              <option value="20">20</option>
+            </select>
+          </label>
+          <div class="live-meta">
+            <div><span>Last pan scan</span><strong id="pan-last-scan">Never</strong></div>
+            <div><span>Views scanned</span><strong id="pan-scan-count">0</strong></div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="metrics-grid" aria-label="Issue overview">
+        <article class="metric-card"><span>Total stored</span><strong id="stat-total">0</strong><small id="stat-visible">0 visible</small></article>
+        <article class="metric-card error-card"><span>Active errors</span><strong id="stat-errors">0</strong><small>Routing-critical</small></article>
+        <article class="metric-card fix-card"><span>Fix available</span><strong id="stat-fixable">0</strong><small>Guarded actions</small></article>
+        <article class="metric-card pending-card"><span>Pending save</span><strong id="stat-pending">0</strong><small>Unsaved in WME</small></article>
+        <article class="metric-card saved-card"><span>Fixed &amp; saved</span><strong id="stat-saved">0</strong><small>Verified history</small></article>
+      </section>
+
+      <section class="panel filters-panel">
+        <div class="filters-main">
+          <label class="search-field">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+            <input id="search" placeholder="Search issue, city, segment or details">
+          </label>
+          <select id="severity" data-custom-select aria-label="Severity">
+            <option value="">All severities</option>
+            <option value="error">Errors</option>
+            <option value="warning">Warnings</option>
+            <option value="info">Information</option>
+          </select>
+          <select id="status-filter" data-custom-select aria-label="Issue state">
+            <option value="active">Active issues</option>
+            <option value="">All states</option>
+            <option value="fixable">Fix available</option>
+            <option value="review">Review only</option>
+            <option value="fixed-pending-save">Pending WME save</option>
+            <option value="fixed-saved">Fixed and saved</option>
+            <option value="saved-unresolved">Still detected after save</option>
+            <option value="reopened">Reopened</option>
+          </select>
+          <select id="sort" data-custom-select aria-label="Sort order">
+            <option value="severity">Severity first</option>
+            <option value="newest">Newest detected</option>
+            <option value="title">Issue name</option>
+            <option value="status">State</option>
+          </select>
+        </div>
+        <div class="filters-actions">
+          <button id="export-json" class="button secondary">JSON</button>
+          <button id="export-csv" class="button secondary">CSV</button>
+          <button id="clear-results" class="button danger ghost">Clear</button>
+        </div>
+        <div id="active-filter" class="active-filter" hidden>
+          <span>Filtering <strong id="filter-code-label"></strong></span>
+          <button id="clear-code-filter" type="button">Remove filter</button>
+        </div>
+      </section>
+
+      <nav class="workflow-tabs" aria-label="Issue workflow">
+        <button class="workflow-tab active" type="button" data-workflow-tab="open">Open <span data-workflow-count="open">0</span></button>
+        <button class="workflow-tab" type="button" data-workflow-tab="fixable">Fixable <span data-workflow-count="fixable">0</span></button>
+        <button class="workflow-tab" type="button" data-workflow-tab="review">Needs review <span data-workflow-count="review">0</span></button>
+        <button class="workflow-tab" type="button" data-workflow-tab="pending">Pending save <span data-workflow-count="pending">0</span></button>
+        <button class="workflow-tab" type="button" data-workflow-tab="saved">Saved <span data-workflow-count="saved">0</span></button>
+      </nav>
+
+      <section class="content-grid">
+        <aside class="panel summary-panel">
+          <div class="section-heading">
+            <div><span class="eyebrow">ISSUE INDEX</span><h2>Detected issues</h2></div>
+            <span id="code-count" class="small-count">0</span>
+          </div>
+          <p class="section-description">Grouped by the kind of edit required. Internal checker numbers stay hidden.</p>
+          <div class="summary" id="summary"></div>
+
+          <div class="scan-history">
+            <div class="scan-history-heading">
+              <span>Recent scans</span>
+              <button id="clear-scan-history" class="text-button" type="button">Clear</button>
+            </div>
+            <div id="scan-history-list" class="scan-history-list">
+              <p class="scan-history-empty">No completed scans yet.</p>
+            </div>
+          </div>
+
+          <div class="summary-footer">
+            <div><span>Last updated</span><strong id="last-updated">Never</strong></div>
+            <div><span>Displayed</span><strong id="visible-count">0 issues</strong></div>
+          </div>
+        </aside>
+
+        <section class="panel results-panel">
+          <div class="results-heading">
+            <div><span class="eyebrow">WORK QUEUE</span><h2>Issue list</h2></div>
+            <div class="legend"><span class="legend-item error"><i></i>Error</span><span class="legend-item warning"><i></i>Warning</span><span class="legend-item info"><i></i>Info</span><span class="legend-item saved"><i></i>Saved</span></div>
+          </div>
+
+          <div class="queue-toolbar">
+            <label class="select-all-label"><input id="select-all-visible" type="checkbox"><span>Select visible</span></label>
+            <span id="queue-summary">0 shown</span>
+            <button id="open-first-visible" class="text-button" type="button">Open first</button>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th class="select-heading" aria-label="Select"></th><th>Issue</th><th>Location</th><th>State</th><th class="actions-heading">Actions</th></tr></thead>
+              <tbody id="results-body"></tbody>
+            </table>
+            <div id="empty" class="empty">
+              <div class="empty-icon">✓</div>
+              <h3>No matching issues</h3>
+              <p>Run a scan or change the current filters.</p>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <aside id="issue-drawer" class="issue-drawer" aria-hidden="true" aria-label="Issue details">
+    <div class="drawer-backdrop" data-drawer-close></div>
+    <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+      <header class="drawer-header">
+        <div>
+          <span class="eyebrow">ISSUE DETAILS</span>
+          <h2 id="drawer-title">Issue</h2>
+        </div>
+        <button class="icon-button" type="button" data-drawer-close aria-label="Close details">×</button>
+      </header>
+      <div class="drawer-content">
+        <div id="drawer-severity" class="drawer-severity"></div>
+        <p id="drawer-description" class="drawer-description"></p>
+        <dl class="drawer-facts">
+          <div><dt>Location</dt><dd id="drawer-location">—</dd></div>
+          <div><dt>State</dt><dd id="drawer-state">—</dd></div>
+          <div><dt>Source</dt><dd id="drawer-source">—</dd></div>
+        </dl>
+        <section class="safety-card">
+          <span class="safety-icon" aria-hidden="true">✓</span>
+          <div><strong id="drawer-safety-title">Review before applying</strong><p id="drawer-safety-copy">The extension leaves every edit in WME's unsaved queue.</p></div>
+        </section>
+        <div id="drawer-actions" class="drawer-actions"></div>
+      </div>
+    </div>
+  </aside>
+
+  <div id="bulk-bar" class="bulk-bar" hidden>
+    <div><strong id="bulk-count">0 selected</strong><span id="bulk-fixable-count">0 fixable</span></div>
+    <div class="bulk-actions">
+      <button id="bulk-fix" class="button primary" type="button">Fix safe issues</button>
+      <button id="bulk-open" class="button secondary" type="button">Open next</button>
+      <button id="bulk-clear" class="button secondary" type="button">Clear selection</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="dashboard.js"></script>
+  <script src="dashboard-ui.js"></script>
+</body>
+</html>
