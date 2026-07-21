@@ -1,0 +1,10 @@
+Dashboard dropdown repair build.
+
+Replace these files together:
+- dashboard.html
+- dashboard.css
+- dashboard-ui.js
+- dashboard-dropdown-fix.css
+- dashboard-dropdown-fix.js
+
+The new dropdown layer hides the native selects, removes legacy dropdown artifacts, and renders one fixed-position themed menu per select.
