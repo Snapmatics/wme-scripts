@@ -1,0 +1,47 @@
+name: Build subfolder gap fix
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate JavaScript
+        run: node --check WME-RightClick-Extension/subfolder-gap-fix.js
+
+      - name: Validate manifest
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('WME-RightClick-Extension/manifest.json').read_text(encoding='utf-8'))
+          assert manifest['version'] == '1.4.53'
+          scripts = [item for block in manifest['content_scripts'] for item in block.get('js', [])]
+          assert 'subfolder-gap-fix.js' in scripts
+          print('Manifest validation passed')
+          PY
+
+      - name: Stage changed files
+        shell: bash
+        run: |
+          mkdir -p changed-files
+          cp WME-RightClick-Extension/manifest.json changed-files/manifest.json
+          cp WME-RightClick-Extension/subfolder-gap-fix.js changed-files/subfolder-gap-fix.js
+
+      - name: Upload changed files
+        uses: actions/upload-artifact@v4
+        with:
+          name: WME-RightClick-v1.4.53-Subfolder-Gap-Fix-Changed-Files
+          path: changed-files/
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 7

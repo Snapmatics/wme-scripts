@@ -1,0 +1,1982 @@
+FILE_LINES=50498 HITS=216 WINDOWS=37
+
+===== SOURCE L7686-L7716 =====
+007686:         box-shadow:none!important;
+007687:         background:#242628!important;
+007688:       }
+007689:       .theme-light .wmeRcInlineRenameInput,
+007690:       .wmeRcLight .wmeRcInlineRenameInput{
+007691:         border-color:#c7ccd1!important;
+007692:         background:#fff!important;
+007693:         color:#111827!important;
+007694:         -webkit-text-fill-color:#111827!important;
+007695:         caret-color:#111827!important;
+007696:       }
+007697:       .wmeRcPinRow.is-inline-renaming,
+007698:       .wmeRcPinsGroupHdr.is-inline-renaming{
+007699:         cursor:default!important;
+007700:       }
+007701:     `;
+007702:     (document.head || document.documentElement).appendChild(style);
+007703:   }
+007704: 
+007705:   function measureRcDropdownWidth(options, minWidth = 112, maxWidth = 420) {
+007706:     const labels = (Array.isArray(options) ? options : []).map((opt) => String(opt?.label ?? opt?.text ?? ''));
+007707:     let widest = 0;
+007708:     try {
+007709:       const canvas = document.createElement('canvas');
+007710:       const ctx = canvas.getContext('2d');
+007711:       if (ctx) {
+007712:         ctx.font = '650 12px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
+007713:         for (const label of labels) widest = Math.max(widest, ctx.measureText(label).width);
+007714:       }
+007715:     } catch {}
+007716:     if (!widest) widest = Math.max(0, ...labels.map((label) => label.length * 6.8));
+
+===== SOURCE L7955-L7986 =====
+007955:     wrap.getValue = () => value;
+007956:     wrap.closeMenu = closeMenu;
+007957:     wrap.openMenu = openMenu;
+007958:     syncButton();
+007959:     return wrap;
+007960:   }
+007961: 
+007962:   function getPinFolderDropdownOptions(includeCreate = true) {
+007963:     const groups = loadPinGroups();
+007964:     const options = groups.map((group) => {
+007965:       const gid = normalizeGroupId(group?.id);
+007966:       let label = String(group?.name || (gid === 'default' ? '(no folder)' : 'Folder'));
+007967:       if (group?.isSubfolder) {
+007968:         const parent = groups.find((candidate) => String(candidate?.id || '') === String(group?.parentId || ''));
+007969:         label = parent ? `${parent.name || 'Folder'} → ${label}` : label;
+007970:       }
+007971:       return { value: gid, label };
+007972:     });
+007973:     if (includeCreate) options.push({ value: '__new__', label: '+ New folder' });
+007974:     return options;
+007975:   }
+007976: 
+007977:   function createPinFolderDropdown(initialGroupId, onChanged, opts = {}) {
+007978:     let selected = normalizeGroupId(initialGroupId || 'default');
+007979:     const includeCreate = opts.includeCreate !== false;
+007980:     const picker = createRcDropdown(getPinFolderDropdownOptions(includeCreate), selected, (nextValue) => {
+007981:       if (nextValue === '__new__') {
+007982:         picker.setValue(selected, false);
+007983:         openGroupNameModal({
+007984:           title: 'New folder',
+007985:           placeholder: 'Name',
+007986:           okText: 'Create',
+
+===== SOURCE L12620-L12674 =====
+012620:   const PIN_GROUPS_KEY = `${SCRIPT_ID}:pinGroups:v1`;
+012621:   const PIN_GROUP_FILTER_KEY = `${SCRIPT_ID}:pinGroupFilter:v1`;
+012622:   const PIN_LAST_GROUP_KEY = `${SCRIPT_ID}:pinLastGroup:v1`;
+012623: 
+012624:   const PIN_GROUP_UI_KEY = `${SCRIPT_ID}:pinGroupUi:v1`;
+012625:   const PIN_SYNC_TOMBSTONES_KEY = `${SCRIPT_ID}:pinSyncTombstones:v1`;
+012626:   const PIN_GROUP_UI_SYNC_TS_KEY = `${SCRIPT_ID}:pinGroupUiSyncUpdatedAt:v1`;
+012627:   const PIN_GROUP_ORDER_SYNC_TS_KEY = `${SCRIPT_ID}:pinGroupOrderSyncUpdatedAt:v1`;
+012628: 
+012629:   function normalizePinGroupOrder(groups) {
+012630:     const src = Array.isArray(groups) ? groups.filter(Boolean) : [];
+012631:     let def = src.find(g => String(g?.id || '') === 'default');
+012632:     if (!def) def = { id: 'default', name: '(no folder)', emoji: '', parentId: '', isSubfolder: false, _syncUpdatedAt: 1 };
+012633:     const seen = new Set();
+012634:     const ordered = [];
+012635:     for (const g of src) {
+012636:       const id = String(g?.id || '');
+012637:       if (!id || id === 'default' || seen.has(id)) continue;
+012638:       seen.add(id);
+012639:       ordered.push(g);
+012640:     }
+012641:     return [def, ...ordered];
+012642:   }
+012643: 
+012644:   function ensurePinFolderReorderStyles() {
+012645:     if (document.getElementById('wmeRcPinFolderReorderCss')) return;
+012646:     const style = document.createElement('style');
+012647:     style.id = 'wmeRcPinFolderReorderCss';
+012648:     style.textContent = `
+012649:       .wmeRcPinsGroup{position:relative;}
+012650:       .wmeRcPinsGroupDrag{width:20px;height:24px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:6px;color:var(--wmeRcPinsMuted);opacity:.55;cursor:grab;touch-action:none;}
+012651:       .wmeRcPinsGroupDrag:hover{opacity:1;background:var(--wmeRcPinsHover);}
+012652:       .wmeRcPinsGroupDrag:active{cursor:grabbing;}
+012653:       .wmeRcPinsGroup.folderDragging{opacity:.42;}
+012654:       .wmeRcPinsGroup.folderDropBefore::before,.wmeRcPinsGroup.folderDropAfter::after{content:"";position:absolute;left:7px;right:7px;height:2px;border-radius:999px;background:#16a8ff;z-index:12;pointer-events:none;box-shadow:0 0 0 1px rgba(22,168,255,.18);}
+012655:       .wmeRcPinsGroup.folderDropBefore::before{top:-2px;}
+012656:       .wmeRcPinsGroup.folderDropAfter::after{bottom:-2px;}
+012657:     `;
+012658:     document.documentElement.appendChild(style);
+012659:   }
+012660: 
+012661:   function _syncTimestamp(value, fallback = 0) {
+012662:     const n = Number(value);
+012663:     return Number.isFinite(n) && n > 0 ? n : Number(fallback) || 0;
+012664:   }
+012665: 
+012666:   function _syncEntityHash(entity) {
+012667:     try {
+012668:       const clone = { ...(entity || {}) };
+012669:       delete clone._syncUpdatedAt;
+012670:       return JSON.stringify(clone);
+012671:     } catch { return ''; }
+012672:   }
+012673: 
+012674:   function _loadPinSyncTombstones() {
+
+===== SOURCE L12913-L13022 =====
+012913:       }
+012914:       try {
+012915:         const def = groups.find(g => g && g.id === "default");
+012916:         if (def && (String(def.name || "").trim() === "Default" || !String(def.name || "").trim())) def.name = "(no folder)";
+012917:       } catch {}
+012918: 
+012919:       const cleanGroups = groups
+012920:         .filter(g => g && typeof g.id === "string" && typeof g.name === "string" && g.id.trim())
+012921:         .map(g => ({
+012922:           id: String(g.id),
+012923:           name: String(g.name).trim() || "Group",
+012924:           emoji: (typeof g.emoji === "string") ? String(g.emoji) : "",
+012925:           parentId: (String(g.id) === "default") ? "" : String(g.parentId || "default").trim() || "default",
+012926:           isSubfolder: !!g.isSubfolder,
+012927:           _syncUpdatedAt: _syncTimestamp(g._syncUpdatedAt, 1),
+012928:         }));
+012929: 
+012930:       const byId = new Map(cleanGroups.map(g => [String(g.id), g]));
+012931:       const resolveTopLevelGroupId = (gid) => {
+012932:         let currentId = String(gid || "default") || "default";
+012933:         const seen = new Set();
+012934:         while (currentId && currentId !== "default" && !seen.has(currentId)) {
+012935:           seen.add(currentId);
+012936:           const current = byId.get(currentId);
+012937:           if (!current) return "default";
+012938:           if (!current.isSubfolder) return current.id;
+012939:           currentId = String(current.parentId || "default") || "default";
+012940:         }
+012941:         return "default";
+012942:       };
+012943: 
+012944:       const flatGroups = [];
+012945:       const seenIds = new Set();
+012946:       for (const g of cleanGroups) {
+012947:         if (!g) continue;
+012948:         if (g.id === "default") {
+012949:           if (!seenIds.has("default")) {
+012950:             flatGroups.push({ id: "default", name: g.name || "(no folder)", emoji: g.emoji || "", parentId: "", isSubfolder: false, _syncUpdatedAt: _syncTimestamp(g._syncUpdatedAt, 1) });
+012951:             seenIds.add("default");
+012952:           }
+012953:           continue;
+012954:         }
+012955:         if (g.isSubfolder) continue;
+012956:         if (seenIds.has(g.id)) continue;
+012957:         flatGroups.push({ ...g, parentId: "default", isSubfolder: false });
+012958:         seenIds.add(g.id);
+012959:       }
+012960:       if (!seenIds.has("default")) flatGroups.push({ id: "default", name: "(no folder)", emoji: "", parentId: "", isSubfolder: false, _syncUpdatedAt: 1 });
+012961:       const orderedFlatGroups = normalizePinGroupOrder(flatGroups);
+012962: 
+012963:       // Cache groups before touching pins. This breaks the previous
+012964:       // loadPins -> normalizeGroupId -> loadPinGroups -> loadPins cycle.
+012965:       _pinGroupsMem = orderedFlatGroups;
+012966:       _pinGroupSyncBaseline = new Map(orderedFlatGroups.map(g => [String(g.id), { hash: _syncEntityHash(g), updatedAt: _syncTimestamp(g._syncUpdatedAt) }]));
+012967: 
+012968:       const migratePins = (pins) => {
+012969:         let changed = false;
+012970:         const migrated = (Array.isArray(pins) ? pins : []).map((p) => {
+012971:           if (!p || typeof p !== "object") return p;
+012972:           const oldId = String(p.groupId || "default") || "default";
+012973:           const nextId = resolveTopLevelGroupId(oldId);
+012974:           if (nextId !== oldId) {
+012975:             changed = true;
+012976:             return { ...p, groupId: nextId };
+012977:           }
+012978:           return p;
+012979:         });
+012980:         return { changed, migrated };
+012981:       };
+012982: 
+012983:       // Migrate old subfolder/orphaned IDs without calling loadPins while
+012984:       // groups are still initializing. This keeps both memory and storage safe.
+012985:       try {
+012986:         if (_pinsMem && Array.isArray(_pinsMem)) {
+012987:           const { changed, migrated } = migratePins(_pinsMem);
+012988:           if (changed) savePins(migrated);
+012989:         } else {
+012990:           const pinsRaw = localStorage.getItem(PIN_KEY);
+012991:           const pinsArr = JSON.parse(pinsRaw || "[]");
+012992:           if (Array.isArray(pinsArr)) {
+012993:             const { changed, migrated } = migratePins(pinsArr);
+012994:             if (changed) {
+012995:               const json = JSON.stringify(migrated);
+012996:               localStorage.setItem(PIN_KEY, json);
+012997:               _pinsLastJson = json;
+012998:             }
+012999:           }
+013000:         }
+013001:       } catch {}
+013002: 
+013003:       const hadSubfolders = cleanGroups.some(g => g && g.id !== "default" && g.isSubfolder);
+013004:       if (hadSubfolders) savePinGroups(orderedFlatGroups);
+013005:       return _pinGroupsMem;
+013006:     } catch {
+013007:       _pinGroupsMem = [{ id: "default", name: "(no folder)", emoji: "" }];
+013008:       return _pinGroupsMem;
+013009:     }
+013010:   }
+013011: 
+013012:   function savePinGroups(groups) {
+013013:     try {
+013014:       const now = Date.now();
+013015:       const previousOrder = Array.isArray(_pinGroupsMem) ? _pinGroupsMem.map(g => String(g?.id || '')).join('|') : '';
+013016:       const incoming = normalizePinGroupOrder(Array.isArray(groups) ? groups : []);
+013017:       const next = incoming.map((raw) => {
+013018:         const g = { ...(raw || {}) };
+013019:         const id = String(g.id || '').trim();
+013020:         if (!id) return null;
+013021:         const baseline = _pinGroupSyncBaseline.get(id);
+013022:         const hash = _syncEntityHash(g);
+
+===== SOURCE L13068-L13135 =====
+013068:     return g ? g.name : (gid === "default" ? "(no folder)" : "Group");
+013069:   }
+013070: 
+013071:   function setDefaultGroupName(name) {
+013072:     const nm = String(name || "").trim() || "(no folder)";
+013073:     const groups = loadPinGroups();
+013074:     const idx = groups.findIndex(g => g && g.id === "default");
+013075:     if (idx >= 0) groups[idx] = { ...groups[idx], name: nm };
+013076:     else groups.unshift({ id: "default", name: nm, emoji: "" });
+013077:     savePinGroups(groups);
+013078:   }
+013079: 
+013080:   function normalizeGroupParentId(id) {
+013081:     const pid = String(id || "").trim();
+013082:     if (!pid || pid === "default") return "default";
+013083:     const groups = loadPinGroups();
+013084:     return groups.some(g => g && g.id === pid) ? pid : "default";
+013085:   }
+013086: 
+013087:   function getChildPinGroups(parentId) {
+013088:     return [];
+013089:   }
+013090:   function canCreateAnotherSubfolder(parentId) {
+013091:     return false;
+013092:   }
+013093: 
+013094:   function getDirectSubfolderCount(parentId) {
+013095:     return 0;
+013096:   }
+013097: 
+013098:   function getGroupDepth(groupId) {
+013099:     const gid = String(groupId || "default") || "default";
+013100:     if (!gid || gid === "default") return 0;
+013101:     const groups = loadPinGroups();
+013102:     let depth = 0;
+013103:     let current = groups.find(g => g && String(g.id) === gid) || null;
+013104:     const seen = new Set();
+013105:     while (current && current.id && current.id !== "default") {
+013106:       const cid = String(current.id);
+013107:       if (seen.has(cid)) break;
+013108:       seen.add(cid);
+013109:       depth += 1;
+013110:       const pid = String(current.parentId || "default") || "default";
+013111:       if (!pid || pid === "default") break;
+013112:       current = groups.find(g => g && String(g.id) === pid) || null;
+013113:     }
+013114:     return depth;
+013115:   }
+013116: 
+013117:   function canCreateSubfolderAtParent(parentId) {
+013118:     return false;
+013119:   }
+013120: 
+013121: 
+013122:   function normalizeGroupId(id) {
+013123:     const gid = String(id || "default") || "default";
+013124:     const groups = loadPinGroups();
+013125:     if (groups.some(g => g && g.id === gid)) return gid;
+013126:     return "default";
+013127:   }
+013128: 
+013129:   function getCurrentGroupFilter() {
+013130:     try {
+013131:       const v = localStorage.getItem(PIN_GROUP_FILTER_KEY);
+013132:       if (!v || v === "all") return "all";
+013133:       return normalizeGroupId(v);
+013134:     } catch {
+013135:       return "all";
+
+===== SOURCE L13681-L13711 =====
+013681:       .wmeRcReducedMotionScope [class^="wmeRc"],
+013682:       .wmeRcReducedMotionScope [class*=" wmeRc"],
+013683:       .wmeRcReducedMotionScope [class^="wmeRc"]::before,
+013684:       .wmeRcReducedMotionScope [class*=" wmeRc"]::before,
+013685:       .wmeRcReducedMotionScope [class^="wmeRc"]::after,
+013686:       .wmeRcReducedMotionScope [class*=" wmeRc"]::after{
+013687:         transition:none!important;
+013688:         animation:none!important;
+013689:         scroll-behavior:auto!important;
+013690:       }
+013691:       .wmeRcReducedMotionScope :where(
+013692:         .wmeRcItem,.wmeRcMiniBtn,.wmeRcModalBtn,.wmeRcPinsHdrBtn,
+013693:         .wmeRcPinsGroupBtn,.wmeRcPinRow,.wmeRcPinLeft,.wmeRcActionCard,
+013694:         .wmeRcSideNavBtn,.wmeRcToggleBtn,.wmeRcIosToggle,.wmeRcTinyToggle,
+013695:         .wmeRcPmCard,.wmeRcPmTiny,.wmeRcWizardBtn,.wmeRcWizardPill,
+013696:         .wmeRcEmojiBtn,.wmeRcEmojiItem,.wmeRcStepBtn,.wmeRcQuick
+013697:       ):hover{
+013698:         transform:none!important;
+013699:       }
+013700:       .wmeRcInput,.wmeRcSnoozeInput,textarea{
+013701:         user-select:text;
+013702:         -webkit-user-select:text;
+013703:       }
+013704:       .wmeRcI{
+013705:         width:16px;
+013706:         height:16px;
+013707:         flex:0 0 16px;
+013708:         display:inline-flex;
+013709:         align-items:center;
+013710:         justify-content:center;
+013711:         opacity:.94;
+
+===== SOURCE L15066-L15117 =====
+015066:       .wmeRcPins.collapsed{resize:none !important;min-height:0 !important;}
+015067:       .wmeRcPins.collapsed .wmeRcPinsList{display:none;overflow:hidden;scrollbar-width:none;-ms-overflow-style:none;}
+015068: 
+015069:       .wmeRcPins.theme-dark{--wmeRcPinsBg:rgba(20,20,22,.76);--wmeRcPinsFg:#fff;--wmeRcPinsBorder:rgba(255,255,255,.12);--wmeRcPinsHover:rgba(255,255,255,.08);--wmeRcPinsBtnHover:rgba(255,255,255,.10);box-shadow:0 16px 48px rgba(0,0,0,.35);backdrop-filter:blur(14px);}
+015070:       .wmeRcPins.theme-light{--wmeRcPinsBg:rgba(248,250,252,.97);--wmeRcPinsFg:#111827;--wmeRcPinsBorder:rgba(40,56,72,.14);--wmeRcPinsHover:rgba(22,33,43,.07);--wmeRcPinsBtnHover:rgba(22,33,43,.08);box-shadow:0 14px 34px rgba(15,23,42,.10);backdrop-filter:blur(14px);}
+015071:       .wmeRcPins.waze-style.theme-dark{--wmeRcPinsBg:linear-gradient(180deg, rgba(15,23,42,.90) 0%, rgba(17,24,39,.86) 100%);--wmeRcPinsFg:#f8fbff;--wmeRcPinsBorder:rgba(96,165,250,.24);--wmeRcPinsHover:rgba(56,189,248,.12);--wmeRcPinsBtnHover:rgba(96,165,250,.16);background:linear-gradient(180deg, rgba(15,23,42,.90) 0%, rgba(17,24,39,.86) 100%) !important;box-shadow:none !important;backdrop-filter:blur(18px) saturate(155%) !important;}
+015072:       .wmeRcPins.waze-style.theme-light{--wmeRcPinsBg:linear-gradient(180deg, rgba(248,250,252,.98) 0%, rgba(241,245,249,.96) 100%);--wmeRcPinsFg:#111827;--wmeRcPinsBorder:rgba(59,130,246,.18);--wmeRcPinsHover:rgba(59,130,246,.08);--wmeRcPinsBtnHover:rgba(59,130,246,.10);background:linear-gradient(180deg, rgba(248,250,252,.98) 0%, rgba(241,245,249,.96) 100%) !important;box-shadow:none !important;backdrop-filter:blur(16px) saturate(145%) !important;}
+015073:       .wmeRcPinsBubble.theme-dark{--wmeRcPinsBg:rgba(20,20,22,.76);--wmeRcPinsFg:#fff;--wmeRcPinsBorder:rgba(255,255,255,.12);}
+015074:       .wmeRcPinsBubble.theme-light{--wmeRcPinsBg:rgba(248,250,252,.97);--wmeRcPinsFg:#111827;--wmeRcPinsBorder:rgba(40,56,72,.14);box-shadow:0 14px 34px rgba(15,23,42,.10);}
+015075:       .wmeRcPinsBubble.waze-style.theme-dark{--wmeRcPinsBg:linear-gradient(180deg, rgba(15,23,42,.90) 0%, rgba(17,24,39,.86) 100%);--wmeRcPinsFg:#f8fbff;--wmeRcPinsBorder:rgba(96,165,250,.24);box-shadow:none !important;backdrop-filter:blur(18px) saturate(155%) !important;-webkit-backdrop-filter:blur(18px) saturate(155%) !important;}
+015076:       .wmeRcPinsBubble.waze-style.theme-light{--wmeRcPinsBg:linear-gradient(180deg, rgba(248,250,252,.98) 0%, rgba(241,245,249,.96) 100%);--wmeRcPinsFg:#111827;--wmeRcPinsBorder:rgba(59,130,246,.18);box-shadow:none !important;backdrop-filter:blur(16px) saturate(145%) !important;-webkit-backdrop-filter:blur(16px) saturate(145%) !important;}
+015077:       .wmeRcPins.waze-style .wmeRcPinsHdr{background:linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,0) 100%);}
+015078:       .wmeRcPins.waze-style .wmeRcPinsGroup{border-top:1px solid rgba(255,255,255,.14);margin-bottom:-1px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);padding-top:2px;}
+015079:       .wmeRcPinsGroup:last-child{margin-bottom:6px;}
+015080:       .wmeRcPinsGroup{--wmeRcGroupDepth:0;}
+015081:       .wmeRcPinsGroup[data-depth]{margin-left:calc(var(--wmeRcGroupDepth) * 12px);}
+015082:       .wmeRcPinsGroup[data-depth="0"]{margin-left:0;}
+015083:       .wmeRcPinsGroup[data-depth="1"] .wmeRcPinsGroupHdr,
+015084:       .wmeRcPinsGroup[data-depth="2"] .wmeRcPinsGroupHdr,
+015085:       .wmeRcPinsGroup[data-depth="3"] .wmeRcPinsGroupHdr,
+015086:       .wmeRcPinsGroup[data-depth="4"] .wmeRcPinsGroupHdr{border-radius:12px;}
+015087:       .wmeRcPinsGroup[data-depth="1"] .wmeRcPinsGroupBody,
+015088:       .wmeRcPinsGroup[data-depth="2"] .wmeRcPinsGroupBody,
+015089:       .wmeRcPinsGroup[data-depth="3"] .wmeRcPinsGroupBody,
+015090:       .wmeRcPinsGroup[data-depth="4"] .wmeRcPinsGroupBody{padding-left:4px;max-height:none;overflow:visible;scrollbar-width:none;-ms-overflow-style:none;}
+015091:       .wmeRcPins.theme-light .wmeRcPinsHdr,.wmeRcPins.theme-light .wmeRcPinsTitle,.wmeRcPins.theme-light .wmeRcPinsCount,.wmeRcPins.theme-light .wmeRcPinsGroupHdr,.wmeRcPins.theme-light .wmeRcPinsGroupCount,.wmeRcPins.theme-light .wmeRcPinsHdrBtn{color:var(--wmeRcPinsFg);}
+015092:       .wmeRcPins.theme-light .wmeRcPinsHdr{border-bottom-color:rgba(40,56,72,.12);}
+015093:       .wmeRcPins.theme-light .wmeRcPinsGroup{border-top-color:rgba(40,56,72,.08);}
+015094:       .wmeRcPins.theme-light .wmeRcPinsGroupHdr.wmeRcSticky{background:rgba(22,33,43,.05);}
+015095:       .wmeRcPins.theme-light .wmeRcPinsGroupHdr.dropTarget{background:rgba(22,33,43,.08);}
+015096:       .wmeRcPins .wmeRcPinsHdrBtn{border:1px solid var(--wmeRcPinsBorder);background:rgba(255,255,255,.06);color:inherit;}
+015097:       .wmeRcPins .wmeRcPinsHdrBtn:hover{background:var(--wmeRcPinsBtnHover);}
+015098:       .wmeRcPins.waze-style.theme-light .wmeRcPinsGroupHdr.wmeRcSticky{background:rgba(59,130,246,.07);}
+015099:       .wmeRcPins.waze-style.theme-dark .wmeRcPinsGroupHdr.wmeRcSticky{background:rgba(96,165,250,.10);}
+015100:       .wmeRcPins.theme-light .wmeRcPinsHdrBtn,
+015101:       .wmeRcPins.theme-light .wmeRcPinBtn,
+015102:       .wmeRcPins.theme-light .wmeRcPinDrag{
+015103:         background:rgba(255,255,255,.92);
+015104:         border-color:rgba(40,56,72,.18);
+015105:         box-shadow:0 1px 0 rgba(255,255,255,.75) inset,0 6px 14px rgba(15,23,42,.08);
+015106:       }
+015107:       .wmeRcPins.theme-light .wmeRcPinsHdrBtn:hover,
+015108:       .wmeRcPins.theme-light .wmeRcPinBtn:hover,
+015109:       .wmeRcPins.theme-light .wmeRcPinDrag:hover{background:rgba(255,255,255,.98);border-color:rgba(40,56,72,.24);}
+015110:       .wmeRcPins.theme-light .wmeRcPinsHdrBtn:active,
+015111:       .wmeRcPins.theme-light .wmeRcPinBtn:active,
+015112:       .wmeRcPins.theme-light .wmeRcPinDrag:active{background:rgba(241,245,249,.98);border-color:rgba(40,56,72,.26);}
+015113:       .wmeRcPins.theme-light .wmeRcPinRow{min-height:44px;
+015114:         background:rgba(226,232,240,.92);
+015115:         border-color:transparent;
+015116:         box-shadow:none;
+015117:       flex:0 0 auto;cursor:pointer;}
+
+===== SOURCE L15160-L15191 =====
+015160:       .wmeRcPins.waze-style.theme-light .wmeRcPinBtn,
+015161:       .wmeRcPins.waze-style.theme-light .wmeRcPinDrag{
+015162:         background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(241,245,249,.92));
+015163:         border-color:rgba(59,130,246,.18);
+015164:         box-shadow:0 1px 0 rgba(255,255,255,.78) inset,0 8px 18px rgba(37,99,235,.10);
+015165:       }
+015166:       .wmeRcPins.waze-style.theme-light .wmeRcPinsHdrBtn:hover,
+015167:       .wmeRcPins.waze-style.theme-light .wmeRcPinBtn:hover,
+015168:       .wmeRcPins.waze-style.theme-light .wmeRcPinDrag:hover{background:linear-gradient(180deg, rgba(255,255,255,1), rgba(239,246,255,.96));border-color:rgba(59,130,246,.24);}
+015169:       .wmeRcPins.waze-style.theme-light .wmeRcPinsHdrBtn:active,
+015170:       .wmeRcPins.waze-style.theme-light .wmeRcPinBtn:active,
+015171:       .wmeRcPins.waze-style.theme-light .wmeRcPinDrag:active{background:linear-gradient(180deg, rgba(239,246,255,.98), rgba(226,232,240,.96));border-color:rgba(59,130,246,.26);}
+015172:       .wmeRcPins.theme-light .wmeRcPinsGroupEmpty{color:rgba(51,65,85,.78);border-color:rgba(40,56,72,.18);background:rgba(255,255,255,.88);}
+015173:       .wmeRcPins.waze-style.theme-light .wmeRcPinsGroupEmpty{color:rgba(30,41,59,.82);border-color:rgba(59,130,246,.20);background:rgba(255,255,255,.90);}
+015174:       .wmeRcPins.theme-light .wmeRcPinSelectBox{border-color:rgba(40,56,72,.30);background:rgba(255,255,255,.94);box-shadow:inset 0 1px 0 rgba(255,255,255,.75),0 1px 2px rgba(15,23,42,.06);color:#1f2937;}
+015175:       .wmeRcPins.theme-light .wmeRcPinSelectBox.on{background:rgba(59,130,246,.20);border-color:rgba(59,130,246,.52);color:#2563eb;}
+015176:       .wmeRcPins.waze-style.theme-light .wmeRcPinSelectBox{border-color:rgba(59,130,246,.24);background:rgba(255,255,255,.96);box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 1px 2px rgba(37,99,235,.08);color:#1e40af;}
+015177:       .wmeRcPins.waze-style.theme-light .wmeRcPinSelectBox.on{background:rgba(59,130,246,.22);border-color:rgba(59,130,246,.56);color:#1d4ed8;}
+015178: 
+015179: .wmeRcPinsBubble{
+015180:   --wmeRcPinsBg:rgba(20,20,22,.52);
+015181:   --wmeRcPinsFg:#fff;
+015182:   --wmeRcPinsBorder:rgba(255,255,255,.12);
+015183:   position:absolute;
+015184:   width:46px;height:46px;
+015185:   border-radius:999px;
+015186:   border:1px solid var(--wmeRcPinsBorder);
+015187:   background:var(--wmeRcPinsBg);
+015188:   color:var(--wmeRcPinsFg);
+015189:   backdrop-filter:blur(14px);
+015190:   -webkit-backdrop-filter:blur(14px);
+015191:   box-shadow:0 16px 48px rgba(0,0,0,.35);
+
+===== SOURCE L15228-L15309 =====
+015228: .wmeRcPinsList::-webkit-scrollbar-track{background:transparent;}
+015229: .wmeRcPinsList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px;border:2px solid transparent;background-clip:padding-box;}
+015230: .wmeRcPinsList:hover::-webkit-scrollbar-thumb{background:rgba(255,255,255,.24);border:2px solid transparent;background-clip:padding-box;}
+015231: .wmeRcPinsList::-webkit-scrollbar-corner{background:transparent;}
+015232: 
+015233: 
+015234:       .wmeRcPinsTools{display:flex;flex-direction:column;gap:8px;padding:7px 8px 8px;border-top:1px solid rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.025);}
+015235:       .wmeRcPinsSearchWrap{position:relative;display:flex;align-items:center;}
+015236:       .wmeRcPinsSearch{width:100%;height:32px;box-sizing:border-box;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.055);color:var(--wmeRcPinsFg,#fff);padding:0 32px 0 11px;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;outline:none;}
+015237:       .wmeRcPinsSearch::placeholder{color:rgba(255,255,255,.42);}
+015238:       .wmeRcPinsSearchClear{position:absolute;right:5px;width:24px;height:24px;border-radius:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--wmeRcPinsFg,#fff);opacity:.62;background:transparent;border:1px solid transparent;font-weight:900;line-height:1;}
+015239:       .wmeRcPinsSearchClear:hover{opacity:1;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.10);}
+015240:       .wmeRcPins.searching .wmeRcPinsGroupTwisty{opacity:.38;}
+015241:       .wmeRcPins.searching .wmeRcPinRow.searchMatch{background:linear-gradient(90deg,rgba(59,130,246,.075),rgba(59,130,246,.015));}
+015242:       .wmeRcPins.searching .wmeRcPinRow.searchMatch:hover{background:linear-gradient(90deg,rgba(59,130,246,.12),rgba(59,130,246,.025));}
+015243:       .wmeRcPinsFilters{display:flex;gap:6px;align-items:center;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;}
+015244:       .wmeRcPinsFilters::-webkit-scrollbar{display:none;}
+015245:       .wmeRcPinsFilterChip{flex:0 0 auto;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);color:var(--wmeRcPinsFg,#fff);border-radius:999px;padding:5px 9px;font-size:11px;font-weight:800;line-height:1;cursor:pointer;opacity:.78;white-space:nowrap;transition:background .14s ease,border-color .14s ease,opacity .14s ease;}
+015246:       .wmeRcPinsFilterChip:hover{opacity:1;background:rgba(255,255,255,.08);}
+015247:       .wmeRcPinsFilterChip.active{opacity:1;background:rgba(59,130,246,.22);border-color:rgba(96,165,250,.34);}
+015248:       .wmeRcPinsNoResults{margin:8px;border:1px dashed rgba(255,255,255,.14);border-radius:12px;padding:12px;color:rgba(255,255,255,.62);text-align:center;font-size:12px;font-weight:700;background:rgba(255,255,255,.025);}
+015249:       .wmeRcPins.theme-light .wmeRcPinsTools{background:rgba(241,245,249,.72);border-top-color:rgba(40,56,72,.08);border-bottom-color:rgba(40,56,72,.08);}
+015250:       .wmeRcPins.theme-light .wmeRcPinsSearch{background:rgba(255,255,255,.92);border-color:rgba(40,56,72,.14);color:#17212b;}
+015251:       .wmeRcPins.theme-light .wmeRcPinsSearch::placeholder{color:rgba(23,33,43,.42);}
+015252:       .wmeRcPins.theme-light .wmeRcPinsSearchClear{color:#17212b;}
+015253:       .wmeRcPins.theme-light .wmeRcPinsSearchClear:hover{background:rgba(22,33,43,.06);border-color:rgba(40,56,72,.10);}
+015254:       .wmeRcPins.theme-light .wmeRcPinsFilterChip{background:rgba(255,255,255,.86);border-color:rgba(40,56,72,.12);color:#17212b;}
+015255:       .wmeRcPins.theme-light .wmeRcPinsFilterChip:hover{background:rgba(255,255,255,.98);}
+015256:       .wmeRcPins.theme-light .wmeRcPinsFilterChip.active{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.24);color:#1e3a8a;}
+015257:       .wmeRcPins.theme-light .wmeRcPinsNoResults{background:rgba(255,255,255,.78);border-color:rgba(40,56,72,.16);color:rgba(23,33,43,.70);}
+015258:       .wmeRcPinsGroup{border-top:1px solid rgba(255,255,255,.08);}
+015259:       .wmeRcPinsGroup:first-child{border-top:none;}
+015260:             .wmeRcPinsGroupHdr{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;font-weight:900;letter-spacing:.15px;min-height:32px;box-sizing:border-box;
+015261: 
+015262:               user-select:none;position:sticky;top:0;z-index:3;}
+015263:             .wmeRcPinsGroupHdr.wmeRcSticky{background:rgba(0,0,0,.18);}
+015264: 
+015265:        .wmeRcPinsGroupName{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;max-width:none;min-width:0;display:flex;align-items:center;min-height:18px;line-height:1.15;}
+015266:       .wmeRcPinsGroupCount{opacity:.65;font-size:11px;flex:0 0 auto;}
+015267:       .wmeRcPinsGroupHdr.dropTarget{background:rgba(255,255,255,.09);}
+015268:       .wmeRcPinsGroupBody.dropTarget,.wmeRcPinsGroupPins.dropTarget{background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);border-radius:10px;}
+015269:       .wmeRcPinsGroupBody.dropTarget,.wmeRcPinsGroupPins.dropTarget{background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);border-radius:10px;margin-top:2px;padding-top:6px;clip-path:inset(0 round 10px);}
+015270: 
+015271:       .wmeRcPinsGroupHdr{cursor:pointer;}
+015272:       .wmeRcPinsGroup.collapsed .wmeRcPinsGroupBody{display:none;}
+015273:       .wmeRcPinsGroupTop{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;flex:1 1 auto;width:0;min-height:20px;}
+015274:       .wmeRcPinsGroupTwisty{width:18px;height:18px;display:flex;align-items:center;justify-content:center;align-self:center;opacity:.75;flex:0 0 auto;line-height:0;position:relative;top:1px;transition:transform .16s ease,opacity .16s ease;}
+015275:       .wmeRcPinsGroupEmoji{width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:14px;opacity:.92;filter:drop-shadow(0 10px 18px rgba(0,0,0,.30));}
+015276: 
+015277:       .wmeRcPinsGroupTwisty svg{width:14px;height:14px;display:block;flex:0 0 auto;}
+015278:       .wmeRcPinsGroup.collapsed .wmeRcPinsGroupTwisty{transform:rotate(-90deg);opacity:.60;}
+015279:       .wmeRcPinsGroupActions{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+015280:       .wmeRcPinsGroupBtn{width:0;min-width:0;height:24px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:width .16s ease, opacity .16s ease, margin .16s ease, border-color .16s ease, background .16s ease;opacity:0;pointer-events:none;overflow:hidden;border-color:transparent;margin-left:0;}
+015281:       .wmeRcPinsGroupHdr:hover .wmeRcPinsGroupBtn{width:24px;min-width:24px;opacity:1;pointer-events:auto;border-color:rgba(255,255,255,.14);margin-left:0;}
+015282:       .wmeRcPinsGroupBtn:hover{background:rgba(255,255,255,.10);}
+015283:           .wmeRcPinsGroupBody{padding:2px 4px 6px 4px;display:flex;flex-direction:column;gap:4px;overflow:visible;min-height:18px;}
+015284:       .wmeRcPinsGroupPins{display:flex;flex-direction:column;gap:4px;overflow-y:auto;overflow-x:hidden;max-height:min(30vh,240px);min-height:34px;scrollbar-width:thin;-ms-overflow-style:auto;scrollbar-color:rgba(255,255,255,.18) transparent;}
+015285:       .wmeRcPinsGroupPins::-webkit-scrollbar{width:8px;height:8px;}
+015286:       .wmeRcPinsGroupPins::-webkit-scrollbar-track{background:transparent;}
+015287:       .wmeRcPinsGroupPins::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px;border:2px solid transparent;background-clip:padding-box;}
+015288:       .wmeRcPinsGroupPins:hover::-webkit-scrollbar-thumb{background:rgba(255,255,255,.24);border:2px solid transparent;background-clip:padding-box;}
+015289:       .wmeRcPinsGroupPins::-webkit-scrollbar-corner{background:transparent;}
+015290:           .wmeRcPinsGroupBody::-webkit-scrollbar{display:none;}
+015291:       .wmeRcPinsGroupEmpty{padding:0 10px;color:rgba(255,255,255,.55);font-size:10.5px;border:1px dashed rgba(255,255,255,.14);border-radius:10px;text-align:center;background:rgba(255,255,255,.02);display:flex;align-items:center;justify-content:center;flex:0 0 auto;height:34px;min-height:34px;box-sizing:border-box;line-height:1;width:calc(100% - 8px);margin:0 4px;}
+015292: 
+015293: 
+015294:       .wmeRcPinMarkers{position:absolute;inset:0;z-index:2147483645;pointer-events:none;}
+015295:       .wmeRcPinMarker{position:absolute;width:20px;height:20px;transform:translate3d(-9999px,-9999px,0);pointer-events:auto;cursor:pointer;will-change:transform;}
+015296:       .wmeRcPinMarker{cursor:grab;}
+015297:       .wmeRcPinMarker.dragging{cursor:grabbing;z-index:2147483647;}
+015298: 
+015299:       .wmeRcPinMarker::before{
+015300:         content:"";
+015301:         position:absolute;left:50%;top:0;
+015302:         width:16px;height:16px;border-radius:999px;
+015303:         transform:translateX(-50%);
+015304:         background:var(--wmeRcPinGrad, linear-gradient(180deg, rgba(255,200,120,.95), rgba(255,140,0,.95)));
+015305:         box-shadow:0 10px 24px rgba(0,0,0,.35);
+015306:       }
+015307:       .wmeRcPinMarker::after{
+015308:         content:"";
+015309:         position:absolute;left:50%;top:12px;
+
+===== SOURCE L19342-L19434 =====
+019342:         height:30px!important;padding:0 30px 0 9px!important;
+019343:         border-radius:4px!important;border:1px solid rgba(255,255,255,.10)!important;
+019344:         background:#292929!important;color:#f3f3f3!important;box-shadow:none!important;
+019345:         font:12px/1.2 "Segoe UI",system-ui,sans-serif!important;
+019346:       }
+019347:       .wmeRcPins.pins-windows-design .wmeRcPinsSearch::placeholder{color:rgba(243,243,243,.46)!important;}
+019348:       .wmeRcPins.pins-windows-design.theme-light .wmeRcPinsSearch{
+019349:         border-color:rgba(0,0,0,.12)!important;background:#f7f7f7!important;color:#1f1f1f!important;
+019350:       }
+019351:       .wmeRcPins.pins-windows-design.theme-light .wmeRcPinsSearch::placeholder{color:rgba(31,31,31,.44)!important;}
+019352:       .wmeRcPins.pins-windows-design .wmeRcPinsSearchClear{width:22px!important;height:22px!important;right:4px!important;border-radius:4px!important;}
+019353:       .wmeRcPins.pins-windows-design .wmeRcPinsList{padding-top:2px!important;}
+019354:       .wmeRcPins.pins-windows-design .wmeRcPinsGroup{
+019355:         margin:0!important;padding:3px 0 4px!important;border-top:1px solid rgba(255,255,255,.08)!important;box-shadow:none!important;
+019356:       }
+019357:       .wmeRcPins.pins-windows-design .wmeRcPinsGroup:first-child{border-top:0!important;}
+019358:       .wmeRcPins.pins-windows-design.theme-light .wmeRcPinsGroup{border-top-color:rgba(0,0,0,.08)!important;}
+019359:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupHdr,
+019360:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupHdr.wmeRcSticky{
+019361:         min-height:34px!important;padding:4px 6px!important;border-radius:4px!important;
+019362:         background:transparent!important;box-shadow:none!important;
+019363:         font-size:12px!important;font-weight:600!important;
+019364:       }
+019365:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupHdr:hover{background:var(--wmeRcPinsHover)!important;}
+019366:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupTop{
+019367:         gap:5px!important;
+019368:         flex:1 1 0%!important;
+019369:         width:auto!important;
+019370:         min-width:0!important;
+019371:         max-width:none!important;
+019372:         overflow:hidden!important;
+019373:       }
+019374:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupTwisty{width:14px!important;height:14px!important;top:0!important;opacity:.62!important;}
+019375:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupEmoji{width:16px!important;height:16px!important;font-size:13px!important;filter:none!important;}
+019376:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupName{
+019377:         display:block!important;
+019378:         position:relative!important;
+019379:         top:2px!important;
+019380:         flex:1 1 auto!important;
+019381:         min-width:0!important;
+019382:         max-width:none!important;
+019383:         overflow:hidden!important;
+019384:         white-space:nowrap!important;
+019385:         text-overflow:ellipsis!important;
+019386:         font-weight:600!important;
+019387:       }
+019388:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupActions{
+019389:         gap:0!important;
+019390:         flex:0 0 auto!important;
+019391:         transition:gap .14s ease!important;
+019392:       }
+019393:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupHdr:hover .wmeRcPinsGroupActions,
+019394:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupHdr:focus-within .wmeRcPinsGroupActions{gap:4px!important;}
+019395:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupCount{font-size:11px!important;font-weight:500!important;opacity:.58!important;}
+019396:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupBtn{
+019397:         width:0!important;min-width:0!important;height:22px!important;border-radius:4px!important;
+019398:         box-sizing:border-box!important;border:0 solid transparent!important;background:transparent!important;box-shadow:none!important;
+019399:         opacity:0!important;pointer-events:none!important;overflow:hidden!important;
+019400:         transition:width .14s ease,min-width .14s ease,opacity .10s ease,border-color .10s ease!important;
+019401:       }
+019402:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupHdr:hover .wmeRcPinsGroupBtn,
+019403:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupHdr:focus-within .wmeRcPinsGroupBtn{
+019404:         width:22px!important;min-width:22px!important;opacity:1!important;pointer-events:auto!important;
+019405:         border-width:1px!important;border-color:rgba(255,255,255,.10)!important;
+019406:       }
+019407:       .wmeRcPins.pins-windows-design.theme-light .wmeRcPinsGroupHdr:hover .wmeRcPinsGroupBtn,
+019408:       .wmeRcPins.pins-windows-design.theme-light .wmeRcPinsGroupHdr:focus-within .wmeRcPinsGroupBtn{border-color:rgba(0,0,0,.10)!important;}
+019409:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupBody{padding:3px 0 4px!important;gap:0!important;}
+019410:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupPins{gap:0!important;padding:0!important;max-height:min(34vh,260px)!important;}
+019411:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupEmpty{
+019412:         width:calc(100% - 8px)!important;height:30px!important;min-height:30px!important;margin:2px 4px!important;
+019413:         border-radius:4px!important;border:1px dashed rgba(255,255,255,.12)!important;
+019414:         background:transparent!important;color:rgba(243,243,243,.54)!important;font-size:10px!important;
+019415:       }
+019416:       .wmeRcPins.pins-windows-design.theme-light .wmeRcPinsGroupEmpty{border-color:rgba(0,0,0,.14)!important;color:rgba(31,31,31,.54)!important;}
+019417:       .wmeRcPins.pins-windows-design .wmeRcPinRow{
+019418:         min-height:34px!important;margin:0!important;padding:2px 6px 2px 10px!important;gap:7px!important;
+019419:         border:0!important;border-radius:4px!important;background:transparent!important;box-shadow:none!important;
+019420:         transition:background .08s ease!important;transform:none!important;
+019421:       }
+019422:       .wmeRcPins.pins-windows-design .wmeRcPinRow::before{
+019423:         width:3px!important;top:5px!important;bottom:5px!important;border-radius:2px!important;
+019424:       }
+019425:       .wmeRcPins.pins-windows-design .wmeRcPinRow::after{display:none!important;}
+019426:       .wmeRcPins.pins-windows-design .wmeRcPinRow:hover{background:var(--wmeRcPinsHover)!important;}
+019427:       .wmeRcPins.pins-windows-design .wmeRcPinRow:active{background:var(--wmeRcPinsBtnHover)!important;}
+019428:       .wmeRcPins.pins-windows-design .wmeRcPinRow:hover .wmeRcPinLeft{transform:none!important;}
+019429:       .wmeRcPins.pins-windows-design .wmeRcPinLeft{gap:0!important;transform:none!important;}
+019430:       .wmeRcPins.pins-windows-design .wmeRcPinName{
+019431:         font-size:12px!important;font-weight:500!important;line-height:1.2!important;letter-spacing:0!important;
+019432:         color:currentColor!important;-webkit-text-fill-color:currentColor!important;
+019433:       }
+019434:       .wmeRcPins.pins-windows-design .wmeRcPinSub{font-size:10px!important;opacity:.58!important;}
+
+===== SOURCE L19445-L19481 =====
+019445:       .wmeRcPins.pins-windows-design .wmeRcPinBtn:hover,
+019446:       .wmeRcPins.pins-windows-design .wmeRcPinDrag:hover{background:var(--wmeRcPinsBtnHover)!important;transform:none!important;}
+019447:       .wmeRcPins.pins-windows-design .wmeRcPinRow.isMapHidden{
+019448:         background:transparent!important;border:0!important;box-shadow:none!important;opacity:.58!important;
+019449:       }
+019450:       .wmeRcPins.pins-windows-design .wmeRcPinRow.isMapHidden:hover{background:var(--wmeRcPinsHover)!important;opacity:.82!important;}
+019451:       .wmeRcPins.pins-windows-design .wmeRcPinRowFocused,
+019452:       .wmeRcPins.pins-windows-design.theme-light .wmeRcPinRowFocused{
+019453:         background:var(--wmeRcPinsHover)!important;
+019454:         box-shadow:inset 0 0 0 1px rgba(96,165,250,.30)!important;
+019455:       }
+019456:       .wmeRcPins.pins-windows-design::-webkit-scrollbar,
+019457:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupPins::-webkit-scrollbar{width:8px!important;}
+019458:       .wmeRcPins.pins-windows-design::-webkit-scrollbar-thumb,
+019459:       .wmeRcPins.pins-windows-design .wmeRcPinsGroupPins::-webkit-scrollbar-thumb{
+019460:         background:rgba(255,255,255,.18)!important;border-radius:999px!important;border:2px solid transparent!important;background-clip:padding-box!important;
+019461:       }
+019462:       .wmeRcPins.pins-windows-design.theme-light::-webkit-scrollbar-thumb,
+019463:       .wmeRcPins.pins-windows-design.theme-light .wmeRcPinsGroupPins::-webkit-scrollbar-thumb{background:rgba(0,0,0,.18)!important;}
+019464: 
+019465: 
+019466:       /* v1.0.57: Windows UI for all RC modals, popovers, controls, and buttons. */
+019467:       .wmeRcWindowsUI .wmeRcModal,
+019468:       .wmeRcModal.windows-design{
+019469:         --wmeRcWinSurface:#202020;
+019470:         --wmeRcWinSurface2:#292929;
+019471:         --wmeRcWinSurface3:#333333;
+019472:         --wmeRcWinBorder:rgba(255,255,255,.11);
+019473:         --wmeRcWinText:#f3f3f3;
+019474:         --wmeRcWinMuted:rgba(243,243,243,.68);
+019475:         --wmeRcWinHover:#333333;
+019476:         --wmeRcWinPressed:#3b3b3b;
+019477:         --wmeRcWinAccent:#0f6cbd;
+019478:         --wmeRcWinAccentHover:#115ea3;
+019479:         width:min(580px,calc(100vw - 24px));
+019480:         border:1px solid var(--wmeRcWinBorder)!important;
+019481:         border-radius:8px!important;
+
+===== SOURCE L19544-L19603 =====
+019544:         background:var(--wmeRcWinSurface2)!important;
+019545:         background-image:none!important;
+019546:         box-shadow:none!important;
+019547:       }
+019548:       .wmeRcWindowsUI .wmeRcModal .wmeRcSettingsHero::before,
+019549:       .wmeRcModal.windows-design .wmeRcSettingsHero::before{display:none!important;}
+019550:       .wmeRcWindowsUI .wmeRcModal :where(.wmeRcModalIntroTitle,.wmeRcSettingsEyebrow),
+019551:       .wmeRcModal.windows-design :where(.wmeRcModalIntroTitle,.wmeRcSettingsEyebrow){text-transform:none!important;letter-spacing:0!important;color:var(--wmeRcWinMuted)!important;-webkit-text-fill-color:var(--wmeRcWinMuted)!important;}
+019552:       .wmeRcWindowsUI .wmeRcModal :where(.wmeRcSettingDesc,.wmeRcSideSub,.wmeRcWizardSub,.wmeRcWizardHint,.wmeRcUpdateMeta,.wmeRcModalIntroDesc),
+019553:       .wmeRcModal.windows-design :where(.wmeRcSettingDesc,.wmeRcSideSub,.wmeRcWizardSub,.wmeRcWizardHint,.wmeRcUpdateMeta,.wmeRcModalIntroDesc){color:var(--wmeRcWinMuted)!important;-webkit-text-fill-color:var(--wmeRcWinMuted)!important;}
+019554: 
+019555:       .wmeRcWindowsUI :where(.wmeRcModal,.wmeRcSideWrap,.wmeRcPins,.wmeRcPickerPop,.wmeRcSelectMenu) :where(
+019556:         button:not(.wmeRcIosToggle):not(.wmeRcModalClose):not(.wmeRcSwitch),.wmeRcModalBtn,.wmeRcMiniBtn,.wmeRcSideNavBtn,.wmeRcPinsHdrBtn,.wmeRcPinsGroupBtn,.wmeRcPinBtn,.wmeRcPinDrag,
+019557:         .wmeRcTab,.wmeRcChip,.wmeRcQuick,.wmeRcStepBtn,.wmeRcWizardBtn,.wmeRcWizardPill,.wmeRcActionCard,.wmeRcToggleBtn,
+019558:         .wmeRcSoundBtn,.wmeRcSoundItem,.wmeRcGroupQuickChip,.wmeRcPickerBtn,.wmeRcQuickPopSet,.wmeRcPmTiny,.wmeRcSelectBtn,
+019559:         .wmeRcChoiceBtn,.wmeRcColorPlus,.wmeRcSnoozeChip
+019560:       ),
+019561:       .wmeRcWindowsUI :where(.wmeRcModal,.wmeRcSideWrap,.wmeRcPins,.wmeRcPickerPop,.wmeRcSelectMenu).theme-light :where(
+019562:         button:not(.wmeRcIosToggle):not(.wmeRcModalClose):not(.wmeRcSwitch),.wmeRcModalBtn,.wmeRcMiniBtn,.wmeRcSideNavBtn,.wmeRcPinsHdrBtn,.wmeRcPinsGroupBtn,.wmeRcPinBtn,.wmeRcPinDrag,
+019563:         .wmeRcTab,.wmeRcChip,.wmeRcQuick,.wmeRcStepBtn,.wmeRcWizardBtn,.wmeRcWizardPill,.wmeRcActionCard,.wmeRcToggleBtn,
+019564:         .wmeRcSoundBtn,.wmeRcSoundItem,.wmeRcGroupQuickChip,.wmeRcPickerBtn,.wmeRcQuickPopSet,.wmeRcPmTiny,.wmeRcSelectBtn,
+019565:         .wmeRcChoiceBtn,.wmeRcColorPlus,.wmeRcSnoozeChip
+019566:       ){
+019567:         border-radius:4px!important;
+019568:         border:1px solid var(--wmeRcCompactBorder)!important;
+019569:         background:var(--wmeRcCompactSurface2)!important;
+019570:         background-image:none!important;
+019571:         color:var(--wmeRcCompactFg)!important;
+019572:         -webkit-text-fill-color:var(--wmeRcCompactFg)!important;
+019573:         box-shadow:none!important;
+019574:         outline:none!important;
+019575:         transform:none!important;
+019576:         transition:background .08s ease,border-color .08s ease!important;
+019577:       }
+019578:       .wmeRcWindowsUI :where(.wmeRcModal,.wmeRcSideWrap,.wmeRcPins,.wmeRcPickerPop,.wmeRcSelectMenu) :where(
+019579:         button:not(.wmeRcIosToggle):not(.wmeRcModalClose):not(.wmeRcSwitch),.wmeRcModalBtn,.wmeRcMiniBtn,.wmeRcSideNavBtn,.wmeRcPinsHdrBtn,.wmeRcPinsGroupBtn,.wmeRcPinBtn,.wmeRcPinDrag,
+019580:         .wmeRcTab,.wmeRcChip,.wmeRcQuick,.wmeRcStepBtn,.wmeRcWizardBtn,.wmeRcWizardPill,.wmeRcActionCard,.wmeRcToggleBtn,
+019581:         .wmeRcSoundBtn,.wmeRcSoundItem,.wmeRcGroupQuickChip,.wmeRcPickerBtn,.wmeRcQuickPopSet,.wmeRcPmTiny,.wmeRcSelectBtn,
+019582:         .wmeRcChoiceBtn,.wmeRcColorPlus,.wmeRcSnoozeChip
+019583:       ):hover,
+019584:       .wmeRcWindowsUI :where(.wmeRcModal,.wmeRcSideWrap,.wmeRcPins,.wmeRcPickerPop,.wmeRcSelectMenu).theme-light :where(
+019585:         button:not(.wmeRcIosToggle):not(.wmeRcModalClose):not(.wmeRcSwitch),.wmeRcModalBtn,.wmeRcMiniBtn,.wmeRcSideNavBtn,.wmeRcPinsHdrBtn,.wmeRcPinsGroupBtn,.wmeRcPinBtn,.wmeRcPinDrag,
+019586:         .wmeRcTab,.wmeRcChip,.wmeRcQuick,.wmeRcStepBtn,.wmeRcWizardBtn,.wmeRcWizardPill,.wmeRcActionCard,.wmeRcToggleBtn,
+019587:         .wmeRcSoundBtn,.wmeRcSoundItem,.wmeRcGroupQuickChip,.wmeRcPickerBtn,.wmeRcQuickPopSet,.wmeRcPmTiny,.wmeRcSelectBtn,
+019588:         .wmeRcChoiceBtn,.wmeRcColorPlus,.wmeRcSnoozeChip
+019589:       ):hover{
+019590:         background:var(--wmeRcCompactHover)!important;
+019591:         border-color:var(--wmeRcCompactBorderStrong)!important;
+019592:         transform:none!important;
+019593:       }
+019594:       .wmeRcWindowsUI :where(.wmeRcModalBtn.primary,.wmeRcWizardBtn.on,.wmeRcTab.on,.wmeRcChip.on,.wmeRcQuick.on,.wmeRcSideNavBtn.is-active){
+019595:         background:#0f6cbd!important;border-color:#0f6cbd!important;color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;
+019596:       }
+019597:       .wmeRcWindowsUI :where(.wmeRcModalBtn.primary,.wmeRcWizardBtn.on,.wmeRcTab.on,.wmeRcChip.on,.wmeRcQuick.on,.wmeRcSideNavBtn.is-active):hover{background:#115ea3!important;border-color:#115ea3!important;}
+019598:       .wmeRcWindowsUI .wmeRcModalBtn.danger{background:#c42b1c!important;border-color:#c42b1c!important;color:#fff!important;-webkit-text-fill-color:#fff!important;}
+019599:       .wmeRcWindowsUI .wmeRcModalBtn.danger:hover{background:#a4262c!important;border-color:#a4262c!important;}
+019600: 
+019601:       .wmeRcWindowsUI :where(.wmeRcModal,.wmeRcPickerPop,.wmeRcSideWrap) :where(
+019602:         input:not([type="checkbox"]):not([type="radio"]),textarea,select,.wmeRcInput,.wmeRcSelect,.wmeRcPinsSearch,.wmeRcSnoozeInput
+019603:       ),
+
+===== SOURCE L19661-L19707 =====
+019661:       .wmeRcWindowsUI :where(.theme-light,.wmeRcModal.theme-light,.wmeRcSideWrap.theme-light) :where(.wmeRcModalBtn.primary,.wmeRcWizardBtn.on,.wmeRcTab.on,.wmeRcChip.on,.wmeRcQuick.on,.wmeRcSideNavBtn.is-active),
+019662:       .wmeRcWindowsUI :where(.wmeRcModal.theme-light,.wmeRcSideWrap.theme-light) .wmeRcIosToggle.is-on{
+019663:         background:#dedede!important;border-color:rgba(0,0,0,.22)!important;color:#1f1f1f!important;-webkit-text-fill-color:#1f1f1f!important;
+019664:       }
+019665:       .wmeRcWindowsUI :where(.wmeRcModal,.wmeRcPickerPop,.wmeRcSideWrap) :where(input:not([type="checkbox"]):not([type="radio"]),textarea,select,.wmeRcInput,.wmeRcSelect,.wmeRcPinsSearch,.wmeRcSnoozeInput):focus{
+019666:         border-color:rgba(255,255,255,.34)!important;box-shadow:0 0 0 1px rgba(255,255,255,.22)!important;
+019667:       }
+019668:       .wmeRcWindowsUI :where(.wmeRcModal.theme-light,.wmeRcPickerPop.theme-light,.wmeRcSideWrap.theme-light) :where(input:not([type="checkbox"]):not([type="radio"]),textarea,select,.wmeRcInput,.wmeRcSelect,.wmeRcPinsSearch,.wmeRcSnoozeInput):focus{
+019669:         border-color:rgba(0,0,0,.34)!important;box-shadow:0 0 0 1px rgba(0,0,0,.16)!important;
+019670:       }
+019671:       .wmeRcPins.pins-windows-design{min-height:0!important;}
+019672:       .wmeRcPins.pins-windows-design .wmeRcPinsList{padding-bottom:0!important;margin-bottom:0!important;}
+019673:       .wmeRcPins.pins-windows-design .wmeRcPinsGroup:last-child{margin-bottom:0!important;padding-bottom:0!important;}
+019674:       .wmeRcPins.pins-windows-design .wmeRcPinsGroup:last-child .wmeRcPinsGroupBody{padding-bottom:0!important;}
+019675:       .wmeRcPins.pins-windows-design .wmeRcPinRowFocused,
+019676:       .wmeRcPins.pins-windows-design.theme-light .wmeRcPinRowFocused{
+019677:         background:var(--wmeRcPinsHover)!important;box-shadow:none!important;outline:0!important;
+019678:       }
+019679:       .wmeRcPins.pins-windows-design .wmeRcPinRowFocused::before{
+019680:         width:3px!important;background:rgb(var(--pinRGB,60,140,255))!important;
+019681:       }
+019682:       .wmeRcPins.pins-windows-design .wmeRcPinRowFocused::after{display:none!important;}
+019683:       .wmeRcPins.pins-windows-design .wmeRcPinRowFocused .wmeRcPinName{color:currentColor!important;-webkit-text-fill-color:currentColor!important;}
+019684:       .wmeRcPinsGroupEmpty.dropTarget,
+019685:       .wmeRcPinsGroupPins.dropTarget .wmeRcPinsGroupEmpty{
+019686:         display:flex!important;min-height:38px!important;background:rgba(255,255,255,.08)!important;border-style:solid!important;border-color:rgba(255,255,255,.24)!important;
+019687:       }
+019688:       .wmeRcPins.theme-light .wmeRcPinsGroupEmpty.dropTarget,
+019689:       .wmeRcPins.theme-light .wmeRcPinsGroupPins.dropTarget .wmeRcPinsGroupEmpty{
+019690:         background:rgba(0,0,0,.055)!important;border-color:rgba(0,0,0,.22)!important;
+019691:       }
+019692:       .wmeRcPinDragSource{visibility:hidden!important;pointer-events:none!important;}
+019693:       .wmeRcPinDragTemporaryEmpty{display:flex!important;flex:0 0 auto!important;}
+019694:       .wmeRcPinPlaceholder{flex:0 0 auto;border-radius:4px;border:1px dashed rgba(255,255,255,.25);background:rgba(255,255,255,.055);box-sizing:border-box;}
+019695:       .wmeRcPins.theme-light .wmeRcPinPlaceholder{border-color:rgba(0,0,0,.24);background:rgba(0,0,0,.04);}
+019696:       .wmeRcPinGhost{box-shadow:0 12px 34px rgba(0,0,0,.38)!important;background:#303030!important;border:1px solid rgba(255,255,255,.16)!important;border-radius:5px!important;}
+019697:       .wmeRcPins.theme-light ~ #wmeRcPinDragLayer .wmeRcPinGhost{background:#fff!important;border-color:rgba(0,0,0,.16)!important;}
+019698: 
+019699:       .wmeRcUserscriptManagerList{display:flex;flex-direction:column;gap:6px;padding:8px;}
+019700:       .wmeRcUserscriptManagerRow{display:grid;grid-template-columns:28px 30px minmax(0,1fr) 40px;align-items:center;gap:8px;min-height:48px;padding:6px 8px;border:1px solid rgba(127,127,127,.18);border-radius:8px;background:rgba(127,127,127,.045);position:relative;}
+019701:       .wmeRcUserscriptManagerRow.is-integration-disabled{opacity:.56;}
+019702:       .wmeRcUserscriptManagerRow.is-undetected .wmeRcUserscriptManagerSub{opacity:.52;}
+019703:       .wmeRcUserscriptManagerRow.is-dragging{opacity:.30;}
+019704:       .wmeRcUserscriptManagerRow.drop-before::before,.wmeRcUserscriptManagerRow.drop-after::after{content:"";position:absolute;left:8px;right:8px;height:2px;background:currentColor;opacity:.7;border-radius:99px;}
+019705:       .wmeRcUserscriptManagerRow.drop-before::before{top:-4px;}.wmeRcUserscriptManagerRow.drop-after::after{bottom:-4px;}
+019706:       .wmeRcUserscriptManagerHandle{width:28px;height:28px;padding:0!important;display:flex;align-items:center;justify-content:center;cursor:grab;}
+019707:       .wmeRcUserscriptManagerHandle:active{cursor:grabbing;}
+
+===== SOURCE L20018-L20048 =====
+020018:       .wmeRcWindowsUI .wmeRcSelectMenu,
+020019:       .wmeRcWindowsUI .wmeRcSelectMenu.theme-light{
+020020:         padding:4px!important;
+020021:         border-radius:6px!important;
+020022:         background:var(--wmeRcCompactBg)!important;
+020023:         border:1px solid var(--wmeRcCompactBorder)!important;
+020024:         color:var(--wmeRcCompactFg)!important;
+020025:         -webkit-text-fill-color:var(--wmeRcCompactFg)!important;
+020026:       }
+020027:       .wmeRcWindowsUI .wmeRcSelectOpt{min-height:30px!important;padding:6px 9px!important;border-radius:4px!important;font-size:12px!important;font-weight:600!important;}
+020028: 
+020029:       /* Only one blank drop target while reordering pins */
+020030:       .wmeRcPins.is-reordering .wmeRcPinsGroupEmpty{display:none!important;}
+020031:       .wmeRcPins .wmeRcPinPlaceholder{
+020032:         display:block!important;height:38px!important;min-height:38px!important;margin:0!important;border:1px dashed rgba(255,255,255,.23)!important;border-radius:5px!important;background:rgba(255,255,255,.035)!important;box-sizing:border-box!important;
+020033:       }
+020034:       .wmeRcPins.theme-light .wmeRcPinPlaceholder{border-color:rgba(0,0,0,.22)!important;background:rgba(0,0,0,.025)!important;}
+020035:       .wmeRcPins .wmeRcPinDragTemporaryEmpty{display:none!important;}
+020036:       .wmeRcPins.pins-windows-design .wmeRcPinRowFocused,
+020037:       .wmeRcPins.pins-windows-design.theme-light .wmeRcPinRowFocused{background:var(--wmeRcPinsHover)!important;box-shadow:none!important;outline:0!important;}
+020038:       .wmeRcPins.pins-windows-design .wmeRcPinRowFocused::before{width:4px!important;background:rgb(var(--pinRGB,60,140,255))!important;}
+020039:       .wmeRcPins.pins-windows-design .wmeRcPinRowFocused::after{display:block!important;}
+020040: 
+020041: 
+020042:       /* v1.0.60 — truly neutral Windows UI, accent enabled states and flat option menus */
+020043:       .wmeRcWindowsUI,
+020044:       .wmeRcWindowsUI .wmeRcSideWrap,
+020045:       .wmeRcWindowsUI .wmeRcModal,
+020046:       .wmeRcModal.windows-design{
+020047:         --wmeRcWinSurface:#202020!important;
+020048:         --wmeRcWinSurface2:#252525!important;
+
+===== SOURCE L21780-L21810 =====
+021780:         backdrop-filter:none!important;
+021781:         -webkit-backdrop-filter:none!important;
+021782:       }
+021783: 
+021784:       html.wmeRcWindowsUI :where(
+021785:         .wmeRcMenu.compact-design,.wmeRcModal.windows-design,.wmeRcSideWrap,
+021786:         .wmeRcPins.pins-windows-design,.wmeRcUserscriptControlPanel.windows-design,
+021787:         .wmeRcSelectMenu.windows-design,.wmeRcReminderCalendarPop.windows-design,
+021788:         .wmeRcNotice.windows-design,.wmeRcSnoozePop.windows-design
+021789:       ) :where(
+021790:         .wmeRcHdr,.wmeRcHdrTitle,.wmeRcItem,.wmeRcLeft,.wmeRcT,.wmeRcI,
+021791:         .wmeRcModalTitleMain,.wmeRcModalBody,.wmeRcSideTitle,.wmeRcSettingTitle,
+021792:         .wmeRcPinsTitle,.wmeRcPinName,.wmeRcPinsGroupName,.wmeRcRowLabel,
+021793:         .wmeRcSwitchLabel,.wmeRcWizardTitle,.wmeRcWizardRowTitle,
+021794:         .wmeRcReminderTitle,.wmeRcReminderCalPickerBtn,.wmeRcReminderCalDay,
+021795:         .wmeRcUserscriptControlTitle,.wmeRcNoticeMsg,.wmeRcSnoozeTitle
+021796:       ){
+021797:         color:var(--wmeRcCompactFg)!important;
+021798:         -webkit-text-fill-color:var(--wmeRcCompactFg)!important;
+021799:       }
+021800: 
+021801:       html.wmeRcWindowsUI :where(
+021802:         .wmeRcMenu.compact-design,.wmeRcModal.windows-design,.wmeRcSideWrap,
+021803:         .wmeRcPins.pins-windows-design,.wmeRcUserscriptControlPanel.windows-design,
+021804:         .wmeRcSelectMenu.windows-design,.wmeRcReminderCalendarPop.windows-design,
+021805:         .wmeRcNotice.windows-design,.wmeRcSnoozePop.windows-design
+021806:       ) :where(
+021807:         .wmeRcMuted,.wmeRcSubText,.wmeRcSettingDesc,.wmeRcSideSub,
+021808:         .wmeRcModalIntroDesc,.wmeRcModalIntroTitle,.wmeRcSettingsEyebrow,
+021809:         .wmeRcWizardSub,.wmeRcWizardHint,.wmeRcWizardRowSub,
+021810:         .wmeRcNoticeSub,.wmeRcNoticeTime,.wmeRcSnoozeSub,.wmeRcSnoozeCustomLabel
+
+===== SOURCE L21998-L22041 =====
+021998:         -webkit-text-fill-color:var(--wmeRcCompactFg)!important;
+021999:         caret-color:var(--wmeRcCompactFg)!important;
+022000:         border-color:var(--wmeRcCompactBorder)!important;
+022001:       }
+022002: 
+022003:       html.wmeRcWindowsUI :where(
+022004:         .wmeRcModal.windows-design,.wmeRcSideWrap,.wmeRcPins.pins-windows-design,
+022005:         .wmeRcReminderCalendarPop.windows-design,.wmeRcColorPop.windows-design,
+022006:         .wmeRcNotice.windows-design,.wmeRcSnoozePop.windows-design
+022007:       ) :where(
+022008:         button:not(.primary):not(.is-on):not(.on):not(.wmeRcColorDelete):not(.wmeRcColorDone):not(.wmeRcSnoozeGo):not(.wmeRcNativeSectionToggle):not(.wmeRcSideNavBtn):not(.wmeRcSideNavScrollBtn),
+022009:         .wmeRcModalBtn:not(.primary),.wmeRcSideNavBtn:not(.is-active),
+022010:         .wmeRcPinsHdrBtn,.wmeRcPinsGroupBtn,.wmeRcPinBtn,.wmeRcPinDrag,
+022011:         .wmeRcReminderQuickBtn:not(.on),.wmeRcSnoozeChip
+022012:       ){
+022013:         background:var(--wmeRcCompactSurface2)!important;
+022014:         background-image:none!important;
+022015:         color:var(--wmeRcCompactFg)!important;
+022016:         -webkit-text-fill-color:var(--wmeRcCompactFg)!important;
+022017:         border-color:var(--wmeRcCompactBorder)!important;
+022018:       }
+022019: 
+022020:       html.wmeRcWindowsUI .wmeRcMenu.compact-design .wmeRcItem:hover,
+022021:       html.wmeRcWindowsUI .wmeRcMenu.compact-design .wmeRcItem.submenuOpen,
+022022:       html.wmeRcWindowsUI .wmeRcMenu.compact-design .wmeRcItem.selected,
+022023:       html.wmeRcWindowsUI .wmeRcPins.pins-windows-design :where(.wmeRcPinRow:hover,.wmeRcPinsGroupHdr:hover),
+022024:       html.wmeRcWindowsUI :where(.wmeRcModal.windows-design,.wmeRcSideWrap,.wmeRcPins.pins-windows-design) button:not(.primary):not(.wmeRcNativeSectionToggle):not(.wmeRcSideNavBtn):not(.wmeRcSideNavScrollBtn):not(.wmeRcIosToggle):not(.wmeRcSwitch):not(.wmeRcToggleBtn):hover{
+022025:         background:var(--wmeRcCompactHover)!important;
+022026:         background-image:none!important;
+022027:       }
+022028: 
+022029:       html.wmeRcWindowsUI .wmeRcMenu.compact-design .wmeRcItem:active,
+022030:       html.wmeRcWindowsUI :where(.wmeRcModal.windows-design,.wmeRcSideWrap,.wmeRcPins.pins-windows-design) button:not(.primary):not(.wmeRcNativeSectionToggle):not(.wmeRcSideNavBtn):not(.wmeRcSideNavScrollBtn):not(.wmeRcIosToggle):not(.wmeRcSwitch):not(.wmeRcToggleBtn):active{
+022031:         background:var(--wmeRcCompactPressed)!important;
+022032:       }
+022033: 
+022034:       html.wmeRcWindowsUI .wmeRcSelectMenu .wmeRcSelectOpt:not(.is-active):hover{
+022035:         background:transparent!important;
+022036:         background-image:none!important;
+022037:       }
+022038:       html.wmeRcWindowsUI .wmeRcSelectMenu .wmeRcSelectOpt.is-active,
+022039:       html.wmeRcWindowsUI .wmeRcSelectMenu .wmeRcSelectOpt.is-active:hover,
+022040:       html.wmeRcWindowsUI .wmeRcReminderCalendarPop.windows-design .wmeRcReminderCalPickerItem.is-active{
+022041:         background:var(--wmeRcCompactSelected)!important;
+
+===== SOURCE L23800-L23895 =====
+023800:       }
+023801:       html.wmeRcWindowsUI body .wmeRcPinSelectBox.on .wmeRcI,
+023802:       html.wmeRcWindowsUI body .wmeRcPinSelectBox.on svg,
+023803:       html.wmeRcWindowsUI body .wmeRcPinSelectBox.on svg path{
+023804:         color:#fff!important;
+023805:         -webkit-text-fill-color:#fff!important;
+023806:         stroke:#fff!important;
+023807:       }
+023808: 
+023809:       html.wmeRcWindowsUI :where(
+023810:         .wmeRcPins.pins-windows-design,
+023811:         .wmeRcPins.pins-windows-design .wmeRcPinsList,
+023812:         .wmeRcPins.pins-windows-design .wmeRcPinsGroupPins,
+023813:         .wmeRcSideWrap,
+023814:         .wmeRcSideTabHost,
+023815:         .wmeRcSettingsView,
+023816:         .wmeRcModalBody,
+023817:         .wmeRcDriveCompactList,
+023818:         .wmeRcDriveTimelineContent,
+023819:         .wmeRcImportBackupModal
+023820:       ){
+023821:         scrollbar-width:thin!important;
+023822:         scrollbar-color:color-mix(in srgb,var(--wmeRcCompactFg) 34%,transparent) transparent!important;
+023823:         -ms-overflow-style:auto!important;
+023824:       }
+023825:       html.wmeRcWindowsUI :where(
+023826:         .wmeRcPins.pins-windows-design,
+023827:         .wmeRcPins.pins-windows-design .wmeRcPinsList,
+023828:         .wmeRcPins.pins-windows-design .wmeRcPinsGroupPins,
+023829:         .wmeRcSideWrap,
+023830:         .wmeRcSideTabHost,
+023831:         .wmeRcSettingsView,
+023832:         .wmeRcModalBody,
+023833:         .wmeRcDriveCompactList,
+023834:         .wmeRcDriveTimelineContent,
+023835:         .wmeRcImportBackupModal
+023836:       )::-webkit-scrollbar{
+023837:         width:9px!important;
+023838:         height:9px!important;
+023839:         display:block!important;
+023840:         background:transparent!important;
+023841:       }
+023842:       html.wmeRcWindowsUI :where(
+023843:         .wmeRcPins.pins-windows-design,
+023844:         .wmeRcPins.pins-windows-design .wmeRcPinsList,
+023845:         .wmeRcPins.pins-windows-design .wmeRcPinsGroupPins,
+023846:         .wmeRcSideWrap,
+023847:         .wmeRcSideTabHost,
+023848:         .wmeRcSettingsView,
+023849:         .wmeRcModalBody,
+023850:         .wmeRcDriveCompactList,
+023851:         .wmeRcDriveTimelineContent,
+023852:         .wmeRcImportBackupModal
+023853:       )::-webkit-scrollbar-track{
+023854:         background:transparent!important;
+023855:       }
+023856:       html.wmeRcWindowsUI :where(
+023857:         .wmeRcPins.pins-windows-design,
+023858:         .wmeRcPins.pins-windows-design .wmeRcPinsList,
+023859:         .wmeRcPins.pins-windows-design .wmeRcPinsGroupPins,
+023860:         .wmeRcSideWrap,
+023861:         .wmeRcSideTabHost,
+023862:         .wmeRcSettingsView,
+023863:         .wmeRcModalBody,
+023864:         .wmeRcDriveCompactList,
+023865:         .wmeRcDriveTimelineContent,
+023866:         .wmeRcImportBackupModal
+023867:       )::-webkit-scrollbar-thumb{
+023868:         min-height:30px!important;
+023869:         border:2px solid transparent!important;
+023870:         border-radius:999px!important;
+023871:         background:color-mix(in srgb,var(--wmeRcCompactFg) 34%,transparent)!important;
+023872:         background-clip:padding-box!important;
+023873:       }
+023874:       html.wmeRcWindowsUI :where(
+023875:         .wmeRcPins.pins-windows-design,
+023876:         .wmeRcPins.pins-windows-design .wmeRcPinsList,
+023877:         .wmeRcPins.pins-windows-design .wmeRcPinsGroupPins,
+023878:         .wmeRcSideWrap,
+023879:         .wmeRcSideTabHost,
+023880:         .wmeRcSettingsView,
+023881:         .wmeRcModalBody,
+023882:         .wmeRcDriveCompactList,
+023883:         .wmeRcDriveTimelineContent,
+023884:         .wmeRcImportBackupModal
+023885:       )::-webkit-scrollbar-thumb:hover{
+023886:         background:color-mix(in srgb,var(--wmeRcCompactFg) 50%,transparent)!important;
+023887:         background-clip:padding-box!important;
+023888:       }
+023889: 
+023890: 
+023891:       /* v1.1.91 — valid final selectors; live refresh cannot recolor enabled toggles. */
+023892:       html.wmeRcWindowsUI body button.wmeRcIosToggle.is-on,
+023893:       html.wmeRcWindowsUI body button.wmeRcIosToggle.is-on:hover,
+023894:       html.wmeRcWindowsUI body button.wmeRcIosToggle.is-on:focus,
+023895:       html.wmeRcWindowsUI body button.wmeRcIosToggle.is-on:focus-visible,
+
+===== SOURCE L28572-L28636 =====
+028572:       .trim();
+028573:   } catch {
+028574:     return String(value == null ? "" : value).toLowerCase().trim();
+028575:   }
+028576: }
+028577: 
+028578: function _capturePinsPanelScrollState() {
+028579:   try {
+028580:     if (!pinsPanelEl) return null;
+028581:     const list = pinsPanelEl.querySelector(".wmeRcPinsList");
+028582:     const groups = [];
+028583:     try {
+028584:       (list || pinsPanelEl).querySelectorAll(".wmeRcPinsGroupPins").forEach((el) => {
+028585:         const gid = String(el.dataset.groupId || (el.closest(".wmeRcPinsGroupBody") && el.closest(".wmeRcPinsGroupBody").dataset.groupId) || "");
+028586:         groups.push({ gid, top: Number(el.scrollTop || 0), left: Number(el.scrollLeft || 0) });
+028587:       });
+028588:     } catch {}
+028589:     return {
+028590:       panelTop: Number(pinsPanelEl.scrollTop || 0),
+028591:       panelLeft: Number(pinsPanelEl.scrollLeft || 0),
+028592:       listTop: list ? Number(list.scrollTop || 0) : 0,
+028593:       listLeft: list ? Number(list.scrollLeft || 0) : 0,
+028594:       groups
+028595:     };
+028596:   } catch {
+028597:     return null;
+028598:   }
+028599: }
+028600: 
+028601: function _restorePinsPanelScrollState(snap) {
+028602:   try {
+028603:     if (!snap || !pinsPanelEl) return;
+028604:     pinsPanelEl.scrollTop = Number(snap.panelTop || 0);
+028605:     pinsPanelEl.scrollLeft = Number(snap.panelLeft || 0);
+028606:     const list = pinsPanelEl.querySelector(".wmeRcPinsList");
+028607:     if (list) {
+028608:       list.scrollTop = Number(snap.listTop || 0);
+028609:       list.scrollLeft = Number(snap.listLeft || 0);
+028610:     }
+028611:     try {
+028612:       for (const g of (snap.groups || [])) {
+028613:         let el = null;
+028614:         try { el = pinsPanelEl.querySelector(`.wmeRcPinsGroupPins[data-group-id="${CSS.escape(String(g.gid || ""))}"]`); } catch {}
+028615:         if (!el) {
+028616:           try {
+028617:             const body = pinsPanelEl.querySelector(`.wmeRcPinsGroupBody[data-group-id="${CSS.escape(String(g.gid || ""))}"]`);
+028618:             el = body && body.querySelector(".wmeRcPinsGroupPins");
+028619:           } catch {}
+028620:         }
+028621:         if (el) {
+028622:           el.scrollTop = Number(g.top || 0);
+028623:           el.scrollLeft = Number(g.left || 0);
+028624:         }
+028625:       }
+028626:     } catch {}
+028627:   } catch {}
+028628: }
+028629: 
+028630: 
+028631: let _wmeRcPinsContextMenuEl = null;
+028632: let _wmeRcPinsContextSubmenuEl = null;
+028633: let _wmeRcPinsContextSubmenuAnchorEl = null;
+028634: let _wmeRcPinsContextSubmenuCloseTimer = null;
+028635: let _wmeRcPinsContextCleanup = [];
+028636: let _wmeRcPinsDeferredPanelRender = false;
+
+===== SOURCE L28900-L28931 =====
+028900:   const selected = new Set(pinIds);
+028901:   const selectedPins = loadPins().filter((pin) => selected.has(String(pin?.id || "")));
+028902:   const currentGroupIds = new Set(selectedPins.map((pin) => normalizeGroupId(pin?.groupId)));
+028903:   const groups = loadPinGroups();
+028904:   let targetCount = 0;
+028905: 
+028906:   for (const group of groups) {
+028907:     const gid = normalizeGroupId(group?.id);
+028908:     if (currentGroupIds.size === 1 && currentGroupIds.has(gid)) continue;
+028909:     targetCount += 1;
+028910: 
+028911:     let moveLabel = String(group?.name || (gid === 'default' ? '(no folder)' : 'Folder'));
+028912:     if (group?.isSubfolder) {
+028913:       const parent = groups.find((candidate) => String(candidate?.id || '') === String(group?.parentId || ''));
+028914:       if (parent) moveLabel = `${parent.name || 'Folder'} → ${moveLabel}`;
+028915:     }
+028916:     const item = _makePinsContextItem({
+028917:       label: moveLabel,
+028918:       icon: ICONS.folder || '',
+028919:       onClick: () => {
+028920:         const nextPins = loadPins().map((pin) =>
+028921:           selected.has(String(pin?.id || "")) ? { ...pin, groupId: gid } : pin
+028922:         );
+028923:         savePins(nextPins);
+028924:         try { setLastGroup(gid); } catch {}
+028925:         clearPinMultiSelection(true);
+028926:         try { renderPinsPanelPreserveScroll(true); } catch {}
+028927:         try { renderPinsMarkers(true); } catch {}
+028928:         toast(pinIds.length === 1 ? 'Pin moved' : `${pinIds.length} pins moved`);
+028929:         closePinsItemContextMenu();
+028930:       }
+028931:     });
+
+===== SOURCE L29227-L29258 =====
+029227:       return true;
+029228:     } catch { return false; }
+029229:   };
+029230:   const filteredPins = allPins.filter(pinMatchesSearchAndFilter);
+029231:   const matchingGroupIds = new Set(filteredPins.map((pin) => normalizeGroupId(pin && pin.groupId)));
+029232: 
+029233:   const alwaysVisibleEmpty = getPinsPanelAlwaysVisibleEmpty();
+029234:   const _panelSig = [
+029235:     _getPinsRenderSigFromArray(allPins),
+029236:     loadPinGroups().map((g) => [
+029237:       String(g && g.id || ""),
+029238:       String(g && g.name || ""),
+029239:       String(g && g.parentId || ""),
+029240:       g && g.isSubfolder ? "1" : "0",
+029241:       String(g && g.emoji || "")
+029242:     ].join("|")).join("~"),
+029243:     alwaysVisibleEmpty ? "1" : "0",
+029244:     String(pinsPanelSearchQuery || ""),
+029245:     Array.from(pinsMultiSelected || []).map((x) => String(x)).sort().join(","),
+029246:     pinsPanelEl.classList.contains("collapsed") || (pinsPanelEl.dataset && pinsPanelEl.dataset.collapsed === "1") ? "1" : "0"
+029247:   ].join("::");
+029248: 
+029249:   /* Never let polling, theme checks, cloud sync, or another background task
+029250:      dismiss the Map Pins context menu or rebuild the panel beneath it. The
+029251:      menu is user-owned UI and remains open until an actual outside click,
+029252:      Escape, blur, scroll, or a selected action closes it. */
+029253:   if (_wmeRcPinsContextMenuEl?.isConnected) {
+029254:     if (_pinsPanelLastSig !== _panelSig || pinsPanelEl.childNodes.length === 0) {
+029255:       _wmeRcPinsDeferredPanelRender = true;
+029256:     }
+029257:     return;
+029258:   }
+
+===== SOURCE L29310-L29340 =====
+029310:   addGroupBtn.innerHTML = `<span class="wmeRcI">${ICONS.folderPlus}</span>`;
+029311:   addGroupBtn.addEventListener("click", (ev) => {
+029312:     try { ev.preventDefault(); } catch {}
+029313:     ev.stopPropagation();
+029314:     try {
+029315:       openGroupNameModal({
+029316:           title: "New folder",
+029317:           placeholder: "Name",
+029318:           okText: "Create",
+029319:           onSubmit: (name, emoji) => {
+029320:             const groups = loadPinGroups();
+029321:             const id = `g-${_uid()}`;
+029322:             groups.push({ id, name, emoji: (typeof emoji === 'string') ? emoji : '', parentId: "default" });
+029323:             savePinGroups(groups);
+029324:             renderPinsPanel();
+029325:       try { _schedulePinsPanelAvoidDock(); } catch {}
+029326:           }
+029327:         });
+029328:     } catch {}
+029329:   });
+029330: 
+029331: 
+029332:   const settingsBtn = document.createElement("div");
+029333:   settingsBtn.className = "wmeRcPinsHdrBtn";
+029334:   settingsBtn.title = "Pin settings";
+029335:   settingsBtn.innerHTML = `<span class="wmeRcI">${ICONS.gear}</span>`;
+029336:   settingsBtn.addEventListener("click", (ev) => {
+029337:     try { ev.preventDefault(); } catch {}
+029338:     try { ev.stopPropagation(); } catch {}
+029339:     try { openPinsSettingsModal(); } catch {}
+029340:   });
+
+===== SOURCE L29442-L29501 =====
+029442: 
+029443: 
+029444:     if (!list.dataset.scrollBound) {
+029445:       list.dataset.scrollBound = "1";
+029446:       const stop = (e) => { try { e.stopPropagation(); } catch {} };
+029447:       list.addEventListener("wheel", stop, { passive: true });
+029448:       list.addEventListener("touchmove", stop, { passive: true });
+029449:       list.addEventListener("dragend", () => { try { _resetPinDragUi(); } catch {} });
+029450:       list.addEventListener("drop", () => { try { _clearPinDropMarks(); } catch {} });
+029451:       list.addEventListener("scroll", () => {
+029452:         try {
+029453:           const st = (list.scrollTop || 0);
+029454:           const hdrs = Array.from(list.querySelectorAll(".wmeRcPinsGroupHdr"));
+029455:           let active = null;
+029456:           for (const h of hdrs) {
+029457: 
+029458:             if ((h.offsetTop || 0) <= st + 1) active = h;
+029459:           }
+029460:           for (const h of hdrs) h.classList.remove("wmeRcSticky");
+029461:           if (active && st > (active.offsetTop || 0)) active.classList.add("wmeRcSticky");
+029462:         } catch {}
+029463:       }, { passive: true });
+029464:       try {
+029465:         const st = (list.scrollTop || 0);
+029466:         const hdrs = Array.from(list.querySelectorAll(".wmeRcPinsGroupHdr"));
+029467:         let active = null;
+029468:         for (const h of hdrs) {
+029469:           if ((h.offsetTop || 0) <= st + 1) active = h;
+029470:         }
+029471:         for (const h of hdrs) h.classList.remove("wmeRcSticky");
+029472:         if (active && st > (active.offsetTop || 0)) active.classList.add("wmeRcSticky");
+029473:       } catch {}
+029474: 
+029475:     }
+029476:   } catch {}const _pinReorder = { active: false, pid: null, row: null, parent: null, placeholder: null, pointerId: null,
+029477:     startY: 0, dy: 0, baseTop: 0, baseLeft: 0, width: 0, height: 0, raf: 0 };
+029478: 
+029479:   let _pinDragState = { id: null, overId: null, placeAfter: true, overGroup: null, overZone: "", justDroppedAt: 0 };
+029480:   const _folderDragState = { id: null, element: null, dragImage: null };
+029481: 
+029482:   const _clearFolderDropMarks = () => {
+029483:     try { list.querySelectorAll('.wmeRcPinsGroup.folderDropBefore,.wmeRcPinsGroup.folderDropAfter,.wmeRcPinsGroup.folderDragging').forEach(el => el.classList.remove('folderDropBefore', 'folderDropAfter', 'folderDragging')); } catch {}
+029484:   };
+029485: 
+029486:   const _autoScrollFolderDrag = (clientY) => {
+029487:     try {
+029488:       const rect = list.getBoundingClientRect();
+029489:       const edge = 38;
+029490:       if (clientY < rect.top + edge) list.scrollTop -= Math.max(8, Math.round((rect.top + edge - clientY) / 2));
+029491:       else if (clientY > rect.bottom - edge) list.scrollTop += Math.max(8, Math.round((clientY - (rect.bottom - edge)) / 2));
+029492:     } catch {}
+029493:   };
+029494: 
+029495:   const _reorderPinGroups = (fromId, targetId, after) => {
+029496:     const from = String(fromId || '');
+029497:     const target = String(targetId || '');
+029498:     if (!from || from === 'default' || from === target) return false;
+029499:     const groupsNow = normalizePinGroupOrder(loadPinGroups().map(g => ({ ...g })));
+029500:     const def = groupsNow.find(g => String(g.id) === 'default');
+029501:     const movable = groupsNow.filter(g => String(g.id) !== 'default');
+
+===== SOURCE L29529-L29559 =====
+029529:       dl.style.pointerEvents = "none";
+029530:       dl.style.background = "transparent";
+029531:       document.body.appendChild(dl);
+029532:       return dl;
+029533:     } catch {
+029534:       return document.body;
+029535:     }
+029536:   };
+029537: 
+029538: 
+029539:   const _clearPinDropMarks = () => {
+029540:     try {
+029541:       list.querySelectorAll('.wmeRcPinRow.dropBefore,.wmeRcPinRow.dropAfter,.wmeRcPinsGroupHdr.dropTarget,.wmeRcPinsGroupBody.dropTarget,.wmeRcPinsGroupPins.dropTarget')
+029542:         .forEach((el) => {
+029543:           el.classList.remove('dropBefore');
+029544:           el.classList.remove('dropAfter');
+029545:           el.classList.remove('dropTarget');
+029546:         });
+029547:     } catch {}
+029548:   };
+029549: 
+029550:   const _resetPinDragUi = () => {
+029551:     try { _clearPinDropMarks(); } catch {}
+029552:     try {
+029553:       _pinDragState.id = null;
+029554:       _pinDragState.fromId = null;
+029555:       _pinDragState.overId = null;
+029556:       _pinDragState.overGroup = null;
+029557:       _pinDragState.overZone = "";
+029558:       _pinDragState.after = false;
+029559:     } catch {}
+
+===== SOURCE L29778-L29811 =====
+029778:     bellBtn.classList.add("wmeRcPinBtnBell");
+029779:     btns.appendChild(bellBtn);
+029780: const beginReorder = (ev) => {
+029781:       try { hidePinNotePreview(0); } catch {}
+029782:       try {
+029783:         if (!ev || (ev.button != null && ev.button !== 0)) return;
+029784:         ev.preventDefault(); ev.stopPropagation();
+029785:       } catch {}
+029786:       try {
+029787:         if (!_pinReorder || _pinReorder.active) return;
+029788: 
+029789:         const sourceContainer = row.parentElement;
+029790:         if (!sourceContainer || !(sourceContainer.classList.contains("wmeRcPinsGroupBody") || sourceContainer.classList.contains("wmeRcPinsGroupPins"))) return;
+029791:         const sourceBody = sourceContainer.classList.contains("wmeRcPinsGroupBody")
+029792:           ? sourceContainer
+029793:           : (sourceContainer.closest ? sourceContainer.closest(".wmeRcPinsGroupBody") : null);
+029794:         if (!sourceBody) return;
+029795: 
+029796:         _pinReorder.active = true;
+029797:         _pinReorder.pid = String(pin.id);
+029798:         _pinReorder.row = row;
+029799:         _pinReorder.sourceBody = sourceContainer;
+029800:         _pinReorder.currentBody = sourceContainer;
+029801:         _pinReorder.pointerId = ev.pointerId;
+029802: 
+029803:         _pinReorder.sourceGroupId = normalizeGroupId(row.dataset.groupId || sourceContainer.dataset.groupId || sourceBody.dataset.groupId || "");
+029804:         _pinReorder.currentGroupId = _pinReorder.sourceGroupId;
+029805: 
+029806:         _pinReorder.expandTimer = 0;
+029807:         _pinReorder.expandGid = null;
+029808:         _pinReorder.dropHdr = null;
+029809: 
+029810:         const r = row.getBoundingClientRect();
+029811:         _pinReorder.width = r.width;
+
+===== SOURCE L29864-L29986 =====
+029864:       }
+029865:     };
+029866: 
+029867:     const _setDropHdr = (gid) => {
+029868:       gid = normalizeGroupId(gid);
+029869:       try {
+029870:         if (_pinReorder.dropHdr && _pinReorder.dropHdr.dataset && normalizeGroupId(_pinReorder.dropHdr.dataset.groupId) === gid) return;
+029871:       } catch {}
+029872:       try { if (_pinReorder.dropHdr) _pinReorder.dropHdr.classList.remove("dropTarget"); } catch {}
+029873:       _pinReorder.dropHdr = null;
+029874:       if (!gid) return;
+029875:       let hdr = null;
+029876:       try { hdr = list.querySelector(`.wmeRcPinsGroupHdr[data-group-id="${CSS.escape(gid)}"]`); } catch {}
+029877:       if (!hdr) { try { hdr = list.querySelector(`.wmeRcPinsGroupHdr[data-group-id="${gid}"]`); } catch {} }
+029878:       if (hdr) {
+029879:         _pinReorder.dropHdr = hdr;
+029880:         try { hdr.classList.add("dropTarget"); } catch {}
+029881:       }
+029882:     };
+029883: 
+029884:     const _findGroupUnderPointer = (x, y) => {
+029885:       let el = null;
+029886:       try { el = document.elementFromPoint(x, y); } catch {}
+029887:       if (!el) return { body: null, gid: null, hdr: null };
+029888: 
+029889:       const overRow = el.closest ? el.closest(".wmeRcPinRow") : null;
+029890:       if (overRow) {
+029891:         const body = overRow.parentElement && overRow.parentElement.classList && overRow.parentElement.classList.contains("wmeRcPinsGroupPins")
+029892:           ? overRow.parentElement
+029893:           : (overRow.closest ? overRow.closest(".wmeRcPinsGroupBody") : null);
+029894:         const groupBody = body && body.classList && body.classList.contains("wmeRcPinsGroupBody")
+029895:           ? body
+029896:           : (body && body.closest ? body.closest(".wmeRcPinsGroupBody") : null);
+029897:         const gid = normalizeGroupId(overRow.dataset.groupId || (body && body.dataset.groupId) || (groupBody && groupBody.dataset.groupId) || "");
+029898:         const hdr = groupBody && groupBody.previousElementSibling && groupBody.previousElementSibling.classList && groupBody.previousElementSibling.classList.contains("wmeRcPinsGroupHdr")
+029899:           ? groupBody.previousElementSibling : null;
+029900:         return { body, gid, hdr, row: overRow };
+029901:       }
+029902: 
+029903:       const overPinsWrap = el.closest ? el.closest(".wmeRcPinsGroupPins") : null;
+029904:       if (overPinsWrap) {
+029905:         const groupBody = overPinsWrap.closest ? overPinsWrap.closest(".wmeRcPinsGroupBody") : null;
+029906:         const gid = normalizeGroupId(overPinsWrap.dataset.groupId || (groupBody && groupBody.dataset.groupId) || "");
+029907:         const hdr = groupBody && groupBody.previousElementSibling && groupBody.previousElementSibling.classList && groupBody.previousElementSibling.classList.contains("wmeRcPinsGroupHdr")
+029908:           ? groupBody.previousElementSibling : null;
+029909:         return { body: overPinsWrap, gid, hdr, row: null };
+029910:       }
+029911: 
+029912:       const overBody = el.closest ? el.closest(".wmeRcPinsGroupBody") : null;
+029913:       if (overBody) {
+029914:         const gid = normalizeGroupId(overBody.dataset.groupId || "");
+029915:         const hdr = overBody.previousElementSibling && overBody.previousElementSibling.classList && overBody.previousElementSibling.classList.contains("wmeRcPinsGroupHdr")
+029916:           ? overBody.previousElementSibling : null;
+029917:         return { body: overBody, gid, hdr, row: null };
+029918:       }
+029919: 
+029920:       const overHdr = el.closest ? el.closest(".wmeRcPinsGroupHdr") : null;
+029921:       if (overHdr) {
+029922:         const gid = normalizeGroupId(overHdr.dataset.groupId || "");
+029923:         let body = null;
+029924:         try {
+029925:           const wrap = overHdr.closest && overHdr.closest(".wmeRcPinsGroup");
+029926:           body = wrap ? wrap.querySelector(".wmeRcPinsGroupBody") : null;
+029927:         } catch {}
+029928:         return { body, gid, hdr: overHdr, row: null };
+029929:       }
+029930: 
+029931:       return { body: null, gid: null, hdr: null, row: null };
+029932:     };
+029933: 
+029934:     const _ensureExpandedDuringHover = (gid) => {
+029935:       gid = normalizeGroupId(gid);
+029936:       if (!gid) return;
+029937:       if (_pinReorder.expandGid === gid) return;
+029938:       _pinReorder.expandGid = gid;
+029939:       try { if (_pinReorder.expandTimer) clearTimeout(_pinReorder.expandTimer); } catch {}
+029940:       _pinReorder.expandTimer = setTimeout(() => {
+029941:         try {
+029942:           const wrap = list.querySelector(`.wmeRcPinsGroup[data-group-id="${CSS.escape(gid)}"]`);
+029943:           if (wrap && wrap.classList.contains("collapsed")) {
+029944:             wrap.classList.remove("collapsed");
+029945:             setGroupCollapsed(gid, false);
+029946:           }
+029947:         } catch {}
+029948:       }, 180);
+029949:     };
+029950: 
+029951:     const _getPinsWrapForBody = (body) => {
+029952:       if (!body) return null;
+029953:       try {
+029954:         if (body.classList && body.classList.contains("wmeRcPinsGroupPins")) return body;
+029955:       } catch {}
+029956:       try { return body.querySelector(':scope > .wmeRcPinsGroupPins') || body; } catch { return body; }
+029957:     };
+029958: 
+029959:     const _placePlaceholderInBody = (body, pointerY) => {
+029960:       const ph = _pinReorder.placeholder;
+029961:       if (!ph || !body) return;
+029962: 
+029963:       const pinsWrap = _getPinsWrapForBody(body);
+029964:       if (!pinsWrap) return;
+029965: 
+029966:       let empty = null;
+029967:       try {
+029968:         empty = pinsWrap.querySelector(":scope > .wmeRcPinsGroupEmpty") || pinsWrap.querySelector(".wmeRcPinsGroupEmpty");
+029969:       } catch {}
+029970: 
+029971:       const rows = Array.from(pinsWrap.querySelectorAll(":scope > .wmeRcPinRow:not(.wmeRcPinDragSource)"));
+029972:       let beforeEl = null;
+029973: 
+029974:       for (const r of rows) {
+029975:         try {
+029976:           const rr = r.getBoundingClientRect();
+029977:           const mid = rr.top + rr.height / 2;
+029978:           if (pointerY < mid) { beforeEl = r; break; }
+029979:         } catch {}
+029980:       }
+029981: 
+029982:       const key = (pinsWrap.dataset && pinsWrap.dataset.groupId ? pinsWrap.dataset.groupId : (body.dataset && body.dataset.groupId ? body.dataset.groupId : "")) + "|" + (beforeEl ? beforeEl.dataset.pinId : "END");
+029983:       if (_pinReorder.lastPlaceKey === key) return;
+029984:       _pinReorder.lastPlaceKey = key;
+029985: 
+029986:       try {
+
+===== SOURCE L30002-L30032 =====
+030002:         if (_pinReorder.raf) return;
+030003:         _pinReorder.raf = requestAnimationFrame(() => {
+030004:           _pinReorder.raf = 0;
+030005: 
+030006:           const x = (_pinReorder.lastX ?? 0) - (_pinReorder.grabX ?? 0);
+030007:           const y = (_pinReorder.lastY ?? 0) - (_pinReorder.grabY ?? 0);
+030008: 
+030009:           try { if (_pinReorder.ghost) _pinReorder.ghost.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`; } catch {}
+030010: 
+030011:           try {
+030012:             const pointerEl = document.elementFromPoint(_pinReorder.lastX, _pinReorder.lastY);
+030013:             const scrollers = [
+030014:               pointerEl?.closest?.('.wmeRcPinsGroupPins'),
+030015:               pointerEl?.closest?.('.wmeRcPinsList'),
+030016:               list,
+030017:             ].filter(Boolean);
+030018:             for (const scroller of scrollers) {
+030019:               if ((scroller.scrollHeight || 0) <= (scroller.clientHeight || 0) + 2) continue;
+030020:               const sr = scroller.getBoundingClientRect();
+030021:               const edge = 34;
+030022:               let delta = 0;
+030023:               if (_pinReorder.lastY < sr.top + edge) delta = -Math.ceil((sr.top + edge - _pinReorder.lastY) / 4);
+030024:               else if (_pinReorder.lastY > sr.bottom - edge) delta = Math.ceil((_pinReorder.lastY - (sr.bottom - edge)) / 4);
+030025:               if (delta) scroller.scrollTop += Math.max(-14, Math.min(14, delta));
+030026:               if (delta) break;
+030027:             }
+030028:           } catch {}
+030029: 
+030030:           const hit = _findGroupUnderPointer(_pinReorder.lastX, _pinReorder.lastY);
+030031:           const body = hit.body || _pinReorder.currentBody;
+030032:           const gid = normalizeGroupId(hit.gid || (_pinReorder.currentBody && _pinReorder.currentBody.dataset.groupId) || _pinReorder.currentGroupId || "");
+
+===== SOURCE L30043-L30111 =====
+030043: 
+030044:           if (body) {
+030045:             _placePlaceholderInBody(body, _pinReorder.lastY);
+030046:           }
+030047:         });
+030048:       } catch {}
+030049:     };
+030050: 
+030051:     const _syncGroupCount = (gid) => {
+030052:       gid = normalizeGroupId(gid);
+030053:       if (!gid) return;
+030054:       try {
+030055:         const body = list.querySelector(`.wmeRcPinsGroupBody[data-group-id="${CSS.escape(gid)}"]`);
+030056:         const hdr = list.querySelector(`.wmeRcPinsGroupHdr[data-group-id="${CSS.escape(gid)}"]`);
+030057:         if (!body || !hdr) return;
+030058:         const pinsWrap = body.querySelector(':scope > .wmeRcPinsGroupPins') || body;
+030059:         const c = hdr.querySelector(".wmeRcPinsGroupCount");
+030060:         if (c) c.textContent = String(pinsWrap.querySelectorAll(":scope > .wmeRcPinRow").length);
+030061:       } catch {}
+030062:     };
+030063: 
+030064:     const _syncEmptyHint = (gid) => {
+030065:       gid = normalizeGroupId(gid);
+030066:       if (!gid) return;
+030067:       let body = null;
+030068:       try { body = list.querySelector(`.wmeRcPinsGroupBody[data-group-id="${CSS.escape(gid)}"]`); } catch {}
+030069:       if (!body) return;
+030070:       const pinsWrap = body.querySelector(':scope > .wmeRcPinsGroupPins') || body;
+030071:       const hasRows = pinsWrap.querySelectorAll(":scope > .wmeRcPinRow").length > 0;
+030072:       let empty = pinsWrap.querySelector(":scope > .wmeRcPinsGroupEmpty");
+030073:       if (hasRows) {
+030074:         if (empty) { try { empty.remove(); } catch {} }
+030075:       } else {
+030076:         if (!empty) {
+030077:           empty = document.createElement("div");
+030078:           empty.className = "wmeRcPinsGroupEmpty";
+030079:           empty.textContent = "Drop pins here";
+030080:           pinsWrap.appendChild(empty);
+030081:         }
+030082:         try { empty.style.display = "flex"; } catch {}
+030083:       }
+030084:     };
+030085: 
+030086:     const _persistPinsFromDOM = () => {
+030087:       const pins = loadPins();
+030088:       const byId = new Map(pins.map(p => [String(p.id), p]));
+030089:       const next = [];
+030090:       const bodies = Array.from(list.querySelectorAll(".wmeRcPinsGroupBody"));
+030091:       for (const body of bodies) {
+030092:         const gid = normalizeGroupId(body.dataset.groupId || "");
+030093:         const pinsWrap = body.querySelector(':scope > .wmeRcPinsGroupPins') || body;
+030094:         const rows = Array.from(pinsWrap.querySelectorAll(":scope > .wmeRcPinRow"));
+030095:         for (const r of rows) {
+030096:           const id = String(r.dataset.pinId || "");
+030097:           const p = byId.get(id);
+030098:           if (!p) continue;
+030099:           next.push({ ...p, groupId: gid });
+030100:           byId.delete(id);
+030101:         }
+030102:       }
+030103:       for (const p of byId.values()) next.push(p);
+030104:       savePins(next);
+030105:     };
+030106: 
+030107:     const endReorder = (ev) => {
+030108:       try {
+030109:         if (!_pinReorder.active) return;
+030110:         if (_pinReorder.pointerId != null && ev && ev.pointerId != null && ev.pointerId !== _pinReorder.pointerId) return;
+030111:       } catch {}
+
+===== SOURCE L30114-L30167 =====
+030114:         window.removeEventListener("pointermove", onReorderMove, true);
+030115:         window.removeEventListener("pointerup", endReorder, true);
+030116:         window.removeEventListener("pointercancel", endReorder, true);
+030117:       } catch {}
+030118: 
+030119:       try { if (_pinReorder.raf) cancelAnimationFrame(_pinReorder.raf); } catch {}
+030120:       _pinReorder.raf = 0;
+030121: 
+030122:       const ph = _pinReorder.placeholder;
+030123:       const ghost = _pinReorder.ghost;
+030124: 
+030125:       let destBody = _pinReorder.currentBody || _pinReorder.sourceBody;
+030126:       if (destBody && destBody.classList && destBody.classList.contains("wmeRcPinsGroupPins")) destBody = destBody.closest(".wmeRcPinsGroupBody");
+030127:       if (!destBody || !destBody.classList || !destBody.classList.contains("wmeRcPinsGroupBody")) destBody = _pinReorder.sourceBody;
+030128: 
+030129:       const destGid = normalizeGroupId((destBody && destBody.dataset && destBody.dataset.groupId) || _pinReorder.currentGroupId || _pinReorder.sourceGroupId || "");
+030130:       const srcGid = normalizeGroupId(_pinReorder.sourceGroupId || "");
+030131:       const destPinsWrap = (destBody && destBody.querySelector(':scope > .wmeRcPinsGroupPins')) || destBody;
+030132: 
+030133:       try {
+030134:         if (ph && destPinsWrap) destPinsWrap.insertBefore(row, ph);
+030135:         else if (destPinsWrap) destPinsWrap.appendChild(row);
+030136:       } catch {}
+030137:       try {
+030138:         row.classList.remove("wmeRcPinDragSource");
+030139:         if (_pinReorder.originalRowStyleAttr == null) row.removeAttribute("style");
+030140:         else row.setAttribute("style", _pinReorder.originalRowStyleAttr);
+030141:       } catch {}
+030142: 
+030143:       try { if (ph) ph.remove(); } catch {}
+030144:       try { if (ghost) ghost.remove(); } catch {}
+030145:       try { list.querySelectorAll('.wmeRcPinDragTemporaryEmpty').forEach((el) => el.remove()); } catch {}
+030146:       try { document.documentElement.classList.remove("wmeRcNoSelect"); } catch {}
+030147:       try { if (pinsPanelEl) pinsPanelEl.classList.remove("is-reordering"); } catch {}
+030148:       try { if (_pinReorder.dropHdr) _pinReorder.dropHdr.classList.remove("dropTarget"); } catch {}
+030149:       try { list.querySelectorAll('.wmeRcPinsGroupEmpty.dropTarget').forEach((el) => el.classList.remove('dropTarget')); } catch {}
+030150: 
+030151:       try { row.dataset.groupId = destGid; } catch {}
+030152: 
+030153:       try { _persistPinsFromDOM(); } catch {}
+030154: 
+030155:       try { _syncEmptyHint(srcGid); } catch {}
+030156:       try { _syncEmptyHint(destGid); } catch {}
+030157:       try { _syncGroupCount(srcGid); } catch {}
+030158:       try { _syncGroupCount(destGid); } catch {}
+030159:       try { _schedulePinsPanelAutoFit(); } catch { try { applyPinsPanelHeightAuto(); } catch {} }
+030160: 
+030161:       try {
+030162:         _pinReorder.active = false;
+030163:         _pinReorder.pid = null;
+030164:         _pinReorder.row = null;
+030165:         _pinReorder.sourceBody = null;
+030166:         _pinReorder.currentBody = null;
+030167:         _pinReorder.placeholder = null;
+
+===== SOURCE L30330-L30384 =====
+030330:         pinsMultiSelected.add(String(pin.id));
+030331:         syncPinsMultiSelectionDom();
+030332:       }
+030333:       openPinsItemContextMenu(ev, { type: "pin", pinId: pin.id, row, nameEl: name });
+030334:     });
+030335: 
+030336:     return row;
+030337:   };
+030338: 
+030339:   const topLevelGroups = searchActive
+030340:     ? groups.filter((g) => g && matchingGroupIds.has(normalizeGroupId(g.id)))
+030341:     : groups.filter((g) => g);
+030342:   const getDirectChildGroups = (parentId) => [];
+030343: 
+030344:   const renderGroup = (g, depth = 0) => {
+030345:     const gid = normalizeGroupId(g.id);
+030346:     const groupWrap = document.createElement("div");
+030347:     groupWrap.className = "wmeRcPinsGroup";
+030348:     groupWrap.dataset.groupId = gid;
+030349:     groupWrap.dataset.depth = String(depth);
+030350:     try { groupWrap.style.setProperty("--wmeRcGroupDepth", String(depth)); } catch {}
+030351: 
+030352:     if (!searchActive && isGroupCollapsed(gid)) groupWrap.classList.add("collapsed");
+030353: 
+030354:     const gh = document.createElement("div");
+030355:     gh.className = "wmeRcPinsGroupHdr";
+030356:     gh.dataset.groupId = gid;
+030357: 
+030358:     const groupPins = filteredPins.filter(p => normalizeGroupId(p.groupId) === gid);
+030359:     const childGroups = getDirectChildGroups(gid);
+030360: 
+030361:     const topLeft = document.createElement("div");
+030362:     topLeft.className = "wmeRcPinsGroupTop";
+030363: 
+030364:     if (gid !== 'default') {
+030365:       const folderDrag = document.createElement('div');
+030366:       folderDrag.className = 'wmeRcPinsGroupDrag';
+030367:       folderDrag.title = 'Drag to reorder folder';
+030368:       folderDrag.draggable = true;
+030369:       folderDrag.innerHTML = `<span class="wmeRcI">${ICONS.drag || '⋮⋮'}</span>`;
+030370:       folderDrag.addEventListener('click', (ev) => { try { ev.preventDefault(); ev.stopPropagation(); } catch {} });
+030371:       folderDrag.addEventListener('dragstart', (ev) => {
+030372:         _clearFolderDropMarks();
+030373:         _folderDragState.id = gid;
+030374:         _folderDragState.element = groupWrap;
+030375:         groupWrap.classList.add('folderDragging');
+030376:         try {
+030377:           ev.dataTransfer.effectAllowed = 'move';
+030378:           ev.dataTransfer.setData('text/plain', gid);
+030379: 
+030380:           // Suppress the browser's lifted/duplicated native drag preview.
+030381:           // The source folder stays in place and only the insertion marker moves.
+030382:           try { _folderDragState.dragImage?.remove?.(); } catch {}
+030383:           const dragImage = document.createElement('div');
+030384:           dragImage.setAttribute('aria-hidden', 'true');
+
+===== SOURCE L30390-L30445 =====
+030390:       });
+030391:       folderDrag.addEventListener('dragend', () => {
+030392:         try { _folderDragState.dragImage?.remove?.(); } catch {}
+030393:         _folderDragState.dragImage = null;
+030394:         _folderDragState.id = null;
+030395:         _folderDragState.element = null;
+030396:         _clearFolderDropMarks();
+030397:       });
+030398:       topLeft.appendChild(folderDrag);
+030399:     }
+030400: 
+030401:     const twisty = document.createElement("div");
+030402:     twisty.className = "wmeRcPinsGroupTwisty";
+030403:     twisty.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10l5 5 5-5H7z"/></svg>`;
+030404: 
+030405:     const gName = document.createElement("div");
+030406:     gName.className = "wmeRcPinsGroupName";
+030407:     gName.textContent = g.name || "Folder";
+030408: 
+030409:     topLeft.appendChild(twisty);
+030410: 
+030411:     const gEmoji = document.createElement("div");
+030412:     gEmoji.className = "wmeRcPinsGroupEmoji";
+030413:     gEmoji.textContent = (g && typeof g.emoji === "string") ? g.emoji : "";
+030414:     if (gEmoji.textContent) topLeft.appendChild(gEmoji);
+030415: 
+030416:     topLeft.appendChild(gName);
+030417: 
+030418:     const right = document.createElement("div");
+030419:     right.className = "wmeRcPinsGroupActions";
+030420: 
+030421:     const gCount = document.createElement("div");
+030422:     gCount.className = "wmeRcPinsGroupCount";
+030423:     gCount.textContent = String(groupPins.length);
+030424: 
+030425:     const mkGBtn = (icon, title, onClick) => {
+030426:       const b = document.createElement("div");
+030427:       b.className = "wmeRcPinsGroupBtn";
+030428:       b.title = title;
+030429:       b.innerHTML = `<span class="wmeRcI">${icon}</span>`;
+030430:       b.addEventListener("click", (ev) => { try { ev.preventDefault(); ev.stopImmediatePropagation(); ev.stopPropagation(); } catch {} onClick(); });
+030431:       return b;
+030432:     };
+030433: 
+030434:     if (gid !== "default") {
+030435:       right.appendChild(mkGBtn(ICONS.edit, "Rename folder", () => {
+030436:         openGroupNameModal({
+030437:           title: "Rename folder",
+030438:           initial: g.name || "",
+030439:           initialEmoji: (g && typeof g.emoji === "string") ? g.emoji : "",
+030440:           placeholder: "Name",
+030441:           okText: "Save",
+030442:           onSubmit: (nm, emoji) => {
+030443:             const gs = loadPinGroups();
+030444:             const idx = gs.findIndex(x => x && x.id === gid);
+030445:             if (idx >= 0) {
+
+===== SOURCE L30468-L30498 =====
+030468:           try { _schedulePinsPanelAvoidDock(); } catch {}
+030469:         }});
+030470:         } catch (e) { console.error(e); }
+030471:       }));
+030472:     }
+030473: 
+030474:     right.appendChild(gCount);
+030475: 
+030476:     gh.appendChild(topLeft);
+030477:     gh.appendChild(right);
+030478: 
+030479:     gh.addEventListener("click", (ev) => {
+030480:       if (ev.target && ev.target.closest && ev.target.closest('.wmeRcPinsGroupDrag')) return;
+030481:       if ((_pinDragState && _pinDragState.id) || ((_pinDragState && _pinDragState.justDroppedAt) && (Date.now() - _pinDragState.justDroppedAt < 250))) {
+030482:         try { ev.preventDefault(); ev.stopPropagation(); } catch {}
+030483:         return;
+030484:       }
+030485:       if (searchActive) return;
+030486:       const collapsed = groupWrap.classList.toggle("collapsed");
+030487:       setGroupCollapsed(gid, collapsed);
+030488:       try { requestAnimationFrame(() => { try { applyPinsPanelHeightAuto(); } catch {} }); } catch { try { applyPinsPanelHeightAuto(); } catch {} }
+030489:     });
+030490: 
+030491:     if (gid !== "default") {
+030492:       gh.addEventListener("contextmenu", (ev) => {
+030493:         try {
+030494:           const target = ev.target;
+030495:           if (target && target.closest && target.closest(".wmeRcInlineRenameInput")) return;
+030496:         } catch {}
+030497:         openPinsItemContextMenu(ev, { type: "folder", groupId: gid, header: gh, nameEl: gName });
+030498:       });
+
+===== SOURCE L30579-L30609 =====
+030579:         try { if (typeof pinsWrap !== "undefined" && pinsWrap) pinsWrap.classList.remove("dropTarget"); } catch {}
+030580:         const fromId = _pinDragState.id;
+030581:         let nextPins = _movePinToGroupEnd(loadPins(), fromId, gid);
+030582:         savePins(nextPins);
+030583:         try { renderPinsMarkers(); } catch {}
+030584:         _pinDragState.justDroppedAt = Date.now();
+030585:         _scheduleRenderPinsPanel(true);
+030586:         _schedulePinsPanelAutoFit();
+030587:       } catch (e) { console.error(e); }
+030588:     });
+030589: 
+030590:     const body = document.createElement("div");
+030591:     body.className = "wmeRcPinsGroupBody";
+030592:     body.dataset.groupId = gid;
+030593: 
+030594:     body.addEventListener("dragover", onGroupDragOver);
+030595:     body.addEventListener("dragenter", onGroupDragOver);
+030596:     body.addEventListener("dragleave", (ev) => {
+030597:       try {
+030598:         const rt = ev.relatedTarget;
+030599:         if (rt && body.contains(rt)) return;
+030600:         body.classList.remove("dropTarget");
+030601:         gh.classList.remove("dropTarget");
+030602:         if (_pinDragState.overZone === `${gid}:body`) _pinDragState.overZone = "";
+030603:       } catch {}
+030604:     });
+030605:     body.addEventListener("drop", (ev) => {
+030606:       if (!_pinDragState.id) return;
+030607:       ev.preventDefault();
+030608:       try { ev.stopPropagation(); } catch {}
+030609:       try {
+
+===== SOURCE L30612-L30651 =====
+030612:         try { if (typeof pinsWrap !== "undefined" && pinsWrap) pinsWrap.classList.remove("dropTarget"); } catch {}
+030613:         const fromId = _pinDragState.id;
+030614:         let nextPins = _movePinToGroupEnd(loadPins(), fromId, gid);
+030615:         savePins(nextPins);
+030616:         try { renderPinsMarkers(); } catch {}
+030617:         _pinDragState.justDroppedAt = Date.now();
+030618:         _scheduleRenderPinsPanel(true);
+030619:         _schedulePinsPanelAutoFit();
+030620:       } catch (e) { console.error(e); }
+030621:     });
+030622: 
+030623:     const pinsWrap = document.createElement("div");
+030624:     pinsWrap.className = "wmeRcPinsGroupPins";
+030625:     pinsWrap.dataset.groupId = gid;
+030626: 
+030627:     for (const pin of groupPins) {
+030628:       pinsWrap.appendChild(buildPinRow(pin, gid));
+030629:     }
+030630: 
+030631:     if (groupPins.length === 0) {
+030632:       const empty = document.createElement("div");
+030633:       empty.className = "wmeRcPinsGroupEmpty";
+030634:       empty.textContent = "Drop pins here";
+030635:       pinsWrap.appendChild(empty);
+030636:     }
+030637: 
+030638:     pinsWrap.addEventListener("dragover", onGroupDragOver);
+030639:     pinsWrap.addEventListener("dragenter", onGroupDragOver);
+030640:     pinsWrap.addEventListener("dragleave", (ev) => {
+030641:       try {
+030642:         const rt = ev.relatedTarget;
+030643:         if (rt && pinsWrap.contains(rt)) return;
+030644:         pinsWrap.classList.remove("dropTarget");
+030645:         if (_pinDragState.overZone === `${gid}:pins`) _pinDragState.overZone = "";
+030646:       } catch {}
+030647:     });
+030648:     pinsWrap.addEventListener("drop", (ev) => {
+030649:       if (!_pinDragState.id) return;
+030650:       ev.preventDefault();
+030651:       try { ev.stopPropagation(); } catch {}
+
+===== SOURCE L36679-L36714 =====
+036679:   }
+036680: 
+036681:   function maybeShowChangelogOnce() {
+036682:     let seen = null;
+036683:     try { seen = localStorage.getItem(CHANGELOG_SEEN_KEY); } catch {}
+036684:     if (String(seen || "") === String(SCRIPT_VERSION)) return;
+036685:     openChangelogModal();
+036686:   }
+036687: 
+036688: 
+036689:   function openGroupNameModal(opts) {
+036690:     try {
+036691:       const isSubfolder = !!(opts && opts.isSubfolder);
+036692:       const title = (opts && opts.title) ? String(opts.title) : (isSubfolder ? "New subfolder" : "New folder");
+036693:       const initial = (opts && opts.initial != null) ? String(opts.initial) : "";
+036694:       const okText = (opts && opts.okText) ? String(opts.okText) : "Create";
+036695:       const cancelText = (opts && opts.cancelText) ? String(opts.cancelText) : "Cancel";
+036696:       const placeholder = (opts && opts.placeholder) ? String(opts.placeholder) : (isSubfolder ? "Subfolder name" : "Name");
+036697:       const onSubmit = (opts && typeof opts.onSubmit === "function") ? opts.onSubmit : null;
+036698:       const onCancel = (opts && typeof opts.onCancel === "function") ? opts.onCancel : null;
+036699:       const isCreateMode = !String(initial || "").trim() && /^create$/i.test(String(okText || ""));
+036700: 
+036701:       openModal({
+036702:         title,
+036703:         iconSvg: ICONS.folder,
+036704:         bodyBuilder: ({ body, close, modal }) => {
+036705:           try { if (modal) modal.classList.add("wmeRcGroupNameModal"); } catch {}
+036706:           try { if (body) body.classList.add("wmeRcGroupNameBody"); } catch {}
+036707: 
+036708:           const inp = document.createElement("input");
+036709:           inp.className = "wmeRcInput";
+036710:           inp.placeholder = placeholder;
+036711:           inp.value = initial;
+036712:           const groupNameLimitMsg = attachMaxLen(inp, 32);
+036713:           try { inp.classList.remove("wmeRcHasCount"); } catch {}
+036714: 
+
+===== SOURCE L36739-L36769 =====
+036739: 
+036740:           emojiPanel.appendChild(emojiBtn);
+036741:           emojiPanel.appendChild(emojiCaption);
+036742: 
+036743:           const field = document.createElement("div");
+036744:           field.className = "wmeRcGroupNameField";
+036745: 
+036746:           const labelRow = document.createElement("div");
+036747:           labelRow.className = "wmeRcGroupLabelRow";
+036748: 
+036749:           const label = document.createElement("div");
+036750:           label.className = "wmeRcGroupFieldLabel";
+036751:           label.textContent = isSubfolder ? "Subfolder name" : "Name";
+036752:           labelRow.appendChild(label);
+036753: 
+036754:           try {
+036755:             const countEl = groupNameLimitMsg && groupNameLimitMsg.wrap ? groupNameLimitMsg.wrap.querySelector(".wmeRcLenCountIn") : null;
+036756:             if (countEl) {
+036757:               countEl.classList.add("wmeRcGroupLenCount");
+036758:               labelRow.appendChild(countEl);
+036759:             }
+036760:           } catch {}
+036761: 
+036762:           field.appendChild(labelRow);
+036763:           field.appendChild(groupNameLimitMsg ? groupNameLimitMsg.wrap : inp);
+036764: 
+036765: 
+036766:           grid.appendChild(emojiPanel);
+036767:           grid.appendChild(field);
+036768:           root.appendChild(grid);
+036769: 
+
+===== SOURCE L36941-L37006 =====
+036941:         btnMove.className = "wmeRcModalBtn";
+036942:         btnMove.textContent = "Delete folder";
+036943:         btnMove.title = "Keeps pins and moves them to (no folder)";
+036944:         btnMove.addEventListener("click", () => {
+036945:           const gs0 = loadPinGroups();
+036946:           const collectIds = (rootId) => {
+036947:             const out = new Set([String(rootId)]);
+036948:             let changed = true;
+036949:             while (changed) {
+036950:               changed = false;
+036951:               for (const gg of gs0) {
+036952:                 if (!gg || gg.id === "default") continue;
+036953:                 const pid = String(gg.parentId || "default") || "default";
+036954:                 if (out.has(pid) && !out.has(String(gg.id))) {
+036955:                   out.add(String(gg.id));
+036956:                   changed = true;
+036957:                 }
+036958:               }
+036959:             }
+036960:             return out;
+036961:           };
+036962:           const ids = collectIds(gid);
+036963:           const ps = loadPins().map(pn => ids.has(normalizeGroupId(pn.groupId)) ? ({ ...pn, groupId: "default" }) : pn);
+036964:           savePins(ps);
+036965:           const gs = gs0
+036966:             .filter(x => x && !ids.has(String(x.id)))
+036967:             .map(x => x && x.id !== "default" && ids.has(String(x.parentId || "")) ? ({ ...x, parentId: "default" }) : x);
+036968:           savePinGroups(gs);
+036969:           try { if (getCurrentGroupFilter() === gid) setCurrentGroupFilter("all"); } catch {}
+036970:           close();
+036971:           renderPinsPanel();
+036972:         });
+036973: 
+036974:         const btnDeleteAll = document.createElement("div");
+036975:         btnDeleteAll.className = "wmeRcModalBtn danger wmeRcSolidDangerBtn";
+036976:         applySolidDangerButtonBehavior(btnDeleteAll);
+036977:         btnDeleteAll.textContent = "Delete folder + pins";
+036978:         btnDeleteAll.title = "Deletes folder and all pins inside";
+036979:         btnDeleteAll.addEventListener("click", () => {
+036980:           const gs0 = loadPinGroups();
+036981:           const collectIds = (rootId) => {
+036982:             const out = new Set([String(rootId)]);
+036983:             let changed = true;
+036984:             while (changed) {
+036985:               changed = false;
+036986:               for (const gg of gs0) {
+036987:                 if (!gg || gg.id === "default") continue;
+036988:                 const pid = String(gg.parentId || "default") || "default";
+036989:                 if (out.has(pid) && !out.has(String(gg.id))) {
+036990:                   out.add(String(gg.id));
+036991:                   changed = true;
+036992:                 }
+036993:               }
+036994:             }
+036995:             return out;
+036996:           };
+036997:           const ids = collectIds(gid);
+036998:           const ps = loadPins().filter(pn => !ids.has(normalizeGroupId(pn.groupId)));
+036999:           savePins(ps);
+037000:           const gs = gs0.filter(x => x && !ids.has(String(x.id)));
+037001:           savePinGroups(gs);
+037002:           try { if (getCurrentGroupFilter() === gid) setCurrentGroupFilter("all"); } catch {}
+037003:           close();
+037004:           renderPinsPanel();
+037005:         });
+037006: 
+
+===== SOURCE L50056-L50122 =====
+050056:       html.wmeRcWindowsUI .wmeRcPinsContextMenu.theme-light .wmeRcPinsContextItem.is-danger:hover,
+050057:       html.wmeRcWindowsUI .wmeRcPinsContextMenu.theme-light .wmeRcPinsContextItem.is-danger:focus,
+050058:       html.wmeRcWindowsUI .wmeRcPinsContextMenu.theme-light .wmeRcPinsContextItem.is-danger:active,
+050059:       html.wmeRcWindowsUI .wmeRcPinsContextSubmenu.theme-light .wmeRcPinsContextItem.is-danger:hover,
+050060:       html.wmeRcWindowsUI .wmeRcPinsContextSubmenu.theme-light .wmeRcPinsContextItem.is-danger:focus,
+050061:       html.wmeRcWindowsUI .wmeRcPinsContextSubmenu.theme-light .wmeRcPinsContextItem.is-danger:active{
+050062:         background:#eef0f2!important;
+050063:         color:#c5221f!important;
+050064:         -webkit-text-fill-color:#c5221f!important;
+050065:       }
+050066: 
+050067:       /* Folder drag handle: real grab cursor and no lifted icon. */
+050068:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag,
+050069:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag:hover,
+050070:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag:focus,
+050071:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag:focus-visible{
+050072:         cursor:grab!important;
+050073:         transform:none!important;
+050074:         translate:none!important;
+050075:         top:auto!important;
+050076:         box-shadow:none!important;
+050077:         filter:none!important;
+050078:       }
+050079:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag:active,
+050080:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroup.folderDragging .wmeRcPinsGroupDrag,
+050081:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroup.folderDragging .wmeRcPinsGroupHdr{
+050082:         cursor:grabbing!important;
+050083:         transform:none!important;
+050084:         translate:none!important;
+050085:       }
+050086:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag .wmeRcI,
+050087:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag:hover .wmeRcI,
+050088:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag:active .wmeRcI,
+050089:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag svg,
+050090:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag:hover svg,
+050091:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroupDrag:active svg{
+050092:         cursor:inherit!important;
+050093:         transform:none!important;
+050094:         translate:none!important;
+050095:         top:auto!important;
+050096:         margin:0!important;
+050097:         filter:none!important;
+050098:       }
+050099: 
+050100:       /* v1.1.110 — no faded duplicate/source row while reordering folders. */
+050101:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroup.folderDragging,
+050102:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroup.folderDragging .wmeRcPinsGroupHdr,
+050103:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroup.folderDragging .wmeRcPinsGroupTop,
+050104:       html.wmeRcWindowsUI .wmeRcPins .wmeRcPinsGroup.folderDragging .wmeRcPinsGroupDrag{
+050105:         opacity:1!important;
+050106:         transform:none!important;
+050107:         translate:none!important;
+050108:         filter:none!important;
+050109:         box-shadow:none!important;
+050110:       }
+050111:     `;
+050112:     (document.head || document.documentElement).appendChild(style);
+050113:   }
+050114: 
+050115: 
+050116:   function ensureV1111cPolishStyles() {
+050117:     if (document.getElementById('wmeRcV1111cPolishCss')) return;
+050118:     const style = document.createElement('style');
+050119:     style.id = 'wmeRcV1111cPolishCss';
+050120:     style.textContent = `
+050121:       /* Coming soon rows: no dark/blue gradient slab in WME light theme. */
+050122:       html.wmeRcWindowsUI .wmeRcMenu.compact-design .wmeRcItem.comingSoon .wmeRcComingSoonOverlay{
