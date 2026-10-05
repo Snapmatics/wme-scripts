@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "WME - RightClick Functions",
-  "version": "1.4.26",
-  "version_name": "Beta",
+  "version": "1.4.53",
+  "version_name": "1.4.53",
   "description": "Right-click tools, Map Pins, Friends sharing, reminders, backups and WME integrations without Tampermonkey.",
   "permissions": [
     "storage",
@@ -50,7 +50,8 @@
       ],
       "js": [
         "userscript.js",
-        "friends-clean-directory.js"
+        "friends-clean-directory.js",
+        "subfolder-gap-fix.js"
       ],
       "run_at": "document_start",
       "world": "MAIN"
