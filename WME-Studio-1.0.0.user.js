@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.2
+// @version      1.0.3
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -94,7 +94,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.2';
+  const USERSCRIPT_VERSION = '1.0.3';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -3578,8 +3578,8 @@ html[data-wme-studio="on"][data-wme-studio-requests="compact"] :is(.problem-edit
 @media (min-width: 1180px) and (min-height: 640px) {
   @media all {
   html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble {
-    width: 44px !important; min-width: 44px !important; max-width: 44px !important;
-    height: 44px !important; min-height: 44px !important; max-height: 44px !important;
+    width: 52px !important; min-width: 52px !important; max-width: 52px !important;
+    height: 52px !important; min-height: 52px !important; max-height: 52px !important;
     border-radius: 50% !important;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #online-editors:has(.online-editors-list-wrapper) wz-button.online-editors-bubble {
@@ -3717,16 +3717,16 @@ html[data-wme-studio="on"] .notifications-box-container [data-wme-studio-notific
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status {
     background: transparent !important; border: 0 !important; border-radius: 999px !important;
     box-shadow: none !important; overflow: visible !important; translate: none !important;
-    position: fixed !important; left: var(--ws-island-tile-left, calc(100vw - 12px - 44px * var(--ws-hud-zoom, 1))) !important; top: var(--ws-island-tile-top, auto) !important;
+    position: fixed !important; left: var(--ws-island-tile-left, calc(100vw - 12px - 52px * var(--ws-hud-zoom, 1))) !important; top: var(--ws-island-tile-top, auto) !important;
     right: auto !important; bottom: 36px !important; transform: none !important; margin: 0 !important;
-    width: calc(44px * var(--ws-hud-zoom, 1)) !important; height: calc(44px * var(--ws-hud-zoom, 1)) !important; min-height: calc(44px * var(--ws-hud-zoom, 1)) !important; padding: 0 !important; z-index: 510 !important;
+    width: calc(52px * var(--ws-hud-zoom, 1)) !important; height: calc(52px * var(--ws-hud-zoom, 1)) !important; min-height: calc(52px * var(--ws-hud-zoom, 1)) !important; padding: 0 !important; z-index: 510 !important;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status > .tile-build-status:not(:has(.tile-build-status-card)) {
     position: absolute !important; top: 0 !important; right: 0 !important; bottom: auto !important; left: auto !important;
     width: max-content; display: flex !important; flex-flow: row nowrap; align-items: center; justify-content: flex-end;
-    box-sizing: border-box; height: 44px; min-width: 44px; max-width: 44px;
-    margin: 0 0 0 auto !important; padding: 0 44px 0 0 !important; overflow: hidden;
-    border: 0 !important; border-radius: 22px !important;
+    box-sizing: border-box; height: 52px; min-width: 52px; max-width: 52px;
+    margin: 0 0 0 auto !important; padding: 0 52px 0 0 !important; overflow: hidden;
+    border: 0 !important; border-radius: 26px !important;
     background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent) !important;
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     box-shadow: 0 8px 28px #00000026 !important;
@@ -3739,12 +3739,12 @@ html[data-wme-studio="on"] .notifications-box-container [data-wme-studio-notific
     background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-hover-opacity, 100%), transparent) !important;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status > .tile-build-status::after {
-    content: ""; position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; box-sizing: border-box;
+    content: ""; position: absolute; top: 6px; right: 6px; width: 40px; height: 40px; box-sizing: border-box;
     border: 3px solid color-mix(in srgb, var(--wme-studio-text) 18%, transparent); border-radius: 50%;
     pointer-events: none;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status > .tile-build-status:is(:has(> .starting-status),[data-wme-studio-tile-starting])::before {
-    content: ""; position: absolute; top: 6px; right: 6px; z-index: 1; width: 32px; height: 32px; border-radius: 50%;
+    content: ""; position: absolute; top: 6px; right: 6px; z-index: 1; width: 40px; height: 40px; border-radius: 50%;
     background: var(--ws-tile-build-color, var(--ws-tile-build-running, #ffa94d));
     -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2064%2064'%20width%3D'64'%20height%3D'64'%3E%3Ccircle%20cx%3D'32'%20cy%3D'32'%20r%3D'29'%20fill%3D'none'%20stroke%3D'white'%20stroke-width%3D'6'%20stroke-linecap%3D'round'%20stroke-dasharray%3D'51.019%20182.212'%20transform%3D'rotate(-90%2032%2032)'%2F%3E%3C%2Fsvg%3E") center / 100% 100% no-repeat;
     mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2064%2064'%20width%3D'64'%20height%3D'64'%3E%3Ccircle%20cx%3D'32'%20cy%3D'32'%20r%3D'29'%20fill%3D'none'%20stroke%3D'white'%20stroke-width%3D'6'%20stroke-linecap%3D'round'%20stroke-dasharray%3D'51.019%20182.212'%20transform%3D'rotate(-90%2032%2032)'%2F%3E%3C%2Fsvg%3E") center / 100% 100% no-repeat;
@@ -3754,7 +3754,7 @@ html[data-wme-studio="on"] .notifications-box-container [data-wme-studio-notific
   @keyframes wme-studio-tile-build-spin { to { rotate: 360deg; } }
   @media all {
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status > .tile-build-status[data-wme-studio-tile-progress]::before {
-    content: ""; position: absolute; top: 6px; right: 6px; z-index: 1; width: 32px; height: 32px; border-radius: 50%;
+    content: ""; position: absolute; top: 6px; right: 6px; z-index: 1; width: 40px; height: 40px; border-radius: 50%;
     background: var(--ws-tile-build-color, var(--wme-studio-accent));
     -webkit-mask: var(--ws-tile-build-ring-mask, linear-gradient(transparent, transparent)) center / 100% 100% no-repeat;
     mask: var(--ws-tile-build-ring-mask, linear-gradient(transparent, transparent)) center / 100% 100% no-repeat;
@@ -3776,10 +3776,10 @@ html[data-wme-studio="on"] .notifications-box-container [data-wme-studio-notific
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status > .tile-build-status > .tile-build-status-icon.open-icon { order: 3; }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status > .tile-build-status > .tile-build-status-icon:is(.phone-icon,.open-icon):hover { opacity: 1; }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status > .tile-build-status > .tile-build-status-icon:not(.phone-icon,.open-icon) {
-    position: absolute !important; top: 13px !important; right: 13px !important;
+    position: absolute !important; top: 15px !important; right: 15px !important;
     bottom: auto !important; left: auto !important;
     transform: none !important; translate: none !important; align-self: auto !important;
-    order: 4; padding: 0 !important; width: 18px !important; height: 18px !important;
+    order: 4; padding: 0 !important; width: 22px !important; height: 22px !important;
     box-sizing: border-box !important; border: 0 !important; border-radius: 0 !important;
     background: var(--ws-tile-build-color, var(--wme-studio-text-secondary)) !important;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='8.5' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M12 7v5l3 2' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
@@ -3792,7 +3792,7 @@ html[data-wme-studio="on"] .notifications-box-container [data-wme-studio-notific
 }
 @media (min-width: 1180px) and (min-height: 640px) {
   html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layout-editing="on"] #tile-build-status > .tile-build-status {
-    max-width: 44px !important; transition: none !important;
+    max-width: 52px !important; transition: none !important;
     background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent) !important;
   }
   html[data-wme-studio="on"][data-wme-studio-layout-editing="on"] wz-button.online-editors-bubble > .text { opacity: 0 !important; }
@@ -3800,12 +3800,12 @@ html[data-wme-studio="on"] .notifications-box-container [data-wme-studio-notific
 @media (min-width: 1180px) and (min-height: 640px) {
   @media all {
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-tile-expand="right"] > .tile-build-status {
-    right: auto !important; left: 0 !important; padding: 0 0 0 44px !important; justify-content: flex-start;
+    right: auto !important; left: 0 !important; padding: 0 0 0 52px !important; justify-content: flex-start;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-tile-expand="right"] > .tile-build-status::before,
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-tile-expand="right"] > .tile-build-status::after { left: 6px; right: auto; }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-tile-expand="right"] > .tile-build-status > .tile-build-status-icon:not(.phone-icon,.open-icon) {
-    left: 13px !important; right: auto !important; translate: none !important;
+    left: 15px !important; right: auto !important; translate: none !important;
   }
   }
 }
@@ -4564,6 +4564,9 @@ html[data-wme-studio="on"] .ws-restriction-select-group { padding:7px 9px 3px; c
   const setupStrings = {"Three things to switch off.":{"el":"Τρία πράγματα για απενεργοποίηση.","es":"Tres cosas que desactivar.","pt":"Três coisas para desativar.","fr":"Trois choses à désactiver.","de":"Drei Dinge zum Ausschalten.","it":"Tre cose da disattivare.","nl":"Drie dingen om uit te zetten.","pl":"Trzy rzeczy do wyłączenia.","ru":"Три вещи нужно отключить.","tr":"Kapatılacak üç şey."},"Studio checked for the three things it cannot share the editor with. None is on.":{"el":"Το Studio έλεγξε για τα τρία πράγματα με τα οποία δεν μπορεί να μοιραστεί τον editor. Κανένα δεν είναι ενεργό.","es":"Studio comprobó las tres cosas con las que no puede compartir el editor. Ninguna está activa.","pt":"O Studio verificou as três coisas com as quais não pode dividir o editor. Nenhuma está ativa.","fr":"Studio a vérifié les trois éléments avec lesquels il ne peut pas partager l’éditeur. Aucun n’est actif.","de":"Studio hat die drei Dinge geprüft, mit denen es sich den Editor nicht teilen kann. Keines ist aktiv.","it":"Studio ha controllato le tre cose con cui non può condividere l’editor. Nessuna è attiva.","nl":"Studio heeft gecontroleerd op de drie dingen waarmee het de editor niet kan delen. Geen ervan staat aan.","pl":"Studio sprawdziło trzy rzeczy, z którymi nie może dzielić edytora. Żadna nie jest włączona.","ru":"Studio проверил три вещи, с которыми не может делить редактор. Ни одна не включена.","tr":"Studio, editörü paylaşamayacağı üç şeyi kontrol etti. Hiçbiri açık değil."},"Not supported. It sets the editor's colors, which Studio's themes do too. Disable it in Tampermonkey while Studio is on.":{"el":"Δεν υποστηρίζεται. Ορίζει τα χρώματα του editor, όπως και τα θέματα του Studio. Απενεργοποιήστε το στο Tampermonkey όσο το Studio είναι ενεργό.","es":"No compatible. Define los colores del editor, igual que los temas de Studio. Desactívalo en Tampermonkey mientras Studio esté activo.","pt":"Não compatível. Ele define as cores do editor, assim como os temas do Studio. Desative-o no Tampermonkey enquanto o Studio estiver ativo.","fr":"Non pris en charge. Il définit les couleurs de l’éditeur, tout comme les thèmes de Studio. Désactivez-le dans Tampermonkey tant que Studio est actif.","de":"Nicht unterstützt. Es legt die Farben des Editors fest, genau wie die Themes von Studio. Deaktiviere es in Tampermonkey, solange Studio aktiv ist.","it":"Non supportato. Imposta i colori dell’editor, proprio come i temi di Studio. Disattivalo in Tampermonkey mentre Studio è attivo.","nl":"Niet ondersteund. Het bepaalt de kleuren van de editor, net als de thema's van Studio. Schakel het uit in Tampermonkey zolang Studio aan staat.","pl":"Nieobsługiwane. Ustawia kolory edytora, tak samo jak motywy Studio. Wyłącz je w Tampermonkey, gdy Studio jest włączone.","ru":"Не поддерживается. Он задаёт цвета редактора, как и темы Studio. Отключите его в Tampermonkey, пока включён Studio.","tr":"Desteklenmiyor. Editörün renklerini, Studio temaları gibi kendisi belirler. Studio açıkken Tampermonkey'de devre dışı bırakın."}};
   // Strings for the command palette shortcut setting and the Developers page title.
   const shortcutStrings = {
+    'Two things to switch off.':{el:'Δύο πράγματα για απενεργοποίηση.',es:'Dos cosas que desactivar.',pt:'Duas coisas para desativar.',fr:'Deux choses à désactiver.',de:'Zwei Dinge zum Ausschalten.',it:'Due cose da disattivare.',nl:'Twee dingen om uit te zetten.',pl:'Dwie rzeczy do wyłączenia.',ru:'Две вещи нужно отключить.',tr:'Kapatılacak iki şey.'},
+    'Studio checked for the two things it cannot share the editor with. None is on.':{el:'Το Studio έλεγξε για τα δύο πράγματα με τα οποία δεν μπορεί να μοιραστεί τον editor. Κανένα δεν είναι ενεργό.',es:'Studio comprobó las dos cosas con las que no puede compartir el editor. Ninguna está activa.',pt:'O Studio verificou as duas coisas com as quais não pode dividir o editor. Nenhuma está ativa.',fr:'Studio a vérifié les deux éléments avec lesquels il ne peut pas partager l’éditeur. Aucun n’est actif.',de:'Studio hat die zwei Dinge geprüft, mit denen es sich den Editor nicht teilen kann. Keines ist aktiv.',it:'Studio ha controllato le due cose con cui non può condividere l’editor. Nessuna è attiva.',nl:'Studio heeft gecontroleerd op de twee dingen waarmee het de editor niet kan delen. Geen ervan staat aan.',pl:'Studio sprawdziło dwie rzeczy, z którymi nie może dzielić edytora. Żadna nie jest włączona.',ru:'Studio проверил две вещи, с которыми не может делить редактор. Ни одна не включена.',tr:'Studio, editörü paylaşamayacağı iki şeyi denetledi. Hiçbiri açık değil.'},
+    'Supported. While Studio is on, some FUME options that change the same parts of the editor stay switched off.':{el:'Υποστηρίζεται. Όσο το Studio είναι ενεργό, ορισμένες επιλογές του FUME που αλλάζουν τα ίδια σημεία του editor μένουν απενεργοποιημένες.',es:'Compatible. Mientras Studio está activo, algunas opciones de FUME que cambian las mismas partes del editor permanecen desactivadas.',pt:'Compatível. Enquanto o Studio está ativo, algumas opções do FUME que alteram as mesmas partes do editor ficam desativadas.',fr:'Pris en charge. Tant que Studio est actif, certaines options de FUME qui modifient les mêmes parties de l’éditeur restent désactivées.',de:'Unterstützt. Solange Studio aktiv ist, bleiben einige FUME-Optionen, die dieselben Teile des Editors verändern, ausgeschaltet.',it:'Supportato. Finché Studio è attivo, alcune opzioni di FUME che modificano le stesse parti dell’editor restano disattivate.',nl:'Ondersteund. Zolang Studio aan staat, blijven enkele FUME-opties die dezelfde delen van de editor wijzigen uitgeschakeld.',pl:'Obsługiwany. Gdy Studio jest włączone, niektóre opcje FUME zmieniające te same części edytora pozostają wyłączone.',ru:'Поддерживается. Пока Studio включён, некоторые параметры FUME, меняющие те же части редактора, остаются отключёнными.',tr:'Destekleniyor. Studio açıkken, editörün aynı bölümlerini değiştiren bazı FUME seçenekleri kapalı kalır.'},
     'Developers':{el:'Προγραμματιστές',es:'Desarrolladores',pt:'Programadores',fr:'Développeurs',de:'Entwickler',it:'Sviluppatori',nl:'Ontwikkelaars',pl:'Deweloperzy',ru:'Разработчикам',tr:'Geliştiriciler'},
     'Copy':{el:'Αντιγραφή',es:'Copiar',pt:'Copiar',fr:'Copier',de:'Kopieren',it:'Copia',nl:'Kopiëren',pl:'Kopiuj',ru:'Копировать',tr:'Kopyala'},
     'Copied':{el:'Αντιγράφηκε',es:'Copiado',pt:'Copiado',fr:'Copié',de:'Kopiert',it:'Copiato',nl:'Gekopieerd',pl:'Skopiowano',ru:'Скопировано',tr:'Kopyalandı'},
@@ -6877,8 +6880,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
 @media (min-width: 1180px) and (min-height: 640px) {
   @media all {
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) wz-button.online-editors-bubble {
-    width: 44px !important; min-width: 44px !important; max-width: 44px !important;
-    height: 44px !important; min-height: 44px !important; max-height: 44px !important;
+    width: 52px !important; min-width: 52px !important; max-width: 52px !important;
+    height: 52px !important; min-height: 52px !important; max-height: 52px !important;
     border-radius: 50% !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) #online-editors:has(.online-editors-list-wrapper) wz-button.online-editors-bubble {
@@ -6949,8 +6952,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   @media all {
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-button.online-editors-bubble) { border-radius: 50% !important; }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-button.online-editors-bubble) .wz-button {
-    position: relative; width: 44px !important; min-width: 44px !important;
-    height: 44px !important; min-height: 44px !important; max-height: 44px !important;
+    position: relative; width: 52px !important; min-width: 52px !important;
+    height: 52px !important; min-height: 52px !important; max-height: 52px !important;
     padding: 0 !important; gap: 0 !important; border-radius: 50% !important; overflow: visible !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-button.online-editors-bubble) .button-text {
@@ -7313,8 +7316,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     Object.freeze({ id: 'layers', popup: true, arrange: false, label: 'Map Layers', selector: '.layer-switcher .menu', width: () => settings.layerColumns === 'two' ? 620 : 320, height: () => Math.min(560, innerHeight - 120), legacy: Object.freeze([.62, .14]) }),
     Object.freeze({ id: 'streetView', popup: true, arrange: false, label: 'Street View', selector: '#street-view-container', width: () => streetViewWindow.size.width, height: () => streetViewWindow.size.height }),
     Object.freeze({ id: 'tools', label: 'Map tools', selector: '#overlay-buttons', width: () => 52, height: () => Math.min(360, innerHeight - 180), legacy: Object.freeze([.965, .36]) }),
-    Object.freeze({ id: 'online', label: 'Online Editors', selector: '[data-wme-studio-online-editors-status="on"],.online-editors-bubble', width: () => 44, height: () => 44 }),
-    Object.freeze({ id: 'tile', label: 'Tile Update', selector: '#tile-build-status', width: () => 44, height: () => 44 }),
+    Object.freeze({ id: 'online', label: 'Online Editors', selector: '[data-wme-studio-online-editors-status="on"],.online-editors-bubble', width: () => 52, height: () => 52 }),
+    Object.freeze({ id: 'tile', label: 'Tile Update', selector: '#tile-build-status', width: () => 52, height: () => 52 }),
     ...['updateRequest','mapUpdateRequest','placeUpdateRequest','mapProblem'].map((id,index) => Object.freeze({
       id, popup: true, arrange: false, label: ['Update request','Map update request','Place update request','Map problem'][index],
       selector: `[data-wme-studio-popup-kind="${id}"]`, width: () => 360, height: () => Math.min(460,innerHeight - 180)
@@ -10577,6 +10580,100 @@ ${studioRangeCSS('.picker-hue')}
   // The editor centres the map on a request when you open it or press Next. In the Floating layout a panel can be
   // lying over that very spot. When it is, the map is moved so the request sits in the middle of the largest area
   // that nothing covers. A request that is already in the open is left where it is.
+  const fumeGuard = (() => {
+    // FUME's options that move or resize the same things the Floating layout does. Everything else in FUME
+    // (aerial shifter, Street View, closures list, tooltips, map behaviour, enlarged handles) is left alone.
+    const PAUSE = ['_cbShrinkTopBars','_cbCompressSidebar','_cbCompressLayersMenu','_cbLayersColumns','_cbRestyleReports','_cbNarrowSidePanel',
+      '_cbMoveZoomBar','_cbUnfloatButtons','_cbMoveUserInfo','_cbMoveChatIcon','_cbResizeSearchBox','_cbMoveSearchAreaButton','_cbDisableUITransitions',
+      '_cbShowMapBlockers'];                                        // tints the map buttons red: they are a floating rail here, not a blocker
+    // Paused whenever Studio is on, in either layout.
+    const ALWAYS = ['_cbSwapRoadsGPS'];
+    const ALL = [...PAUSE, ...ALWAYS];
+    // FUME's "UI Enhancement controls": the two strength menus are set to None and locked whenever Studio is on, and
+    // the button below them is locked. "values" remembers what the menus were set to.
+    const SELECTS = ['_inpUICompression','_inpUIContrast'], BUTTONS = ['_btnKillNode'];
+    let values = {};
+    const KEY = 'wmeStudio.fumePaused.v1', NOTE = 'Paused by WME Studio while the Floating layout is on. It comes back in the Standard layout.', NOTE_ALWAYS = 'Paused while WME Studio is on. It comes back when Studio is turned off.';
+    // "paused" = options Studio switched off and owes back. It is also kept in storage: FUME saves its settings when
+    // the page closes, and should that ever happen with the options still off, they are owed back on the next load.
+    let paused = new Set(), loaded = false, note = null, started = performance.now();
+    const boxes = () => ALL.map(id => document.getElementById(id)).filter(box => box instanceof HTMLInputElement && box.type === 'checkbox');
+    const store = () => { try { Promise.resolve(GM_setValue(KEY, { boxes: [...paused], values: { ...values } })).catch(error => reportStudioError('fumeGuard', error)); } catch (error) { reportStudioError('fumeGuard', error); } };
+    try { Promise.resolve(GM_getValue(KEY, null)).then(value => {
+      for (const id of Array.isArray(value?.boxes) ? value.boxes : []) if (ALL.includes(id)) paused.add(id);
+      for (const id of SELECTS) if (typeof value?.values?.[id] === 'string') values[id] = value.values[id];
+      loaded = true;
+    }).catch(() => { loaded = true; }); } catch (_) { loaded = true; }
+    const menus = () => SELECTS.map(id => document.getElementById(id)).filter(menu => menu instanceof HTMLSelectElement);
+    // FUME reacts to "change" on its menus the same way it reacts to a click on its checkboxes.
+    function choose(menu, value) { const locked = menu.disabled; menu.disabled = false; menu.value = value; try { menu.dispatchEvent(new Event('change', { bubbles: true })); } catch (error) { reportStudioError('fumeGuard', error); } menu.disabled = locked; }
+    // FUME reacts to a click on its checkbox: it reads the new state and applies or undoes the option itself.
+    function flip(box) { const locked = box.disabled; box.disabled = false; try { box.click(); } catch (error) { reportStudioError('fumeGuard', error); } box.disabled = locked; }
+    function mark(box, on) {
+      if (on) { if (!box.hasAttribute('data-wme-studio-fume-paused')) { box.setAttribute('data-wme-studio-fume-paused', box.title || ''); box.title = PAUSE.includes(box.id) ? NOTE : NOTE_ALWAYS; } box.disabled = true; }
+      else if (box.hasAttribute('data-wme-studio-fume-paused')) { box.title = box.getAttribute('data-wme-studio-fume-paused'); box.removeAttribute('data-wme-studio-fume-paused'); box.disabled = false; }
+    }
+    function showNote(list, on) {
+      const count = paused.size + Object.keys(values).length;
+      if (!on || !count) { note?.remove(); note = null; return; }
+      const pane = list[0].closest('.tab-pane') || list[0].closest('#sidebar [id]');
+      if (!pane) return;
+      if (!note || !note.isConnected) {
+        note = document.createElement('div'); note.setAttribute('data-wme-studio-fume-note', '');
+        note.style.cssText = 'margin:8px 0;padding:8px 10px;border-radius:8px;border:1px solid var(--wme-studio-border,#8884);font:12px/16px var(--ws-font,inherit);color:var(--wme-studio-text,inherit);background:var(--wme-studio-surface-2,transparent)';
+        pane.prepend(note);
+      }
+      const text = `WME Studio has paused ${count} FUME ${count === 1 ? 'option' : 'options'} (greyed out below). ${count === 1 ? 'It comes' : 'They come'} back when the reason is gone: the layout options with the Standard layout, the rest when Studio is turned off.`;
+      if (note.textContent !== text) note.textContent = text;
+    }
+    function sync() {
+      if (!loaded || !ready) return;
+      const list = boxes();
+      if (!list.length) return;                                     // FUME is not running (or not ready yet)
+      if (compactLayoutEditing) return;                             // nothing changes while Arrange is open
+      const floating = settings.enabled && compactLayoutActive();
+      let changed = false;
+      for (const box of list) {
+        if (ALWAYS.includes(box.id) ? settings.enabled : floating) {
+          if (box.checked) { flip(box); if (!paused.has(box.id)) { paused.add(box.id); changed = true; } }
+          mark(box, true);
+        } else {
+          mark(box, false);
+          if (paused.has(box.id)) { if (!box.checked) flip(box); paused.delete(box.id); changed = true; }
+        }
+      }
+      for (const menu of menus()) {
+        if (settings.enabled) {
+          if (menu.value !== '0') { if (!(menu.id in values)) { values[menu.id] = menu.value; changed = true; } choose(menu, '0'); }
+          mark(menu, true);
+        } else {
+          mark(menu, false);
+          if (menu.id in values) { if (menu.value !== values[menu.id]) choose(menu, values[menu.id]); delete values[menu.id]; changed = true; }
+        }
+      }
+      for (const id of BUTTONS) { const button = document.getElementById(id); if (button) mark(button, settings.enabled); }
+      if (changed) store();
+      showNote(list, settings.enabled);
+    }
+    // FUME writes its settings from the checkboxes as the page closes: show it the user's own choices, not the pause.
+    function beforeLeave() {
+      const list = boxes().filter(box => paused.has(box.id) && !box.checked), set = menus().filter(menu => menu.id in values && menu.value !== values[menu.id]);
+      if (!list.length && !set.length) return;
+      for (const box of list) box.checked = true;
+      for (const menu of set) menu.value = values[menu.id];
+      // still here a moment later (the editor asked "leave the page?" and the answer was no): pause again, quietly
+      setTimeout(() => {
+        for (const box of list) if (box.isConnected && paused.has(box.id) && box.disabled) box.checked = false;
+        for (const menu of set) if (menu.isConnected && menu.id in values && menu.disabled) menu.value = '0';
+      }, 600);
+    }
+    window.addEventListener('beforeunload', beforeLeave, true);
+    window.addEventListener('pagehide', beforeLeave, true);
+    // FUME applies its options one second after it has built its tab: looking four times a second gets there first
+    (function watch() { try { sync(); } catch (error) { reportStudioError('fumeGuard', error); } setTimeout(watch, performance.now() - started < 180000 ? 250 : 1500); })();
+    globalThis.WMEStudioFume = Object.freeze({ paused: () => [...paused], values: () => ({ ...values }), options: () => [...ALL], sync });
+    return Object.freeze({ sync });
+  })();
   const requestReveal = (() => {
     let timers = [];
     const olMap = () => { const map = pageWindow.W?.map; return map?.getOLMap?.() || map?.wazeMap || map?.olMap || map || null; };
@@ -14907,7 +15004,33 @@ ${studioControlsCSS()}
     function select(state,key) {
       const item=state.items.find(item=>item.key===key);
       if (!item || item.disabled || !item.anchor.isConnected) return;
+      userChoseScript=true;
       close(state);item.anchor.click();queue(state);
+    }
+    // Scripts add their tabs one after another for a while after the page loads. Until the user picks a script
+    // themselves, the earliest pinned script that is there gets opened; a pin that comes earlier in the bar and
+    // arrives later takes over. After half a minute the choice is left alone.
+    let userChoseScript=false, autoOpenedRank=Infinity, autoOpenSince=0;
+    document.addEventListener('click',event=>{
+      if (!event.isTrusted) return;
+      for (const state of states.values()) if (event.composedPath().includes(state.source)) { userChoseScript=true;return; }
+    },true);
+    function openFirstPinned(state) {
+      if (userChoseScript || !preferences?.pins.length) return;
+      autoOpenSince ||= performance.now();
+      if (performance.now()-autoOpenSince>30000) return;
+      for (let rank=0;rank<preferences.pins.length && rank<autoOpenedRank;rank++) {
+        const item=state.items.find(item=>item.key===preferences.pins[rank]);
+        if (!item || item.disabled || !item.anchor.isConnected) continue;
+        autoOpenedRank=rank;
+        if (!item.active) { item.anchor.click();queue(state); }
+        return;
+      }
+    }
+    // The row that should stay where it is when "key" moves to the other list: the next one, or the one before.
+    function pinAnchor(state,key) {
+      const rows=visibleRows(state), index=rows.indexOf(state.entries.get(key)?.row), row=index<0 ? null : rows[index+1] || rows[index-1];
+      return row ? {anchor:row.dataset.key,anchorTop:row.getBoundingClientRect().top} : {};
     }
     function togglePin(key) {
       if (!loaded || !preferences) return;
@@ -15001,6 +15124,7 @@ ${studioControlsCSS()}
       state.source.setAttribute('data-wme-studio-script-tabs','on');
       if (!preferences) save(state.items.filter(item=>!item.disabled).slice(0,DEFAULT_PINS).map(item=>item.key));
       rekeyPins();
+      openFirstPinned(state);
       const selected=state.items.find(item=>item.active) || state.items.find(item=>!item.disabled) || state.items[0];
       const pinSet=new Set(preferences.pins);
       const pinned=preferences.pins.map(key=>state.items.find(item=>item.key===key)).filter(Boolean);
@@ -15066,8 +15190,11 @@ ${studioControlsCSS()}
       filter(state);
       if (state.refocus) {
         // Moving a row between the two lists drops its focus; hand it back to the same control.
-        const entry=state.entries.get(state.refocus.key), part=state.refocus.part;state.refocus=null;
-        if (state.open && entry && !entry.row.hidden) (part==='pin' ? entry.pin : entry.choose).focus();
+        const entry=state.entries.get(state.refocus.key), part=state.refocus.part, stay=state.entries.get(state.refocus.anchor), stayTop=state.refocus.anchorTop;state.refocus=null;
+        if (state.open && stay && !stay.row.hidden) {
+          state.results.scrollTop+=stay.row.getBoundingClientRect().top-stayTop;
+          (part==='pin' ? stay.pin : stay.choose).focus({preventScroll:true});
+        } else if (state.open && entry && !entry.row.hidden) (part==='pin' ? entry.pin : entry.choose).focus();
       }
       if (state.open) queuePosition();
     }
@@ -15165,7 +15292,7 @@ ${studioControlsCSS()}
         else if (button.classList.contains('unpin')) {save([]);state.search.focus({preventScroll:true});}
         else if (button===state.wipe || button.classList.contains('reset')) clearSearch(state);
         else if (button.classList.contains('details')) {close(state);showScriptTabsReport();}
-        else if (button.dataset.action==='pin') {state.refocus={key:button.dataset.key,part:'pin'};togglePin(button.dataset.key);}
+        else if (button.dataset.action==='pin') {state.refocus={key:button.dataset.key,part:'pin',...pinAnchor(state,button.dataset.key)};togglePin(button.dataset.key);}
         else if (button.classList.contains('tab') || button.dataset.action==='choose') select(state,button.dataset.key);
       });
       state.search.addEventListener('input',()=>{filter(state);state.results.scrollTop=0;});
@@ -15204,7 +15331,7 @@ ${studioControlsCSS()}
           } else if (event.key==='ArrowRight' || event.key==='ArrowLeft') {
             event.preventDefault();row.querySelector(event.key==='ArrowRight' ? '.pin' : '.choose').focus();
           } else if (plain && !event.shiftKey && (event.key==='p' || event.key==='P')) {
-            event.preventDefault();state.refocus={key,part};togglePin(key);
+            event.preventDefault();state.refocus={key,part,...pinAnchor(state,key)};togglePin(key);
           } else if (plain && (event.key==='Backspace' || event.key.length===1 && event.key!==' ')) {
             state.search.focus({preventScroll:true});   // any other character is typed into the search field
           }
@@ -15589,8 +15716,13 @@ ${studioControlsCSS()}
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
-  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.2:</p><ul>
-<li>A request panel (UR, PUR and the others) stays where you drop it; moving it down no longer makes it jump back to the top.</li>
+  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.3:</p>
+<p><strong>New</strong></p><ul>
+<li>Online Editors and Tile Update buttons are now 52 px, matching the side rails and the header.</li>
+<li>FUME (WME Fix UI Memorial Edition) is now supported, but some of its features will remain disabled (UI-wise).</li>
+</ul>
+<p><strong>Fixes</strong></p><ul>
+<li>The first pinned script is opened by default after the editor loads.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
@@ -15598,7 +15730,7 @@ ${studioControlsCSS()}
     const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
     if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
       try {
-        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.2',studioUpdateNotes);
+        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.3',studioUpdateNotes);
         studioUpdateReported=true;
       } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
       return;
@@ -15822,7 +15954,7 @@ ${studioControlsCSS()}
       applyLayoutSettings(workspace);queueStreetViewWindow();
     }
     async function backup() {
-      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.2',createdAt:new Date().toISOString(),
+      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.3',createdAt:new Date().toISOString(),
         settings:await config.read(),layout:await snapshot(),profiles:await list(),scriptTabs:await scriptTabPicker.snapshot()};
     }
     function parseBackup(text) {
@@ -17303,11 +17435,11 @@ ${studioControlsCSS()}
         <p style="margin-top:14px">Floating needs a window at least ${globalThis.WMEStudioSafari.active ? "768 by 500" : "1180 by 640"} pixels. On anything smaller Studio uses Standard.</p>
       </div>
       <div class="step" data-step="3" hidden>
-        <h2 data-id="compat-title">Three things to switch off.</h2>
+        <h2 data-id="compat-title">Two things to switch off.</h2>
         <p data-id="compat-text">Studio lays out the editor itself, so it cannot share that job with these.</p>
-        <div class="issue"><strong>WME Fix UI Memorial Edition</strong><b class="state" data-id="state-fume" hidden></b><span>Not supported. It reshapes the same header, toolbars and panels. Disable it in Tampermonkey while Studio is on.</span></div>
         <div class="issue"><strong data-ws-keep>WME Dark Mode</strong><b class="state" data-id="state-dark" hidden></b><span>Not supported. It sets the editor's colors, which Studio's themes do too. Disable it in Tampermonkey while Studio is on.</span></div>
         <div class="issue"><strong>Waze's own Compact mode</strong><b class="state" data-id="state-compact" hidden></b><span>Not supported. Turn Compact mode off in the editor's Settings tab.</span></div>
+        <div class="issue"><strong>WME Fix UI Memorial Edition</strong><b class="state" data-id="state-fume" hidden></b><span>Supported. While Studio is on, some FUME options that change the same parts of the editor stay switched off.</span></div>
         <p class="heads-up" data-id="heads-up" hidden>Studio still runs with these on, but parts of the layout can overlap or look broken until they are off.</p>
       </div>
       <div class="step" data-step="4" hidden>
@@ -17386,14 +17518,15 @@ ${studioControlsCSS()}
         pill.hidden = false;
         if (pill.dataset.kind !== kind) { pill.dataset.kind = kind; pill.textContent = on ? onText : offText; }
       };
-      show(fume, states.fume, 'Running now', 'Not running');
+      // FUME is supported: its row is information, never a warning
+      { const text = states.fume ? 'Running now' : 'Not running'; fume.hidden = false; if (fume.dataset.kind !== 'ok') fume.dataset.kind = 'ok'; if (fume.textContent !== text) fume.textContent = text; }
       show(dark, states.dark, 'Running now', 'Not running');
       show(compact, states.compact, 'Turned on', 'Turned off');
-      const clear = !(states.fume || states.dark || states.compact), title = q('[data-id="compat-title"]');
+      const clear = !(states.dark || states.compact), title = q('[data-id="compat-title"]');
       if (title.dataset.clear !== String(clear)) {
         title.dataset.clear = String(clear);
-        title.textContent = clear ? 'Nothing to switch off.' : 'Three things to switch off.';
-        q('[data-id="compat-text"]').textContent = clear ? 'Studio checked for the three things it cannot share the editor with. None is on.' : 'Studio lays out the editor itself, so it cannot share that job with these.';
+        title.textContent = clear ? 'Nothing to switch off.' : 'Two things to switch off.';
+        q('[data-id="compat-text"]').textContent = clear ? 'Studio checked for the two things it cannot share the editor with. None is on.' : 'Studio lays out the editor itself, so it cannot share that job with these.';
       }
       q('[data-id="heads-up"]').hidden = clear;
     }
