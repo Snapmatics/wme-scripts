@@ -17834,7 +17834,6 @@ ${studioControlsCSS()}
       if (relevant(records)) queue();
     };
     const start = () => {
-      // Same watch as the main observer: everything except the inside of the map's vector layers.
       if (globalThis.WMEStudioVectorWatch) globalThis.WMEStudioVectorWatch.watch(observe, { childList: true, subtree: true, characterData: true });
       else new MutationObserver(observe).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
       new MutationObserver(queue).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio-requests'] });
