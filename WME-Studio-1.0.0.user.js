@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.0
+// @version      1.0.1
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -30,8 +30,8 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
 // @connect      update.greasyfork.org
-// @downloadURL  https://update.greasyfork.org/scripts/599564/WME%20Studio.user.js
-// @updateURL    https://update.greasyfork.org/scripts/599564/WME%20Studio.user.js
+// @downloadURL  https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js
+// @updateURL    https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js
 // ==/UserScript==
 
 /*
@@ -94,7 +94,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.0';
+  const USERSCRIPT_VERSION = '1.0.1';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -3819,6 +3819,10 @@ html[data-wme-studio="on"] .notifications-box-container [data-wme-studio-notific
       -webkit-backdrop-filter: blur(8px) !important; backdrop-filter: blur(8px) !important;
       transition: none !important; animation: none !important;
     }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layout-editing="on"] :is(#sidebar,.layer-switcher .menu,[data-testid="floating-window"],[data-issues-tracker-window],[id^="ISSUE_WINDOW"],#panel-container > *,iframe[data-wme-studio-chat-panel="on"],.notifications-box-container,[data-wme-studio-online-editors-panel="on"],.tile-build-status-card) {
+      background: transparent !important; box-shadow: none !important;
+      -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+    }
     html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layout-editing="on"] :where(#drawer):is(#drawer,#overlay-buttons),
     html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layout-editing="on"] :where(#overlay-buttons):is(#drawer,#overlay-buttons) {
       background: transparent !important;
@@ -3898,6 +3902,7 @@ html[data-wme-studio="on"] #venue-edit-photos hr {
 }
 html[data-wme-studio="on"][data-wme-studio-layout-editing="on"][data-wme-studio-layout-editing="on"][data-wme-studio-layout-editing="on"][data-wme-studio-layout-editing="on"][data-wme-studio-layout-editing="on"][data-wme-studio-layout-editing="on"] :is(#sidebar,.layer-switcher .menu,[data-testid="floating-window"],[data-issues-tracker-window],[id^="ISSUE_WINDOW"],#panel-container > *,iframe[data-wme-studio-chat-panel="on"],.notifications-box-container,[data-wme-studio-online-editors-panel="on"],.tile-build-status-card) {
   visibility: hidden !important; pointer-events: none !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
 @media all {
 html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head:has(#search-autocomplete:focus-within) .wme-studio-header-location:is([data-placement="below"],[data-placement="above"]) {
@@ -10538,6 +10543,7 @@ ${studioRangeCSS('.picker-hue')}
       if (connectedApp===app) return;
       connectedApp=app; readCurrent();
       app.on('problems:shown',model=>{
+        requestReveal.schedule(model);
         const previousPanel=currentPanel(),previousId=active?.id;
         const type=model?.type || model?.getType?.();
         active=type==='mapUpdateRequest'?{type,id:String(model.getID()),mapIssueId:Number(model.getMapIssueId?.() ?? model.getID()),model}:null;
@@ -10568,6 +10574,87 @@ ${studioRangeCSS('.picker-hue')}
       left:rect.left - gap, top:rect.top - gap, width:rect.width + 2 * gap, height:rect.height + 2 * gap
     }));
   }
+  // The editor centres the map on a request when you open it or press Next. In the Floating layout a panel can be
+  // lying over that very spot. When it is, the map is moved so the request sits in the middle of the largest area
+  // that nothing covers. A request that is already in the open is left where it is.
+  const requestReveal = (() => {
+    let timers = [];
+    const olMap = () => { const map = pageWindow.W?.map; return map?.getOLMap?.() || map?.wazeMap || map?.olMap || map || null; };
+    function screenPoint(model, map, view) {
+      let x, y;
+      try { const point = model?.getOLGeometry?.(); if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) { x = point.x; y = point.y; } } catch (_) { /* older models have no such method */ }
+      if (x === undefined) {
+        let pair = null;
+        try { pair = model?.attributes?.geometry?.coordinates || model?.getGeometry?.()?.coordinates || model?.geometry?.coordinates || null; } catch (_) { pair = null; }
+        if (!Array.isArray(pair) || !Number.isFinite(pair[0]) || !Number.isFinite(pair[1])) return null;
+        const code = String(map.getProjectionObject?.()?.getCode?.() || map.projection?.projCode || map.projection || '');
+        if (/4326/.test(code)) { x = pair[0]; y = pair[1]; }
+        else { x = pair[0] * 20037508.342789244 / 180; y = Math.log(Math.tan((90 + pair[1]) * Math.PI / 360)) * 20037508.342789244 / Math.PI; }
+      }
+      let pixel = null;
+      try { pixel = map.getPixelFromLonLat?.({ lon: x, lat: y }) || map.getViewPortPxFromLonLat?.({ lon: x, lat: y }) || null; } catch (_) { pixel = null; }
+      if (!pixel || !Number.isFinite(pixel.x) || !Number.isFinite(pixel.y)) return null;
+      return { x: view.left + pixel.x, y: view.top + pixel.y };
+    }
+    // The largest rectangle inside "bounds" that touches none of the obstacles.
+    function largestFree(bounds, obstacles) {
+      const clip = value => Math.max(bounds.left, Math.min(bounds.right, value)), clipY = value => Math.max(bounds.top, Math.min(bounds.bottom, value));
+      const xs = [...new Set([bounds.left, bounds.right, ...obstacles.flatMap(rect => [clip(rect.left), clip(rect.left + rect.width)])])].sort((a, b) => a - b);
+      const ys = [...new Set([bounds.top, bounds.bottom, ...obstacles.flatMap(rect => [clipY(rect.top), clipY(rect.top + rect.height)])])].sort((a, b) => a - b);
+      let best = null;
+      for (let a = 0; a < xs.length; a++) for (let b = a + 1; b < xs.length; b++) for (let c = 0; c < ys.length; c++) for (let d = c + 1; d < ys.length; d++) {
+        const left = xs[a], right = xs[b], top = ys[c], bottom = ys[d], width = right - left, height = bottom - top;
+        if (width < 160 || height < 160 || best && width * height <= best.width * best.height) continue;
+        if (obstacles.some(rect => rect.left < right && rect.left + rect.width > left && rect.top < bottom && rect.top + rect.height > top)) continue;
+        best = { left, top, width, height };
+      }
+      return best;
+    }
+    function reveal(model) {
+      if (!ready || !settings.enabled || !compactLayoutActive() || compactLayoutEditing || !headerGuardWindows.size) return 'not in the Floating layout, or no request panel';
+      const map = olMap();
+      if (!map || typeof map.pan !== 'function') return 'no map';
+      const view = (map.viewPortDiv || map.div || document.getElementById('WazeMap'))?.getBoundingClientRect?.();
+      if (!view || view.width < 200 || view.height < 200) return 'no map view';
+      const point = screenPoint(model, map, view);
+      if (!point) return 'no position for the request';
+      if (point.x < view.left || point.x > view.right || point.y < view.top || point.y > view.bottom) return 'request is off screen';
+      const obstacles = compactPanelObstacles(null, 16);
+      if (!obstacles.some(rect => point.x >= rect.left && point.x <= rect.left + rect.width && point.y >= rect.top && point.y <= rect.top + rect.height)) return 'visible';
+      const free = largestFree({ left: Math.max(0, view.left), top: Math.max(0, view.top), right: Math.min(innerWidth, view.right), bottom: Math.min(innerHeight, view.bottom) }, obstacles);
+      if (!free) return 'no free area';
+      const dx = Math.round(point.x - (free.left + free.width / 2)), dy = Math.round(point.y - (free.top + free.height / 2));
+      if (Math.hypot(dx, dy) < 40) return 'visible';
+      map.pan(dx, dy, { animate: false });
+      return `moved ${dx},${dy}`;
+    }
+    // The map is moved once for a request and then left alone: the editor announces the same request again when its
+    // panel is moved or resized, and answering each of those made the map jump back and forth.
+    let pressed = false, done = { id: '', time: 0 };
+    const log = [], note = (id, what) => { log.push(`${(performance.now() / 1000).toFixed(2)}s ${id || '?'} ${what}`); if (log.length > 60) log.shift(); };
+    for (const [type, value] of [['pointerdown', true], ['pointerup', false], ['pointercancel', false]]) window.addEventListener(type, () => { pressed = value; }, { capture: true, passive: true });
+    globalThis.WMEStudioRequestReveal = () => [...log];
+    return Object.freeze({
+      largestFree, reveal,
+      schedule(model) {
+        let id = '';
+        try { id = String(model?.getID?.() ?? model?.attributes?.id ?? ''); } catch (_) { id = ''; }
+        for (const timer of timers) clearTimeout(timer);
+        timers = [];
+        if (done.id === id && performance.now() - done.time < 30000) { note(id, 'announced again: left alone'); return; }
+        note(id, 'opened');
+        // after the panel has been placed, and again in case the editor was still moving the map
+        timers = [250, 700, 1300].map(delay => setTimeout(() => {
+          if (done.id === id && performance.now() - done.time < 30000) return;
+          if (pressed || requestHeaderDrag) { note(id, 'waiting: a button is held'); return; }
+          let result;
+          try { result = reveal(model); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
+          note(id, result);
+          if (result.startsWith('moved')) { done = { id, time: performance.now() }; for (const timer of timers) clearTimeout(timer); timers = []; }
+        }, delay));
+      }
+    });
+  })();
   function writeFlowPosition(state, left, top) {
     const element = state.element;
     const write = (x, y) => {
@@ -10612,7 +10699,21 @@ ${studioRangeCSS('.picker-hue')}
     if (right - left < width) { left = gap; right = geometry.width - gap; }
     return {left, right: Math.max(left, right - width)};
   }
-  function headerPanelLimits(left, width, gap = 12, geometry = null, panel = null) {
+  const AREA_PILL_GAP = 8;
+  function areaPillLimits(limits, left, width) {
+    const pill = document.querySelector('.wme-studio-header-location[data-placement]:not([data-placement="inline"])');
+    if (!pill?.isConnected || pill.hidden) return limits;
+    const rect = pill.getBoundingClientRect();
+    if (rect.width < 12 || rect.height < 12 || left + width <= rect.left - AREA_PILL_GAP || left >= rect.right + AREA_PILL_GAP) return limits;
+    const style = getComputedStyle(pill);
+    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return limits;
+    const head = document.getElementById('app-head')?.getBoundingClientRect();
+    if (head && rect.top + rect.height / 2 < head.top + head.height / 2) limits.bottom = Math.min(limits.bottom, rect.top - AREA_PILL_GAP);   // header at the bottom, pill above it
+    else limits.top = Math.max(limits.top, rect.bottom + AREA_PILL_GAP);
+    return limits;
+  }
+  function headerPanelLimits(left, width, gap = 12, geometry = null, panel = null) { return areaPillLimits(headerBarLimits(left, width, gap, geometry, panel), left, width); }
+  function headerBarLimits(left, width, gap = 12, geometry = null, panel = null) {
     const limits = { top: gap, bottom: innerHeight - gap };
     if (!ready || !settings.enabled || standaloneSignin || editorProfile) return limits;
     const bounds = geometry || workspacePanelBounds(), footer = bounds.footer, bar = bounds.header;
@@ -10760,6 +10861,11 @@ ${studioRangeCSS('.picker-hue')}
       if (popupKind && compact && !compactLayoutEditing) {
         const occupied = compactPanelObstacles(element);
         const wanted = isFlowPanel(element) ? { ...preferred, height: Math.min(preferred.height, 620) } : {...preferred,height:Math.min(preferred.height,preferredHeightLimit)};
+        if (!isFlowPanel(element)) {
+          const pillLimits = areaPillLimits({ top: -Infinity, bottom: Infinity }, wanted.left, wanted.width);
+          if (wanted.top < pillLimits.top) wanted.top = pillLimits.top;
+          if (wanted.top + wanted.height > pillLimits.bottom) wanted.height = Math.max(200, pillLimits.bottom - wanted.top);
+        }
         const placed = (state.requestPoint && compactFitInPlace(wanted,occupied)) || compactFitPanel(wanted,occupied);
         if (placed) {
           if (popupKind==='mapSuggestion' || placed.height < desiredHeight - 1) {
@@ -14680,19 +14786,56 @@ ${studioControlsCSS()}
         editorScriptApi:api,lists,panes:{count:panes.length,withoutTab:panes.filter(pane=>!pane.hasTab)},
         customTabs:[...document.querySelectorAll('#sidebar wz-tab,#sidebar wz-navigation-item')].map(node=>short(node.getAttribute('label') || node.textContent)).slice(0,30)};
     }
-    function save(pins) {
-      preferences=validate({pins});refresh();
-      const snapshot={pins:[...preferences.pins]};
+    // What is saved ("stored") names each pinned script: "name:wmelanetools". What the bar and the list work with
+    // (preferences.pins) are the tab ids of this page load. pinIndex() translates between the two; a script that has
+    // not shown its name yet, or shares it with another tab, is kept under its tab id until it can be named.
+    let stored=[];
+    const pinOrigin=new Map();
+    function pinIndex() {
+      const byKey=new Map(), byName=new Map(), shared=new Set();
+      for (const state of states.values()) for (const item of state.items || []) {
+        if (byKey.has(item.key)) continue;
+        byKey.set(item.key,item);
+        const name=item.pending ? '' : identity(item.label);if (!name) continue;
+        if (byName.has(name)) shared.add(name); else byName.set(name,item);
+      }
+      for (const name of shared) byName.delete(name);
+      const stable=key=>{const item=byKey.get(key), name=item && !item.pending ? identity(item.label) : '';return name && byName.get(name)===item ? `name:${name}` : pinOrigin.get(key) || key;};
+      const current=id=>id.startsWith('name:') ? byName.get(id.slice(5))?.key || id : id;
+      return {stable,current};
+    }
+    const unique=list=>[...new Set(list)];
+    function resolvePins() {
+      const {current}=pinIndex(), keys=[];
+      for (const id of stored) {const key=current(id);if (keys.includes(key)) continue;keys.push(key);if (key!==id) pinOrigin.set(key,id);}
+      preferences={pins:keys};
+    }
+    function persistPins(next) {
+      stored=next;const snapshot={pins:[...stored]};
       saving=saving.catch(error=>reportStudioError('Saving script tab pins',error)).then(()=>chrome.storage.local.set({[KEY]:snapshot}));
       saving.catch(error=>reportStudioError('Saving script tab pins',error));
     }
+    // Called on every refresh of the list: follows scripts whose tab id changed, and re-saves pins by name once the
+    // script's name is known.
+    function rekeyPins() {
+      if (!preferences) return;
+      resolvePins();
+      const {stable}=pinIndex(), next=unique(preferences.pins.map(stable));
+      if (next.join('\n')!==stored.join('\n')) persistPins(next);
+    }
+    function save(pins) {
+      preferences=validate({pins});refresh();
+      const {stable}=pinIndex();
+      persistPins(unique(preferences.pins.map(stable)));
+    }
+    const adopt=value=>{stored=validate(value).pins;resolvePins();};
     const read=Promise.resolve(GM_getValue(KEY,null)).then(value=>{
-      if (value!==null) try { preferences=validate(value); } catch (error) { reportStudioError('Loading script tab pins',error); }
+      if (value!==null) try { adopt(value); } catch (error) { reportStudioError('Loading script tab pins',error); }
       loaded=true;refresh();
     }).catch(error=>{reportStudioError('Loading script tab pins',error);loaded=true;refresh();});
     chrome.storage.onChanged.addListener(items=>{
       if (!items[KEY]) return;
-      try { preferences=validate(items[KEY].newValue);loaded=true;refresh(); }
+      try { adopt(items[KEY].newValue);loaded=true;refresh(); }
       catch (error) { reportStudioError('Syncing script tab pins',error); }
     });
     function records(source) {
@@ -14856,6 +14999,7 @@ ${studioControlsCSS()}
       for (const item of state.items) if(!item.nativeIconURL)ensureIcon(item.sourceURL);
       state.source.setAttribute('data-wme-studio-script-tabs','on');
       if (!preferences) save(state.items.filter(item=>!item.disabled).slice(0,DEFAULT_PINS).map(item=>item.key));
+      rekeyPins();
       const selected=state.items.find(item=>item.active) || state.items.find(item=>!item.disabled) || state.items[0];
       const pinSet=new Set(preferences.pins);
       const pinned=preferences.pins.map(key=>state.items.find(item=>item.key===key)).filter(Boolean);
@@ -15117,7 +15261,21 @@ ${studioControlsCSS()}
     }
     document.addEventListener('pointerdown',event=>{if(popup && !event.composedPath().includes(popup.host))close();},{capture:true,passive:true});
     document.addEventListener('focusin',event=>{if(popup && !event.composedPath().includes(popup.host))close();});
-    document.addEventListener('scroll',event=>{if(popup && !event.composedPath().includes(popup.menu))queuePosition();},{capture:true,passive:true});
+    // Is the bar still fully inside everything that clips it (the scrolling side panel)?
+    function barInView(state) {
+      const rect=state.host.getBoundingClientRect();
+      for (let node=state.host.parentElement;node && node!==document.documentElement;node=node.parentElement) {
+        const style=getComputedStyle(node);
+        if (!/(auto|scroll|hidden|clip)/.test(style.overflowY)) continue;
+        const clip=node.getBoundingClientRect();
+        if (rect.top<clip.top-2 || rect.bottom>clip.bottom+2) return false;
+      }
+      return true;
+    }
+    document.addEventListener('scroll',event=>{
+      if (!popup || event.composedPath().includes(popup.menu)) return;
+      if (barInView(popup)) queuePosition(); else close();
+    },{capture:true,passive:true});
     window.addEventListener('resize',queuePosition,{passive:true});window.visualViewport?.addEventListener('resize',queuePosition,{passive:true});
     return Object.freeze({key:KEY,inspect,refresh,validate,close,report,
       async snapshot(){await read;await saving;return {pins:[...preferences?.pins || []]};},
@@ -15430,23 +15588,22 @@ ${studioControlsCSS()}
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
-  // First public release: there is nothing to list as changed, so the notes are a short welcome.
-  const studioUpdateNotes = `<p><b>Welcome to WME Studio.</b> This is 1.0.0, the first public release.</p>
-<p>Studio restyles the Waze Map Editor: Light, Dark and Full black themes, your own accent colour, and a Floating layout whose islands you can arrange.</p>
-<ul>
-<li>Press Shift+P to search every setting and command.</li>
-<li>Settings &gt; Layout switches between Floating and Standard, and lets you arrange the islands.</li>
-<li>Your scripts are on the script bar in the side panel. Pin the ones you use most.</li>
-<li>Script authors: Settings &gt; Developers shows how to give your tab a name and an icon.</li>
-</ul>
-<p>Thank you for trying it.</p>`;
+  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.1:</p><ul>
+<li>A request panel (UR, PUR and the others) placed underneath the area name that hangs from a narrow header now starts below it, so the name no longer covers its close button. Thanks to Thynamelessone for the report.</li>
+<li>When you open a request or press Next, the map moves so the request is not hidden underneath a panel. Thanks to Thynamelessone for the report.</li>
+<li>After maximising or restoring the browser window, or moving it to another screen, the floating panels go back to their own places and heights; before, they could keep the smaller window’s layout. Thanks to Thynamelessone for the report.</li>
+<li>The map can no longer be scrolled out from under the panels in a small window.</li>
+<li>The script list closes when you scroll its bar out of the side panel, instead of staying on screen above it.</li>
+<li>Opening Arrange layout with the side panel open no longer shows a blurred rectangle where the panel was.</li>
+<li>Pinned scripts are remembered after a refresh, also for scripts whose tab gets a new id on every load.</li>
+</ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
     if (studioUpdateReported || studioUpdateTimer || !document.getElementById('WazeMap')) return;
     const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
     if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
       try {
-        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.0',studioUpdateNotes);
+        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.1',studioUpdateNotes);
         studioUpdateReported=true;
       } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
       return;
@@ -15492,8 +15649,41 @@ ${studioControlsCSS()}
     }
   });
   reducedMotion.addEventListener('change', () => apply(new Set(['motion'])));
+  let resizeSettleTimers = [], resizeSettleSize = `${innerWidth}x${innerHeight}`;
+  function settleAfterResize() {
+    for (const timer of resizeSettleTimers) clearTimeout(timer);
+    resizeSettleTimers = [120, 400, 900, 1800].map(delay => setTimeout(() => {
+      if (!ready || !settings.enabled || compactDragInProgress()) return;
+      scheduleLaneSizing(); scheduleCompactDrawerTop(); scheduleDefaultSideIslandCenters();
+      syncMapLayerWindows(true);
+      syncFloatingHeader(true);
+      applyCompactLayoutVariables(); syncTileBuildFeed();
+      queueHeaderGuardWindows(); unscrollMapContainers();
+    }, delay));
+  }
+  // Nothing that holds the map is meant to scroll. A panel reaching past the bottom of a smaller window could still
+  // get scrolled into view, which slid the map out from under the floating panels.
+  function unscrollMapContainers() {
+    if (!ready || !settings.enabled) return;
+    const map = document.getElementById('WazeMap') || document.getElementById('map');
+    for (let node = map?.parentElement; node; node = node.parentElement) {
+      if (node.scrollTop) node.scrollTop = 0;
+      if (node.scrollLeft) node.scrollLeft = 0;
+    }
+    if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+  }
+  document.addEventListener('scroll', event => {
+    const target = event.target;
+    if (target !== document && !(target instanceof Element && target.querySelector?.('#WazeMap'))) return;
+    unscrollMapContainers();
+  }, { capture: true, passive: true });
   window.addEventListener('resize', () => {
-    if (notifyingMapResize) return;
+    if (notifyingMapResize) {
+      // Studio's own "the map changed size" notices are skipped, unless the window really did change size
+      if (resizeSettleSize === `${innerWidth}x${innerHeight}`) return;
+    }
+    resizeSettleSize = `${innerWidth}x${innerHeight}`;
+    settleAfterResize();
     scheduleLaneSizing(); scheduleCompactDrawerTop(); scheduleDefaultSideIslandCenters();
     syncMapLayerWindows(true);
     syncFloatingHeader(true);
@@ -15637,7 +15827,7 @@ ${studioControlsCSS()}
       applyLayoutSettings(workspace);queueStreetViewWindow();
     }
     async function backup() {
-      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.0',createdAt:new Date().toISOString(),
+      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.1',createdAt:new Date().toISOString(),
         settings:await config.read(),layout:await snapshot(),profiles:await list(),scriptTabs:await scriptTabPicker.snapshot()};
     }
     function parseBackup(text) {
@@ -17836,7 +18026,6 @@ ${studioControlsCSS()}
       if (relevant(records)) queue();
     };
     const start = () => {
-      // Same watch as the main observer: everything except the inside of the map's vector layers.
       if (globalThis.WMEStudioVectorWatch) globalThis.WMEStudioVectorWatch.watch(observe, { childList: true, subtree: true, characterData: true });
       else new MutationObserver(observe).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
       new MutationObserver(queue).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio-requests'] });
