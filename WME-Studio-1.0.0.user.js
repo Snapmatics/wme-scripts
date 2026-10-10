@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.3
+// @version      1.0.4
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -94,7 +94,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.3';
+  const USERSCRIPT_VERSION = '1.0.4';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -4372,6 +4372,10 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map
 html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map-suggestion="on"]) [class*="caption--"] { font:12px/18px var(--ws-font) !important; }
 
 html[data-wme-studio="on"] #ISSUE_WINDOW_MAP_SUGGESTION { overflow:hidden !important; }
+html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map-suggestion="on"]) :where(div,form,footer,section,span,wz-button,wz-basic-tooltip,wz-tooltip,wz-tooltip-source,wz-tooltip-target) {
+  min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important;
+}
+html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map-suggestion="on"]) wz-button { flex-shrink: 1 !important; }
 html[data-wme-studio="on"] #ISSUE_WINDOW_MAP_SUGGESTION [data-wme-studio-request-body="on"] { overflow:hidden !important; }
 html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map-suggestion="on"]) :where([class*="header--"]):is([class*="header--"],[class*="footer--"]),
 html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map-suggestion="on"]) :where([class*="footer--"]):is([class*="header--"],[class*="footer--"]) { flex-shrink:0; }
@@ -6281,6 +6285,15 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
 :host-context(html[data-wme-studio="on"]) :where([fill]):is([fill], [style*="fill"]):not([fill="none"]):is(.wz-section-header .dropdown-button wz-button > svg *),
 :host-context(html[data-wme-studio="on"]) :where([style*="fill"]):is([fill], [style*="fill"]):not([fill="none"]):is(.wz-section-header .dropdown-button wz-button > svg *) { fill: currentColor !important; }
 :host-context(html[data-wme-studio="on"]) .wz-card { border-radius: var(--wme-studio-panel-radius) !important; border-color: var(--wme-studio-border) !important; box-shadow: 0 0 0 1px var(--wme-studio-border) !important; transition: none !important; background: var(--ws-header-surface, color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent)) !important; }
+:host-context(html[data-wme-studio="on"]):host-context(:is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map-suggestion="on"])):host(wz-button) .wz-button {
+  box-sizing: border-box !important; min-width: 0 !important; max-width: 100% !important;
+  overflow: hidden !important; text-overflow: ellipsis; white-space: nowrap;
+}
+:host-context(html[data-wme-studio="on"]):host-context(:is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map-suggestion="on"])):host(wz-button) { min-width: 0 !important; max-width: 100% !important; }
+:host-context(html[data-wme-studio="on"]):host-context([class*="suggestionCallToActions--"]):host(wz-button) .wz-button {
+  box-sizing: border-box !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important;
+  padding-inline: 8px !important; overflow: hidden !important; text-overflow: ellipsis; white-space: nowrap;
+}
 :host-context(html[data-wme-studio="on"]):host(wz-card.direction-lanes) .wz-card { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
 :host-context(html[data-wme-studio="on"]):host-context(.layer-switcher .menu > .title):host(wz-button) .wz-button {
   display:inline-flex !important; align-items:center !important; justify-content:center !important;
@@ -7515,6 +7528,12 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     candidates.sort((a, b) => Math.abs(a.top - previous.top) - Math.abs(b.top - previous.top));
     return candidates[0] || null;
   }
+  // Street View when it shares the screen with the map (not when Studio has floated it into a window of its own).
+  function dockedStreetView() {
+    if (streetViewWindow.active && !streetViewWindow.docked) return null;
+    const container = document.getElementById('street-view-container');
+    return container && container.offsetWidth > 40 && container.offsetHeight > 40 ? container : null;
+  }
   function compactHeaderObstacles() {
     const elements = new Set(compactIslandSpecs.filter(spec => spec.id !== 'header').map(queryCompactIsland));
     for (const element of [document.getElementById('sidebar'), document.getElementById('filter-panel-region'),
@@ -8056,7 +8075,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       const resizeTop = sideDrag ? Math.max(limits.top,Math.min(sideDrag.rect.top,limits.bottom-160)) : limits.top;
       const height = Math.max(160,Math.min(size.height,limits.bottom - resizeTop));
       const top = sideDrag ? resizeTop : Math.max(limits.top,Math.min(requested.top,limits.bottom - height));
-      const obstacles = compactIslandSpecs.filter(item=>!item.popup).map(queryCompactIsland).map(compactVisibleRect).filter(Boolean);
+      const obstacles = [...compactIslandSpecs.filter(item=>!item.popup).map(queryCompactIsland),dockedStreetView()].map(compactVisibleRect).filter(Boolean);
       const placed = compactFreePosition({...requested,top,height},obstacles,frame) || {...requested,top,height};
       panelLeft = Math.round(placed.left); panelRight = null;
       panelTop = `${Math.round(placed.top)}px`; panelBottom = 'auto'; panelHeight = `${Math.round(height)}px`;
@@ -10571,6 +10590,7 @@ ${studioRangeCSS('.picker-hue')}
     elements.add(document.getElementById('sidebar')); elements.add(document.getElementById('filter-panel-region'));
     elements.add(document.querySelector('.wz-map-ol-footer'));
     elements.add(document.querySelector('.wme-studio-header-location[data-placement]:not([data-placement="inline"])'));
+    elements.add(dockedStreetView());
     for (const element of headerGuardWindows.keys()) elements.add(element);
     for (const frame of chatFrames.keys()) { const state = chatPanelStates.get(frame); if (state?.target) elements.add(state.target); }
     return [...elements].filter(element => element !== exclude).map(compactVisibleRect).filter(Boolean).map(rect => ({
@@ -10794,6 +10814,12 @@ ${studioRangeCSS('.picker-hue')}
     let left = Math.max(gap, map ? map.left + gap : gap);
     let right = Math.min(geometry.width - gap, map ? map.left + map.width - gap : geometry.width - gap);
     if (right - left < width) { left = gap; right = geometry.width - gap; }
+    const street = compactVisibleRect(dockedStreetView());
+    if (street) {
+      if (street.left + street.width / 2 > geometry.width / 2) right = Math.min(right, street.left - gap);
+      else left = Math.max(left, street.left + street.width + gap);
+      if (right - left < width) { if (street.left + street.width / 2 > geometry.width / 2) left = Math.max(gap, right - width); else right = Math.min(geometry.width - gap, left + width); }
+    }
     return {left, right: Math.max(left, right - width)};
   }
   const AREA_PILL_GAP = 8;
@@ -10958,13 +10984,15 @@ ${studioRangeCSS('.picker-hue')}
       if (popupKind && compact && !compactLayoutEditing) {
         const occupied = compactPanelObstacles(element);
         const wanted = isFlowPanel(element) ? { ...preferred, height: Math.min(preferred.height, 620) } : {...preferred,height:Math.min(preferred.height,preferredHeightLimit)};
-        if (!isFlowPanel(element)) {
+        {
           const pillLimits = areaPillLimits({ top: -Infinity, bottom: Infinity }, wanted.left, wanted.width);
           if (wanted.top < pillLimits.top) wanted.top = pillLimits.top;
           if (wanted.top + wanted.height > pillLimits.bottom) wanted.height = Math.max(200, pillLimits.bottom - wanted.top);
         }
         const placed = (state.requestPoint && compactFitInPlace(wanted,occupied)) || compactFitPanel(wanted,occupied);
         if (placed) {
+          const pillTop = areaPillLimits({ top: -Infinity, bottom: Infinity }, placed.left, placed.width).top;
+          if (placed.top < pillTop) { const bottom = placed.top + placed.height; placed.top = pillTop; placed.height = Math.max(160, bottom - pillTop); }
           if (popupKind==='mapSuggestion' || placed.height < desiredHeight - 1) {
             applyHeaderGuardCap(state,placed.height,style);
           } else if (state.cap != null) {
@@ -11225,7 +11253,7 @@ ${studioRangeCSS('.picker-hue')}
       drag.bottom = footer ? footer.top - COMPACT_ISLAND_GAP : innerHeight - 12;
       drag.viewportWidth = innerWidth;
       drag.viewportHeight = innerHeight;
-      drag.obstacles = drag.floating ? compactIslandSpecs.filter(spec => !spec.popup).map(queryCompactIsland).filter(node => node !== element).map(compactVisibleRect).filter(Boolean) : [];
+      drag.obstacles = drag.floating ? [...compactIslandSpecs.filter(spec => !spec.popup).map(queryCompactIsland),dockedStreetView()].filter(node => node !== element).map(compactVisibleRect).filter(Boolean) : [];
       drag.previewRect = rect;
       // Keep resize writes on the sidebar; the map and other islands settle once on release.
       drag.originalVariables = new Map(['--ws-sidebar','--ws-dock-panel-left','--ws-dock-panel-right','--ws-dock-panel-top','--ws-dock-panel-bottom','--ws-dock-panel-css-height']
@@ -11473,7 +11501,8 @@ ${studioRangeCSS('.picker-hue')}
       const previous = {...drag.previous,width,height};
       const viewport = {width:drag.geometry.width,height:limits.bottom + 12};
       const origin = compactRectClear(previous,drag.obstacles) ? previous : compactFreePosition(previous,drag.obstacles,viewport);
-      const placed = origin && compactSlidePosition({left,top,width,height},origin,drag.obstacles,viewport);
+      // no clear spot to slide from (everything is taken): move freely inside the limits rather than not at all
+      const placed = origin ? compactSlidePosition({left,top,width,height},origin,drag.obstacles,viewport) : {left,top};
       if (placed) {
         writeRequestPosition(drag.state,rect,placed.left,placed.top);
         drag.previous = {left:placed.left,top:placed.top};
@@ -15015,8 +15044,14 @@ ${studioControlsCSS()}
       if (!event.isTrusted) return;
       for (const state of states.values()) if (event.composedPath().includes(state.source)) { userChoseScript=true;return; }
     },true);
+    // A script's tab is only switched while the Scripts section is the one on screen. Switched while another
+    // section was showing, the script's page appeared inside that section. So this waits until the script bar is
+    // visible, which also means it runs the first time the Scripts section is opened.
+    const autoOpenWatch=typeof ResizeObserver==='function' ? new ResizeObserver(()=>{ if (!userChoseScript) refresh(); }) : null, autoOpenWatched=new WeakSet();
     function openFirstPinned(state) {
       if (userChoseScript || !preferences?.pins.length) return;
+      if (autoOpenWatch && !autoOpenWatched.has(state.host)) { autoOpenWatched.add(state.host);autoOpenWatch.observe(state.host); }
+      if (!state.host.getClientRects().length || !state.source.parentElement?.getClientRects().length) return;
       autoOpenSince ||= performance.now();
       if (performance.now()-autoOpenSince>30000) return;
       for (let rank=0;rank<preferences.pins.length && rank<autoOpenedRank;rank++) {
@@ -15441,7 +15476,7 @@ ${studioControlsCSS()}
     else if (modular && (moduleClass.includes('panelHeaderActions--') || moduleClass.includes('closePanel--')) || tag === 'wz-textarea' && classes.contains('new-comment-text')) requestMinimizer.inspect(host.closest('.problem-edit'));
     else if ((tag === 'wz-button' || tag === 'button') && host.getAttribute('aria-label') === 'Close' && host.matches('[aria-roledescription="draggable"] wz-button[aria-label="Close"],[aria-roledescription="draggable"] button[aria-label="Close"]')) requestMinimizer.inspect(host.closest(REQUEST_WINDOW_SELECTOR)?.querySelector('.problem-edit'));
     if (classes.contains('close-button') && host.parentElement?.id === 'street-view-container') enhanceStreetViewClose(host);
-    if (id === 'street-view-container') { trackStreetViewSplit(); queueStreetViewWindow(); }
+    if (id === 'street-view-container') { trackStreetViewSplit(); queueStreetViewWindow(); queueHeaderGuardWindows(); }
     const notifications = classes.contains('notifications-box-container');
     if (notifications) syncLocaleFlag();
     if (isFlowPanel(host)) {
@@ -15716,13 +15751,10 @@ ${studioControlsCSS()}
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
-  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.3:</p>
-<p><strong>New</strong></p><ul>
-<li>Online Editors and Tile Update buttons are now 52 px, matching the side rails and the header.</li>
-<li>FUME (WME Fix UI Memorial Edition) is now supported, but some of its features will remain disabled (UI-wise).</li>
-</ul>
+  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.4:</p>
 <p><strong>Fixes</strong></p><ul>
-<li>The first pinned script is opened by default after the editor loads.</li>
+<li>Request panels and the side panel can no longer be placed over Street View.</li>
+<li>A script's page no longer shows up inside other side panel sections.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
@@ -15730,7 +15762,7 @@ ${studioControlsCSS()}
     const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
     if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
       try {
-        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.3',studioUpdateNotes);
+        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.4',studioUpdateNotes);
         studioUpdateReported=true;
       } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
       return;
@@ -15954,7 +15986,7 @@ ${studioControlsCSS()}
       applyLayoutSettings(workspace);queueStreetViewWindow();
     }
     async function backup() {
-      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.3',createdAt:new Date().toISOString(),
+      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.4',createdAt:new Date().toISOString(),
         settings:await config.read(),layout:await snapshot(),profiles:await list(),scriptTabs:await scriptTabPicker.snapshot()};
     }
     function parseBackup(text) {
