@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.1
+// @version      1.0.2
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -94,7 +94,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.1';
+  const USERSCRIPT_VERSION = '1.0.2';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -10849,7 +10849,7 @@ ${studioRangeCSS('.picker-hue')}
       const signature = savedPoint ? `${savedPoint.anchor || 'preview'},${savedPoint.x},${savedPoint.y}` : null;
       const newOpeningPoint = savedPoint && signature !== state.appliedPopupPoint;
       if (newOpeningPoint) state.requestPoint = null;
-      if (state.cap == null) state.naturalHeight = rect.height;
+      if (state.cap == null || rect.height < state.cap - 2) state.naturalHeight = rect.height;
       const suggestionBody = popupKind === 'mapSuggestion' ? requestWindowBody(state) : null;
       // Account for content arriving after the loading shell was height-limited.
       const suggestionOverflow = suggestionBody ? Math.max(0,suggestionBody.container.scrollHeight - suggestionBody.container.clientHeight) + Math.max(0,suggestionBody.content.scrollHeight - suggestionBody.content.clientHeight) : 0;
@@ -11349,6 +11349,7 @@ ${studioRangeCSS('.picker-hue')}
       if (compactIslandSpec(kind)?.popup) {
         const point={x:Math.min(1,Math.max(0,drag.previous.left/innerWidth)),y:Math.min(1,Math.max(0,drag.previous.top/innerHeight)),anchor:'viewport'};
         compactIslandLayout={...compactIslandLayout,[kind]:point};
+        drag.state.appliedPopupPoint=`viewport,${point.x},${point.y}`;   // already applied: the panel is there
         try { Promise.resolve(GM_setValue(COMPACT_LAYOUT_KEY,compactIslandLayout)).catch((studioError)=>{ reportStudioError("releaseRequestHeaderDrag",studioError);}); } catch (_) { reportStudioError("releaseRequestHeaderDrag",_);}
       }
     }
@@ -15588,14 +15589,8 @@ ${studioControlsCSS()}
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
-  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.1:</p><ul>
-<li>A request panel (UR, PUR and the others) placed underneath the area name that hangs from a narrow header now starts below it, so the name no longer covers its close button. Thanks to Thynamelessone for the report.</li>
-<li>When you open a request or press Next, the map moves so the request is not hidden underneath a panel. Thanks to Thynamelessone for the report.</li>
-<li>After maximising or restoring the browser window, or moving it to another screen, the floating panels go back to their own places and heights; before, they could keep the smaller window’s layout. Thanks to Thynamelessone for the report.</li>
-<li>The map can no longer be scrolled out from under the panels in a small window.</li>
-<li>The script list closes when you scroll its bar out of the side panel, instead of staying on screen above it.</li>
-<li>Opening Arrange layout with the side panel open no longer shows a blurred rectangle where the panel was.</li>
-<li>Pinned scripts are remembered after a refresh, also for scripts whose tab gets a new id on every load.</li>
+  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.2:</p><ul>
+<li>A request panel (UR, PUR and the others) stays where you drop it; moving it down no longer makes it jump back to the top.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
@@ -15603,7 +15598,7 @@ ${studioControlsCSS()}
     const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
     if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
       try {
-        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.1',studioUpdateNotes);
+        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.2',studioUpdateNotes);
         studioUpdateReported=true;
       } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
       return;
@@ -15827,7 +15822,7 @@ ${studioControlsCSS()}
       applyLayoutSettings(workspace);queueStreetViewWindow();
     }
     async function backup() {
-      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.1',createdAt:new Date().toISOString(),
+      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.2',createdAt:new Date().toISOString(),
         settings:await config.read(),layout:await snapshot(),profiles:await list(),scriptTabs:await scriptTabPicker.snapshot()};
     }
     function parseBackup(text) {
