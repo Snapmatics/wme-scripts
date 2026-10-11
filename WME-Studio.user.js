@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.7
+// @version      1.0.8
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -142,7 +142,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.7';
+  const USERSCRIPT_VERSION = '1.0.8';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -2777,6 +2777,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location[data-placement] { visibility: visible; }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location > span { display: inline-block; }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location .ws-loc-sep { margin: 0 9px; opacity: .45; font-weight: 400; }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location .ws-loc-ams { pointer-events: auto; cursor: default; }
+  html[data-wme-studio="on"] .wme-studio-am-tip { position: fixed; z-index: 2147483000; box-sizing: border-box; max-width: 240px; padding: 7px 11px; border: 1px solid var(--wme-studio-border); border-radius: 10px; background: var(--wme-studio-surface); color: var(--wme-studio-text); font: 500 12px/1.5 var(--ws-font); box-shadow: 0 8px 28px #00000040; pointer-events: none; white-space: normal; overflow-wrap: anywhere; }
+  html[data-wme-studio-am-probe] :is(body > wz-tooltip-content, body > .tooltip, body > [role="tooltip"], .tippy-box, [data-popper-placement]):not(.wme-studio-am-tip) { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location:is([data-placement="below"],[data-placement="above"]) {
     top: calc(100% + 8px); max-width: calc(100% - 24px); padding: 6px 14px;
     transform: translateX(-50%); box-sizing: border-box; border: 0; border-radius: 9999px;
@@ -3104,6 +3108,72 @@ html[data-wme-studio="on"][data-wme-studio-addons="on"] #WMEBookmarks .synchButt
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #WMEBookmarks .synchButton:hover { background-color: color-mix(in srgb, var(--wme-studio-accent) 86%, var(--wme-studio-text)) !important; box-shadow: none !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #addNodeButton { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; box-shadow: var(--wme-studio-shadow) !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #addNodeButton:hover { background-color: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important; }
+/* WME Closures Toolkit: it has its own colour tokens and no dark mode. Point the neutral ones at Studio's and lay its status tints thinly over the theme's surface; its retro "compact" look keeps its own colours. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] { --wct-surface: var(--wme-studio-surface); --wct-bg: var(--wme-studio-surface-2); --wct-bg2: var(--wme-studio-surface-2); --wct-hover: var(--wme-studio-hover); --wct-border: var(--wme-studio-border); --wct-text: var(--wme-studio-text); --wct-text2: var(--wme-studio-text-secondary); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wct-overlay.wct-compact { --wct-surface: #ffffff; --wct-bg: #f5f7f9; --wct-bg2: #f7fafc; --wct-hover: #f5f5f5; --wct-border: #dde3ea; --wct-text: #2d3748; --wct-text2: #303030; --wct-grey: #404040; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wct-fab-wrap:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-hdr-ico:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wct-sel-strip.has-sel:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #30cf3d 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-queue-restored:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #306acf 18%, var(--wme-studio-surface)) !important; border-color: var(--wme-studio-accent) !important; color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-queue-toobig:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf8c30 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #8a4b00 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-input:not(#wct-overlay.wct-compact *),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-select:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-sc:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-alert:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cfaa30 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #5d4037 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-pb-wrap:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-src-busy:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-row-ok td:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #30cf30 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-row-warn td:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cfaa30 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-row-old td:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-row-err td:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf3030 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-dir:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #308ccf 18%, var(--wme-studio-surface)) !important; color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-mte:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #bb30cf 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #6a1b9a 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-node:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #30cf3d 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #1b5e20 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-count:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-count-warn:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf9130 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-count-error:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf3048 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-null:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cfbe30 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-recent:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf9130 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-it:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf3065 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #880e4f 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-none:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-warn:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cfaa30 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-badge-warn:hover:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cfa930 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-main-tab.on:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-main-tab.on[data-tab="cfg"]:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #308ccf 18%, var(--wme-studio-surface)) !important; color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-main-tab.on[data-tab="turn"]:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #bb30cf 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #6a1b9a 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-main-tab.on[data-tab="csv"]:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #30cf3d 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #2e7d32 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-main-tab.on[data-tab="pre"]:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf9130 18%, var(--wme-studio-surface)) !important; color: #e65100 !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-main-tab.on[data-tab="gpx"]:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #30cfc6 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #00695c 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-main-tab.on[data-tab="src"]:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf3065 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #880e4f 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-qcard-hdr:hover:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #3079cf 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-help-hdr.on:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #308ccf 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-help-hdr:hover:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #3079cf 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-gpx-palette:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-drop-hover:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #85cf30 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-src-results-hdr:not(#wct-overlay.wct-compact *) { color: color-mix(in srgb, #880e4f 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-src-results-hdr-turn:not(#wct-overlay.wct-compact *) { color: color-mix(in srgb, #6a1b9a 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-src-prov-item:not(#wct-overlay.wct-compact *) { color: color-mix(in srgb, #6a1b9a 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-cl-status-ACTIVE:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #30cf3d 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #2e7d32 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-cl-status-NOT_STARTED:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #308ccf 18%, var(--wme-studio-surface)) !important; color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-cl-status-SUSPENDED:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf9130 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-cl-status-FINISHED:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-cl-status-FINISHED_EARLY_DUE_TO_DELETION:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf3065 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #880e4f 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-cl-status-FINISHED_EARLY_DUE_TO_OVERLAPPING_CLOSURES:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cfaa30 18%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-cl-status-UNVERIFIED:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #7030cf 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #4527a0 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-cl-status-FAILED:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf3048 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #b71c1c 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-cl-status-UNKNOWN:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-tn-banner:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #bb30cf 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #6a1b9a 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-tn-banner button:not(#wct-overlay.wct-compact *) { color: color-mix(in srgb, #6a1b9a 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-tn-flag.ok:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #30cf3d 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #2e7d32 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-tn-flag.ko:not(#wct-overlay.wct-compact *) { background: color-mix(in srgb, #cf3048 18%, var(--wme-studio-surface)) !important; color: color-mix(in srgb, #b71c1c 38%, var(--wme-studio-text)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-tn-flag.na:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-chip:not(#wct-overlay.wct-compact *) { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wct-chip.on:not(#wct-overlay.wct-compact *) { background: var(--wct-blue) !important; color: #fff !important; }
+/* WME Closures Toolkit: its round launcher button sits in the map tools rail. In Floating mode the rail is the surface, so the button drops its own disc and shadow and reads like the rail's other buttons. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"][data-wme-studio-compact="on"] :is(#wct-fab-wrap,#wct-fab-btn):not(#wct-overlay.wct-compact *) { background: transparent !important; box-shadow: none !important; border-color: transparent !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"][data-wme-studio-compact="on"] #wct-fab-wrap:not(#wct-overlay.wct-compact *):hover { background: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wct-fab-btn svg :is([fill="#222"],[fill="#222222"]) { fill: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wct-fab-btn svg :is([stroke="#222"],[stroke="#222222"]) { stroke: var(--wme-studio-text) !important; }
 /* WME Road Shield Assistant */
 html[data-wme-studio="on"][data-wme-studio-addons="on"] .rsa-section-wrapper.border { border-bottom-color: var(--wme-studio-border-strong) !important; }
 /* WME Road Shield Assistant: its settings tab. The section rules are drawn with inline black borders. */
@@ -12188,8 +12258,147 @@ ${studioRangeCSS('.picker-hue')}
       floatingHeader.header.append(label);
       floatingHeader.locationLabel = label;
     }
-    if (label.firstElementChild.textContent !== text) label.firstElementChild.textContent = text;
+    // With the Area managers layer on, the editor lists them in the same bar the location comes from. That bar is
+    // hidden in Floating mode, so they join the location in the pill: "Place | AMs: names".
+    const managers = headerAreaManagers();
+    const signature = `${text}\u0001${managers.text}\u0001${managers.names}`;
+    if (label.dataset.wsLocation !== signature) {
+      label.dataset.wsLocation = signature;
+      const place = document.createElement('span'); place.className = 'ws-loc-place'; place.textContent = text;
+      const parts = [place];
+      if (managers.text) {
+        const bar = document.createElement('span'); bar.className = 'ws-loc-sep'; bar.textContent = '|';
+        const ams = document.createElement('span'); ams.className = 'ws-loc-ams'; ams.textContent = managers.text;
+        ams.addEventListener('mouseenter', () => showAreaManagerTip(ams));
+        ams.addEventListener('mouseleave', hideAreaManagerTip);
+        parts.push(bar, ams);
+      }
+      label.firstElementChild.replaceChildren(...parts);
+      label.toggleAttribute('data-ws-managers', !!managers.text);
+      if (!managers.text) hideAreaManagerTip();
+    }
     watchHeaderLocationLayout();
+  }
+  // The names behind "Multiple managers". The editor shows them only in its own hover bubble, on the bar that Floating
+  // mode hides, so Studio shows a bubble of its own under the pill. The names are read from the editor's element when
+  // they are there (an attribute, a tooltip part, a shadow root); otherwise Studio hovers the hidden original for a
+  // moment, with the editor's bubble kept invisible, and reads the names from the bubble it opens.
+  const areaManagerTip = { node: null, anchor: null, names: '', key: '', probing: false, last: null };
+  const AREA_MANAGER_BUBBLES = '.tooltip,.tooltip-inner,[role="tooltip"],wz-tooltip-content,.tippy-box,.tippy-content,[data-popper-placement]';
+  function areaManagerRegion() {
+    return floatingHeader.locationSource?.querySelector('.area-managers-region,[class*="area-managers" i],[class*="areaManagers" i],[class*="area_managers" i]') || null;
+  }
+  // The editor's own bubble is a wz-tooltip-content element added to the page body while the original is hovered,
+  // holding one .topbar-am-name per manager ("name," with a trailing comma on all but the last).
+  function areaManagerNamesListed() {
+    const names = [];
+    for (const item of document.querySelectorAll('.topbar-am-name')) {
+      const name = item.textContent.replace(/\s+/g, ' ').trim().replace(/[,;\s]+$/, '');
+      if (name && !names.includes(name)) names.push(name);
+    }
+    return names.join(', ').slice(0, 800);
+  }
+  function areaManagerNamesFrom(region, shown = '') {
+    const listed = areaManagerNamesListed();
+    if (listed) return listed;
+    const found = [], seen = shown.replace(/\s+/g, ' ').trim().toLowerCase();
+    const add = value => {
+      value = String(value || '').replace(/\s+/g, ' ').trim();
+      if (value && value.length < 800 && !found.includes(value) && !seen.includes(value.toLowerCase())) found.push(value);
+    };
+    const walk = tree => {
+      for (const element of tree.querySelectorAll('*')) {
+        for (const name of ['title','data-original-title','data-bs-original-title','data-bs-title','data-title','data-tooltip','data-tippy-content','aria-label','tooltip']) if (element.hasAttribute(name)) add(element.getAttribute(name));
+        if (element.matches('wz-tooltip-content,[role="tooltip"],[slot="content"],.tooltip-inner')) add(element.textContent);
+        for (const id of (element.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean)) add(document.getElementById(id)?.textContent);
+        if (element.shadowRoot) walk(element.shadowRoot);
+      }
+    };
+    try { walk(region); } catch (error) { /* a closed or odd tree: fall back to hovering the original */ }
+    return found.join(', ');
+  }
+  function probeAreaManagerNames(region, shown, done) {
+    if (areaManagerTip.probing) return;
+    areaManagerTip.probing = true;
+    const before = new Set(document.querySelectorAll(AREA_MANAGER_BUBBLES));
+    // Enter and leave events do not bubble, and the editor's tooltip may listen on any wrapper, also inside a
+    // shadow root: every element of the original gets them. The bubbling ones go to the text-bearing leaves.
+    const found = new Set([region]), trees = [region];
+    for (let index = 0; index < trees.length; index++) for (const element of trees[index].querySelectorAll('*')) { found.add(element); if (element.shadowRoot && !trees.includes(element.shadowRoot)) trees.push(element.shadowRoot); }
+    const targets = [...found].reverse();
+    const fire = types => {
+      for (const element of targets) {
+        const rect = element.getBoundingClientRect(), at = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, cancelable: true, composed: true };
+        const leaf = !element.childElementCount && !!element.textContent.trim();
+        for (const type of types) {
+          const bubbles = !/enter$|leave$/.test(type);
+          if (bubbles && !leaf) continue;
+          try { element.dispatchEvent(type.startsWith('pointer') ? new PointerEvent(type, { ...at, bubbles, pointerType: 'mouse' }) : type.startsWith('focus') ? new FocusEvent(type, { bubbles }) : new MouseEvent(type, { ...at, bubbles })); } catch (error) { /* an event type this browser lacks */ }
+        }
+      }
+    };
+    root.setAttribute('data-wme-studio-am-probe', '');
+    fire(['pointerover','pointerenter','mouseover','mouseenter','mousemove','focusin']);
+    let tries = 0;
+    const look = () => {
+      let names = areaManagerNamesFrom(region, shown);
+      if (!names) {
+        for (const bubble of document.querySelectorAll(AREA_MANAGER_BUBBLES)) {
+          const value = before.has(bubble) ? '' : bubble.textContent.replace(/\s+/g, ' ').trim();
+          if (value && value.length < 800 && value.toLowerCase() !== shown.toLowerCase()) { names = value; break; }
+        }
+      }
+      if (!names && ++tries < 8) { setTimeout(look, 150); return; }
+      fire(['pointerout','pointerleave','mouseout','mouseleave','focusout']);
+      setTimeout(() => root.removeAttribute('data-wme-studio-am-probe'), 400);
+      areaManagerTip.probing = false;
+      done(names);
+    };
+    setTimeout(look, 120);
+  }
+  function placeAreaManagerTip() {
+    const tip = areaManagerTip.node, anchor = areaManagerTip.anchor;
+    if (!tip || !anchor?.isConnected || !areaManagerTip.names) { tip?.remove(); return; }
+    tip.textContent = areaManagerTip.names;
+    if (!tip.isConnected) document.body.append(tip);
+    const at = anchor.getBoundingClientRect(), box = tip.getBoundingClientRect();
+    const below = at.bottom + 12 + box.height <= innerHeight - 8;
+    tip.style.left = `${Math.round(Math.max(8, Math.min(innerWidth - box.width - 8, at.left + at.width / 2 - box.width / 2)))}px`;
+    tip.style.top = `${Math.round(below ? at.bottom + 12 : Math.max(8, at.top - 12 - box.height))}px`;
+  }
+  function showAreaManagerTip(anchor) {
+    const region = areaManagerRegion();
+    if (!region) return;
+    const shown = anchor.textContent || '';
+    areaManagerTip.anchor = anchor;
+    if (!areaManagerTip.node) { areaManagerTip.node = document.createElement('div'); areaManagerTip.node.className = 'wme-studio-am-tip'; areaManagerTip.node.setAttribute('role', 'tooltip'); }
+    // Read again on every hover: "Multiple managers" reads the same over a different area with different people.
+    // What is already in the page shows at once; the original is then hovered so the editor writes the current list.
+    const direct = areaManagerNamesFrom(region, shown);
+    areaManagerTip.key = shown; areaManagerTip.names = direct;
+    areaManagerTip.last = { shown, how: direct ? 'read from the page' : 'hovering the original' };
+    if (direct) placeAreaManagerTip();
+    probeAreaManagerNames(region, shown, names => {
+      areaManagerTip.last = { shown, how: names ? 'read after hovering the original' : direct ? 'read from the page' : 'not found', html: region.outerHTML.slice(0, 1500) };
+      if (!names || areaManagerTip.key !== shown) return;
+      areaManagerTip.names = names;
+      if (areaManagerTip.anchor?.matches(':hover')) placeAreaManagerTip();
+    });
+  }
+  function hideAreaManagerTip() { areaManagerTip.anchor = null; areaManagerTip.node?.remove(); }
+  // For bug reports: what the pill found the last time the managers were hovered.
+  globalThis.WMEStudioAreaManagers = () => ({ ...(areaManagerTip.last || {}), names: areaManagerTip.names, html: (areaManagerRegion()?.outerHTML || '').slice(0, 1500) });
+  function headerAreaManagers() {
+    const none = { text: '', names: '' };
+    try {
+      const region = areaManagerRegion();
+      if (!region || region.hidden || region.checkVisibility?.() === false) return none;
+      const copy = region.cloneNode(true), names = [];
+      for (const tip of copy.querySelectorAll('wz-tooltip-content,[role="tooltip"],[slot="content"],.tooltip,.tooltip-inner,script,style')) { const value = tip.textContent.replace(/\s+/g, ' ').trim(); if (value) names.push(value); tip.remove(); }
+      const text = copy.textContent.replace(/\s+/g, ' ').trim().replace(/^([^:]{1,24}):\s*/, '$1: ');
+      if (!text || /^[^:]{1,24}:$/.test(text)) return none;   // only the "AMs:" title, nobody listed
+      return { text: text.length > 90 ? text.slice(0, 89).trimEnd() + '…' : text, names: names.join(', ').slice(0, 600) };
+    } catch (error) { return none; }
   }
   function watchHeaderLocation() {
     const source = document.getElementById('topbar-container');
@@ -12197,7 +12406,7 @@ ${studioRangeCSS('.picker-hue')}
       floatingHeader.locationObserver?.disconnect();
       floatingHeader.locationSource = source;
       floatingHeader.locationObserver = source ? new MutationObserver(updateHeaderLocation) : null;
-      floatingHeader.locationObserver?.observe(source, { childList: true, subtree: true, characterData: true });
+      floatingHeader.locationObserver?.observe(source, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class','style','hidden','title'] });
     }
     updateHeaderLocation();
   }
@@ -16166,10 +16375,10 @@ ${studioControlsCSS()}
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
-  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.7:</p>
+  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.8:</p>
 <p><strong>New</strong></p><ul>
-<li>HUD size now makes the panels smaller too. Panel size still has its own slider.</li>
-<li>WME Road Shield Assistant and WME OpenData now follow the Studio theme.</li>
+<li>WME Closures Toolkit now follows the Studio theme.</li>
+<li>In Floating mode, the location pill also shows the area managers while the Area managers layer is on. Hover them for the list of names.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
@@ -16177,7 +16386,7 @@ ${studioControlsCSS()}
     const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
     if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
       try {
-        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.7',studioUpdateNotes);
+        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.8',studioUpdateNotes);
         studioUpdateReported=true;
       } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
       return;
@@ -16403,7 +16612,7 @@ ${studioControlsCSS()}
       applyLayoutSettings(workspace);queueStreetViewWindow();
     }
     async function backup() {
-      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.7',createdAt:new Date().toISOString(),
+      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.8',createdAt:new Date().toISOString(),
         settings:await config.read(),layout:await snapshot(),profiles:await list(),scriptTabs:await scriptTabPicker.snapshot()};
     }
     function parseBackup(text) {
