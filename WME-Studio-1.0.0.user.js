@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.4
+// @version      1.0.5
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -94,7 +94,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.4';
+  const USERSCRIPT_VERSION = '1.0.5';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -3056,6 +3056,35 @@ html[data-wme-studio="on"][data-wme-studio-addons="on"] #WMEBookmarks .synchButt
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #WMEBookmarks .synchButton:hover { background-color: color-mix(in srgb, var(--wme-studio-accent) 86%, var(--wme-studio-text)) !important; box-shadow: none !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #addNodeButton { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; box-shadow: var(--wme-studio-shadow) !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #addNodeButton:hover { background-color: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important; }
+/* WME Locksmith (Greasy Fork 386773): its panel uses fixed light colours. The colours it sets itself to show a state
+   (cyan, red, orange arrows; the attribute swatches) are kept; only its "off" grey is mapped to the theme. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper { background-color: transparent !important; border-color: transparent !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper :is(.ls-Label,.ls-Attr-Label,.ls-Section-Header,.key-Text,[class$="-Label"],[class^="ls-text-"],[id^="ls-text-"],.ls-Seg-Quantity-Low,.ls-Seg-Quantity-High,#ls-Current-State-Display) { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper :is(.ls-Header-Text-Container,.ls-Section-Header) { border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper [style*="border-bottom"] { border-bottom-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper [style*="border-top"] { border-top-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-CheckBox { background-color: var(--wme-studio-input) !important; border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Label:hover input ~ .ls-CheckBox { background-color: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Label input:checked ~ .ls-CheckBox { background-color: var(--wme-studio-accent) !important; border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Options-Menu { background-color: transparent !important; border: 1px solid var(--wme-studio-border) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Options-Menu:hover { background-color: var(--wme-studio-hover) !important; border: 1px solid var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Options-Dropdown-Menu { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; box-shadow: var(--wme-studio-shadow) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Options-Dropdown-Menu ul { border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Options-Dropdown-Menu li:hover { background-color: var(--wme-studio-hover) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Select { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Select:hover { border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Select:focus { border-color: var(--wme-studio-accent) !important; outline: none; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Select option { background-color: var(--wme-studio-surface); color: var(--wme-studio-text); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .fa:is(.fa-arrow-circle-up,.fa-arrow-circle-down,.fa-lock):is(:not([style*="color"]),[style*="lightgrey"]) { color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Seg-Attributes { background-color: var(--wme-studio-surface-2) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Attr-CheckBox { border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Attr-Label:hover input ~ .ls-Attr-CheckBox { border: 1px solid var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Attr-Label input:checked ~ .ls-Attr-CheckBox { border: 1px solid var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Button { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Button:hover:not([disabled]) { background-color: var(--wme-studio-hover) !important; border: 1px solid var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper .ls-Button[disabled] { background-color: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text-muted) !important; cursor: default; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper #lsConnectionStatus { border-color: var(--wme-studio-border) !important; color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper a:not(#lsConnectionStatus) { color: var(--wme-studio-accent) !important; }
 }
 
 @media all {
@@ -4372,6 +4401,8 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map
 html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map-suggestion="on"]) [class*="caption--"] { font:12px/18px var(--ws-font) !important; }
 
 html[data-wme-studio="on"] #ISSUE_WINDOW_MAP_SUGGESTION { overflow:hidden !important; }
+html[data-wme-studio="on"][data-wme-studio-compact="on"] [data-wme-studio-request-raised="on"] { z-index: 515 !important; }
+html[data-wme-studio="on"][data-wme-studio-compact="on"] #panel-container:has(> [data-wme-studio-request-raised="on"]) { z-index: 515 !important; }
 html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[data-wme-studio-map-suggestion="on"]) :where(div,form,footer,section,span,wz-button,wz-basic-tooltip,wz-tooltip,wz-tooltip-source,wz-tooltip-target) {
   min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important;
 }
@@ -10991,6 +11022,7 @@ ${studioRangeCSS('.picker-hue')}
         }
         const placed = (state.requestPoint && compactFitInPlace(wanted,occupied)) || compactFitPanel(wanted,occupied);
         if (placed) {
+          if (element.hasAttribute('data-wme-studio-request-raised')) element.removeAttribute('data-wme-studio-request-raised');
           const pillTop = areaPillLimits({ top: -Infinity, bottom: Infinity }, placed.left, placed.width).top;
           if (placed.top < pillTop) { const bottom = placed.top + placed.height; placed.top = pillTop; placed.height = Math.max(160, bottom - pillTop); }
           if (popupKind==='mapSuggestion' || placed.height < desiredHeight - 1) {
@@ -11002,6 +11034,20 @@ ${studioRangeCSS('.picker-hue')}
           state.appliedPopupPoint = signature;
           continue;
         }
+        const street = compactVisibleRect(dockedStreetView());
+        if (street) {
+          const onRight = street.left + street.width / 2 > innerWidth / 2;
+          const left = onRight ? Math.max(12, Math.round(street.left - 12 - wanted.width)) : Math.min(Math.round(innerWidth - 12 - wanted.width), Math.round(street.left + street.width + 12));
+          const limits = headerPanelLimits(left, wanted.width, 12, null, { left, top: wanted.top, width: wanted.width, height: wanted.height });
+          const top = Math.max(limits.top, Math.min(wanted.top, limits.bottom - 200)), height = Math.max(160, Math.min(wanted.height, limits.bottom - top));
+          if (popupKind === 'mapSuggestion' || height < desiredHeight - 1) applyHeaderGuardCap(state, height, style);
+          else if (state.cap != null) clearHeaderGuardCap(state);
+          if (element.getAttribute('data-wme-studio-request-raised') !== 'on') element.setAttribute('data-wme-studio-request-raised', 'on');
+          writeRequestPosition(state, rect, left, top);
+          state.appliedPopupPoint = signature;
+          continue;
+        }
+        if (element.hasAttribute('data-wme-studio-request-raised')) element.removeAttribute('data-wme-studio-request-raised');
       }
       geometry ||= workspacePanelBounds();
       const horizontal = standardPanelHorizontalBounds(rect.width, geometry);
@@ -15751,10 +15797,12 @@ ${studioControlsCSS()}
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
-  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.4:</p>
+  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.5:</p>
+<p><strong>New</strong></p><ul>
+<li>WME Locksmith now follows the Studio theme.</li>
+</ul>
 <p><strong>Fixes</strong></p><ul>
-<li>Request panels and the side panel can no longer be placed over Street View.</li>
-<li>A script's page no longer shows up inside other side panel sections.</li>
+<li>The editor profile page scrolls again.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
@@ -15762,7 +15810,7 @@ ${studioControlsCSS()}
     const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
     if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
       try {
-        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.4',studioUpdateNotes);
+        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.5',studioUpdateNotes);
         studioUpdateReported=true;
       } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
       return;
@@ -15823,9 +15871,11 @@ ${studioControlsCSS()}
   // Nothing that holds the map is meant to scroll. A panel reaching past the bottom of a smaller window could still
   // get scrolled into view, which slid the map out from under the floating panels.
   function unscrollMapContainers() {
-    if (!ready || !settings.enabled) return;
-    const map = document.getElementById('WazeMap') || document.getElementById('map');
-    for (let node = map?.parentElement; node; node = node.parentElement) {
+    // only in the editor itself: the profile page and the sign-in page are ordinary pages that must scroll
+    if (!ready || !settings.enabled || standaloneSignin || editorProfile || document.documentElement.getAttribute('data-wme-studio-page') !== 'editor') return;
+    const map = document.getElementById('WazeMap');
+    if (!map) return;
+    for (let node = map.parentElement; node; node = node.parentElement) {
       if (node.scrollTop) node.scrollTop = 0;
       if (node.scrollLeft) node.scrollLeft = 0;
     }
@@ -15986,7 +16036,7 @@ ${studioControlsCSS()}
       applyLayoutSettings(workspace);queueStreetViewWindow();
     }
     async function backup() {
-      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.4',createdAt:new Date().toISOString(),
+      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.5',createdAt:new Date().toISOString(),
         settings:await config.read(),layout:await snapshot(),profiles:await list(),scriptTabs:await scriptTabPicker.snapshot()};
     }
     function parseBackup(text) {
