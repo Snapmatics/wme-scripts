@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.6
+// @version      1.0.7
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -142,7 +142,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.6';
+  const USERSCRIPT_VERSION = '1.0.7';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -3104,6 +3104,26 @@ html[data-wme-studio="on"][data-wme-studio-addons="on"] #WMEBookmarks .synchButt
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #WMEBookmarks .synchButton:hover { background-color: color-mix(in srgb, var(--wme-studio-accent) 86%, var(--wme-studio-text)) !important; box-shadow: none !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #addNodeButton { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; box-shadow: var(--wme-studio-shadow) !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #addNodeButton:hover { background-color: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important; }
+/* WME Road Shield Assistant */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .rsa-section-wrapper.border { border-bottom-color: var(--wme-studio-border-strong) !important; }
+/* WME Road Shield Assistant: its settings tab. The section rules are drawn with inline black borders. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .rsa-wrapper { color: var(--wme-studio-text); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .rsa-wrapper div[style*="solid black"] { border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .rsa-wrapper a { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #rsa-resetSettings { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-button-radius); padding: 2px 10px; cursor: pointer; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #rsa-resetSettings:hover { background-color: var(--wme-studio-hover) !important; border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] input[type="color"].rsa-color-input { background-color: transparent !important; }
+/* WME OpenData: its floating window, the name check boxes and the city name controls. Only the first part of this script could be read, so these go by the ids it uses. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWindow,#oslNCDiv,#oslSegGeoUIDiv) { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #oslDragBar { background-color: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWindow,#oslNCDiv,#oslSegGeoUIDiv,#oslRoadNameMatches,#oslCNInfo) :is(label,span:not(#oslSelect),td,th,b,i,p) { color: inherit !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWindow,#oslNCDiv,#oslSegGeoUIDiv) a { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWindow,#oslNCDiv,#oslSegGeoUIDiv) hr { border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#myCityName,#oslWMECityNames,#oslOSCityNames),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWindow,#oslNCDiv,#oslSegGeoUIDiv) :is(select,input[type="text"],input[type="number"]) { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWMECityNames,#oslOSCityNames) option { background-color: var(--wme-studio-surface); color: var(--wme-studio-text); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #oslSelect { background: color-mix(in srgb, var(--wme-studio-accent) 18%, var(--wme-studio-surface)) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-accent) !important; border-radius: var(--wme-studio-button-radius); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #oslSelect:hover { background: color-mix(in srgb, var(--wme-studio-accent) 30%, var(--wme-studio-surface)) !important; }
 /* More add-ons: rules made from each script's own style sheet. Same selectors, only the neutral colours, pointed at Studio's variables. Status colours and coloured buttons keep the script's look; where a script colours a state (checked, active), that colour is repeated so it still wins. */
 /* WME Place Harmonizer */
 html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane-tab.active { color: var(--wmeph-primary) !important; }
@@ -4946,6 +4966,8 @@ html[data-wme-studio="on"] .ws-restriction-select-group { padding:7px 9px 3px; c
   const setupStrings = {"Three things to switch off.":{"el":"Τρία πράγματα για απενεργοποίηση.","es":"Tres cosas que desactivar.","pt":"Três coisas para desativar.","fr":"Trois choses à désactiver.","de":"Drei Dinge zum Ausschalten.","it":"Tre cose da disattivare.","nl":"Drie dingen om uit te zetten.","pl":"Trzy rzeczy do wyłączenia.","ru":"Три вещи нужно отключить.","tr":"Kapatılacak üç şey."},"Studio checked for the three things it cannot share the editor with. None is on.":{"el":"Το Studio έλεγξε για τα τρία πράγματα με τα οποία δεν μπορεί να μοιραστεί τον editor. Κανένα δεν είναι ενεργό.","es":"Studio comprobó las tres cosas con las que no puede compartir el editor. Ninguna está activa.","pt":"O Studio verificou as três coisas com as quais não pode dividir o editor. Nenhuma está ativa.","fr":"Studio a vérifié les trois éléments avec lesquels il ne peut pas partager l’éditeur. Aucun n’est actif.","de":"Studio hat die drei Dinge geprüft, mit denen es sich den Editor nicht teilen kann. Keines ist aktiv.","it":"Studio ha controllato le tre cose con cui non può condividere l’editor. Nessuna è attiva.","nl":"Studio heeft gecontroleerd op de drie dingen waarmee het de editor niet kan delen. Geen ervan staat aan.","pl":"Studio sprawdziło trzy rzeczy, z którymi nie może dzielić edytora. Żadna nie jest włączona.","ru":"Studio проверил три вещи, с которыми не может делить редактор. Ни одна не включена.","tr":"Studio, editörü paylaşamayacağı üç şeyi kontrol etti. Hiçbiri açık değil."},"Not supported. It sets the editor's colors, which Studio's themes do too. Disable it in Tampermonkey while Studio is on.":{"el":"Δεν υποστηρίζεται. Ορίζει τα χρώματα του editor, όπως και τα θέματα του Studio. Απενεργοποιήστε το στο Tampermonkey όσο το Studio είναι ενεργό.","es":"No compatible. Define los colores del editor, igual que los temas de Studio. Desactívalo en Tampermonkey mientras Studio esté activo.","pt":"Não compatível. Ele define as cores do editor, assim como os temas do Studio. Desative-o no Tampermonkey enquanto o Studio estiver ativo.","fr":"Non pris en charge. Il définit les couleurs de l’éditeur, tout comme les thèmes de Studio. Désactivez-le dans Tampermonkey tant que Studio est actif.","de":"Nicht unterstützt. Es legt die Farben des Editors fest, genau wie die Themes von Studio. Deaktiviere es in Tampermonkey, solange Studio aktiv ist.","it":"Non supportato. Imposta i colori dell’editor, proprio come i temi di Studio. Disattivalo in Tampermonkey mentre Studio è attivo.","nl":"Niet ondersteund. Het bepaalt de kleuren van de editor, net als de thema's van Studio. Schakel het uit in Tampermonkey zolang Studio aan staat.","pl":"Nieobsługiwane. Ustawia kolory edytora, tak samo jak motywy Studio. Wyłącz je w Tampermonkey, gdy Studio jest włączone.","ru":"Не поддерживается. Он задаёт цвета редактора, как и темы Studio. Отключите его в Tampermonkey, пока включён Studio.","tr":"Desteklenmiyor. Editörün renklerini, Studio temaları gibi kendisi belirler. Studio açıkken Tampermonkey'de devre dışı bırakın."}};
   // Strings for the command palette shortcut setting and the Developers page title.
   const shortcutStrings = {
+    'Makes the header, the floating islands and the panels smaller. 100% is the normal size.':{el:'Μικραίνει την κεφαλίδα, τις αιωρούμενες νησίδες και τα πάνελ. Το 100% είναι το κανονικό μέγεθος.',es:'Reduce la cabecera, las islas flotantes y los paneles. 100% es el tamaño normal.',pt:'Deixa o cabeçalho, as ilhas flutuantes e os painéis menores. 100% é o tamanho normal.',fr:'Réduit l’en-tête, les îlots flottants et les panneaux. 100 % est la taille normale.',de:'Verkleinert die Kopfleiste, die schwebenden Inseln und die Panels. 100 % ist die normale Größe.',it:'Rimpicciolisce l’intestazione, le isole flottanti e i pannelli. 100% è la dimensione normale.',nl:'Maakt de kopbalk, de zwevende eilanden en de panelen kleiner. 100% is de normale grootte.',pl:'Zmniejsza nagłówek, pływające wyspy i panele. 100% to normalny rozmiar.',ru:'Уменьшает шапку, плавающие островки и панели. 100% — обычный размер.',tr:'Başlığı, yüzen adaları ve panelleri küçültür. %100 normal boyuttur.'},
+    'Makes whole panels smaller: the side panel, Map Layers, Messages and request windows. It follows HUD size; set it here to give panels a size of their own.':{el:'Μικραίνει ολόκληρα τα πάνελ: πλαϊνό πάνελ, Επίπεδα χάρτη, Μηνύματα και παράθυρα αιτημάτων. Ακολουθεί το μέγεθος HUD· ορίστε το εδώ για να έχουν τα πάνελ δικό τους μέγεθος.',es:'Reduce los paneles enteros: panel lateral, Capas del mapa, Mensajes y ventanas de solicitud. Sigue al tamaño del HUD; ajústalo aquí para dar a los paneles un tamaño propio.',pt:'Deixa os painéis inteiros menores: painel lateral, Camadas do mapa, Mensagens e janelas de solicitação. Acompanha o tamanho do HUD; ajuste aqui para dar aos painéis um tamanho próprio.',fr:'Réduit les panneaux entiers : panneau latéral, Calques de carte, Messages et fenêtres de demande. Suit la taille du HUD ; réglez-la ici pour donner aux panneaux leur propre taille.',de:'Verkleinert ganze Panels: Seitenpanel, Kartenebenen, Nachrichten und Anfragefenster. Folgt der HUD-Größe; hier lässt sich für Panels eine eigene Größe einstellen.',it:'Rimpicciolisce i pannelli interi: pannello laterale, Livelli mappa, Messaggi e finestre delle richieste. Segue la dimensione dell’HUD; impostala qui per dare ai pannelli una dimensione propria.',nl:'Maakt hele panelen kleiner: zijpaneel, Kaartlagen, Berichten en verzoekvensters. Volgt de HUD-grootte; stel het hier in om panelen een eigen grootte te geven.',pl:'Zmniejsza całe panele: panel boczny, Warstwy mapy, Wiadomości i okna zgłoszeń. Podąża za rozmiarem HUD; ustaw tutaj, aby panele miały własny rozmiar.',ru:'Уменьшает панели целиком: боковая панель, Слои карты, Сообщения и окна запросов. Следует за размером HUD; задайте здесь, чтобы у панелей был свой размер.',tr:'Panellerin tamamını küçültür: yan panel, Harita katmanları, Mesajlar ve istek pencereleri. HUD boyutunu izler; panellere ayrı bir boyut vermek için buradan ayarlayın.'},
     'Two things to switch off.':{el:'Δύο πράγματα για απενεργοποίηση.',es:'Dos cosas que desactivar.',pt:'Duas coisas para desativar.',fr:'Deux choses à désactiver.',de:'Zwei Dinge zum Ausschalten.',it:'Due cose da disattivare.',nl:'Twee dingen om uit te zetten.',pl:'Dwie rzeczy do wyłączenia.',ru:'Две вещи нужно отключить.',tr:'Kapatılacak iki şey.'},
     'Studio checked for the two things it cannot share the editor with. None is on.':{el:'Το Studio έλεγξε για τα δύο πράγματα με τα οποία δεν μπορεί να μοιραστεί τον editor. Κανένα δεν είναι ενεργό.',es:'Studio comprobó las dos cosas con las que no puede compartir el editor. Ninguna está activa.',pt:'O Studio verificou as duas coisas com as quais não pode dividir o editor. Nenhuma está ativa.',fr:'Studio a vérifié les deux éléments avec lesquels il ne peut pas partager l’éditeur. Aucun n’est actif.',de:'Studio hat die zwei Dinge geprüft, mit denen es sich den Editor nicht teilen kann. Keines ist aktiv.',it:'Studio ha controllato le due cose con cui non può condividere l’editor. Nessuna è attiva.',nl:'Studio heeft gecontroleerd op de twee dingen waarmee het de editor niet kan delen. Geen ervan staat aan.',pl:'Studio sprawdziło dwie rzeczy, z którymi nie może dzielić edytora. Żadna nie jest włączona.',ru:'Studio проверил две вещи, с которыми не может делить редактор. Ни одна не включена.',tr:'Studio, editörü paylaşamayacağı iki şeyi denetledi. Hiçbiri açık değil.'},
     'Supported. While Studio is on, some FUME options that change the same parts of the editor stay switched off.':{el:'Υποστηρίζεται. Όσο το Studio είναι ενεργό, ορισμένες επιλογές του FUME που αλλάζουν τα ίδια σημεία του editor μένουν απενεργοποιημένες.',es:'Compatible. Mientras Studio está activo, algunas opciones de FUME que cambian las mismas partes del editor permanecen desactivadas.',pt:'Compatível. Enquanto o Studio está ativo, algumas opções do FUME que alteram as mesmas partes do editor ficam desativadas.',fr:'Pris en charge. Tant que Studio est actif, certaines options de FUME qui modifient les mêmes parties de l’éditeur restent désactivées.',de:'Unterstützt. Solange Studio aktiv ist, bleiben einige FUME-Optionen, die dieselben Teile des Editors verändern, ausgeschaltet.',it:'Supportato. Finché Studio è attivo, alcune opzioni di FUME che modificano le stesse parti dell’editor restano disattivate.',nl:'Ondersteund. Zolang Studio aan staat, blijven enkele FUME-opties die dezelfde delen van de editor wijzigen uitgeschakeld.',pl:'Obsługiwany. Gdy Studio jest włączone, niektóre opcje FUME zmieniające te same części edytora pozostają wyłączone.',ru:'Поддерживается. Пока Studio включён, некоторые параметры FUME, меняющие те же части редактора, остаются отключёнными.',tr:'Destekleniyor. Studio açıkken, editörün aynı bölümlerini değiştiren bazı FUME seçenekleri kapalı kalır.'},
@@ -16144,12 +16166,10 @@ ${studioControlsCSS()}
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
-  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.6:</p>
+  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.7:</p>
 <p><strong>New</strong></p><ul>
-<li>Your settings, layouts and pinned scripts are kept in the browser, so they come back if you remove WME Studio and install it again.</li>
-<li>The pictures on the Layout page now show what each mode and starting layout looks like.</li>
-<li>The Developers page is easier to follow, and explains why every Studio variable needs a fallback.</li>
-<li>More scripts follow the Studio theme: Place Harmonizer, Place Interface Enhancements, GIS Layers, LaneTools, Junction Angle Info, HN NavPoints, Wazebar, OpenMaps, Advanced Closures, Edit Count Monitor, Route Speeds, Validator, URO+, Speedhelper and Color Highlights.</li>
+<li>HUD size now makes the panels smaller too. Panel size still has its own slider.</li>
+<li>WME Road Shield Assistant and WME OpenData now follow the Studio theme.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
@@ -16157,7 +16177,7 @@ ${studioControlsCSS()}
     const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
     if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
       try {
-        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.6',studioUpdateNotes);
+        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.7',studioUpdateNotes);
         studioUpdateReported=true;
       } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
       return;
@@ -16383,7 +16403,7 @@ ${studioControlsCSS()}
       applyLayoutSettings(workspace);queueStreetViewWindow();
     }
     async function backup() {
-      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.6',createdAt:new Date().toISOString(),
+      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.7',createdAt:new Date().toISOString(),
         settings:await config.read(),layout:await snapshot(),profiles:await list(),scriptTabs:await scriptTabPicker.snapshot()};
     }
     function parseBackup(text) {
@@ -16754,7 +16774,7 @@ ${studioControlsCSS()}
         <div class="group"><h3 class="section-label"><span class="step" aria-hidden="true"><b>3</b></span>Adjust</h3><p class="mode-hint" id="studio-compact-mode-hint" data-id="compactModeHint"></p>
           <fieldset data-compact-preferences aria-describedby="studio-compact-mode-hint"><div class="card rows">
             <div class="srow" id="studio-header-width"><div class="srow-text"><label for="studio-header-extension"><strong>Header width</strong></label><span class="small">Extend the header evenly on both sides. Drag to reposition it; full page width can move vertically.</span></div><input id="studio-header-extension" data-id="compactHeaderWidth" type="range" min="0" max="100" step="1" value="0" aria-label="Header width"><output class="value" data-id="compactHeaderWidth-value" for="studio-header-extension">0%</output></div>
-            <div class="srow"><div class="srow-text"><strong>HUD size</strong><span class="small">Makes the header and the floating islands smaller. 100% is the normal size.</span></div><input data-id="hudScale" type="range" min="70" max="100" step="5" value="100" aria-label="HUD size"><span class="value" data-id="hudScale-value">100%</span></div>
+            <div class="srow"><div class="srow-text"><strong>HUD size</strong><span class="small">Makes the header, the floating islands and the panels smaller. 100% is the normal size.</span></div><input data-id="hudScale" type="range" min="70" max="100" step="5" value="100" aria-label="HUD size"><span class="value" data-id="hudScale-value">100%</span></div>
           </div></fieldset>
           <div class="card"><div class="srow"><div class="srow-text"><strong>Arrange layout</strong><span class="small">Move islands and set default opening positions for the side panel, requests and Messages.</span></div><button class="primary" data-id="compactLayoutEditor" data-action="arrange" type="button"><span data-arrange-label>Arrange</span></button></div></div>
         </div>
@@ -16798,7 +16818,7 @@ ${studioControlsCSS()}
           <div class="srow"><div class="srow-text"><strong>Visible discussion messages</strong><span class="small">Messages shown before the discussion becomes scrollable, in either request layout.</span></div><input data-id="discussionVisible" type="range" min="1" max="10" step="1" value="2" aria-label="Messages shown before the discussion scrolls"><span class="value" data-id="discussionVisible-value">2</span></div>
         </div></div>
         <div class="group"><h3 class="section-label">Size and columns</h3><div class="card rows">
-          <div class="srow"><div class="srow-text"><strong>Panel size</strong><span class="small">Makes whole panels smaller: the side panel, Map Layers, Messages and request windows. 100% is the normal size.</span></div><input data-id="panelScale" type="range" min="70" max="100" step="5" value="100" aria-label="Panel size"><span class="value" data-id="panelScale-value">100%</span></div>
+          <div class="srow"><div class="srow-text"><strong>Panel size</strong><span class="small">Makes whole panels smaller: the side panel, Map Layers, Messages and request windows. It follows HUD size; set it here to give panels a size of their own.</span></div><input data-id="panelScale" type="range" min="70" max="100" step="5" value="100" aria-label="Panel size"><span class="value" data-id="panelScale-value">100%</span></div>
           <div class="srow"><div class="srow-text"><strong>Dragged panel sizes</strong><span class="small">Puts Messages and request windows back to their default width and height.</span></div><div class="actions"><button class="reset" data-id="resetPanelSizes" type="button">Reset panel sizes</button></div></div>
           <label class="srow togrow"><span class="srow-text"><strong>Two-column Map Layers</strong><span class="small">Use two balanced columns in the floating Map Layers panel.</span></span><span class="switch"><input data-id="layerColumnsToggle" type="checkbox"><i></i></span></label>
         </div></div>
@@ -17415,7 +17435,8 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       }
     }
     function rangePatch(key, value) {
-      return key === 'compactHeaderWidth' ? { compactHeaderWidth:value, compactHeaderFullWidth:value > 0 } : { [key]:value };
+      // HUD size carries Panel size with it, so one slider makes the whole floating workspace smaller. Panel size keeps its own slider for a different value.
+      return key === 'compactHeaderWidth' ? { compactHeaderWidth:value, compactHeaderFullWidth:value > 0 } : key === 'hudScale' ? { hudScale:value, panelScale:value } : { [key]:value };
     }
     function previewRange(key, value) {
       current = config.sanitize({ ...current, ...rangePatch(key,value) });
