@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.5
+// @version      1.0.6
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -25,6 +25,7 @@
 // @grant        GM_info
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_listValues
 // @grant        GM_addValueChangeListener
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
@@ -64,6 +65,53 @@
   if (globalThis.__WME_STUDIO_USER_SCRIPT__) return;
   globalThis.__WME_STUDIO_USER_SCRIPT__ = true;
 
+  // A userscript manager deletes a script's stored values together with the script. Studio therefore also keeps a
+  // copy of its settings in the site's own storage, which stays in the browser. On a fresh install, when the
+  // manager's store holds nothing from Studio, that copy is put back before anything is read. Everything in the
+  // script reads and writes through this object. The icon cache and the list of paused FUME options are not kept.
+  const studioKeep = (() => {
+    const COPY = 'wmeStudio.keep.v1', MARK = 'wmeStudio.installed.v1', NONE = '\u0000wmeStudio.none';
+    const SKIP = new Set(['wmeStudio.scriptTabIcons.v1', 'wmeStudio.fumePaused.v1', MARK]);
+    const PROBE = ['wmeStudio.setup.v1', 'wmeStudio.update.glassOpacity60', 'wmeStudio.update.sideRailsViewportCenter.v3', 'wmeStudio.theme', 'wmeStudio.compactMode', 'wmeStudio.enabled'];
+    const kept = key => typeof key === 'string' && key.startsWith('wmeStudio.') && !SKIP.has(key);
+    const thenable = value => !!value && typeof value.then === 'function';
+    const readCopy = () => { try { const saved = JSON.parse(localStorage.getItem(COPY) || 'null'); return saved && saved.values && typeof saved.values === 'object' ? saved.values : {}; } catch (_) { return {}; } };
+    let dirty = {}, timer = 0, restored = 0;
+    const flush = () => {
+      clearTimeout(timer); timer = 0;
+      const keys = Object.keys(dirty); if (!keys.length) return;
+      try {
+        const values = readCopy(); let changed = false;   // read again: another editor tab may have written since
+        for (const key of keys) { if (JSON.stringify(values[key]) !== JSON.stringify(dirty[key])) { values[key] = dirty[key]; changed = true; } }
+        dirty = {};
+        if (changed) localStorage.setItem(COPY, JSON.stringify({ v: 1, saved: Date.now(), values }));
+      } catch (_) { dirty = {}; }   // storage full or blocked: the manager's store still has everything
+    };
+    const note = (key, value) => { if (!kept(key) || value === undefined || value === NONE) return; dirty[key] = value; if (!timer) timer = setTimeout(flush, 400); };
+    try {
+      const mark = GM_getValue(MARK, false);
+      if (!thenable(mark) && mark !== true) {
+        const copy = readCopy(), keys = Object.keys(copy).filter(kept);
+        let empty = true;
+        if (typeof GM_listValues === 'function') { const list = GM_listValues(); empty = Array.isArray(list) ? !list.some(kept) : PROBE.every(key => GM_getValue(key, NONE) === NONE); }
+        else empty = PROBE.every(key => GM_getValue(key, NONE) === NONE);
+        if (empty) for (const key of keys) { GM_setValue(key, copy[key]); restored++; }
+        GM_setValue(MARK, true);
+        if (restored) console.info(`[WME Studio] put back ${restored} saved settings from this browser`);
+      }
+    } catch (error) { console.warn('[WME Studio] could not check for kept settings', error); }
+    try { addEventListener('pagehide', flush); } catch (_) { /* no window events: the timer still saves */ }
+    return {
+      get(key, fallback) {
+        const value = GM_getValue(key, NONE);
+        if (thenable(value)) return value.then(result => { note(key, result); return result === NONE ? fallback : result; });
+        note(key, value); return value === NONE ? fallback : value;
+      },
+      set(key, value) { note(key, value); return GM_setValue(key, value); },
+      flush, get restored() { return restored; }
+    };
+  })();
+
   // Mutation observer callbacks run as microtasks: the browser finishes all of them before it draws or answers
   // the mouse. When something else on the page keeps undoing a change Studio makes (another script, or the
   // editor re-rendering), Studio's observer and the other side can answer each other without end; the tab
@@ -94,7 +142,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.5';
+  const USERSCRIPT_VERSION = '1.0.6';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -407,19 +455,19 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
         async get(request) {
           const out = {};
           if (request && typeof request === 'object' && !Array.isArray(request)) {
-            for (const [key, fallback] of Object.entries(request)) out[key] = await GM_getValue(key, fallback);
+            for (const [key, fallback] of Object.entries(request)) out[key] = await studioKeep.get(key, fallback);
           } else {
             const keys = Array.isArray(request) ? request : [request];
-            for (const key of keys.filter(Boolean)) out[key] = await GM_getValue(key);
+            for (const key of keys.filter(Boolean)) out[key] = await studioKeep.get(key);
           }
           return out;
         },
         async set(data) {
           const changes = {};
           for (const [key, value] of Object.entries(data || {})) {
-            const oldValue = await GM_getValue(key);
+            const oldValue = await studioKeep.get(key);
             if (Object.is(oldValue, value)) continue;
-            await GM_setValue(key, value);
+            await studioKeep.set(key, value);
             changes[key] = { oldValue, newValue: value };
           }
           emitStorage(changes);
@@ -3056,6 +3104,305 @@ html[data-wme-studio="on"][data-wme-studio-addons="on"] #WMEBookmarks .synchButt
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #WMEBookmarks .synchButton:hover { background-color: color-mix(in srgb, var(--wme-studio-accent) 86%, var(--wme-studio-text)) !important; box-shadow: none !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #addNodeButton { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; box-shadow: var(--wme-studio-shadow) !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #addNodeButton:hover { background-color: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important; }
+/* More add-ons: rules made from each script's own style sheet. Same selectors, only the neutral colours, pointed at Studio's variables. Status colours and coloured buttons keep the script's look; where a script colours a state (checked, active), that colour is repeated so it still wins. */
+/* WME Place Harmonizer */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane-tab.active { color: var(--wmeph-primary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-btn.secondary:hover:not(:disabled) { background: var(--wmeph-border-light) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-icon-toggle.checked { color: var(--wmeph-primary, #0075e3) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane .wmeph-internal-tabs .nav-link.active,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane .wmeph-internal-tabs .nav-link.active:hover,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane .wmeph-internal-tabs .nav-link.active:focus { color: white !important; background: var(--wmeph-primary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane .setting-label { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane .pill-option input[type="radio"]:checked + label { background: var(--wmeph-primary) !important; color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane .pill-option input[type="radio"]:checked + label:hover { background: var(--wmeph-primary-light) !important; color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane .setting-unit { color: var(--wme-studio-text-muted) !important; }
+/* WME Place Interface Enhancements */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#edit-panel,#sidebar) .btn-lh { border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#edit-panel,#sidebar) .btn.btn-lh.btn-lh-selected { background-color: #6999ae !important; color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#edit-panel,#sidebar) .btn.btn-lh.btn-lh-selected:hover { color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#edit-panel,#sidebar) .btn.btn-lh.disabled { color: var(--wme-studio-text-muted) !important; background-color: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#edit-panel,#sidebar) .btn.btn-lh.btn-lh-selected.disabled { color: white !important; background-color: #6999ae !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-section { border-color: var(--wme-studio-border) !important; background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-section-header { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-section-header:hover { background: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-section-header .fa:first-child { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-chevron { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-section-body { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-section-subtitle { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-toggle-row + .pie-toggle-row { border-top-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-toggle-label { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-slider { background: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-slider:before { background: #fff !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-toggle-switch input:checked + .pie-slider { background: #0066cc !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-pill-group { background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-pill span { color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-pill input:checked + span { background: #0066cc !important; color: #fff !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-pill span:hover { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-pill input:checked + span:hover { color: #fff !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-text-input { border-color: var(--wme-studio-border) !important; color: var(--wme-studio-text) !important; background-color: var(--wme-studio-input) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-text-input:focus { border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-select { border-color: var(--wme-studio-border) !important; color: var(--wme-studio-text) !important; background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-select:focus { border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-font-settings { background: var(--wme-studio-surface-2) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-font-row { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-font-row + .pie-font-row { border-top-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-font-reset { border-top-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-font-reset button { background: none !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-font-reset button:hover { background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-pie-panel .pie-quick-create-list select { border-color: var(--wme-studio-border) !important; background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #pieViewEditGeom.pie-geom-modal { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .pie-geom-col-label { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .pie-geom-col-hint { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .pie-geom-textarea { border-color: var(--wme-studio-border) !important; color: var(--wme-studio-text) !important; background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .pie-geom-textarea:focus { border-color: var(--wme-studio-accent) !important; background: var(--wme-studio-surface) !important; }
+/* WME GIS Layers */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-selector-header:hover { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-selector-title { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-selector-toggle { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-selector-body { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-header { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-header:hover { background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-name { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-toggle-icon { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-count { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .subdivision-option:hover { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .subdivision-option label { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .subdivision-option.enabled label { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .subdivision-count { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-level-option { background: rgba(255, 255, 255, 0.5) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-level-option:hover { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-level-option label { color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-level-option.enabled label { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-only { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-only:hover { background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-only label { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .country-only.enabled label { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .filter-label { color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-action-button { border-color: var(--wme-studio-border) !important; background: var(--wme-studio-surface) !important; color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-action-button:hover { background: var(--wme-studio-surface) !important; border-color: var(--wme-studio-accent) !important; color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-quick-actions button { border-color: var(--wme-studio-border) !important; background: var(--wme-studio-surface) !important; color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-quick-actions button:hover { background: var(--wme-studio-surface) !important; border-color: var(--wme-studio-accent) !important; color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-quick-actions .toggle-button.active { background: #0066cc !important; border-color: var(--wme-studio-accent) !important; color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-quick-actions .toggle-button.active:hover { background: #0052a3 !important; border-color: var(--wme-studio-accent) !important; color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .gis-stats-bar { background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .gis-stats-bar .stat { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .gis-stats-bar .stat strong { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .gis-sticky-section { background: var(--wme-studio-surface) !important; border-bottom-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-fieldset { border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-legend { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-legend:hover { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .action-links { color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .action-links a { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .category-fieldset { border-color: var(--wme-studio-border) !important; background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .category-legend { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .gis-empty-state { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-selector-body::-webkit-scrollbar-track { background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .region-selector-body::-webkit-scrollbar-thumb { background: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .settings-section { background: var(--wme-studio-surface) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .settings-section-header { background: var(--wme-studio-surface-2) !important; border-bottom-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .settings-section-header:hover { background: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .settings-section-title { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .settings-section-title i { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .section-toggle-icon { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .settings-section-body { background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .setting-label { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .pill-group { background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .pill-option label { color: #666 !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .pill-option input[type="radio"]:checked + label { background: #0066cc !important; color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .pill-option label:hover { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .pill-option input[type="radio"]:checked + label:hover { background: #0052a3 !important; color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .toggle-switch > label:first-child { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .toggle-switch .slider { background-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .toggle-switch .slider:before { background-color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .toggle-switch input:checked + .slider { background-color: #0066cc !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .help-text { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .setting-select { border-color: var(--wme-studio-border) !important; background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .setting-select:focus { border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .setting-input { border-color: var(--wme-studio-border) !important; background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .setting-input:focus { border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .setting-unit { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .setting-input-full { border-color: var(--wme-studio-border) !important; background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .setting-input-full:focus { border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .btn-secondary-modern,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-popup-dialog .btn-secondary-modern { background: var(--wme-studio-hover) !important; color: var(--wme-studio-text-secondary) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .btn-secondary-modern:hover,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-popup-dialog .btn-secondary-modern:hover { background: var(--wme-studio-hover) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-gis-panel .section-description { color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-internal-tabs > li.active > a,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-internal-tabs > li.active > a:hover,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-internal-tabs > li.active > a:focus { background-color: #0066cc !important; border-color: var(--wme-studio-accent) !important; color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-internal-tabs > li > a:hover { background-color: var(--wme-studio-surface-2) !important; border-color: var(--wme-studio-accent) !important; color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-popup-dialog { background: var(--wme-studio-surface) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-dialog-section { background: var(--wme-studio-surface) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-dialog-section-title { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-dialog-section-text { color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-dialog-select { background: var(--wme-studio-surface) !important; border-color: var(--wme-studio-border) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-dialog-select:focus { border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-label-popup-options { background: var(--wme-studio-surface-2) !important; border-bottom-color: var(--wme-studio-border) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-label-popup-options label { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-label-popup-dropdown { background: var(--wme-studio-surface) !important; border-bottom-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .gis-label-popup-content { background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #layerLabelPopup { background: var(--wme-studio-surface) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #gis-layer-group-dialog { background: var(--wme-studio-surface-2) !important; border-color: var(--wme-studio-border) !important; }
+/* WME LaneTools */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .lt-section-wrapper.border { border-bottom-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] input[type="text"].lt-color-input { border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .lt-add-Width { border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .lt-add-Width:hover { border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .lt-add-lanes { border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .lt-add-lanes:hover { border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .lt-tio-select { color: var(--wme-studio-text) !important; background-color: var(--wme-studio-surface-2) !important; }
+/* WME Junction Angle Info */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane .ja-card-header { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane .ja-card-header:hover { background: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane .ja-card-header i { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane .ja-toggle-slider { background-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane .ja-toggle-slider:before { background-color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane .ja-toggle input:checked + .ja-toggle-slider { background-color: #00bd00 !important; }
+/* WME HN NavPoints */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-hnp-panel .hnp-card-header { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-hnp-panel .hnp-card-header:hover { background: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-hnp-panel .hnp-card-header i { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-hnp-panel .hnp-toggle-slider { background-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-hnp-panel .hnp-toggle-slider:before { background-color: white !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-hnp-panel .hnp-toggle input:checked + .hnp-toggle-slider { background-color: #00bd00 !important; }
+/* WME Wazebar */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .WazeBarText { border-right-color: var(--wme-studio-border-strong) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .WazeBarText.WazeBarCurrState a { color: #FF0000 !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .WazeBarIcon { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #WazeBarFavorites { background-color: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .favorite-item { background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .favorite-item a { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .favorite-item a:visited { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .favorite-item:hover { background: #33CCFF !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #WazeBarFavoritesAddContainer input { border-color: var(--wme-studio-border-strong) !important; background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .WazeBarUnread { background-color: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .WazeBarUnreadList.unread-item { background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .WazeBarUnreadList.unread-item a { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .WazeBarUnreadList.unread-item:hover { background: #33CCFF !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #WazeBarSettings { background-color: var(--wme-studio-surface) !important; border-color: var(--wme-studio-border-strong) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #WazeBarSettings input[type='number'],
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #WazeBarSettings input[type='text'],
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #WazeBarSettings textarea { border-color: var(--wme-studio-border-strong) !important; background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .flex-column { border-color: var(--wme-studio-border) !important; background-color: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .left-column::after { background-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .right-column::before { background-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) #colorPickerForumFont,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) #colorPickerWikiFont { border-color: var(--wme-studio-border-strong) !important; background-color: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) hr { border-top-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #WazeBarCustomURL,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #WazeBarCustomText { border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .custom-item { background: var(--wme-studio-surface-2) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .custom-item a { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .custom-item a:visited { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .custom-item:hover { background: #33CCFF !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #txtWazebarSettings,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #txtWazebarImportSettings { border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#Wazebar,#WazeBarSettings,#WazeBarFavorites,.WazeBarUnread) .styled-select:focus { border-color: var(--wme-studio-accent) !important; }
+/* WME OpenMaps */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #sidepanel-openMaps select { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .open-maps-query-window { background-color: var(--wme-studio-surface) !important; border-color: var(--wme-studio-border) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .open-maps-maximum-layers { background-color: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .open-maps-icon-button { background: none !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .open-maps-icon-button.fa-info-circle { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #sidepanel-openMaps .maps-menu-item > div.edit-panel { background-color: var(--wme-studio-surface-2) !important; }
+/* WME Advanced Closures */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wmeac-progressBarInfo { background-color: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeac-progressBarBG { background-color: color-mix(in srgb, var(--wme-studio-accent) 16%, var(--wme-studio-surface)) !important; border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeac-nav-tabs>li.active>a { background-color: rgba(0, 0, 0, 0) !important; border-bottom-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeac-nav-tabs>li:not(.active)>a { background-color: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeac-csv-closures-list-add { background-color: color-mix(in srgb, var(--wme-studio-accent) 16%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeac-csv-closures-list-remove { background-color: color-mix(in srgb, #FFC65F 26%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeac-csv-closures-list-failed { background-color: color-mix(in srgb, #FF8585 26%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeac-csv-closures-list-done { background-color: color-mix(in srgb, #B9FAB1 26%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wmeac-csv-closures-preview:before { background: color-mix(in srgb, var(--wme-studio-accent) 16%, var(--wme-studio-surface)) !important; }
+/* Waze Edit Count Monitor */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wecm-tooltip strong { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wecm-tooltip-section { border-left-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wecm-section-header { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wecm-stat-value { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wecm-realtime-counter:hover { color: var(--wme-studio-accent) !important; }
+/* WME Route Speeds */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #routespeeds-sidepanel select { border-color: var(--wme-studio-border) !important; background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .routespeeds_summary_normal { color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .routespeeds_summary_selected { color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; background: color-mix(in srgb, var(--wme-studio-accent) 16%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .routespeeds_summary_hov { color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; background: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .routespeeds_summary_hov_selected { color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; background: color-mix(in srgb, var(--wme-studio-accent) 16%, var(--wme-studio-surface)) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .routespeeds_summary_normal:hover { border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .routespeeds_summary_selected:hover { border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .routespeeds_summary_hov:hover { border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .routespeeds_summary_hov_selected:hover { border-color: var(--wme-studio-border-strong) !important; }
+/* WME Place Harmonizer: it has its own colour tokens, switched by the editor's native dark mode. Point them at Studio's. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] { --wmeph-text-default: var(--wme-studio-text); --wmeph-text-secondary: var(--wme-studio-text); --wmeph-bg-primary: var(--wme-studio-surface); --wmeph-bg-secondary: var(--wme-studio-surface-2); --wmeph-bg-tertiary: var(--wme-studio-surface-2); --wmeph-border: var(--wme-studio-border-strong); --wmeph-border-light: var(--wme-studio-border); --wmeph-divider: var(--wme-studio-border); --wmeph-gray-text: var(--wme-studio-text); --wmeph-gray-bg: var(--wme-studio-surface-2); --wmeph-lightgray-bg: var(--wme-studio-surface-2); --wmeph-gradient-secondary: var(--wme-studio-surface-2); --wmeph-gradient-secondary-hover: var(--wme-studio-hover); --wmeph-gradient-section-header: var(--wme-studio-surface-2); --wmeph-gradient-section-header-hover: var(--wme-studio-hover); --wmeph-dark-bg-secondary: var(--wme-studio-input); --wmeph-dark-bg-tertiary: var(--wme-studio-hover); --wmeph-dark-border: var(--wme-studio-border); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"]) { --wmeph-primary-lighter: #33ccff; --wmeph-red-text: #ff6b6b; --wmeph-red-bg: #3d1a1a; --wmeph-blue-text: #5b9ef5; --wmeph-blue-bg: #1a2d52; --wmeph-yellow-text: #ffd54f; --wmeph-yellow-bg: #4a4200; --wmeph-orange-text: #ffa726; --wmeph-orange-bg: #3d2817; --wmeph-feed-warning-text: #f9a825; --wmeph-feed-warning-bg: #5a4a0a; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"]) .wmeph-pane .wmeph-internal-tabs { border-bottom-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"]) .wmeph-pane .wmeph-internal-tabs .nav-link:not(.active) { color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"]) #WMEPH_banner .wmeph-btn { background-color: var(--wme-studio-input) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"]) #WMEPH_banner .wmeph-btn:hover { background-color: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"]) #WMEPH_banner a:is([style*="#3a3a3a"],[style*="#3232e6"]) { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane .wmeph-input,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #WMEPH_banner .wmeph-input { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
+/* WME LaneTools: the lane count buttons get their colours written inline. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(.lt-add-lanes,.lt-add-Width) { border-color: var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(.lt-add-lanes,.lt-add-Width)[style*="transparent"] { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(.lt-add-lanes,.lt-add-Width)[style*="navy"] { background-color: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important; border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#li-del-fwd-btn,#li-del-rev-btn) { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#li-del-fwd-btn,#li-del-rev-btn):hover { background-color: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .lt-wrapper { color: var(--wme-studio-text); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .lt-wrapper a { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] input[type="text"].lt-color-input { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; }
+/* WME Validator: its sidebar panel, tabs and the help balloon. Class names are the ones its release build generates. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c2821834349 { border-bottom-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c2821834349 > label { background-color: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c2821834349 > input:enabled + label:hover { background-color: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c2821834349 > input:checked + label,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c2821834349 > input:checked + label:hover { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; border-bottom-color: var(--wme-studio-surface) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c2952996808 { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c2952996808 :is(input[type="text"],input[type="date"],select) { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c1249150123 { background-color: var(--wme-studio-surface-2) !important; border-color: var(--wme-studio-border) !important; box-shadow: var(--wme-studio-shadow) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c1249150124 > p { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c1249150123 i[style*="color:black"] { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c3336571891 > span { background-color: color-mix(in srgb, #2e9d4f 20%, var(--wme-studio-surface)) !important; border-color: color-mix(in srgb, #2e9d4f 45%, var(--wme-studio-surface)) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c3584528711 > span { background-color: color-mix(in srgb, #d9a400 22%, var(--wme-studio-surface)) !important; border-color: color-mix(in srgb, #d9a400 48%, var(--wme-studio-surface)) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] div.c3584528712 > span { background-color: color-mix(in srgb, #2e9d4f 20%, var(--wme-studio-surface)) !important; border-color: color-mix(in srgb, #2e9d4f 45%, var(--wme-studio-surface)) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"]) :is(div,a).c264347078 { color: #8f9bff !important; }
+/* UROverview Plus: its tab strip is coloured inline (greenyellow for the open tab, gainsboro for the rest). */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] td[id^="_tab"][style*="gainsboro"] { background-color: var(--wme-studio-surface-2) !important; border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] td[id^="_tab"][style*="gainsboro"] a { color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] td[id^="_tab"][style*="greenyellow"] { background-color: var(--wme-studio-accent) !important; border-color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] td[id^="_tab"][style*="greenyellow"] a { color: var(--wme-studio-on-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #uroControlsContainer { color: var(--wme-studio-text); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #uroControlsContainer :is(select,input[type="text"],input[type="number"]) { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #uroControlsContainer div[id^="_uroPlacesGroup-"] { border-color: var(--wme-studio-border) !important; }
+/* WME Speedhelper: the notice it shows in the segment panel. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #_wmesh_msg1 { background: color-mix(in srgb, #e5484d 16%, var(--wme-studio-surface)) !important; border-color: color-mix(in srgb, #e5484d 60%, var(--wme-studio-surface)) !important; color: var(--wme-studio-text) !important; }
+/* WME Color Highlights and WME Junction Angle Info: plain fields in their tabs. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #highlight-addon :is(select,input[type="number"],input[type="text"]),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane :is(select,input[type="number"],input[type="text"]) { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #highlight-addon :is(select,input):focus-visible,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane :is(select,input):focus-visible { outline: 2px solid var(--wme-studio-accent) !important; outline-offset: 2px; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #highlight-addon { color: var(--wme-studio-text); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane .ja-card,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-hnp-panel .hnp-card { border-color: var(--wme-studio-border) !important; }
+/* WME Route Speeds: the hint text and the passes box are coloured inline. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #routespeeds-marker-click-explanation { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #routespeeds-sidepanel fieldset { border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #routespeeds-sidepanel input[type="text"] { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius); }
+/* Waze Edit Count Monitor: its session table is coloured inline. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wecm-time-history-table thead { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wecm-time-history-body tr { background: transparent !important; border-bottom-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wecm-time-history-body tr:nth-child(odd) { background: var(--wme-studio-surface-2) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wecm-time-history-body td[style*="#666"] { color: var(--wme-studio-text-muted) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wecm-total-summary { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #wecm-time-tracking-panel { background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-accent) !important; }
+/* WME Place Interface Enhancements: photo viewer buttons are coloured inline. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#zoomPrev,#zoomNext) { background-color: var(--wme-studio-hover) !important; color: var(--wme-studio-text) !important; }
+/* WME OpenMaps and WME Advanced Closures: fields and the closure dialog's tab text. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #sidepanel-openMaps select { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeac-closuredialog { color: var(--wme-studio-text); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeac-closuredialog :is(input[type="text"],input[type="number"],input[type="date"],input[type="time"],select,textarea) { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius); }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeac-nav-tabs > li > a { color: var(--wme-studio-text) !important; }
 /* WME Locksmith (Greasy Fork 386773): its panel uses fixed light colours. The colours it sets itself to show a state
    (cyan, red, orange arrows; the attribute swatches) are kept; only its "off" grey is mapped to the theme. */
 html[data-wme-studio="on"][data-wme-studio-addons="on"] .ls-Wrapper { background-color: transparent !important; border-color: transparent !important; color: var(--wme-studio-text) !important; }
@@ -8051,7 +8398,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       y: Math.min(1, Math.max(0, rect.top / innerHeight)), anchor: 'viewport'
     };
     compactIslandLayout = { ...compactIslandLayout, messages: point };
-    try { Promise.resolve(GM_setValue(COMPACT_LAYOUT_KEY, compactIslandLayout)).catch((studioError) => { reportStudioError("storeCompactChatLayout",studioError);}); } catch (studioError) { reportStudioError("storeCompactChatLayout",studioError);}
+    try { Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY, compactIslandLayout)).catch((studioError) => { reportStudioError("storeCompactChatLayout",studioError);}); } catch (studioError) { reportStudioError("storeCompactChatLayout",studioError);}
     return true;
   }
   function syncCompactDocks(sizes = null) {
@@ -8285,7 +8632,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   }
   async function storeCompactIslandLayout(value) {
     compactIslandLayout = sanitizeCompactIslandLayout(value);
-    await GM_setValue(COMPACT_LAYOUT_KEY, compactIslandLayout || {});
+    await studioKeep.set(COMPACT_LAYOUT_KEY, compactIslandLayout || {});
     applyCompactLayoutVariables();
   }
 
@@ -8712,7 +9059,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   }
   function storeChatPanelPosition(position) {
     chatPanelPosition = normalizedChatPanelPosition(position);
-    try { Promise.resolve(GM_setValue(CHAT_PANEL_POSITION_KEY, chatPanelPosition)).catch((studioError) => { reportStudioError("storeChatPanelPosition",studioError);}); } catch (studioError) { reportStudioError("storeChatPanelPosition",studioError); }
+    try { Promise.resolve(studioKeep.set(CHAT_PANEL_POSITION_KEY, chatPanelPosition)).catch((studioError) => { reportStudioError("storeChatPanelPosition",studioError);}); } catch (studioError) { reportStudioError("storeChatPanelPosition",studioError); }
   }
   function resetChatPanel(frame) {
     panelResizeHints.dismiss(frame);
@@ -8863,7 +9210,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       if (compactIslandLayout?.messages) {
         const { messages: _saved, ...rest } = compactIslandLayout;
         compactIslandLayout = sanitizeCompactIslandLayout(rest);
-        try { Promise.resolve(GM_setValue(COMPACT_LAYOUT_KEY, compactIslandLayout || {})).catch((studioError) => { reportStudioError("syncChatPanel",studioError);}); } catch (studioError) { reportStudioError("syncChatPanel",studioError);}
+        try { Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY, compactIslandLayout || {})).catch((studioError) => { reportStudioError("syncChatPanel",studioError);}); } catch (studioError) { reportStudioError("syncChatPanel",studioError);}
       }
       storeChatPanelPosition(null);
       applyChatPanelPosition(state, DEFAULT_CHAT_PANEL_OFFSET);
@@ -8910,7 +9257,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       queueMicrotask(() => { if (allowedChatToggle === control) allowedChatToggle = null; });
     });
   }, true);
-  Promise.resolve().then(() => GM_getValue(CHAT_PANEL_POSITION_KEY)).then(value => {
+  Promise.resolve().then(() => studioKeep.get(CHAT_PANEL_POSITION_KEY)).then(value => {
     chatPanelPosition = normalizedChatPanelPosition(value);
     for (const frame of chatFrames.keys()) {
       const state = chatPanelStates.get(frame);
@@ -10649,8 +10996,8 @@ ${studioRangeCSS('.picker-hue')}
     // the page closes, and should that ever happen with the options still off, they are owed back on the next load.
     let paused = new Set(), loaded = false, note = null, started = performance.now();
     const boxes = () => ALL.map(id => document.getElementById(id)).filter(box => box instanceof HTMLInputElement && box.type === 'checkbox');
-    const store = () => { try { Promise.resolve(GM_setValue(KEY, { boxes: [...paused], values: { ...values } })).catch(error => reportStudioError('fumeGuard', error)); } catch (error) { reportStudioError('fumeGuard', error); } };
-    try { Promise.resolve(GM_getValue(KEY, null)).then(value => {
+    const store = () => { try { Promise.resolve(studioKeep.set(KEY, { boxes: [...paused], values: { ...values } })).catch(error => reportStudioError('fumeGuard', error)); } catch (error) { reportStudioError('fumeGuard', error); } };
+    try { Promise.resolve(studioKeep.get(KEY, null)).then(value => {
       for (const id of Array.isArray(value?.boxes) ? value.boxes : []) if (ALL.includes(id)) paused.add(id);
       for (const id of SELECTS) if (typeof value?.values?.[id] === 'string') values[id] = value.values[id];
       loaded = true;
@@ -11088,10 +11435,10 @@ ${studioRangeCSS('.picker-hue')}
   const PANEL_SIZES_KEY = 'wmeStudio.panelSizes.v1';
   let panelSizes = {}, panelSizeTimer = 0, windowResize = null;
   function sidePanelResizing() { return windowResize?.kind === 'sidePanel'; }
-  try { Promise.resolve(GM_getValue(PANEL_SIZES_KEY, {})).then(value => { if (value && typeof value === 'object') { panelSizes = value; applyPanelSizes(); } }).catch((studioError) => { reportStudioError("Studio initialization",studioError);}); } catch (_) { reportStudioError("Studio initialization",_);}
+  try { Promise.resolve(studioKeep.get(PANEL_SIZES_KEY, {})).then(value => { if (value && typeof value === 'object') { panelSizes = value; applyPanelSizes(); } }).catch((studioError) => { reportStudioError("Studio initialization",studioError);}); } catch (_) { reportStudioError("Studio initialization",_);}
   function storePanelSizes() {
     clearTimeout(panelSizeTimer);
-    panelSizeTimer = setTimeout(() => { try { Promise.resolve(GM_setValue(PANEL_SIZES_KEY, panelSizes)).catch((studioError) => { reportStudioError("storePanelSizes",studioError);}); } catch (_) { reportStudioError("storePanelSizes",_);} }, 250);
+    panelSizeTimer = setTimeout(() => { try { Promise.resolve(studioKeep.set(PANEL_SIZES_KEY, panelSizes)).catch((studioError) => { reportStudioError("storePanelSizes",studioError);}); } catch (_) { reportStudioError("storePanelSizes",_);} }, 250);
   }
   function resizableWindow(element) {
     if (element?.id === 'sidebar') return settings.enabled && !standaloneSignin && !editorProfile && !!element.closest('.app.show-sidebar:not(.sidebar-fullscreen)') ? 'sidePanel' : '';
@@ -11200,7 +11547,7 @@ ${studioRangeCSS('.picker-hue')}
       element.setAttribute('data-wme-studio-resize-hint', 'on');
       seen[kind] = true;
       const snapshot = { ...seen };
-      saving = saving.then(() => GM_setValue(key, snapshot)).catch((studioError) => { reportStudioError("show",studioError);});
+      saving = saving.then(() => studioKeep.set(key, snapshot)).catch((studioError) => { reportStudioError("show",studioError);});
       active.set(element, { kind, doc, timer: setTimeout(() => dismiss(element), 11000) });
     }
     // prune() runs from the clean-up that follows every removal on the page. Asking whether a panel is
@@ -11218,7 +11565,7 @@ ${studioRangeCSS('.picker-hue')}
       });
     }
     try {
-      Promise.resolve(GM_getValue(key, {})).then(value => {
+      Promise.resolve(studioKeep.get(key, {})).then(value => {
         if (value && typeof value === 'object') for (const kind of kinds) if (value[kind] === true) seen[kind] = true;
       }).catch((studioError) => { reportStudioError("panelResizeHints",studioError);}).then(() => {
         loaded = true; queueHeaderGuardWindows(); queueCompactAuxiliaryPlacement();
@@ -11521,7 +11868,7 @@ ${studioRangeCSS('.picker-hue')}
         const point={x:Math.min(1,Math.max(0,drag.previous.left/innerWidth)),y:Math.min(1,Math.max(0,drag.previous.top/innerHeight)),anchor:'viewport'};
         compactIslandLayout={...compactIslandLayout,[kind]:point};
         drag.state.appliedPopupPoint=`viewport,${point.x},${point.y}`;   // already applied: the panel is there
-        try { Promise.resolve(GM_setValue(COMPACT_LAYOUT_KEY,compactIslandLayout)).catch((studioError)=>{ reportStudioError("releaseRequestHeaderDrag",studioError);}); } catch (_) { reportStudioError("releaseRequestHeaderDrag",_);}
+        try { Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY,compactIslandLayout)).catch((studioError)=>{ reportStudioError("releaseRequestHeaderDrag",studioError);}); } catch (_) { reportStudioError("releaseRequestHeaderDrag",_);}
       }
     }
     requestHeaderDrag = null;
@@ -12019,7 +12366,7 @@ ${studioRangeCSS('.picker-hue')}
     };
     compactIslandLayout = {...compactIslandLayout,layers:point};
     applyCompactLayoutVariables();
-    try { Promise.resolve(GM_setValue(COMPACT_LAYOUT_KEY,compactIslandLayout)).catch((studioError) => { reportStudioError("storeMapLayerPosition",studioError);}); } catch (studioError) { reportStudioError("storeMapLayerPosition",studioError);}
+    try { Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY,compactIslandLayout)).catch((studioError) => { reportStudioError("storeMapLayerPosition",studioError);}); } catch (studioError) { reportStudioError("storeMapLayerPosition",studioError);}
   }
   function resetMapLayerPosition(state) {
     finishMapLayerDrag(state);
@@ -13018,7 +13365,7 @@ ${studioControlsCSS()}
       const savedLayout = sanitizeCompactIslandLayout(draft);
       saving = true; statusLine.textContent = 'Saving layout…';
       try {
-        await GM_setValue(COMPACT_LAYOUT_KEY, savedLayout || {});
+        await studioKeep.set(COMPACT_LAYOUT_KEY, savedLayout || {});
         await config.write(patch);
         settings = {...settings,...patch}; compactIslandLayout = savedLayout;
         close(true);
@@ -14222,10 +14569,10 @@ ${studioControlsCSS()}
       const {left,top,width,height} = state.rect;
       const point = {x:Math.max(0,Math.min(1,(left - 12) / Math.max(1,innerWidth - width - 24))),y:Math.max(0,Math.min(1,(top - 12) / Math.max(1,innerHeight - height - 24)))};
       compactIslandLayout = {...compactIslandLayout,streetView:point};
-      try { Promise.resolve(GM_setValue(COMPACT_LAYOUT_KEY,compactIslandLayout)).catch((studioError) => { reportStudioError("saveStreetViewWindow",studioError);}); } catch (studioError) { reportStudioError("saveStreetViewWindow",studioError);}
+      try { Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY,compactIslandLayout)).catch((studioError) => { reportStudioError("saveStreetViewWindow",studioError);}); } catch (studioError) { reportStudioError("saveStreetViewWindow",studioError);}
       applyCompactLayoutVariables();
     }
-    try { Promise.resolve(GM_setValue(STREET_VIEW_WINDOW_KEY,{...state.size,docked:state.docked})).catch((studioError) => { reportStudioError("saveStreetViewWindow",studioError);}); } catch (studioError) { reportStudioError("saveStreetViewWindow",studioError);}
+    try { Promise.resolve(studioKeep.set(STREET_VIEW_WINDOW_KEY,{...state.size,docked:state.docked})).catch((studioError) => { reportStudioError("saveStreetViewWindow",studioError);}); } catch (studioError) { reportStudioError("saveStreetViewWindow",studioError);}
   }
   function renderStreetViewDrag() {
     const state = streetViewWindow, drag = state.drag; state.dragFrame = 0;
@@ -14458,7 +14805,7 @@ ${studioControlsCSS()}
   function queueStreetViewWindow() { if (!streetViewWindow.frame) streetViewWindow.frame = requestAnimationFrame(syncStreetViewWindow); }
   window.addEventListener('resize',() => { if (!notifyingMapResize) queueStreetViewWindow(); },{passive:true});
   window.addEventListener('blur',() => finishStreetViewDrag());
-  Promise.resolve(GM_getValue(STREET_VIEW_WINDOW_KEY,null)).then(value => {
+  Promise.resolve(studioKeep.get(STREET_VIEW_WINDOW_KEY,null)).then(value => {
     if (value && typeof value === 'object') {
       streetViewWindow.docked = value.docked === true;
       if (Number.isFinite(value.width) && Number.isFinite(value.height)) streetViewWindow.size = {width:Math.max(280,Math.min(2400,value.width)),height:Math.max(220,Math.min(1600,value.height))};
@@ -14541,7 +14888,7 @@ ${studioControlsCSS()}
       const geometry = streetViewSplitGeometry();
       if (!geometry || !(geometry.position > 0 && geometry.position < 1) || Math.abs(geometry.position - press.position) * geometry.frame.width < 1) return;
       streetViewSplit.position = geometry.position; streetViewSplit.open = true;
-      try { Promise.resolve(GM_setValue(STREET_VIEW_SPLIT_KEY, { position: geometry.position })).catch((studioError) => { reportStudioError("releaseStreetViewSplit",studioError);}); } catch (studioError) { reportStudioError("releaseStreetViewSplit",studioError);}
+      try { Promise.resolve(studioKeep.set(STREET_VIEW_SPLIT_KEY, { position: geometry.position })).catch((studioError) => { reportStudioError("releaseStreetViewSplit",studioError);}); } catch (studioError) { reportStudioError("releaseStreetViewSplit",studioError);}
     }));
   }
   for (const type of ['pointerup','mouseup','dragend']) window.addEventListener(type, releaseStreetViewSplit, true);
@@ -14809,7 +15156,7 @@ ${studioControlsCSS()}
       const explicit=block[1].match(/^\s*\/\/\s*@iconURL\s+([^\r\n]+)$/im), alias=block[1].match(/^\s*\/\/\s*@icon\s+([^\r\n]+)$/im);
       return {iconURL:safeIconURL((explicit || alias)?.[1] || '',source)};
     }
-    const iconCacheRead=Promise.resolve(GM_getValue(ICON_CACHE_KEY,{})).then(saved=>{
+    const iconCacheRead=Promise.resolve(studioKeep.get(ICON_CACHE_KEY,{})).then(saved=>{
       const now=Date.now();
       if(saved && typeof saved==='object') for(const [source,item] of Object.entries(saved)) {
         if(!/^https:\/\/update\.greasyfork\.org\/scripts\/\d{1,12}\/code\.user\.js$/.test(source) || !item || !Number.isFinite(item.expires) || item.expires>now+ICON_TTL+60000)continue;
@@ -14819,7 +15166,7 @@ ${studioControlsCSS()}
     function saveIcons() {
       clearTimeout(iconSaveTimer);iconSaveTimer=setTimeout(()=>{
         iconSaveTimer=0;
-        try {Promise.resolve(GM_setValue(ICON_CACHE_KEY,Object.fromEntries(iconCache))).catch(error=>reportStudioError('Saving script icon cache',error));}
+        try {Promise.resolve(studioKeep.set(ICON_CACHE_KEY,Object.fromEntries(iconCache))).catch(error=>reportStudioError('Saving script icon cache',error));}
         catch(error){reportStudioError('Saving script icon cache',error);}
       },200);
     }
@@ -15002,7 +15349,7 @@ ${studioControlsCSS()}
       persistPins(unique(preferences.pins.map(stable)));
     }
     const adopt=value=>{stored=validate(value).pins;resolvePins();};
-    const read=Promise.resolve(GM_getValue(KEY,null)).then(value=>{
+    const read=Promise.resolve(studioKeep.get(KEY,null)).then(value=>{
       if (value!==null) try { adopt(value); } catch (error) { reportStudioError('Loading script tab pins',error); }
       loaded=true;refresh();
     }).catch(error=>{reportStudioError('Loading script tab pins',error);loaded=true;refresh();});
@@ -15797,12 +16144,12 @@ ${studioControlsCSS()}
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
-  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.5:</p>
+  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.6:</p>
 <p><strong>New</strong></p><ul>
-<li>WME Locksmith now follows the Studio theme.</li>
-</ul>
-<p><strong>Fixes</strong></p><ul>
-<li>The editor profile page scrolls again.</li>
+<li>Your settings, layouts and pinned scripts are kept in the browser, so they come back if you remove WME Studio and install it again.</li>
+<li>The pictures on the Layout page now show what each mode and starting layout looks like.</li>
+<li>The Developers page is easier to follow, and explains why every Studio variable needs a fallback.</li>
+<li>More scripts follow the Studio theme: Place Harmonizer, Place Interface Enhancements, GIS Layers, LaneTools, Junction Angle Info, HN NavPoints, Wazebar, OpenMaps, Advanced Closures, Edit Count Monitor, Route Speeds, Validator, URO+, Speedhelper and Color Highlights.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
@@ -15810,7 +16157,7 @@ ${studioControlsCSS()}
     const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
     if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
       try {
-        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.5',studioUpdateNotes);
+        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.6',studioUpdateNotes);
         studioUpdateReported=true;
       } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
       return;
@@ -15907,28 +16254,28 @@ ${studioControlsCSS()}
   document.fonts?.ready.then(scheduleLaneSizing);
   document.fonts?.addEventListener('loadingdone', scheduleLaneSizing);
   Promise.all([
-    Promise.resolve(GM_getValue(COMPACT_LAYOUT_KEY, {})),
-    Promise.resolve(GM_getValue(SIDE_RAIL_CENTER_MIGRATION_KEY, false))
+    Promise.resolve(studioKeep.get(COMPACT_LAYOUT_KEY, {})),
+    Promise.resolve(studioKeep.get(SIDE_RAIL_CENTER_MIGRATION_KEY, false))
   ]).then(async ([value, migrated]) => {
     let layout = sanitizeCompactIslandLayout(value);
     if (!migrated) {
       // The sanitizer already removes legacy defaults; keep custom saved positions.
-      await GM_setValue(SIDE_RAIL_CENTER_MIGRATION_KEY, true);
+      await studioKeep.set(SIDE_RAIL_CENTER_MIGRATION_KEY, true);
     }
     compactIslandLayout = layout;
     applyCompactLayoutVariables();
     queueStreetViewWindow();
     requestAnimationFrame(() => requestAnimationFrame(() => scheduleDefaultSideIslandCenters()));
   }).catch((studioError) => { reportStudioError("Studio initialization",studioError);});
-  Promise.resolve(GM_getValue(STREET_VIEW_SPLIT_KEY, null)).then(value => {
+  Promise.resolve(studioKeep.get(STREET_VIEW_SPLIT_KEY, null)).then(value => {
     const position = value && typeof value === 'object' ? value.position : null;
     streetViewSplit.position = Number.isFinite(position) && position > 0 && position < 1 ? position : null;
     if (streetViewSplit.position !== null) queueStreetViewSplit();
   }).catch((studioError) => { reportStudioError("Studio initialization",studioError);});
   const GLASS_OPACITY_UPDATE_KEY = 'wmeStudio.update.glassOpacity60';
-  Promise.resolve(GM_getValue(GLASS_OPACITY_UPDATE_KEY, false)).then(async done => {
+  Promise.resolve(studioKeep.get(GLASS_OPACITY_UPDATE_KEY, false)).then(async done => {
     if (done) return;
-    await GM_setValue(GLASS_OPACITY_UPDATE_KEY, true);
+    await studioKeep.set(GLASS_OPACITY_UPDATE_KEY, true);
     await config.write({ compactIslandOpacity: 60 });
   }).catch((studioError) => { reportStudioError("Studio initialization",studioError);});
   // On-demand workspace tools: no editor scans, timers or background profile polling.
@@ -15991,7 +16338,7 @@ ${studioControlsCSS()}
       return {id:value.id,name,snapshot:validateSnapshot(value.snapshot)};
     }
     async function list() {
-      const value = await GM_getValue(KEY,[]), out = [], ids = new Set();
+      const value = await studioKeep.get(KEY,[]), out = [], ids = new Set();
       if (!Array.isArray(value)) return out;
       for (const item of value.slice(0,MAX)) try {const clean = profile(item);if (!ids.has(clean.id)) {out.push(clean);ids.add(clean.id);}} catch (studioError) { reportStudioError("list",studioError);}
       return out;
@@ -16036,7 +16383,7 @@ ${studioControlsCSS()}
       applyLayoutSettings(workspace);queueStreetViewWindow();
     }
     async function backup() {
-      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.5',createdAt:new Date().toISOString(),
+      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.6',createdAt:new Date().toISOString(),
         settings:await config.read(),layout:await snapshot(),profiles:await list(),scriptTabs:await scriptTabPicker.snapshot()};
     }
     function parseBackup(text) {
@@ -16113,6 +16460,54 @@ ${studioControlsCSS()}
 
   function uiRouteAllowed() {
     return /(?:^|\/)editor(?:\/|$)/i.test(location.pathname) || /^(?:\/[^/]+)?\/signin\/?$/i.test(location.pathname);
+  }
+
+  // Miniature editors for the Layout page, drawn from the real layouts at one tenth of a 1920 px window: satellite
+  // ground with WME road colours, and Studio's header, rails and circles where each mode and preset puts them.
+  function layoutThumb(kind) {
+    const road = (d, color, width) => `<path d="${d}" stroke="#141a14" stroke-opacity=".55" stroke-width="${width + 1}"/><path d="${d}" stroke="${color}" stroke-width="${width}"/>`;
+    const map = `<rect width="192" height="108" fill="#3c4a33"/><path d="M0 0h66L48 26 0 38z" fill="#33412d"/><path d="M104 56l46-12 42 20v44h-74z" fill="#4b5639"/><path d="M58 70l30-7 16 45H50z" fill="#5c573e"/><path d="M128 0h40l-8 26-30 6z" fill="#46503a"/><path d="M0 60l30-5 14 30-16 23H0z" fill="#2f3d2b"/>`
+      + `<path d="M0 86c14-5 24 1 33 8s22 7 31 14H0z" fill="#1f4263"/><path d="M0 91c12-4 20 1 28 7s16 6 24 10H0z" fill="#16304f"/>`
+      + `<g fill="#b9bbb2" fill-opacity=".5"><path d="M104 18h5v4h-5zM112 16h7v5h-7zM122 19h5v5h-5zM105 26h7v4h-7zM115 25h5v5h-5zM124 28h6v4h-6zM108 33h5v4h-5zM117 34h7v4h-7zM36 34h6v4h-6zM45 33h5v5h-5zM37 42h7v4h-7zM64 44h6v4h-6zM68 51h6v4h-6z"/></g>`
+      + `<g fill="none" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f4f4e6" stroke-opacity=".85" stroke-width=".8"><path d="M30 30v38M57 27l4 33M100 45L66 92M121 12l8 37M112 33l34-6M101 74h54M152 52l40 17M34 50h26M130 49l-4 25M160 74l6 34"/></g>`
+      + road('M-4 27C28 31 60 27 92 18s60-13 104-8', '#eee35a', 1.5) + road('M140-4c-6 27 3 45 13 56s21 27 19 58', '#6cc28c', 1.4)
+      + road('M84-4c3 25 11 40 16 49s7 40 2 67', '#47b6d2', 1.9) + road('M-4 71C40 63 70 47 100 45s64 13 96 5', '#c678d4', 2.3)
+      + `</g><g stroke="#fff" stroke-width=".7"><circle cx="76" cy="39" r="2.1" fill="#f5a623"/><circle cx="136" cy="68" r="2.1" fill="#e5484d"/></g>`;
+    const island = (x, y, w, h, r) => `<rect class="t-sh" x="${x}" y="${y + .9}" width="${w}" height="${h}" rx="${r}"/><rect class="t-ui" x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/>`;
+    const bar = (x, y, w, cls = 't-ink', h = 1.2) => `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}"/>`;
+    const dot = (x, y, r = 1.05, cls = 't-ink') => `<circle class="${cls}" cx="${x}" cy="${y}" r="${r}"/>`;
+    const plus = (x, y, s) => `<rect class="t-acc" x="${x}" y="${y}" width="${s}" height="${s}" rx="${s * .28}"/><path class="t-plus" d="M${x + s / 2} ${y + s * .27}v${s * .46}M${x + s * .27} ${y + s / 2}h${s * .46}"/>`;
+    // header contents: menu, wordmark, search, then delete/undo/redo, Save, alerts/chat/apps and the avatar
+    const headParts = (x, y, w, h, standard) => { const m = y + h / 2, r = x + w, a = standard ? 7 : 5.8;
+      return bar(x + 2.4, m - 1.5, 2.6, 't-strong', .6) + bar(x + 2.4, m - .3, 2.6, 't-strong', .6) + bar(x + 2.4, m + .9, 2.6, 't-strong', .6) + bar(x + a, m - .95, standard ? 15.4 : 11.5, 't-strong', 1.9)
+        + (standard ? `<rect class="t-soft" x="24" y="${m - 2.3}" width="45" height="4.6" rx="1.5"/>` + dot(26.6, m, .9) + bar(28.4, m - .55, 8.7, 't-ink', 1.1) : dot(x + 20.6, m, .9) + bar(x + 22.4, m - .55, 8.7, 't-ink', 1.1))
+        + (standard ? [40, 35.8, 31.6] : [34.9, 31.3, 27.7]).map(v => dot(r - v, m, .85)).join('') + `<rect class="t-save" x="${r - (standard ? 28.5 : 25.5)}" y="${m - 2}" width="7.5" height="4" rx="1.2"/>`
+        + (standard ? [16.5, 12.3, 8.2] : [14.5, 10.8, 7.1]).map(v => dot(r - v, m, .85)).join('') + dot(r - (standard ? 3.5 : 2.9), m, 1.8, 't-strong'); };
+    const header = (x, y, w) => island(x, y, w, 6.4, 2.2) + headParts(x, y, w, 6.4);
+    const nav = x => island(x, 30.2, 6.2, 48.1, 2.4) + plus(x + 1.1, 31.3, 4) + [39.5, 44.6, 49.6, 54.6, 60, 65, 70.1, 75.1].map(y => dot(x + 3.1, y)).join('');
+    const tools = x => island(x, 31.1, 6.2, 46.6, 2.4) + `<rect class="t-on" x="${x + 1}" y="32" width="4.2" height="4.2" rx="1.2"/>` + [38.8, 43.8, 48.7, 54.3, 59.3, 64.3, 70.2, 74.5].map(y => dot(x + 3.1, y)).join('');
+    const online = (x, y) => island(x - 3, y - 3, 6, 6, 3) + dot(x - .5, y - .5, .8) + dot(x + .9, y + .5, .7);
+    const tile = (x, y) => island(x - 3, y - 3, 6, 6, 3) + `<circle class="t-ring" cx="${x}" cy="${y}" r="1.9"/><path class="t-arc" d="M${x} ${y - 1.9}a1.9 1.9 0 1 1-1.85 2.3"/>`;
+    const footer = x => [[x, 11], [126.9, 3.1], [131.5, 3.8], [136.9, 9.8], [148.2, 4.3], [154, 7.2], [165.3, 3.1], [172.5, 9.5], [185.9, 4.5]].map(([left, width]) => bar(left, 106.6, width, 't-foot', .7)).join('');
+    const request = (x, y) => island(x, y, 30, 44, 2.6) + dot(x + 4.6, y + 5, 2, 't-warn') + bar(x + 8.4, y + 3.3, 13, 't-strong', 1.6) + bar(x + 8.4, y + 6.2, 9) + `<rect class="t-soft" x="${x}" y="${y + 10}" width="30" height="4.4"/>` + bar(x + 3, y + 11.6, 8)
+      + bar(x + 3, y + 17.6, 23) + bar(x + 3, y + 20.4, 19) + bar(x + 3, y + 23.2, 21) + `<rect class="t-soft" x="${x + 3}" y="${y + 27.5}" width="24" height="7" rx="1.4"/>` + bar(x + 5, y + 29.4, 10)
+      + `<rect class="t-soft" x="${x + 3}" y="${y + 37.4}" width="11.2" height="4" rx="1.2"/><rect class="t-acc" x="${x + 15.8}" y="${y + 37.4}" width="11.2" height="4" rx="1.2"/>`;
+    const chat = (x, y) => island(x, y, 27, 34, 2.6) + bar(x + 3, y + 3, 10, 't-strong', 1.6) + dot(x + 23.4, y + 3.8, .8)
+      + `<rect class="t-soft" x="${x + 3}" y="${y + 8}" width="14" height="4.4" rx="1.8"/><rect class="t-acc" x="${x + 10}" y="${y + 14}" width="14" height="4.4" rx="1.8"/><rect class="t-soft" x="${x + 3}" y="${y + 20}" width="17" height="4.4" rx="1.8"/><rect class="t-soft" x="${x + 3}" y="${y + 27.4}" width="21" height="3.8" rx="1.9"/>`;
+    let ui;
+    if (kind === 'standard') {
+      ui = `<rect class="t-ui" x="-1" y="-1" width="194" height="8.4"/>` + headParts(0, 0, 192, 7.4, true) + `<rect class="t-ui" x="-1" y="7.4" width="9" height="102"/>` + plus(2, 10.7, 4) + bar(1.2, 19.2, 5.6, 't-soft', .5) + bar(1.2, 57.6, 5.6, 't-soft', .5)
+        + [23.6, 32.1, 40.6, 48.9, 62, 70.4, 78.9, 87.3].map(y => dot(4, y) + bar(2, y + 2, 4, 't-ink', .8)).join('')
+        + [13, 18.5, 23.8, 29.4, 72.7, 78.2, 83.6].map((y, i) => `<rect class="${i ? 't-ui' : 't-on'}" x="186.3" y="${y}" width="4.2" height="4.2" rx="1.2"/>` + (i ? dot(188.4, y + 2.1, .8) : '')).join('')
+        + `<rect class="t-ui" x="186.3" y="89.1" width="4.2" height="8.6" rx="1.2"/>` + dot(188.4, 91.3, .8) + dot(188.4, 95.5, .8)
+        + `<rect class="t-ui" x="9.8" y="100.4" width="15.5" height="3.6" rx="1.8"/>` + dot(12, 102.2, .8) + bar(13.8, 101.7, 9.5, 't-ink', 1) + `<rect class="t-ui" x="165" y="101.4" width="16" height="3.4" rx="1"/>` + dot(166.9, 103.1, .7, 't-acc') + bar(168.6, 102.6, 8.5, 't-ink', 1)
+        + `<rect class="t-ui" x="8" y="105.5" width="185" height="3.5"/>` + footer(9.7).replaceAll('t-foot', 't-ink');
+    } else {
+      const top = kind === 'left-handed' || kind === 'review', left = kind === 'left-handed';
+      ui = (kind === 'wide' ? header(.4, 3, 191.2) : header(32.5, top ? 1.5 : 3, 127)) + (left ? tools(1.2) + nav(184.6) : nav(1.2) + tools(184.6))
+        + (top ? online(187.7, 14.5) + tile(187.7, 21.4) : online(4.3, 101.2) + tile(187.7, 101.2)) + footer(top ? 1.6 : 9) + (kind === 'review' ? chat(11, 17) + request(150, 26) : '');
+    }
+    return `<svg class="thumb" viewBox="0 0 192 108" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">${map}${ui}</svg>`;
   }
 
   function buildStudioUI() {
@@ -16201,17 +16596,13 @@ ${studioControlsCSS()}
   .mode-text{flex:1 1 auto;min-width:0;display:grid;gap:3px}.mode-text strong{font-size:13px;font-weight:650}.mode-text .small{margin:0;font-size:11px}
   .mode-card input{flex:0 0 16px;width:16px;height:16px;margin:0;accent-color:var(--accent);cursor:inherit}.mode-card input:focus-visible{outline:none}
   .mode-hint{margin:0;color:var(--muted);font-size:11.5px;line-height:1.5}
-  .mode-preview{position:relative;flex:0 0 92px;display:block;width:92px;height:58px;overflow:hidden;border:1px solid var(--line);border-radius:9px;background:var(--surface2)}
-  .mode-preview::before{content:"";position:absolute;inset:0;background:linear-gradient(35deg,transparent 44%,var(--line) 45% 46%,transparent 47%),linear-gradient(125deg,transparent 59%,var(--line) 60% 61%,transparent 62%);opacity:.5}
-  .mode-preview i{position:absolute;display:block;background:var(--surface);border:1px solid var(--line)}
-  .mode-preview .mode-header{inset:0 0 auto;height:11px;border-width:0 0 1px}
-  .mode-preview .mode-nav{left:0;top:11px;bottom:0;width:14px;border-width:0 1px 0 0}
-  .mode-preview .mode-tools{right:5px;top:17px;bottom:6px;width:7px;border-radius:3px}
-  .mode-preview .mode-dot{display:none}
-  .mode-preview.compact .mode-header{left:17%;right:17%;top:6px;height:8px;border:1px solid var(--line);border-radius:4px;box-shadow:0 2px 5px #00000012}
-  .mode-preview.compact .mode-nav{left:5px;top:19px;bottom:auto;width:7px;height:22px;border:1px solid var(--line);border-radius:3px;box-shadow:0 2px 5px #00000012}
-  .mode-preview.compact .mode-tools{top:19px;bottom:auto;height:22px;box-shadow:0 2px 5px #00000012}
-  .mode-preview.compact .mode-dot{display:block;left:5px;bottom:5px;width:6px;height:6px;border-radius:50%}.mode-preview.compact .mode-dot.end{left:auto;right:5px}
+  .mode-preview{flex:0 0 136px;display:block;width:136px;height:76.5px;overflow:hidden;border:1px solid var(--line);border-radius:9px;background:#3c4a33}
+  .thumb{display:block;width:100%;height:100%}
+  .thumb .t-ui{fill:var(--surface);stroke:var(--line);stroke-width:.4}.thumb .t-sh{fill:#000;fill-opacity:.32}
+  .thumb .t-soft{fill:color-mix(in srgb,var(--text) 12%,var(--surface))}.thumb .t-ink{fill:color-mix(in srgb,var(--text) 55%,var(--surface))}.thumb .t-strong{fill:color-mix(in srgb,var(--text) 86%,var(--surface))}
+  .thumb .t-acc{fill:var(--accent)}.thumb .t-save{fill:color-mix(in srgb,var(--accent) 62%,var(--surface))}.thumb .t-on{fill:color-mix(in srgb,var(--accent) 26%,var(--surface));stroke:var(--accent);stroke-width:.7}.thumb .t-warn{fill:#f5a623}
+  .thumb .t-plus{fill:none;stroke:#fff;stroke-width:.8;stroke-linecap:round}.thumb .t-foot{fill:#fff;fill-opacity:.6}
+  .thumb .t-ring{fill:none;stroke:color-mix(in srgb,var(--text) 22%,var(--surface));stroke-width:.9}.thumb .t-arc{fill:none;stroke:var(--accent);stroke-width:.9;stroke-linecap:round}
   .card{border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:0 2px 3px #00000008}
   .rows>*+*{border-top:1px solid var(--line)}.rows>fieldset{display:block}
   .srow{display:flex;align-items:center;gap:16px;min-height:60px;padding:11px 16px}
@@ -16234,6 +16625,9 @@ ${studioControlsCSS()}
   .doc{padding:14px 16px 16px;display:grid;gap:10px;user-select:text;-webkit-user-select:text}.doc p{margin:0;font-size:12.5px;line-height:1.55;color:var(--text)}.doc p.note{color:var(--muted);font-size:11.5px}
   .doc code{padding:1px 5px;border-radius:5px;background:var(--surface2);font:11.5px/1.5 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}
   .doc dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:7px 14px;margin:0;font-size:12px;line-height:1.5}.doc dt{margin:0}.doc dd{margin:0;color:var(--muted)}
+  .doc h4{margin:6px 0 0;font-size:12.5px;font-weight:650;color:var(--text)}.doc ol,.doc ul{margin:0;padding-left:20px;display:grid;gap:7px;font-size:12.5px;line-height:1.55;color:var(--text)}.doc li::marker{color:var(--muted);font-weight:650}
+  .dev-toc{display:flex;flex-wrap:wrap;gap:6px}.dev-toc button{height:28px;padding:0 11px;border:1px solid var(--line);border-radius:999px;background:var(--surface2);color:var(--text);font-size:11.5px;font-weight:600}.dev-toc button:hover{background:var(--hover);border-color:var(--line2)}
+  [data-dev]{scroll-margin-top:10px}
   .code{position:relative;border:1px solid var(--line);border-radius:12px;background:var(--surface2);overflow:hidden}
   .code pre{margin:0;padding:12px 14px;overflow:auto;white-space:pre;tab-size:2;color:var(--text);font:11.5px/1.6 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;scrollbar-width:thin}
   .code pre code{padding:0;background:transparent;font:inherit}
@@ -16251,15 +16645,7 @@ ${studioControlsCSS()}
   .preset-card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.preset-card:disabled{cursor:default}
   .preset-name{display:flex;align-items:flex-start;justify-content:space-between;gap:6px;padding:0 3px;font-size:12px;font-weight:650;line-height:1.3}.preset-name>span:first-child{min-width:0;overflow-wrap:anywhere}
   .preset-check{color:var(--accent)}.preset-card[aria-pressed="false"] .preset-check{visibility:hidden}
-  .preset-preview{position:relative;display:block;width:100%;height:58px;overflow:hidden;border:1px solid var(--line);border-radius:9px;background:var(--surface2)}
-  .preset-preview::before{content:"";position:absolute;inset:0;background:linear-gradient(28deg,transparent 43%,var(--line) 44% 45%,transparent 46%),linear-gradient(125deg,transparent 57%,var(--line) 58% 59%,transparent 60%)}
-  .preset-preview i{position:absolute;display:block;border:1px solid var(--line2);border-radius:4px;background:var(--surface)}
-  .preset-preview .mini-header{left:15%;right:15%;top:9%;height:12%;background:color-mix(in srgb,var(--accent) 12%,var(--surface))}
-  .preset-preview .mini-nav{left:5%;top:36%;height:48%;width:7%}.preset-preview .mini-tools{right:5%;top:36%;height:48%;width:7%}
-  .preset-preview .mini-online{right:5%;top:23%;height:7%;width:7%}.preset-preview .mini-panel,.preset-preview .mini-chat{display:none;top:32%;height:52%;width:27%;background:color-mix(in srgb,var(--accent) 9%,var(--surface))}
-  [data-preset="left-handed"] .mini-nav{left:auto;right:5%}[data-preset="left-handed"] .mini-tools{right:auto;left:5%}
-  [data-preset="review"] .mini-panel{display:block;right:15%}[data-preset="review"] .mini-chat{display:block;left:15%;width:23%}
-  [data-preset="wide"] .mini-header{left:0;right:0;top:0;height:17%;border-radius:0}
+  .preset-preview{display:block;width:100%;aspect-ratio:16/9;overflow:hidden;border:1px solid var(--line);border-radius:9px;background:#3c4a33}
   .preset-feedback{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px;color:var(--muted);font-size:11.5px}
   .saved{display:grid;gap:9px;padding:11px 14px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface2)}
   .saved-row{display:flex;align-items:center;gap:8px;min-height:28px}.saved-row strong{font-size:12px;font-weight:650}
@@ -16350,11 +16736,11 @@ ${studioControlsCSS()}
     <div class="body">
       <section class="settings-page" id="studio-page-layout" data-page="layout" role="tabpanel" aria-labelledby="studio-tab-layout"><fieldset data-preferences>
         <div class="group"><h3 class="section-label" id="studio-workspace-mode-label"><span class="step" aria-hidden="true"><b>1</b></span>Mode</h3><div class="modes" role="radiogroup" aria-labelledby="studio-workspace-mode-label">
-          <label class="mode-card"><span class="mode-preview" aria-hidden="true"><i class="mode-header"></i><i class="mode-nav"></i><i class="mode-tools"></i></span><span class="mode-text"><strong>Standard</strong><span class="small">Keep WME’s usual header, rails and panel layout.</span></span><input data-id="workspaceMode-standard" type="radio" name="workspace-mode" value="standard" aria-label="Standard workspace"></label>
-          <label class="mode-card"><span class="mode-preview compact" aria-hidden="true"><i class="mode-header"></i><i class="mode-nav"></i><i class="mode-tools"></i><i class="mode-dot"></i><i class="mode-dot end"></i></span><span class="mode-text"><strong>Floating compact</strong><span class="small">Float the controls as movable glass islands on desktop.</span></span><input data-id="workspaceMode-compact" type="radio" name="workspace-mode" value="compact" aria-label="Floating compact workspace"></label>
+          <label class="mode-card"><span class="mode-preview" aria-hidden="true">${layoutThumb('standard')}</span><span class="mode-text"><strong>Standard</strong><span class="small">Keep WME’s usual header, rails and panel layout.</span></span><input data-id="workspaceMode-standard" type="radio" name="workspace-mode" value="standard" aria-label="Standard workspace"></label>
+          <label class="mode-card"><span class="mode-preview compact" aria-hidden="true">${layoutThumb('floating')}</span><span class="mode-text"><strong>Floating compact</strong><span class="small">Float the controls as movable glass islands on desktop.</span></span><input data-id="workspaceMode-compact" type="radio" name="workspace-mode" value="compact" aria-label="Floating compact workspace"></label>
         </div></div>
         <div class="group"><div class="section-head"><h3 class="section-label"><span class="step" aria-hidden="true"><b>2</b></span>Starting layout</h3><p class="preset-summary"><span>Current layout</span><strong data-id="preset-current">Balanced</strong></p></div>
-          <div class="preset-grid">${globalThis.WMEStudioCompactLayout.presets.map(preset=>`<button class="preset-card" type="button" data-preset="${preset.id}" aria-pressed="false" title="${preset.description}"><span class="preset-preview" aria-hidden="true"><i class="mini-header"></i><i class="mini-nav"></i><i class="mini-tools"></i><i class="mini-online"></i><i class="mini-panel"></i><i class="mini-chat"></i></span><span class="preset-name"><span>${preset.name}</span><span class="preset-check" aria-hidden="true">✓</span></span></button>`).join('')}</div>
+          <div class="preset-grid">${globalThis.WMEStudioCompactLayout.presets.map(preset=>`<button class="preset-card" type="button" data-preset="${preset.id}" aria-pressed="false" title="${preset.description}"><span class="preset-preview" aria-hidden="true">${layoutThumb(preset.id)}</span><span class="preset-name"><span>${preset.name}</span><span class="preset-check" aria-hidden="true">✓</span></span></button>`).join('')}</div>
           <div class="preset-feedback" hidden><span data-id="preset-feedback" role="status" aria-live="polite"></span><button class="reset" data-id="preset-undo" type="button" hidden>Undo</button></div>
           <div class="saved" data-id="workspace-profiles">
             <div class="saved-row"><strong>Saved workspaces</strong><span class="saved-count" data-id="profile-count" data-ws-keep></span><span class="grow"></span><button class="ghost" data-id="profile-manage" type="button" aria-expanded="false" aria-controls="studio-profile-list" hidden>Manage</button></div>
@@ -16429,16 +16815,26 @@ ${studioControlsCSS()}
       </div></section>
       <section class="settings-page" id="studio-page-developers" data-page="developers" role="tabpanel" aria-labelledby="studio-tab-developers" hidden><div class="page-stack">
         <div class="group"><h3 class="section-label">For script authors</h3><div class="card doc">
-          <p>Scripts run with WME Studio without any changes. The hooks on this page are optional: they let your script show its own name and icon on Studio’s script bar, follow the theme, and stay clear of the floating layout. All of it is plain DOM and CSS, so it does nothing when Studio is not installed.</p>
+          <p>Scripts run with WME Studio without any changes. Everything on this page is optional. It is plain DOM and CSS: there is no library to load and nothing to call, so it does nothing when Studio is not installed.</p>
+          <div class="dev-toc" role="group" aria-label="On this page"><button type="button" data-dev-jump="tabs">Name and icon</button><button type="button" data-dev-jump="detect">Detect Studio</button><button type="button" data-dev-jump="theme">Colours and fallbacks</button><button type="button" data-dev-jump="floating">Floating mode</button><button type="button" data-dev-jump="check">Before you release</button></div>
         </div></div>
-        <div class="group"><h3 class="section-label">Name and icon on the script bar</h3><div class="card doc" data-row="dev-tabs">
+        <div class="group"><h3 class="section-label">The short version</h3><div class="card doc">
+          <ol>
+            <li><strong>Give your tab a name and an icon.</strong> Two attributes on the tab label put your script on Studio’s script bar under its real name.</li>
+            <li><strong>Write every Studio variable with a fallback.</strong> <code data-ws-keep>var(--wme-studio-surface, #ffffff)</code>, never <code data-ws-keep>var(--wme-studio-surface)</code>. The variables are missing whenever Studio is not running.</li>
+            <li><strong>Never depend on Studio.</strong> Your script has to work the same when Studio is not installed, is switched off, starts after your script, or has stopped because of an editor update.</li>
+            <li><strong>Read the state, and read it again.</strong> Studio’s state is on <code data-ws-keep>&lt;html&gt;</code>. The user can change theme and layout at any time, so watch for changes instead of reading once.</li>
+            <li><strong>Measure, do not assume.</strong> In Floating mode the header and the panels can be anywhere. Look the element up, check that it exists, and measure it.</li>
+          </ol>
+        </div></div>
+        <div class="group" data-dev="tabs"><h3 class="section-label">Name and icon on the script bar</h3><div class="card doc" data-row="dev-tabs">
           <p>Studio replaces the editor’s row of script tabs with a bar of icons and a searchable list. It reads the name and the icon from your tab. Without them it uses the tab’s text and two initials. Studio cannot read another script’s <code data-ws-keep>@icon</code> header, so the icon has to be on the tab.</p>
           <dl>
             <dt><code data-ws-keep>data-script-name</code></dt><dd>The full name, shown in the list and on the bar.</dd>
             <dt><code data-ws-keep>data-icon-url</code></dt><dd>The icon: an <code data-ws-keep>https:</code>, <code data-ws-keep>data:image/…</code> or <code data-ws-keep>blob:</code> URL. Square, 32 px or larger.</dd>
             <dt><code data-ws-keep>data-userscript-url</code></dt><dd>Your Greasy Fork page. With no <code data-ws-keep>data-icon-url</code>, Studio reads <code data-ws-keep>@icon</code> from the public script header there.</dd>
           </dl>
-          <p>Set them on the tab label, at any time. Studio picks up later changes.</p>
+          <p>Set them on the tab label, at any time. Studio picks up later changes. Pick the example that matches how you add your tab.</p>
           <div class="code"><button class="code-copy" type="button">Copy</button><pre data-ws-keep><code>// With W.userscripts
 const { tabLabel, tabPane } = W.userscripts.registerSidebarTab('my-script');
 tabLabel.textContent = 'MS';   // short text for the editor's own tab
@@ -16459,8 +16855,8 @@ tabLabel.dataset.iconUrl = 'https://example.com/my-script/icon-64.png';</code></
 &lt;/li&gt;</code></pre></div>
           <p class="note">To check the result, open the command palette and run “Script tabs report”. It lists every tab Studio found, the name it uses, and the reason when a tab is left out.</p>
         </div></div>
-        <div class="group"><h3 class="section-label">Detect Studio</h3><div class="card doc">
-          <p>Studio describes its state with attributes on the page’s <code data-ws-keep>&lt;html&gt;</code> element. Read them in CSS or in script.</p>
+        <div class="group" data-dev="detect"><h3 class="section-label">Detect Studio</h3><div class="card doc">
+          <p>Studio describes its state with attributes on the page’s <code data-ws-keep>&lt;html&gt;</code> element. Read them in CSS or in script. When an attribute is missing, treat it as “Studio is not here” and use your own look.</p>
           <dl>
             <dt><code data-ws-keep>data-wme-studio="on"</code></dt><dd>Studio is running. The attribute is removed while Studio is paused.</dd>
             <dt><code data-ws-keep>data-wme-studio-theme</code></dt><dd><code data-ws-keep>light</code>, <code data-ws-keep>dark</code> or <code data-ws-keep>black</code>.</dd>
@@ -16479,7 +16875,8 @@ function studioState() {
   };
 }
 
-// Studio can be paused, and the user can change theme or layout at any time.
+// Studio may start after your script, can be paused, and the user can change
+// theme or layout at any time. Watch the attributes instead of reading once.
 new MutationObserver(() =&gt; applyMyLook(studioState())).observe(root, {
   attributes: true,
   attributeFilter: [
@@ -16496,8 +16893,8 @@ html[data-wme-studio-motion="reduced"] .my-panel {
   transition: none;
 }</code></pre></div>
         </div></div>
-        <div class="group"><h3 class="section-label">Match the theme</h3><div class="card doc">
-          <p>While Studio is on, these CSS variables hold the user’s current colours and corner sizes. They are set on <code data-ws-keep>&lt;html&gt;</code> and are inherited into shadow roots. Give each one a fallback so your script looks right without Studio.</p>
+        <div class="group" data-dev="theme"><h3 class="section-label">Colours and fallbacks</h3><div class="card doc">
+          <p>While Studio is on, these CSS variables hold the user’s current colours and corner sizes. They are set on <code data-ws-keep>&lt;html&gt;</code> and are inherited into shadow roots.</p>
           <dl>
             <dt><code data-ws-keep>--wme-studio-accent</code></dt><dd>Accent colour. <code data-ws-keep>--wme-studio-on-accent</code> is the text colour to put on it.</dd>
             <dt><code data-ws-keep>--wme-studio-surface</code></dt><dd>Panel background. <code data-ws-keep>--wme-studio-bg</code> is the page behind panels.</dd>
@@ -16507,32 +16904,61 @@ html[data-wme-studio-motion="reduced"] .my-panel {
             <dt><code data-ws-keep>--wme-studio-button-radius</code></dt><dd>Corner size of buttons. <code data-ws-keep>--wme-studio-panel-radius</code> for panels, <code data-ws-keep>--wme-studio-radius</code> for small parts.</dd>
             <dt><code data-ws-keep>--ws-font</code></dt><dd>The font family Studio uses.</dd>
           </dl>
+          <h4>Always give a fallback</h4>
+          <p>The variables exist only while Studio is running. They are missing when Studio is not installed, when the user switches it off, while it is paused, when your script runs before Studio has started, and when Studio has stopped because Waze changed the editor. A <code data-ws-keep>var()</code> without a fallback then cancels the whole declaration: the background becomes transparent, the text takes whatever colour it inherits, and your panel can end up unreadable. With a fallback, the worst case is your script’s normal look.</p>
+          <div class="code"><button class="code-copy" type="button">Copy</button><pre data-ws-keep><code>/* Wrong: no background at all when Studio is not running */
+.my-panel { background: var(--wme-studio-surface); }
+
+/* Right: the second value is used when the variable is missing */
+.my-panel { background: var(--wme-studio-surface, #ffffff); }</code></pre></div>
+          <h4>Write each fallback once</h4>
+          <p>Map Studio’s variables to your own in one place and use only your own names in the rest of your CSS. Each fallback is then written a single time, and a fallback can be the editor’s own variable with a plain colour behind it, so your script still follows the editor when Studio is away.</p>
           <div class="code"><button class="code-copy" type="button">Copy</button><pre data-ws-keep><code>.my-panel {
-  background: var(--wme-studio-surface, #ffffff);
-  color: var(--wme-studio-text, #202124);
-  border: 1px solid var(--wme-studio-border, #dadce0);
-  border-radius: var(--wme-studio-panel-radius, 8px);
+  /* Studio's value, else the editor's own, else a plain colour */
+  --my-bg:     var(--wme-studio-surface, var(--background_default, #ffffff));
+  --my-text:   var(--wme-studio-text, var(--content_default, #202124));
+  --my-muted:  var(--wme-studio-text-muted, #5f6368);
+  --my-line:   var(--wme-studio-border, var(--hairline, #dadce0));
+  --my-field:  var(--wme-studio-input, #f1f3f4);
+  --my-accent: var(--wme-studio-accent, var(--primary, #0099ff));
+  --my-on-accent: var(--wme-studio-on-accent, #ffffff);
+  --my-radius: var(--wme-studio-panel-radius, 8px);
+
+  background: var(--my-bg);
+  color: var(--my-text);
+  border: 1px solid var(--my-line);
+  border-radius: var(--my-radius);
   font-family: var(--ws-font, inherit);
 }
 .my-panel input {
-  background: var(--wme-studio-input, #f1f3f4);
+  background: var(--my-field);
   color: inherit;
-  border: 1px solid var(--wme-studio-border, #dadce0);
+  border: 1px solid var(--my-line);
   border-radius: var(--wme-studio-radius, 4px);
 }
 .my-panel .primary {
-  background: var(--wme-studio-accent, #0099ff);
-  color: var(--wme-studio-on-accent, #ffffff);
+  background: var(--my-accent);
+  color: var(--my-on-accent);
   border-radius: var(--wme-studio-button-radius, 6px);
 }
-.my-panel .hint { color: var(--wme-studio-text-muted, #5f6368); }</code></pre></div>
+.my-panel .hint { color: var(--my-muted); }</code></pre></div>
+          <h4>Fallbacks in script</h4>
+          <p>When you read a colour in script, for a canvas or an inline style, the value is an empty string while Studio is not running. Give that a fallback too, and read it again when the theme changes.</p>
+          <div class="code"><button class="code-copy" type="button">Copy</button><pre data-ws-keep><code>function studioColour(name, fallback) {
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(name).trim();
+  return value || fallback;
+}
+context.strokeStyle = studioColour('--wme-studio-accent', '#0099ff');</code></pre></div>
           <p class="note">With “Match supported add-ons” on, Studio already restyles ordinary buttons and fields inside script tabs. Use the variables for what it cannot reach: your own widgets, drawings and floating windows.</p>
         </div></div>
-        <div class="group"><h3 class="section-label">Floating mode</h3><div class="card doc">
+        <div class="group" data-dev="floating"><h3 class="section-label">Floating mode</h3><div class="card doc">
           <p>In Floating mode the header, the side panel and the tool rails are separate islands, and the user can move every one of them. Do not assume that the header is at the top of the window or that the side panel touches the left edge. Measure the element you want to sit next to, and measure again when the window is resized.</p>
+          <p>Check that the element exists before you measure it. Waze renames and moves parts of the editor, and a missing element should leave your window where it was, not stop your script.</p>
           <div class="code"><button class="code-copy" type="button">Copy</button><pre data-ws-keep><code>// Put your own floating window just below the header, wherever it is.
 function placeBelowHeader(box) {
-  const head = document.querySelector('#app-head').getBoundingClientRect();
+  const head = document.querySelector('#app-head')?.getBoundingClientRect();
+  if (!head || !head.width) return;   // not there (yet): keep the old position
   const floating = document.documentElement.dataset.wmeStudioCompact === 'on';
   box.style.position = 'fixed';
   box.style.top = Math.round(head.bottom + (floating ? 8 : 0)) + 'px';
@@ -16540,6 +16966,16 @@ function placeBelowHeader(box) {
 }
 window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre></div>
           <p class="note">Add dialogs to <code data-ws-keep>document.body</code>, not to the map element, and keep them shorter than the window so they are not covered by the floating header.</p>
+        </div></div>
+        <div class="group" data-dev="check"><h3 class="section-label">Before you release</h3><div class="card doc">
+          <p>Five quick checks cover almost every report about a script and Studio.</p>
+          <ul>
+            <li>Switch “Studio enabled” off. Your script should look exactly as it does without Studio.</li>
+            <li>Switch it back on and try Light, Dark and Full Black. No white boxes, no unreadable text.</li>
+            <li>Try both Standard and Floating compact, and move the header in Arrange.</li>
+            <li>Search your CSS for <code data-ws-keep>var(--wme-studio</code> and <code data-ws-keep>var(--ws-</code>. Every match needs a comma and a fallback.</li>
+            <li>Run “Script tabs report” from the command palette and find your tab in it.</li>
+          </ul>
         </div></div>
       </div></section>
     </div>
@@ -17080,6 +17516,8 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     backdrop.addEventListener('click', close);
     qa('[data-page-target]').forEach(button => button.addEventListener('click', () => selectPage(button.dataset.pageTarget)));
     q('[data-page="developers"]').addEventListener('click', async event => {
+      const jump = event.target.closest('[data-dev-jump]');
+      if (jump) { q(`[data-dev="${jump.dataset.devJump}"]`)?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); return; }
       const button = event.target.closest('.code-copy'); if (!button) return;
       const text = button.parentElement.querySelector('pre').textContent;
       try { await navigator.clipboard.writeText(text); }
@@ -17671,7 +18109,7 @@ ${studioControlsCSS()}
       dialog.classList.remove('open'); scrim.classList.remove('open');
       document.removeEventListener('keydown', onKeydown, true);
       setupSeen = true;
-      try { Promise.resolve(GM_setValue(SETUP_KEY, true)).catch((studioError) => { reportStudioError("close",studioError);}); } catch (studioError) { reportStudioError("close",studioError);}
+      try { Promise.resolve(studioKeep.set(SETUP_KEY, true)).catch((studioError) => { reportStudioError("close",studioError);}); } catch (studioError) { reportStudioError("close",studioError);}
       if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
       returnFocus = null;
     }
@@ -17853,7 +18291,7 @@ ${studioControlsCSS()}
       visible.then(() => playStudioIntro(value)).catch((studioError) => { reportStudioError("maybeStartSetup",studioError);}).then(() => buildStudioSetup()?.open(value));
     }).catch((studioError) => { reportStudioError("maybeStartSetup",studioError);});
   }
-  Promise.resolve(GM_getValue(SETUP_KEY, false)).then(value => { setupSeen = value === true; maybeStartSetup(); }).catch((studioError) => { reportStudioError("Studio initialization",studioError); setupSeen = true; });
+  Promise.resolve(studioKeep.get(SETUP_KEY, false)).then(value => { setupSeen = value === true; maybeStartSetup(); }).catch((studioError) => { reportStudioError("Studio initialization",studioError); setupSeen = true; });
 
   function setLauncherActive(active) {
     const button = studioLauncher?.shadow?.querySelector('.launcher');
