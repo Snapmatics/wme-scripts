@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.8
+// @version      1.0.9
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -142,7 +142,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.8';
+  const USERSCRIPT_VERSION = '1.0.9';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -4472,7 +4472,7 @@ html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-wid
 html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-width="on"] :where([data-wme-studio-request-content="on"]):is([data-wme-studio-size-chain="on"],[data-wme-studio-size-card="on"],[data-wme-studio-request-body="on"],[data-wme-studio-request-content="on"]) {
   width: 100% !important; min-width: 0 !important; max-width: none !important; box-sizing: border-box !important;
 }
-html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-height="on"] { height: var(--ws-user-height) !important; display: flex !important; flex-direction: column !important; }
+html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-height="on"] { height: var(--ws-user-height) !important; min-height: 0 !important; box-sizing: border-box !important; display: flex !important; flex-direction: column !important; }
 html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-height="on"] > [aria-roledescription="draggable"] { flex: 0 0 auto !important; }
 html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-height="on"] :where([data-wme-studio-size-chain="on"]):is([data-wme-studio-size-chain="on"],[data-wme-studio-size-card="on"]),
 html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-height="on"] :where([data-wme-studio-size-card="on"]):is([data-wme-studio-size-chain="on"],[data-wme-studio-size-card="on"]) {
@@ -11446,8 +11446,11 @@ ${studioRangeCSS('.picker-hue')}
       const suggestionBody = popupKind === 'mapSuggestion' ? requestWindowBody(state) : null;
       // Account for content arriving after the loading shell was height-limited.
       const suggestionOverflow = suggestionBody ? Math.max(0,suggestionBody.container.scrollHeight - suggestionBody.container.clientHeight) + Math.max(0,suggestionBody.content.scrollHeight - suggestionBody.content.clientHeight) : 0;
-      const desiredHeight = Math.max(rect.height + suggestionOverflow * (element.currentCSSZoom || 1),state.naturalHeight || rect.height);
-      const preferredHeightLimit=popupKind==='mapSuggestion' ? panelSizes.mapSuggestion?.height || 520 : Infinity;
+      const savedHeight = popupKind && resizableWindow(element) ? Number(panelSizes[popupKind]?.height) : 0;
+      const userHeight = Number.isFinite(savedHeight) && savedHeight > 0 ? savedHeight * (element.currentCSSZoom || 1) : 0;
+      // A previous max-height can still clip rect.height. Fit the saved resize target so the panel can grow again.
+      const desiredHeight = userHeight || Math.max(rect.height + suggestionOverflow * (element.currentCSSZoom || 1),state.naturalHeight || rect.height);
+      const preferredHeightLimit=popupKind==='mapSuggestion' ? userHeight || 520 : Infinity;
       const preferred = newOpeningPoint
         ? compactIslandPixels(compactIslandSpec(popupKind),savedPoint,{width:rect.width,height:desiredHeight}) : {left:state.requestPoint?.left ?? rect.left,top:state.requestPoint?.top ?? rect.top,width:rect.width,height:desiredHeight};
       if (popupKind && !state.requestPoint) state.requestPoint = {left:preferred.left,top:preferred.top};
@@ -11464,7 +11467,7 @@ ${studioRangeCSS('.picker-hue')}
           if (element.hasAttribute('data-wme-studio-request-raised')) element.removeAttribute('data-wme-studio-request-raised');
           const pillTop = areaPillLimits({ top: -Infinity, bottom: Infinity }, placed.left, placed.width).top;
           if (placed.top < pillTop) { const bottom = placed.top + placed.height; placed.top = pillTop; placed.height = Math.max(160, bottom - pillTop); }
-          if (popupKind==='mapSuggestion' || placed.height < desiredHeight - 1) {
+          if (userHeight || popupKind==='mapSuggestion' || placed.height < desiredHeight - 1) {
             applyHeaderGuardCap(state,placed.height,style);
           } else if (state.cap != null) {
             clearHeaderGuardCap(state);
@@ -11479,7 +11482,7 @@ ${studioRangeCSS('.picker-hue')}
           const left = onRight ? Math.max(12, Math.round(street.left - 12 - wanted.width)) : Math.min(Math.round(innerWidth - 12 - wanted.width), Math.round(street.left + street.width + 12));
           const limits = headerPanelLimits(left, wanted.width, 12, null, { left, top: wanted.top, width: wanted.width, height: wanted.height });
           const top = Math.max(limits.top, Math.min(wanted.top, limits.bottom - 200)), height = Math.max(160, Math.min(wanted.height, limits.bottom - top));
-          if (popupKind === 'mapSuggestion' || height < desiredHeight - 1) applyHeaderGuardCap(state, height, style);
+          if (userHeight || popupKind === 'mapSuggestion' || height < desiredHeight - 1) applyHeaderGuardCap(state, height, style);
           else if (state.cap != null) clearHeaderGuardCap(state);
           if (element.getAttribute('data-wme-studio-request-raised') !== 'on') element.setAttribute('data-wme-studio-request-raised', 'on');
           writeRequestPosition(state, rect, left, top);
@@ -11493,15 +11496,15 @@ ${studioRangeCSS('.picker-hue')}
       const left = Math.max(horizontal.left, Math.min(preferred.left, horizontal.right));
       const limits = headerPanelLimits(left, rect.width, 12, geometry, rect);
       const anchor = state.requestPoint ? Math.max(limits.top, Math.min(preferred.top, limits.bottom - 200)) : limits.top;
-      const available = Math.max(1, Math.min(Math.floor(limits.bottom - anchor), preferredHeightLimit, floatingHeader.position && state.cap != null ? state.cap : Infinity));
+      const available = Math.max(1, Math.min(Math.floor(limits.bottom - anchor), preferredHeightLimit, floatingHeader.position && state.cap != null && !userHeight ? state.cap : Infinity));
       const border = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
-      const naturalHeight = Math.max(rect.height, (element.scrollHeight + border) * (element.currentCSSZoom || 1));
+      const naturalHeight = userHeight || Math.max(rect.height, (element.scrollHeight + border) * (element.currentCSSZoom || 1));
       const write = (name, value) => {
         if (element.style.getPropertyValue(name) !== value || element.style.getPropertyPriority(name) !== 'important') element.style.setProperty(name, value, 'important');
       };
       const fillsCap = state.cap != null && rect.height >= state.cap - 1;
-      if (naturalHeight > available + 1 || fillsCap) {
-        applyHeaderGuardCap(state,available,style);
+      if (userHeight || naturalHeight > available + 1 || fillsCap) {
+        applyHeaderGuardCap(state,userHeight ? Math.min(userHeight,available) : available,style);
       } else {
         clearHeaderGuardCap(state);
       }
@@ -16375,10 +16378,9 @@ ${studioControlsCSS()}
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
-  const studioUpdateNotes = `<p>What’s new in WME Studio 1.0.8:</p>
-<p><strong>New</strong></p><ul>
-<li>WME Closures Toolkit now follows the Studio theme.</li>
-<li>In Floating mode, the location pill also shows the area managers while the Area managers layer is on. Hover them for the list of names.</li>
+  const studioUpdateNotes = `<p>What’s new in WME Studio ${USERSCRIPT_VERSION}:</p>
+<p><strong>Fixed</strong></p><ul>
+<li>Update request panels can now be enlarged again after being made smaller. Previous height limits no longer block resizing.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
@@ -16386,7 +16388,7 @@ ${studioControlsCSS()}
     const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
     if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
       try {
-        wrap.Interface.ShowScriptUpdate('WME Studio','1.0.8',studioUpdateNotes);
+        wrap.Interface.ShowScriptUpdate('WME Studio',USERSCRIPT_VERSION,studioUpdateNotes);
         studioUpdateReported=true;
       } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
       return;
@@ -16612,7 +16614,7 @@ ${studioControlsCSS()}
       applyLayoutSettings(workspace);queueStreetViewWindow();
     }
     async function backup() {
-      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:'1.0.8',createdAt:new Date().toISOString(),
+      available();return {format:'wme-studio-backup',formatVersion:1,scriptVersion:USERSCRIPT_VERSION,createdAt:new Date().toISOString(),
         settings:await config.read(),layout:await snapshot(),profiles:await list(),scriptTabs:await scriptTabPicker.snapshot()};
     }
     function parseBackup(text) {
