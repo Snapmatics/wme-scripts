@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.9
+// @version      1.0.10
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -142,7 +142,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.9';
+  const USERSCRIPT_VERSION = '1.0.10';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -5270,6 +5270,34 @@ html[data-wme-studio="on"] .ws-restriction-select-group { padding:7px 9px 3px; c
 })();
 
 
+
+  // Quick Replies uses inline styles because its toolbar can live inside wz-textarea.
+  // Share these overrides between the page adapter and WME's component stylesheet.
+  function studioQuickRepliesToolbarCSS(root) {
+    return String.raw`
+${root} {
+  background: transparent !important; border: 0 !important;
+  min-width: 0; max-width: 100%; line-height: 16px;
+  font-family: var(--ws-font) !important;
+}
+${root} .qr-btn {
+  box-sizing: border-box; min-width: 0; max-width: 100%;
+  background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius) !important;
+  font-family: var(--ws-font) !important; white-space: normal !important; overflow-wrap: anywhere;
+}
+${root} .qr-btn:hover {
+  background: var(--wme-studio-hover) !important; border-color: var(--wme-studio-accent) !important;
+}
+${root} .qr-btn:active {
+  background: var(--wme-studio-active) !important; border-color: var(--wme-studio-accent) !important;
+}
+${root} .qr-btn:focus-visible {
+  outline: 2px solid var(--wme-studio-accent) !important; outline-offset: 2px;
+}
+`;
+  }
+
   const compatibility = (() => {
     const compatibilityRoots = new Set();
     const adapters = new Map();
@@ -5848,6 +5876,127 @@ $root ::-webkit-scrollbar-track { background: transparent; }
 $root ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: var(--wme-studio-border-strong); background-clip: padding-box; }
 $root ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 ` }, true);
+
+    registerCompatibilityAdapter({ id: 'wme-quick-replies', selectors: ['.qr-settings','.qr-wrap','.qr-menu','.qr-emoji-pop'], css: String.raw`
+$root {
+  --ws-qr-warning: #8c6400;
+  color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important;
+  font-family: var(--ws-font) !important;
+}
+$root:where(html[data-wme-studio-theme="dark"] *,html[data-wme-studio-theme="black"] *) { --ws-qr-warning: #f5c052; }
+${studioQuickRepliesToolbarCSS('$root.qr-wrap')}
+$root.qr-settings { background: var(--wme-studio-surface) !important; font-size: 13px; }
+$root.qr-settings :is(h3,h4) { color: var(--wme-studio-text) !important; }
+$root.qr-settings :is(.qr-help,.qr-field label,.qr-row label) { color: var(--wme-studio-text-secondary) !important; }
+$root.qr-settings code { background: var(--wme-studio-active) !important; color: var(--wme-studio-text) !important; }
+$root.qr-settings .qr-card {
+  background: var(--wme-studio-input) !important; border-color: var(--wme-studio-border) !important;
+  border-radius: var(--wme-studio-panel-radius);
+}
+$root.qr-settings .qr-idx { color: var(--wme-studio-accent) !important; }
+$root.qr-settings .qr-col-title { min-width: 0; }
+$root.qr-settings :is(input[type="text"],textarea) {
+  background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-border) !important; font-family: var(--ws-font) !important;
+}
+$root.qr-settings :is(input[type="text"],textarea)::placeholder { color: var(--wme-studio-text-muted) !important; }
+$root.qr-settings input[type="radio"] { accent-color: var(--wme-studio-accent); }
+$root :is(.qr-mini,.qr-icon-btn,.qr-io,.qr-emoji-tab,.qr-emoji-none) {
+  background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-border) !important;
+}
+$root :is(.qr-mini,.qr-icon-btn,.qr-io,.qr-emoji-tab,.qr-emoji-none):hover:not(:disabled) {
+  background: var(--wme-studio-hover) !important; border-color: var(--wme-studio-accent) !important;
+}
+$root .qr-icon-empty { color: var(--wme-studio-text-muted) !important; }
+$root .qr-add {
+  background: var(--wme-studio-active) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-accent) !important;
+}
+$root .qr-add:hover { background: var(--wme-studio-hover) !important; }
+$root .qr-save {
+  background: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important;
+  border-color: var(--wme-studio-accent) !important;
+}
+$root .qr-save:hover { background: color-mix(in srgb,var(--wme-studio-accent) 88%,var(--wme-studio-text)) !important; }
+$root .qr-reset {
+  background: var(--ws-banner-red) !important; color: var(--ws-change-alert) !important;
+  border-color: var(--ws-change-alert) !important;
+}
+$root .qr-reset:hover,$root .qr-mini.qr-del:hover:not(:disabled) {
+  background: color-mix(in srgb,var(--ws-change-alert) 18%,var(--wme-studio-surface)) !important;
+  color: var(--ws-change-alert) !important; border-color: var(--ws-change-alert) !important;
+}
+$root .qr-status { color: var(--ws-change-added) !important; }
+$root .qr-status.qr-err { color: var(--ws-change-alert) !important; }
+$root .qr-status.qr-warn { color: var(--ws-qr-warning) !important; }
+$root .qr-sep { border-color: var(--wme-studio-border) !important; }
+$root.qr-menu,$root.qr-emoji-pop {
+  background: var(--wme-studio-surface-3) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-border) !important; border-radius: var(--wme-studio-panel-radius);
+  box-shadow: var(--wme-studio-shadow) !important; box-sizing: border-box;
+  max-width: calc(100vw - 16px); line-height: 1.4;
+}
+$root.qr-menu { min-width: min(280px,calc(100vw - 16px)); max-height: min(320px,calc(100vh - 16px)); }
+$root.qr-menu .qr-item { color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; overflow-wrap: anywhere; }
+$root.qr-menu .qr-item:hover { background: var(--wme-studio-hover) !important; }
+$root.qr-menu :is(.qr-num,.qr-title) { color: var(--wme-studio-accent) !important; }
+$root.qr-menu .qr-empty { color: var(--wme-studio-text-muted) !important; }
+$root.qr-menu .qr-empty:hover { background: transparent !important; }
+$root.qr-emoji-pop .qr-emoji-head strong { color: var(--wme-studio-text-secondary) !important; }
+$root.qr-emoji-pop .qr-emoji-tab.qr-on {
+  background: var(--wme-studio-active) !important; border-color: var(--wme-studio-accent) !important;
+}
+$root.qr-emoji-pop .qr-emoji { background: transparent !important; color: var(--wme-studio-text) !important; }
+$root.qr-emoji-pop .qr-emoji:hover { background: var(--wme-studio-hover) !important; }
+` }, true);
+
+    registerCompatibilityAdapter({ id: 'wazetoastr-updates', selectors: ['#WTSU-Container'], css: String.raw`
+$root {
+  position: fixed !important; inset: auto !important; left: 50% !important; top: 50% !important;
+  transform: translate(-50%,-50%) !important; translate: none !important; margin: 0 !important;
+  width: 650px; max-width: calc(100vw - 24px) !important; height: auto !important;
+  max-height: min(600px,calc(100dvh - 24px)) !important; box-sizing: border-box; overflow: auto;
+  background: var(--wme-studio-surface-3) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-border) !important; border-radius: var(--wme-studio-panel-radius);
+  box-shadow: var(--wme-studio-shadow) !important; font: 13px/1.5 var(--ws-font) !important;
+}
+$root :is(.modal-heading,.WTSU-updates-wrapper) { font-family: var(--ws-font) !important; color: var(--wme-studio-text) !important; }
+$root :is(h1,h2,h3,h4,h5,h6,p,li,strong,b,small,span) { color: var(--wme-studio-text) !important; }
+$root .WTSU-updates-wrapper {
+  display: grid; grid-template-columns: minmax(100px,175px) minmax(0,1fr); gap: 10px;
+  grid-template-rows: minmax(0,1fr); height: min(340px,calc(100dvh - 160px)) !important; min-height: 90px;
+}
+$root :is(#WTSU-script-list,#WTSU-script-update-info) {
+  float: none !important; width: auto !important; height: auto !important; min-width: 0; min-height: 0;
+  max-height: none !important; margin: 0 !important; box-sizing: border-box;
+  overflow-y: auto; overflow-x: hidden; overflow-wrap: anywhere;
+  scrollbar-width: thin; scrollbar-color: var(--wme-studio-border-strong) transparent;
+}
+$root #WTSU-script-update-info {
+  background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
+  border: 1px solid var(--wme-studio-border); border-radius: var(--wme-studio-radius); box-shadow: none !important;
+}
+$root a[href] { color: var(--wme-studio-accent) !important; }
+$root .WTSU-script-item {
+  background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
+  border: 1px solid var(--wme-studio-border); border-radius: var(--wme-studio-button-radius,var(--wme-studio-radius));
+  box-shadow: none !important;
+}
+$root .WTSU-script-item:hover { background: var(--wme-studio-hover) !important; }
+$root .WTSU-script-item.WTSU-active {
+  background: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important;
+  border-color: var(--wme-studio-accent); transform: none !important;
+}
+$root #WTSU-Close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 25px; height: 25px; padding: 0 !important; box-sizing: border-box;
+  background: transparent !important; color: var(--wme-studio-text) !important; border: 0 !important; box-shadow: none !important;
+}
+$root #WTSU-Close::before { font-family: FontAwesome !important; }
+$root #WTSU-Close:hover { color: var(--wme-studio-accent) !important; }
+$root :is(a,button):focus-visible { outline: 2px solid var(--wme-studio-accent); outline-offset: 2px; }
+` }, true);
     registerCompatibilityAdapter({ id: 'known-addons', selectors: ['.wmeRcModal','.wmeRcSide','#waa-panel','.dz-root','#WWSU-Container'], css: String.raw`
 $root {
   --wmeRcCompactBg: var(--wme-studio-surface) !important;
@@ -5885,6 +6034,11 @@ globalThis.WMEStudioComponents = String.raw`
       member can be filed under X. */
 
 ${studioHeaderAddonCSS(':host-context(html[data-wme-studio="on"][data-wme-studio-addons="on"]):host-context(#app-head)')}
+
+@media all {
+${studioQuickRepliesToolbarCSS(':host-context(html[data-wme-studio="on"][data-wme-studio-addons="on"]) .qr-wrap')}
+}
+
 ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-glass-contrast="on"])')}
 @media all {
 :host-context(html[data-wme-studio="on"][data-wme-studio-satellite="on"]) img:is(
@@ -7177,7 +7331,18 @@ ${studioRangeCSS(':host-context(html[data-wme-studio="on"]) input[type="range"]'
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) :where(.wz-textarea):is(.wz-textarea,.wz-textarea-inner-container),
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) :where(.wz-textarea-inner-container):is(.wz-textarea,.wz-textarea-inner-container) { display: block !important; width: 100% !important; box-sizing: border-box; min-height: 0 !important; height: auto !important; margin: 0 !important; padding: 0 !important; line-height: 0 !important; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) textarea { display: block !important; width: 100% !important; margin: 0 !important; vertical-align: top; font-size: 13px !important; }
-:host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) .status-text-container { display: none !important; }
+:host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) .status-text-container:not(:has(.qr-wrap)) { display: none !important; }
+/* Quick Replies keeps a connected toolbar cached here. Keep its row visible even when add-on theming is off. */
+:host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) .status-text-container:has(.qr-wrap) {
+  display: flex !important; align-items: center !important; flex-wrap: wrap !important;
+  gap: 4px 6px; margin-top: 4px; min-width: 0; line-height: 16px !important;
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) .qr-wrap {
+  display: flex !important; flex-wrap: wrap !important; gap: 4px;
+  min-width: 0; max-width: 100%; margin: 4px 0 0 !important; line-height: 16px !important;
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) .status-text-container > .qr-wrap { flex: 1 1 auto; margin: 0 !important; }
+
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.send-button) .wz-button { width: 32px !important; min-width: 32px !important; height: 32px !important; padding: 0 !important; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.send-button) .button-text:is(.wz-button *) { font-size: 0 !important; line-height: 0 !important; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.send-button) .wz-button { font-size: 0 !important; line-height: 0 !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; }
@@ -14123,6 +14288,8 @@ ${studioControlsCSS()}
       if (node===panel) break;
     }
   }
+  // Programmatic add-on input events are not necessarily composed across the textarea's shadow root.
+  const requestReplyFieldEvents = ['input','change','select'];
   function trackRequestReply(form) {
     if (!form?.matches('.new-comment-form') || !form.closest('.problem-edit,.place-update-edit')) return;
     let state = requestReplyForms.get(form);
@@ -14134,8 +14301,13 @@ ${studioControlsCSS()}
           state.frame = 0;
           const field = form.querySelector('wz-textarea')?.shadowRoot?.querySelector('textarea');
           if (field !== state.field) {
-            state.resize?.disconnect(); state.field?.removeEventListener('select',state.schedule); state.field = field;
-            if (field) {state.resize?.observe(field);field.addEventListener('select',state.schedule,{passive:true});}
+            state.resize?.disconnect();
+            for (const type of requestReplyFieldEvents) state.field?.removeEventListener(type,state.schedule);
+            state.field = field;
+            if (field) {
+              state.resize?.observe(field);
+              for (const type of requestReplyFieldEvents) field.addEventListener(type,state.schedule,{passive:true});
+            }
           }
           if (!field || !form.isConnected) return;
           const style = getComputedStyle(field);
@@ -14172,7 +14344,7 @@ ${studioControlsCSS()}
       cancelAnimationFrame(state.frame); state.resize?.disconnect(); state.observer.disconnect();
       form.removeEventListener('input',state.schedule); form.removeEventListener('change',state.schedule);
       form.removeEventListener('focusin',state.schedule); form.removeEventListener('keyup',state.schedule); form.removeEventListener('compositionend',state.schedule);
-      state.field?.removeEventListener('select',state.schedule);
+      for (const type of requestReplyFieldEvents) state.field?.removeEventListener(type,state.schedule);
       requestReplyForms.delete(form);
     }
   }
@@ -15336,7 +15508,7 @@ ${studioControlsCSS()}
     const gridIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>';
     const pinIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l-1 6 3 4v2H6v-2l3-4-1-6Z"/><path d="M12 15v6"/></svg>';
     // Canonical names for tabs that expose only abbreviations or status controls. No icon assets.
-    const scriptNames=[{"id":"jb","name":"WME - JB Geometry","aliases":["JB Geometry","gr.wme.jb-pretty"],"sourceId":"579540"},{"id":"chat","name":"Waze Chat Plus","aliases":["waze-chat-plus","wcp"],"sourceId":"598466"},{"id":"street","name":"WME E85 Simplify Street Geometry","aliases":["Street Geometry","E85","wme-e85"],"sourceId":"456490"},{"id":"speed","name":"WME Speed Display","aliases":["Speed Display","wme-speed-display"],"sourceId":"526702"},{"id":"bookmarks","name":"WME Bookmarks","aliases":["Bookmarks","wmebookmarks","bkm"],"sourceId":"4515"},{"id":"jai","name":"WME Junction Angle Info","aliases":["JAI","Junction Angle Info","Toggle Junction Angles","wme-junction-angle-info","wme-jai"],"sourceId":"35547"},{"id":"speeds","name":"WME Speeds","aliases":["wme-speedlimits","wme-speeds"],"sourceId":"12402"},{"id":"lanetools","name":"WME LaneTools","aliases":["LT","LaneTools","wme-lane-tools"],"sourceId":"537219"},{"id":"speedhelper","name":"WME Speedhelper","aliases":["Speedhelper","Speed Helper","Speed Helper Settings","wme-speedhelper"],"sourceId":"13774"},{"id":"dualize","name":"Dualize Road Tool","aliases":["Dualize","wme-dualize","dualize-road-tool","Dualize selected two-way roads and remove originals","Dualize selected two-way roads and remove original segments"]},{"id":"tracking","name":"WME UR-MP Tracking","aliases":["UR-MP Tracking","UR/MP Tracking","URMP Tracking","wme-urmpt","urmpt"],"sourceId":"368141"}];
+    const scriptNames=[{"id":"jb","name":"WME - JB Geometry","aliases":["JB Geometry","gr.wme.jb-pretty"],"sourceId":"579540"},{"id":"chat","name":"Waze Chat Plus","aliases":["waze-chat-plus","wcp"],"sourceId":"598466"},{"id":"street","name":"WME E85 Simplify Street Geometry","aliases":["Street Geometry","E85","wme-e85"],"sourceId":"456490"},{"id":"speed","name":"WME Speed Display","aliases":["Speed Display","wme-speed-display"],"sourceId":"526702"},{"id":"bookmarks","name":"WME Bookmarks","aliases":["Bookmarks","wmebookmarks","bkm"],"sourceId":"4515"},{"id":"jai","name":"WME Junction Angle Info","aliases":["JAI","Junction Angle Info","Toggle Junction Angles","wme-junction-angle-info","wme-jai"],"sourceId":"35547"},{"id":"speeds","name":"WME Speeds","aliases":["wme-speedlimits","wme-speeds"],"sourceId":"12402"},{"id":"lanetools","name":"WME LaneTools","aliases":["LT","LaneTools","wme-lane-tools"],"sourceId":"537219"},{"id":"speedhelper","name":"WME Speedhelper","aliases":["Speedhelper","Speed Helper","Speed Helper Settings","wme-speedhelper"],"sourceId":"13774"},{"id":"dualize","name":"Dualize Road Tool","aliases":["Dualize","wme-dualize","dualize-road-tool","Dualize selected two-way roads and remove originals","Dualize selected two-way roads and remove original segments"]},{"id":"tracking","name":"WME UR-MP Tracking","aliases":["UR-MP Tracking","UR/MP Tracking","URMP Tracking","wme-urmpt","urmpt"],"sourceId":"368141"},{"id":"quickreplies","name":"WME Quick Replies","aliases":["Quick Replies","wme-quick-replies","Respuestas rápidas","Réponses rapides","Respostas rápidas","Schnellantworten","💬 Quick Replies","💬 Respuestas rápidas","💬 Réponses rapides","💬 Respostas rápidas","💬 Schnellantworten"],"sourceId":"583881"}];
     const closeIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
     const gripIcon='<svg viewBox="0 0 8 14" aria-hidden="true"><circle cx="2" cy="2" r="1.3"/><circle cx="6" cy="2" r="1.3"/><circle cx="2" cy="7" r="1.3"/><circle cx="6" cy="7" r="1.3"/><circle cx="2" cy="12" r="1.3"/><circle cx="6" cy="12" r="1.3"/></svg>';
     // Bar geometry in CSS pixels; it mirrors the stylesheet below so the bar can be planned without measuring it.
@@ -16380,7 +16552,12 @@ ${studioControlsCSS()}
   // Use WazeWrap's shared update window and per-version history.
   const studioUpdateNotes = `<p>What’s new in WME Studio ${USERSCRIPT_VERSION}:</p>
 <p><strong>Fixed</strong></p><ul>
-<li>Update request panels can now be enlarged again after being made smaller. Previous height limits no longer block resizing.</li>
+<li>WME Quick Replies buttons are now visible in compact request panels in both Normal and SuperFast modes.</li>
+<li>Replies inserted by Quick Replies now update the comment layout and scrolling correctly.</li>
+</ul>
+<p><strong>Improved</strong></p><ul>
+<li>WME Quick Replies buttons, reply menus, settings, and emoji picker now match Studio’s Light, Dark, and Black themes when add-on theme matching is enabled.</li>
+<li>The WazeToastr Script Updates popup now matches Studio’s theme, with readable update text, themed script tabs, and a layout that fits the viewport.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
@@ -18914,5 +19091,4 @@ ${studioControlsCSS()}
     if (document.documentElement) start();
     else document.addEventListener('DOMContentLoaded', start, { once: true });
   })();
-
 })();
