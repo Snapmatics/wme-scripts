@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.10
+// @version      1.0.11
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -142,7 +142,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.10';
+  const USERSCRIPT_VERSION = '1.0.11';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -1670,8 +1670,8 @@ html[data-wme-studio="on"] .layer-switcher .menu > .title .js-close-layer-switch
 html[data-wme-studio="on"] .layer-switcher :where(label):is(label,.item,.togglerLabel),
 html[data-wme-studio="on"] .layer-switcher :where(.item):is(label,.item,.togglerLabel),
 html[data-wme-studio="on"] .layer-switcher :where(.togglerLabel):is(label,.item,.togglerLabel) { color: var(--wme-studio-text); font-family: var(--ws-font); font-size: 13px; }
-html[data-wme-studio="on"] .layer-switcher [class^="treeCategory--"] { padding-block: 5px; }
-html[data-wme-studio="on"] .layer-switcher [class^="group--"] { border-color: var(--wme-studio-border); }
+html[data-wme-studio="on"] .layer-switcher :is([class^="treeCategory--"],.ws-layer-category) { padding-block: 5px; }
+html[data-wme-studio="on"] .layer-switcher :is([class^="group--"],.ws-layer-group) { border-color: var(--wme-studio-border); }
 html[data-wme-studio="on"] #topbar-container .topbar {
   background: color-mix(in srgb, var(--wme-studio-surface) 78%, transparent) !important;
   border-bottom: 1px solid var(--wme-studio-border); color: var(--wme-studio-text-secondary);
@@ -2963,15 +2963,15 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
   }
   }
   @media all {
-  html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu [class^="group--"] {
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu :is([class^="group--"],.ws-layer-group) {
     padding: 4px 0 6px !important; margin: 0 !important;
   }
-  html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu [class^="treeCategory--"] {
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu :is([class^="treeCategory--"],.ws-layer-category) {
     height: 28px !important; min-height: 28px !important; padding-block: 0 !important;
   }
-  html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu [class^="groupList--"] { padding-bottom: 4px !important; }
-  html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu [aria-expanded="false"] [class^="groupList--"] { padding-bottom: 0 !important; }
-  html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu [class^="toggler--"] { padding: 6px 0 !important; }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu :is([class^="groupList--"],.ws-layer-list) { padding-bottom: 4px !important; }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu [aria-expanded="false"] :is([class^="groupList--"],.ws-layer-list) { padding-bottom: 0 !important; }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu :is([class^="toggler--"],.ws-layer-toggler) { padding: 6px 0 !important; }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu .togglers ul {
     padding-inline-start: 16px !important; margin-block: 0 !important;
   }
@@ -3183,17 +3183,7 @@ html[data-wme-studio="on"][data-wme-studio-addons="on"] .rsa-wrapper a { color: 
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #rsa-resetSettings { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-button-radius); padding: 2px 10px; cursor: pointer; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #rsa-resetSettings:hover { background-color: var(--wme-studio-hover) !important; border-color: var(--wme-studio-border-strong) !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] input[type="color"].rsa-color-input { background-color: transparent !important; }
-/* WME OpenData: its floating window, the name check boxes and the city name controls. Only the first part of this script could be read, so these go by the ids it uses. */
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWindow,#oslNCDiv,#oslSegGeoUIDiv) { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #oslDragBar { background-color: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWindow,#oslNCDiv,#oslSegGeoUIDiv,#oslRoadNameMatches,#oslCNInfo) :is(label,span:not(#oslSelect),td,th,b,i,p) { color: inherit !important; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWindow,#oslNCDiv,#oslSegGeoUIDiv) a { color: var(--wme-studio-accent) !important; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWindow,#oslNCDiv,#oslSegGeoUIDiv) hr { border-color: var(--wme-studio-border) !important; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#myCityName,#oslWMECityNames,#oslOSCityNames),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWindow,#oslNCDiv,#oslSegGeoUIDiv) :is(select,input[type="text"],input[type="number"]) { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius); }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#oslWMECityNames,#oslOSCityNames) option { background-color: var(--wme-studio-surface); color: var(--wme-studio-text); }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #oslSelect { background: color-mix(in srgb, var(--wme-studio-accent) 18%, var(--wme-studio-surface)) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-accent) !important; border-radius: var(--wme-studio-button-radius); }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #oslSelect:hover { background: color-mix(in srgb, var(--wme-studio-accent) 30%, var(--wme-studio-surface)) !important; }
+/* WME OpenData's section colors are handled by its compatibility adapter below. */
 /* More add-ons: rules made from each script's own style sheet. Same selectors, only the neutral colours, pointed at Studio's variables. Status colours and coloured buttons keep the script's look; where a script colours a state (checked, active), that colour is repeated so it still wins. */
 /* WME Place Harmonizer */
 html[data-wme-studio="on"][data-wme-studio-addons="on"] .wmeph-pane-tab.active { color: var(--wmeph-primary) !important; }
@@ -5997,6 +5987,48 @@ $root #WTSU-Close::before { font-family: FontAwesome !important; }
 $root #WTSU-Close:hover { color: var(--wme-studio-accent) !important; }
 $root :is(a,button):focus-visible { outline: 2px solid var(--wme-studio-accent); outline-offset: 2px; }
 ` }, true);
+    registerCompatibilityAdapter({ id: 'wme-opendata', selectors: ['#oslWindow'], css: String.raw`
+$root {
+  background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-border) !important; border-radius: var(--wme-studio-panel-radius) !important;
+  box-shadow: var(--wme-studio-shadow) !important; font-family: var(--ws-font) !important;
+}
+$root #oslDragBar {
+  background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-border) !important;
+}
+/* Only the UI sections: map overlays and their road/type colors are separate roots. */
+$root > :is(#oslOSLDiv,#oslSegGeoUIDiv,#oslGazTagsDiv,#oslNCDiv,#oslMLCDiv) {
+  background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-border) !important;
+}
+$root > :is(#oslOSLDiv,#oslSegGeoUIDiv,#oslGazTagsDiv,#oslNCDiv,#oslMLCDiv) > div:first-child {
+  background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important;
+}
+$root :is(label,span:not(#oslSelect),td,th,b,i,p) { color: inherit !important; }
+$root #oslMLCDiv > div:nth-child(2) { color: var(--wme-studio-text-secondary) !important; }
+$root a[href] { color: var(--wme-studio-accent) !important; }
+$root hr { border-color: var(--wme-studio-border) !important; }
+$root :is(select,option,input[type="text"],input[type="number"]) {
+  background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius);
+}
+$root :is(input[type="checkbox"],input[type="radio"]) { accent-color: var(--wme-studio-accent); color-scheme: inherit; }
+$root input::placeholder { color: var(--wme-studio-text-muted) !important; }
+$root #oslSelect {
+  background: var(--wme-studio-active) !important; color: var(--wme-studio-text) !important;
+  border-color: var(--wme-studio-accent) !important; border-radius: var(--wme-studio-button-radius,var(--wme-studio-radius));
+}
+$root #oslSelect:hover { background: var(--wme-studio-hover) !important; }
+/* OpenData communicates this span's disabled state with an inline grey background. */
+$root #oslSelect:is([disabled],[aria-disabled="true"],[style*="rgb(160, 160, 160)"]) {
+  background: var(--wme-studio-input) !important; color: var(--wme-studio-text-muted) !important;
+  border-color: var(--wme-studio-border) !important; cursor: default !important;
+}
+$root :is(input,select,a[href],[name="oslMinMaxToggle"],#_minimax):focus-visible {
+  outline: 2px solid var(--wme-studio-accent); outline-offset: 2px;
+}
+` }, true);
     registerCompatibilityAdapter({ id: 'known-addons', selectors: ['.wmeRcModal','.wmeRcSide','#waa-panel','.dz-root','#WWSU-Container'], css: String.raw`
 $root {
   --wmeRcCompactBg: var(--wme-studio-surface) !important;
@@ -6369,15 +6401,15 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   }
   }
   @media all {
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) [class^="group--"]:is(.layer-switcher .menu *) {
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) :is([class^="group--"],.ws-layer-group):is(.layer-switcher .menu *) {
     padding: 4px 0 6px !important; margin: 0 !important;
   }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) [class^="treeCategory--"]:is(.layer-switcher .menu *) {
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) :is([class^="treeCategory--"],.ws-layer-category):is(.layer-switcher .menu *) {
     height: 28px !important; min-height: 28px !important; padding-block: 0 !important;
   }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) [class^="groupList--"]:is(.layer-switcher .menu *) { padding-bottom: 4px !important; }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .layer-switcher .menu [aria-expanded="false"] [class^="groupList--"] { padding-bottom: 0 !important; }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) [class^="toggler--"]:is(.layer-switcher .menu *) { padding: 6px 0 !important; }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) :is([class^="groupList--"],.ws-layer-list):is(.layer-switcher .menu *) { padding-bottom: 4px !important; }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .layer-switcher .menu [aria-expanded="false"] :is([class^="groupList--"],.ws-layer-list) { padding-bottom: 0 !important; }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) :is([class^="toggler--"],.ws-layer-toggler):is(.layer-switcher .menu *) { padding: 6px 0 !important; }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) ul:is(.layer-switcher .menu .togglers *) {
     padding-inline-start: 16px !important; margin-block: 0 !important;
   }
@@ -10581,6 +10613,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     return settings.enabled && settings.motion && !reducedMotion.matches && !document.hidden && !compactLayoutEditing;
   }
   function resetRequestPopupMotion(state) {
+    requestReveal.closePlaceUpdate(state.element);
     cancelAnimationFrame(state.popupFrame); state.popupFrame = 0;
     clearTimeout(state.popupCloseTimer); state.popupCloseTimer = 0;
     state.popupMotion?.cancel(); state.popupMotion = null;
@@ -10590,6 +10623,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
   }
   function queueRequestPopupOpen(state) {
     state.popupVisible = true;
+    requestReveal.openPlaceUpdate(state.element);
     if (!requestPopupMotionEnabled() || typeof state.element.animate !== 'function') return;
     state.element.setAttribute('data-wme-studio-popup-enter','pending');
     state.popupFrame = requestAnimationFrame(() => {
@@ -11195,6 +11229,8 @@ ${studioRangeCSS('.picker-hue')}
       if (!sdk) try { sdk=pageWindow.getWmeSdk?.({scriptId:'wme-studio',scriptName:'WME Studio'}); } catch (_) { reportStudioError("connect",_);}
       connectZoom();
       trackStreetViewSDK(sdk);
+      // connect() can run before requestReveal has been initialized further down this script.
+      queueMicrotask(() => requestReveal.connectPlaceUpdates(sdk));
       const app=pageWindow.W?.app;
       if (!app?.on) return;
       if (connectedApp===app) return;
@@ -11331,13 +11367,37 @@ ${studioRangeCSS('.picker-hue')}
   })();
   const requestReveal = (() => {
     let timers = [];
+    let placePanel = null, placeKey = '', placeSDK = null, placeSDKStop = null;
     const olMap = () => { const map = pageWindow.W?.map; return map?.getOLMap?.() || map?.wazeMap || map?.olMap || map || null; };
     function screenPoint(model, map, view) {
       let x, y;
-      try { const point = model?.getOLGeometry?.(); if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) { x = point.x; y = point.y; } } catch (_) { /* older models have no such method */ }
+      try {
+        const geometry = model?.getOLGeometry?.();
+        const point = Number.isFinite(geometry?.x) && Number.isFinite(geometry?.y) ? geometry : geometry?.getCentroid?.();
+        if (Number.isFinite(point?.x) && Number.isFinite(point?.y)) { x = point.x; y = point.y; }
+        else {
+          const center = geometry?.getBounds?.()?.getCenterLonLat?.();
+          if (Number.isFinite(center?.lon) && Number.isFinite(center?.lat)) { x = center.lon; y = center.lat; }
+        }
+      } catch (_) { /* older models have no such method */ }
       if (x === undefined) {
-        let pair = null;
-        try { pair = model?.attributes?.geometry?.coordinates || model?.getGeometry?.()?.coordinates || model?.geometry?.coordinates || null; } catch (_) { pair = null; }
+        let geometry = null, pair = null;
+        try {
+          geometry = model?.attributes?.geometry;
+          if (!Array.isArray(geometry?.coordinates)) geometry = model?.getGeometry?.();
+          if (!Array.isArray(geometry?.coordinates)) geometry = model?.geometry || null;
+        } catch (_) { geometry = null; }
+        pair = geometry?.coordinates;
+        if (geometry?.type === 'Polygon') {
+          const ring = pair?.[0];
+          if (!Array.isArray(ring) || !ring.length) return null;
+          let left = Infinity, right = -Infinity, bottom = Infinity, top = -Infinity;
+          for (const p of ring) {
+            if (!Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return null;
+            left = Math.min(left,p[0]); right = Math.max(right,p[0]); bottom = Math.min(bottom,p[1]); top = Math.max(top,p[1]);
+          }
+          pair = [(left + right) / 2,(bottom + top) / 2];
+        }
         if (!Array.isArray(pair) || !Number.isFinite(pair[0]) || !Number.isFinite(pair[1])) return null;
         const code = String(map.getProjectionObject?.()?.getCode?.() || map.projection?.projCode || map.projection || '');
         if (/4326/.test(code)) { x = pair[0]; y = pair[1]; }
@@ -11386,26 +11446,95 @@ ${studioRangeCSS('.picker-hue')}
     const log = [], note = (id, what) => { log.push(`${(performance.now() / 1000).toFixed(2)}s ${id || '?'} ${what}`); if (log.length > 60) log.shift(); };
     for (const [type, value] of [['pointerdown', true], ['pointerup', false], ['pointercancel', false]]) window.addEventListener(type, () => { pressed = value; }, { capture: true, passive: true });
     globalThis.WMEStudioRequestReveal = () => [...log];
-    return Object.freeze({
-      largestFree, reveal,
-      schedule(model) {
+    function placePanelVisible() {
+      if (!placePanel?.isConnected || placePanel.hidden || placePanel.getAttribute('aria-hidden') === 'true' || placePanel.getAttribute('data-window-hidden') === 'true') return false;
+      const style = getComputedStyle(placePanel);
+      return style.display !== 'none' && style.visibility !== 'hidden' && !!placePanel.getClientRects().length;
+    }
+    function selectedPlace() {
+      let id = null;
+      try {
+        const selection = placeSDK?.Editing?.getSelection?.();
+        if (selection) {
+          if (selection.objectType !== 'venue' || selection.ids?.length !== 1) return null;
+          id = selection.ids[0];
+          const venue = placeSDK.DataModel?.Venues?.getById?.({venueId:id});
+          if (venue) return venue;
+        }
+      } catch (_) { /* the venue may still be loading */ }
+      try {
+        const models = pageWindow.W?.selectionManager?.getSelectedDataModelObjects?.();
+        if (models?.length !== 1) return null;
+        const model = models[0], modelId = model.getID?.() ?? model.id ?? model.attributes?.id;
+        if (id != null && String(id) !== String(modelId)) return null;
+        if ((model.type || model.getType?.()) === 'venue' || pageWindow.W?.model?.venues?.getObjectById?.(modelId) === model) return model;
+      } catch (_) { /* no selected venue yet */ }
+      return null;
+    }
+    function schedulePlaceUpdate(freshOpening = false, refresh = false) {
+      if (!ready || !settings.enabled || !compactLayoutActive() || compactLayoutEditing || !placePanelVisible()) return;
+      const venue = selectedPlace();
+      if (!venue) return;
+      const id = venue.getID?.() ?? venue.id ?? venue.attributes?.id;
+      if (id == null) return;
+      const key = `placeUpdateRequest:${id}`;
+      if (!freshOpening && !refresh && placeKey === key) return;
+      placeKey = key;
+      // A genuine reopen is different from duplicate selection/render events during a drag.
+      if (freshOpening && done.id === key) done = {id:'',time:0};
+      const panel = placePanel;
+      // Prefer native venue geometry when available, so area-place markers use their actual centroid.
+      let nativeVenue = null;
+      try { nativeVenue = pageWindow.W?.model?.venues?.getObjectById?.(id); } catch (_) { /* SDK geometry remains available */ }
+      const target = {id:key,getOLGeometry:()=>venue.getOLGeometry?.() || nativeVenue?.getOLGeometry?.(),getGeometry:()=>venue.getGeometry?.() || venue.geometry || venue.attributes?.geometry};
+      schedule(target,() => {
+        if (placePanel !== panel || !placePanelVisible()) return false;
+        const current = selectedPlace();
+        return current != null && String(current.getID?.() ?? current.id ?? current.attributes?.id) === String(id);
+      });
+    }
+    function openPlaceUpdate(element) {
+      if (!element?.matches?.('.place-update-edit') && !element?.querySelector?.('.place-update-edit')) return;
+      const replacedPanel = placePanel !== element;
+      // React can replace a still-open window. That is not a new user opening and must not reset the pan guard.
+      const freshOpening = !placePanel || placePanel.isConnected && !placePanelVisible();
+      placePanel = element;
+      if (freshOpening) placeKey = '';
+      schedulePlaceUpdate(freshOpening,replacedPanel);
+    }
+    function closePlaceUpdate(element) {
+      if (placePanel !== element) return;
+      placePanel = null; placeKey = '';
+      // Cancel only PUR work; closing a PUR must not cancel a newly opened UR's reveal.
+      if (timers.kind === 'placeUpdateRequest') { for (const timer of timers) clearTimeout(timer); timers = []; }
+    }
+    function connectPlaceUpdates(sdk) {
+      if (!sdk || placeSDK === sdk) return;
+      if (typeof placeSDKStop === 'function') { try { placeSDKStop(); } catch (error) { reportStudioError('requestReveal',error); } }
+      placeSDK = sdk; placeSDKStop = null;
+      try { placeSDKStop = sdk.Events?.on?.({eventName:'wme-selection-changed',eventHandler:()=>schedulePlaceUpdate()}); }
+      catch (error) { reportStudioError('requestReveal',error); }
+      schedulePlaceUpdate();
+    }
+    function schedule(model, isCurrent = null) {
         let id = '';
-        try { id = String(model?.getID?.() ?? model?.attributes?.id ?? ''); } catch (_) { id = ''; }
+        try { id = String(model?.getID?.() ?? model?.id ?? model?.attributes?.id ?? ''); } catch (_) { id = ''; }
         for (const timer of timers) clearTimeout(timer);
         timers = [];
-        if (done.id === id && performance.now() - done.time < 30000) { note(id, 'announced again: left alone'); return; }
+        if (id && done.id === id && performance.now() - done.time < 30000) { note(id, 'announced again: left alone'); return; }
         note(id, 'opened');
         // after the panel has been placed, and again in case the editor was still moving the map
         timers = [250, 700, 1300].map(delay => setTimeout(() => {
-          if (done.id === id && performance.now() - done.time < 30000) return;
+          if (id && done.id === id && performance.now() - done.time < 30000) return;
           if (pressed || requestHeaderDrag) { note(id, 'waiting: a button is held'); return; }
           let result;
-          try { result = reveal(model); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
+          try { result = isCurrent && !isCurrent() ? 'request closed or changed' : reveal(model); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
           note(id, result);
           if (result.startsWith('moved')) { done = { id, time: performance.now() }; for (const timer of timers) clearTimeout(timer); timers = []; }
         }, delay));
-      }
-    });
+        timers.kind = id.startsWith('placeUpdateRequest:') ? 'placeUpdateRequest' : 'updateRequest';
+    }
+    return Object.freeze({largestFree,reveal,schedule,openPlaceUpdate,closePlaceUpdate,connectPlaceUpdates});
   })();
   function writeFlowPosition(state, left, top) {
     const element = state.element;
@@ -12110,6 +12239,7 @@ ${studioRangeCSS('.picker-hue')}
     const nativeWindow = panel.closest('[data-issues-tracker-window],[id^="ISSUE_WINDOW"],[data-testid="floating-window"]');
     if (nativeWindow) trackHeaderGuardWindow(nativeWindow);
     else if (panel.previousElementSibling?.matches('[aria-roledescription="draggable"]')) trackHeaderGuardWindow(panel.parentElement);
+    if (panel.matches('.place-update-edit')) requestReveal.openPlaceUpdate(nativeWindow || panel.parentElement);
   }
   window.addEventListener('resize', queueHeaderGuardWindows, { passive: true });
   let requestHeaderDrag = null;
@@ -12685,36 +12815,52 @@ ${studioRangeCSS('.picker-hue')}
   mapLayerViewport.addEventListener('change', () => syncFloatingHeader(true));
   window.addEventListener('blur', finishHeaderDrag);
   const mapLayerWindows = new Map();
-  // Beta uses CSS-module class names. Alias only its stable test-id roots, never hashed suffixes.
+  // Map Layers uses CSS modules in both editor builds. Resolve its stable region/test-id
+  // roots and semantic class prefixes; never depend on a particular build's hash.
   const betaMapLayers = (() => {
+    const selector = '#layer-switcher-region,[data-testid="layer-switcher"]';
+    const menuSelector = '[data-testid="layer-switcher-menu"],[data-wme-studio-beta-layers="on"]';
     const menus = new Set(), aliases = new Map();
+    const parts = Object.freeze({title:'title',scrollable:'scrollable',togglers:'togglers',
+      group:'ws-layer-group',treeCategory:'ws-layer-category',groupList:'ws-layer-list',
+      toggler:'ws-layer-toggler',togglerLabel:'togglerLabel',item:'item',
+      'layer-selector-container':'layer-selector-container'});
+    const modulePart = (element,name) => [...element.classList].some(token =>
+      token.startsWith(`${name}--`) || token.startsWith(`${name}-`) && /^[A-Za-z0-9_]+$/.test(token.slice(name.length + 1)));
     function alias(element,name) {
       if (!element || element.classList.contains(name)) return;
       if (!aliases.has(element)) aliases.set(element,new Set());
       aliases.get(element).add(name); element.classList.add(name);
     }
+    function aliasPart(element,menu) {
+      for (const [part,name] of Object.entries(parts)) {
+        if ((part !== 'title' && part !== 'scrollable' || element.parentElement === menu) && modulePart(element,part)) alias(element,name);
+      }
+    }
+    function findMenu(wrapper) {
+      return wrapper.querySelector(menuSelector) || [...wrapper.querySelectorAll('[class^="menu-"],[class*=" menu-"]')].find(element => modulePart(element,'menu'));
+    }
     function sync(menu) {
       if (!menu?.isConnected || !ready || !settings.enabled) return;
-      const wrapper = menu.closest('[data-testid="layer-switcher"]');
+      const wrapper = menu.closest(selector);
       if (!wrapper) return;
       alias(wrapper,'layer-switcher'); alias(menu,'menu');
       if (menu.getAttribute('data-wme-studio-beta-layers') !== 'on') menu.setAttribute('data-wme-studio-beta-layers','on');
-      for (const child of menu.children) {
-        if ([...child.classList].some(name => name.startsWith('title--'))) alias(child,'title');
-        if ([...child.classList].some(name => name.startsWith('scrollable--'))) alias(child,'scrollable');
-      }
-      for (const list of menu.querySelectorAll('ul[class*="togglers--"]')) alias(list,'togglers');
-      const hidden = [...menu.classList].some(name => /^(?:hideLayerSwitcher|hide-layer-switcher|hidden)--/.test(name));
+      for (const element of menu.querySelectorAll('[class]')) aliasPart(element,menu);
+      const hidden = ['hideLayerSwitcher','hide-layer-switcher','hidden'].some(name => modulePart(menu,name));
       const added = aliases.get(menu);
       if (hidden) alias(menu,'hide-layer-switcher');
       else if (added?.has('hide-layer-switcher')) { menu.classList.remove('hide-layer-switcher'); added.delete('hide-layer-switcher'); }
       trackMapLayerWindow(menu);
     }
     function inspect(node) {
-      let menu = node.closest('[data-testid="layer-switcher-menu"]');
-      if (!menu && node.getAttribute('data-testid') === 'layer-switcher') menu = node.querySelector('[data-testid="layer-switcher-menu"]');
-      if (!menu) return;
-      menus.add(menu); sync(menu);
+      const wrapper = node.closest(selector);
+      if (!wrapper) return;
+      const menu = node.closest(menuSelector) || findMenu(wrapper);
+      if (!menu || !wrapper.contains(menu)) return;
+      const fresh = !menus.has(menu); menus.add(menu);
+      if (fresh || node === wrapper || node === menu) sync(menu);
+      else if (ready && settings.enabled) aliasPart(node,menu);
     }
     function refresh() {
       if (!settings.enabled) {
@@ -12873,8 +13019,9 @@ ${studioRangeCSS('.picker-hue')}
       if (event.type === 'pointercancel') { state.drag.clientX = state.drag.startX; state.drag.clientY = state.drag.startY; }
       cancelAnimationFrame(state.frame); state.renderDrag(); finishMapLayerDrag(state);
     };
-    state.observer = new MutationObserver(() => { if (menu.matches('[data-testid="layer-switcher-menu"]')) betaMapLayers.sync(menu); syncMapLayerWindow(state); });
-    state.observer.observe(menu, { childList: true, attributes: true, attributeFilter: ['class', 'hidden', 'aria-hidden'] });
+    const modularMenu = '[data-testid="layer-switcher-menu"],[data-wme-studio-beta-layers="on"]';
+    state.observer = new MutationObserver(() => { if (menu.matches(modularMenu)) betaMapLayers.sync(menu); syncMapLayerWindow(state); });
+    state.observer.observe(menu, { childList: true, subtree: menu.matches(modularMenu), attributes: true, attributeFilter: ['class', 'hidden', 'aria-hidden'] });
     if (typeof ResizeObserver === 'function') {
       state.resizeObserver = new ResizeObserver(() => syncMapLayerWindow(state, true));
       state.resizeObserver.observe(menu);
@@ -16552,12 +16699,8 @@ ${studioControlsCSS()}
   // Use WazeWrap's shared update window and per-version history.
   const studioUpdateNotes = `<p>What’s new in WME Studio ${USERSCRIPT_VERSION}:</p>
 <p><strong>Fixed</strong></p><ul>
-<li>WME Quick Replies buttons are now visible in compact request panels in both Normal and SuperFast modes.</li>
-<li>Replies inserted by Quick Replies now update the comment layout and scrolling correctly.</li>
-</ul>
-<p><strong>Improved</strong></p><ul>
-<li>WME Quick Replies buttons, reply menus, settings, and emoji picker now match Studio’s Light, Dark, and Black themes when add-on theme matching is enabled.</li>
-<li>The WazeToastr Script Updates popup now matches Studio’s theme, with readable update text, themed script tabs, and a layout that fits the viewport.</li>
+<li>Fixed Map Layers in production WME: restored theme styling, floating positioning, dragging, and one- or two-column layouts.</li>
+<li>Fixed WME Quick Replies: restored buttons in compact request panels in Normal and SuperFast modes, corrected comment layout and scrolling after inserting replies, and added Studio theme matching.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
