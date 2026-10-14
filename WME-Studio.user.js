@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.13
+// @version      1.1.0
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -142,7 +142,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.13';
+  const USERSCRIPT_VERSION = '1.1.0';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -1779,6 +1779,16 @@ html[data-wme-studio="on"] #topbar-container .topbar {
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
 }
 html[data-wme-studio="on"] .location-info { color: var(--wme-studio-text-secondary) !important; font: 12px/29px var(--ws-font); }
+html[data-wme-studio="on"] #topbar-container .us-boundary-region { color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"] #topbar-container #zip-boundary a { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"] #topbar-container :is(#gisSubLocality,#gisLocality,#gisCounty,#gisState) {
+  color: var(--wme-studio-text) !important; font-family: var(--ws-font);
+}
+html[data-wme-studio="on"] #topbar-container :is(#gisSubLocality,#gisLocality,#gisCounty,#gisState) {
+  border-color: var(--wme-studio-border) !important; border-radius: 6px;
+  background: var(--wme-studio-surface) !important;
+}
+html[data-wme-studio="on"] #topbar-container #gisStatus { font-size: 15px !important; cursor: pointer; }
 html[data-wme-studio="on"] .wz-map-ol-footer { background: var(--wme-studio-surface) !important; border: 0 !important; }
 html[data-wme-studio="on"] .wz-map-ol-footer :where(a):is(a,span,.wz-map-ol-control-mouse-position,.wz-map-ol-control-attribution),
 html[data-wme-studio="on"] .wz-map-ol-footer :where(span):is(a,span,.wz-map-ol-control-mouse-position,.wz-map-ol-control-attribution),
@@ -2877,6 +2887,16 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location[data-placement] { visibility: visible; }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location > span { display: inline-block; }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location .ws-bookmark-pin {
+    position: static !important; display: inline-flex !important; align-items: center; justify-content: center;
+    float: none !important; width: 18px; height: 20px; min-width: 0; min-height: 0;
+    margin: 0 7px 0 0; padding: 0 !important; vertical-align: middle;
+    border: 0 !important; border-radius: 0 !important; background: transparent !important;
+    box-shadow: none !important; color: inherit !important; font: normal 14px/1 FontAwesome !important;
+    cursor: pointer; pointer-events: auto;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location .ws-bookmark-pin:hover { background: transparent !important; color: var(--wme-studio-accent) !important; box-shadow: none !important; }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location .ws-bookmark-pin:focus-visible { outline: 2px solid var(--wme-studio-accent) !important; outline-offset: 2px; }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location .ws-loc-sep { margin: 0 9px; opacity: .45; font-weight: 400; }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location .ws-loc-ams { pointer-events: auto; cursor: default; }
   html[data-wme-studio="on"] .wme-studio-am-tip { position: fixed; z-index: 2147483000; box-sizing: border-box; max-width: 240px; padding: 7px 11px; border: 1px solid var(--wme-studio-border); border-radius: 10px; background: var(--wme-studio-surface); color: var(--wme-studio-text); font: 500 12px/1.5 var(--ws-font); box-shadow: 0 8px 28px #00000040; pointer-events: none; white-space: normal; overflow-wrap: anywhere; }
@@ -2890,6 +2910,65 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location[data-placement="above"] {
     top: auto; bottom: calc(100% + 8px);
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-addons {
+    position: absolute; top: calc(100% + 8px); left: 50%; z-index: 12;
+    box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 4px 8px; width: max-content; max-width: calc(100% - 24px);
+    padding: 6px 12px; transform: translateX(-50%); border-radius: 9999px;
+    background: var(--ws-header-surface, color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent));
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    box-shadow: 0 8px 28px #00000026;
+    color: var(--wme-studio-text-secondary); font: 600 12px/20px var(--ws-font);
+    pointer-events: auto; user-select: none;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head > .wme-studio-header-addons[data-placement="above"] {
+    top: auto; bottom: calc(100% + 8px);
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location[data-ws-addons-merged] {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 4px 7px; width: max-content; white-space: normal; overflow: visible;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location[data-ws-addons-merged] > .ws-loc-base {
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-location > .wme-studio-header-addons[data-merged] {
+    position: static; width: auto; max-width: 100%; padding: 0; transform: none;
+    border-radius: 0; background: none; box-shadow: none;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .ws-header-addon-group {
+    display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 4px; max-width: 100%; min-width: 0;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .ws-header-addon-divider {
+    opacity: .45; font-weight: 400;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .ws-header-addon-key {
+    opacity: .8; font-size: 11px; letter-spacing: .02em;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-addons :is(a.ws-header-addon-link,button.ws-header-addon-toggle) {
+    box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+    min-height: 23px; max-width: 100%; margin: 0; padding: 1px 8px;
+    border: 1px solid var(--wme-studio-border) !important; border-radius: 7px !important;
+    background: color-mix(in srgb, var(--wme-studio-surface) 76%, transparent) !important;
+    box-shadow: none !important; color: var(--wme-studio-text) !important;
+    font: 600 12px/18px var(--ws-font) !important; text-decoration: none !important;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    cursor: pointer; pointer-events: auto;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-addons :is(a.ws-header-addon-link,button.ws-header-addon-toggle):hover {
+    border-color: var(--wme-studio-accent) !important;
+    background: color-mix(in srgb, var(--wme-studio-accent) 15%, var(--wme-studio-surface)) !important;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-addons :is(a.ws-header-addon-link,button.ws-header-addon-toggle):focus-visible {
+    outline: 2px solid var(--wme-studio-accent) !important; outline-offset: 2px;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-addons .ws-header-addon-link[aria-disabled="true"] {
+    opacity: .55; cursor: default; pointer-events: none;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head .wme-studio-header-addons .ws-header-addon-toggle .fa {
+    font: normal 14px/1 FontAwesome; color: var(--wme-studio-accent);
   }
   }
   @media all {
@@ -2932,6 +3011,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
     stroke: currentColor !important;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-light-glass="on"] #app-head .wme-studio-header-location,
+  html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-light-glass="on"] #app-head .wme-studio-header-addons,
   html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-light-glass="on"] #app-head #search-autocomplete input,
   html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-light-glass="on"] #app-head #search-autocomplete input::placeholder {
     color: var(--wme-studio-text) !important;
@@ -4494,7 +4574,7 @@ html[data-wme-studio="on"][data-wme-studio-layout-editing="on"][data-wme-studio-
   -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
 @media all {
-html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head:has(#search-autocomplete:focus-within) .wme-studio-header-location:is([data-placement="below"],[data-placement="above"]) {
+html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head:has(#search-autocomplete:focus-within) :is(.wme-studio-header-location:is([data-placement="below"],[data-placement="above"]),#app-head > .wme-studio-header-addons) {
   visibility: hidden !important;
 }
 }
@@ -4999,6 +5079,28 @@ html[data-wme-studio="on"] :where([data-wme-studio-map-suggestion="on"]):is(#ISS
 html[data-wme-studio="on"] .restrictions-modal {
   color:var(--wme-studio-text) !important; font-family:var(--ws-font);
 }
+/* The two map editors share a clear, movable dialog in Floating mode. */
+html[data-wme-studio="on"][data-wme-studio-compact="on"] #wz-dialog-container:has(> wz-dialog[data-wme-studio-map-dialog-active="on"]),
+html[data-wme-studio="on"][data-wme-studio-compact="on"] #wz-dialog-container:has(> wz-dialog[data-wme-studio-map-dialog-active="on"]) > div,
+html[data-wme-studio="on"][data-wme-studio-compact="on"] #wz-dialog-container:has(> wz-dialog[data-wme-studio-map-dialog-active="on"])::before,
+html[data-wme-studio="on"][data-wme-studio-compact="on"] #wz-dialog-container:has(> wz-dialog[data-wme-studio-map-dialog-active="on"])::after,
+html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-dialog[data-wme-studio-map-dialog-active="on"]::backdrop {
+  background:transparent !important; backdrop-filter:none !important;
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"] #wz-dialog-container:has(> wz-dialog[data-wme-studio-map-dialog-active="on"]),
+html[data-wme-studio="on"][data-wme-studio-compact="on"] #wz-dialog-container:has(> wz-dialog[data-wme-studio-map-dialog-active="on"]) > div,
+html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-dialog[data-wme-studio-map-dialog-active="on"] {
+  pointer-events:none !important;
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"] #wz-dialog-container:has(> wz-dialog[data-wme-studio-map-dialog-active="on"]) > wz-dialog:not([data-wme-studio-map-dialog-active="on"]),
+html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-dialog[data-wme-studio-map-dialog-active="on"] :is(.modal-header,.modal-body,.modal-footer,wz-dialog-header,wz-dialog-content,wz-dialog-controls) {
+  pointer-events:auto !important;
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-dialog[data-wme-studio-map-dialog-active="on"] :is(.modal-header,wz-dialog-header) {
+  cursor:grab !important; user-select:none; touch-action:none;
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-dialog[data-wme-studio-restriction-moving] :is(.modal-header,wz-dialog-header) { cursor:grabbing !important; }
+html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-dialog[data-wme-studio-map-dialog-active="on"] :is(.modal-header,wz-dialog-header) :is(button,a,input,select,textarea,wz-button,[role="button"]) { cursor:pointer !important; touch-action:auto; }
 html[data-wme-studio="on"] .restrictions-modal :where(.modal-header):is(.modal-header,.modal-body,.restrictions-summary,.restriction-editing-region),
 html[data-wme-studio="on"] .restrictions-modal :where(.modal-body):is(.modal-header,.modal-body,.restrictions-summary,.restriction-editing-region),
 html[data-wme-studio="on"] .restrictions-modal :where(.restrictions-summary):is(.modal-header,.modal-body,.restrictions-summary,.restriction-editing-region),
@@ -7976,6 +8078,39 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
 }
 :host-context(html[data-wme-studio="on"]):host(wz-dialog.restrictions-modal) path:is(.dismiss-button svg *) { fill:var(--wme-studio-text-secondary) !important; }
 :host-context(html[data-wme-studio="on"]):host(wz-dialog.restrictions-modal) path:is(.dismiss-button:hover svg *) { fill:var(--wme-studio-accent) !important; }
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]),
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"])::before,
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"])::after,
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"])::backdrop,
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) :is(.backdrop,.overlay,.modal-backdrop,.dialog-backdrop,.wz-dialog-backdrop,.wz-modal-backdrop,.wz-dialog-overlay,.wz-modal-overlay),
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) dialog::backdrop {
+  background:transparent !important; backdrop-filter:none !important;
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .wz-dialog-wrapper {
+  background:transparent !important; pointer-events:none !important;
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .wz-dialog-wrapper > .dark-overlay {
+  display:none !important; background:transparent !important; pointer-events:none !important;
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) [data-wme-studio-restriction-surface] {
+  translate:var(--ws-restriction-x,0px) var(--ws-restriction-y,0px) !important;
+  scale:var(--ws-restriction-scale,1) !important; transform-origin:top left !important;
+  pointer-events:auto !important;
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .ws-restriction-resize {
+  position:absolute; inset:auto 0 0 auto; z-index:10; display:grid; place-items:center;
+  width:16px; height:16px; padding:0; border:0; border-radius:6px 0 var(--wme-studio-panel-radius) 0;
+  background:transparent; color:var(--wme-studio-text-secondary);
+  cursor:nwse-resize; touch-action:none;
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .ws-restriction-resize::after {
+  content:""; width:10px; height:10px; border-right:2px solid currentColor; border-bottom:2px solid currentColor;
+  clip-path:polygon(70% 0,100% 0,100% 100%,0 100%,0 70%,70% 70%);
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .ws-restriction-resize:hover,
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .ws-restriction-resize:focus-visible {
+  color:var(--wme-studio-accent); background:var(--wme-studio-hover);
+}
 }
 
 
@@ -8453,7 +8588,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     return [...new Set([
       ...compactIslandSpecs.map(queryCompactIsland),...headerGuardWindows.keys(),
       document.getElementById('sidebar'),document.getElementById('filter-panel-region'),
-      document.querySelector('.wz-map-ol-footer'),floatingHeader.locationLabel,
+      document.querySelector('.wz-map-ol-footer'),floatingHeader.locationLabel,floatingHeader.addonPill,
       document.querySelector('.wme-studio-header-location[data-placement]:not([data-placement="inline"])'),
       ...[...onlineEditorsPanels.values()].map(state=>state.panel),
       document.querySelector('.ws-street-view-toolbar'),document.getElementById('wme-studio-minimized-requests'),
@@ -8606,7 +8741,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       if (!active || element.hidden || element.getAttribute('aria-hidden')==='true') {clear(element);continue;}
       const style=getComputedStyle(element);
       if (style.display==='none' || style.visibility==='hidden') {clear(element);continue;}
-      for (const obstacle of [floatingHeader.locationLabel,
+      for (const obstacle of [floatingHeader.locationLabel,floatingHeader.addonPill,
         document.querySelector('.wme-studio-header-location[data-placement]:not([data-placement="inline"])'),
         ...headerGuardWindows.keys()]) observeCompactPlacement(obstacle);
       const header=compactVisibleRect(document.getElementById('app-head'));
@@ -8682,7 +8817,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
         // If expanded panels cover the map, keep warnings visible while still clearing the islands.
         const islands=[...new Set([
           ...compactIslandSpecs.filter(spec=>!spec.popup).map(queryCompactIsland),
-          document.querySelector('.wz-map-ol-footer'),floatingHeader.locationLabel,
+          document.querySelector('.wz-map-ol-footer'),floatingHeader.locationLabel,floatingHeader.addonPill,
           document.querySelector('.wme-studio-header-location[data-placement]:not([data-placement="inline"])'),
           document.querySelector('.ws-street-view-toolbar'),document.getElementById('WMETB_NavBar')
         ])].map(compactVisibleRect).filter(Boolean).map(rect=>({left:rect.left-6,top:rect.top-6,width:rect.width+12,height:rect.height+12}));
@@ -10163,6 +10298,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     }
     syncSidePanelSize();
     restrictionSelects.refresh();
+    if (affects('enabled','compactMode')) for (const state of restrictionPanels.values()) syncRestrictionPanel(state);
     scriptTabPicker.refresh();
     requestMinimizer.refresh();
     panelResizeHints.prune();
@@ -10185,7 +10321,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     if (affects('enabled')) betaMapLayers.refresh();
     if (affects('enabled', 'compactMode', 'layerColumns')) syncMapLayerWindows(true);
     if (affects('enabled', 'compactMode', 'compactIslandLayout.v1')) queueStreetViewWindow();
-    if (affects('enabled', 'compactMode', 'compactHeaderFullWidth', 'compactHeaderWidth', 'hudScale')) syncFloatingHeader(true);
+    if (affects('enabled', 'addons', 'compactMode', 'compactHeaderFullWidth', 'compactHeaderWidth', 'hudScale')) syncFloatingHeader(true);
     if (affects('enabled', 'compactMode')) queueProfileMenus();
     if (affects('enabled', 'compactMode')) syncTileBuildFeed();
     const layout = settings.enabled ? (settings.compactMode ? 'compact' : 'studio') : 'native';
@@ -11408,6 +11544,7 @@ ${studioRangeCSS('.picker-hue')}
     elements.add(document.getElementById('sidebar')); elements.add(document.getElementById('filter-panel-region'));
     elements.add(document.querySelector('.wz-map-ol-footer'));
     elements.add(document.querySelector('.wme-studio-header-location[data-placement]:not([data-placement="inline"])'));
+    elements.add(floatingHeader.addonPill);
     elements.add(dockedStreetView());
     for (const element of headerGuardWindows.keys()) elements.add(element);
     for (const frame of chatFrames.keys()) { const state = chatPanelStates.get(frame); if (state?.target) elements.add(state.target); }
@@ -11735,7 +11872,8 @@ ${studioRangeCSS('.picker-hue')}
   }
   const AREA_PILL_GAP = 8;
   function areaPillGeometry() {
-    const pill = document.querySelector('.wme-studio-header-location[data-placement]:not([data-placement="inline"])');
+    const pill = document.querySelector('.wme-studio-header-location[data-placement]:not([data-placement="inline"])') ||
+      document.querySelector('#app-head > .wme-studio-header-addons');
     if (!pill?.isConnected || pill.hidden) return null;
     const rect = pill.getBoundingClientRect();
     if (rect.width < 12 || rect.height < 12) return null;
@@ -12516,7 +12654,9 @@ ${studioRangeCSS('.picker-hue')}
   window.addEventListener('keydown',event => { if (event.key === 'Escape') finishRequestHeaderDrag(event); },true);
 
   const mapLayerViewport = matchMedia(globalThis.WMEStudioSafari.viewport);
-  const floatingHeader = { header: null, handle: null, locationLabel: null, locationSource: null,
+  const floatingHeader = { header: null, handle: null, locationLabel: null, locationSource: null, bookmarkPinProxy: null,
+    addonPill: null, addonSeparator: null, addonSignature: '', addonHeight: 36, locationPillHeight: 32,
+    addonNativeObserver: null, addonNativeRoots: new Set(), addonRefreshQueued: false,
     locationObserver: null, locationResize: null, locationLayoutObserver: null, locationLayoutHeader: null,
     locationResizeTargets: new Set(), locationLayoutFrame: 0, locationBottom: 0,
     originalTitle: null, position: null, drag: null, frame: 0, suppressUntil: 0, active: false, refreshTimer: 0 };
@@ -12611,13 +12751,20 @@ ${studioRangeCSS('.picker-hue')}
       drag.translated = true;
     } else writeHeaderPosition(bounds.width);
     placeHeaderLocationPill(placed, bottom);
+    placeHeaderAddonPill(placed, bottom);
     queueProfileMenus(); queueCompactAuxiliaryPlacement();
   }
   function placeHeaderLocationPill(rect, bottom = floatingHeader.locationBottom || innerHeight - 12) {
     const label = floatingHeader.locationLabel;
     if (!label?.dataset.placement || label.dataset.placement === 'inline') return;
-    const placement = rect.top + rect.height + 8 + 32 <= bottom ? 'below' : 'above';
-    if (label.dataset.placement !== placement) label.dataset.placement = placement;
+    const placement = rect.top + rect.height + 8 + floatingHeader.locationPillHeight <= bottom ? 'below' : 'above';
+    if (label.dataset.placement !== placement) { label.dataset.placement = placement; syncHeaderAddonPlacement(); }
+  }
+  function placeHeaderAddonPill(rect, bottom = floatingHeader.locationBottom || innerHeight - 12) {
+    const pill = floatingHeader.addonPill;
+    if (!pill?.isConnected || pill.hasAttribute('data-merged')) return;
+    const placement = rect.top + rect.height + 8 + floatingHeader.addonHeight <= bottom ? 'below' : 'above';
+    if (pill.dataset.placement !== placement) pill.dataset.placement = placement;
   }
   function headerLocationSnapshot(header) {
     const controls = new Set(), trees = [header], visited = new Set();
@@ -12626,7 +12773,8 @@ ${studioRangeCSS('.picker-hue')}
       if (visited.has(tree)) continue;
       visited.add(tree);
       for (const element of tree.querySelectorAll('*')) {
-        if (floatingHeader.locationLabel?.contains(element) || element.matches('script,style,link,meta,template')) continue;
+        if (floatingHeader.locationLabel?.contains(element) || floatingHeader.addonPill?.contains(element) ||
+            element.matches('script,style,link,meta,template')) continue;
         if (element.shadowRoot) trees.push(element.shadowRoot);
         if (element.matches('button,wz-button,input,select,textarea,a[href],[role="button"],#search-autocomplete,img,svg') ||
             !element.childElementCount && element.textContent?.trim()) controls.add(element);
@@ -12658,8 +12806,15 @@ ${studioRangeCSS('.picker-hue')}
     const overlaps = naturalWidth > width + 1 || !headerLocationFits(header,width,controls);
     const footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
     floatingHeader.locationBottom = footer ? Math.min(innerHeight - 12, footer.top - COMPACT_ISLAND_GAP) : innerHeight - 12;
-    const placement = overlaps ? header.bottom + 8 + 32 <= floatingHeader.locationBottom ? 'below' : 'above' : 'inline';
+    const placement = overlaps ? header.bottom + 8 + floatingHeader.locationPillHeight <= floatingHeader.locationBottom ? 'below' : 'above' : 'inline';
     if (label.dataset.placement !== placement) label.dataset.placement = placement;
+    syncHeaderAddonPlacement();
+    if (placement !== 'inline') floatingHeader.locationPillHeight = Math.ceil(label.getBoundingClientRect().height) || 32;
+    if (floatingHeader.addonPill?.isConnected && !floatingHeader.addonPill.hasAttribute('data-merged')) {
+      floatingHeader.addonHeight = Math.ceil(floatingHeader.addonPill.getBoundingClientRect().height) || 36;
+      placeHeaderAddonPill(header, floatingHeader.locationBottom);
+    }
+    if (overlaps) placeHeaderLocationPill(header, floatingHeader.locationBottom);
   }
   function queueHeaderLocationLayout() {
     if (!floatingHeader.locationLayoutFrame) floatingHeader.locationLayoutFrame = requestAnimationFrame(() => {
@@ -12680,6 +12835,9 @@ ${studioRangeCSS('.picker-hue')}
         floatingHeader.locationResize ||= typeof ResizeObserver === 'function' ? new ResizeObserver(queueHeaderLocationLayout) : null;
         floatingHeader.locationLayoutObserver = new MutationObserver(records => {
           if (records.some(record => !floatingHeader.locationLabel?.contains(record.target) &&
+              !floatingHeader.addonPill?.contains(record.target) &&
+              !(record.target === header && record.type === 'childList' &&
+                [...record.addedNodes, ...record.removedNodes].every(node => node === floatingHeader.addonPill || node === floatingHeader.addonSeparator)) &&
               !(record.target === header && record.type === 'attributes' && record.attributeName === 'style'))) {
             watchHeaderLocationLayout(); queueHeaderLocationLayout();
           }
@@ -12693,11 +12851,170 @@ ${studioRangeCSS('.picker-hue')}
     floatingHeader.locationControls = snapshot.controls;
     floatingHeader.locationLayoutObserver?.disconnect();
     for (const tree of snapshot.trees) floatingHeader.locationLayoutObserver?.observe(tree,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','style','hidden','slot','aria-hidden']});
-    const targets = new Set([header, floatingHeader.locationLabel.firstElementChild,...snapshot.controls].filter(Boolean));
+    const targets = new Set([header, floatingHeader.locationLabel, floatingHeader.locationLabel.firstElementChild,...snapshot.controls].filter(Boolean));
     for (const element of floatingHeader.locationResizeTargets) if (!targets.has(element)) floatingHeader.locationResize?.unobserve(element);
     for (const element of targets) if (!floatingHeader.locationResizeTargets.has(element)) floatingHeader.locationResize?.observe(element);
     floatingHeader.locationResizeTargets = targets;
     queueHeaderLocationLayout();
+  }
+  function headerBookmarkPin() {
+    if (!floatingHeader.bookmarkPinProxy) {
+      const pin = document.createElement('button');
+      pin.type = 'button';
+      pin.className = 'ws-bookmark-pin fa fa-thumb-tack';
+      pin.title = 'Add bookmark here';
+      pin.setAttribute('aria-label', pin.title);
+      pin.addEventListener('click', event => {
+        event.stopPropagation();
+        document.getElementById('addNodeButton')?.click();
+      });
+      floatingHeader.bookmarkPinProxy = pin;
+    }
+    return floatingHeader.bookmarkPinProxy;
+  }
+  // Both scripts keep their own controls in the native topbar. Mirror only their visible state here:
+  // USGB replaces its ZIP/county nodes on each fetch, and GIS Buttons updates its links in place.
+  function headerAddonOriginal(id) {
+    return floatingHeader.locationSource?.querySelector(`#${id}`) || document.getElementById(id);
+  }
+  function queueHeaderAddonRefresh() {
+    if (floatingHeader.addonRefreshQueued) return;
+    floatingHeader.addonRefreshQueued = true;
+    queueMicrotask(() => {
+      floatingHeader.addonRefreshQueued = false;
+      updateHeaderLocation();
+    });
+  }
+  function watchExternalHeaderAddons(roots) {
+    const source = floatingHeader.locationSource;
+    const next = new Set(roots.filter(root => root?.isConnected && root !== source && !source?.contains(root)));
+    if (next.size === floatingHeader.addonNativeRoots.size && [...next].every(root => floatingHeader.addonNativeRoots.has(root))) return;
+    floatingHeader.addonNativeObserver?.disconnect();
+    floatingHeader.addonNativeRoots = next;
+    if (!next.size) return;
+    floatingHeader.addonNativeObserver ||= new MutationObserver(queueHeaderAddonRefresh);
+    for (const root of next) floatingHeader.addonNativeObserver.observe(root, {
+      childList: true, subtree: true, characterData: true, attributes: true,
+      attributeFilter: ['class','style','hidden','title','href']
+    });
+  }
+  function syncHeaderAddonPlacement() {
+    const { header, locationLabel: label, addonPill: pill } = floatingHeader;
+    if (!header || !pill) return;
+    const merge = !!label?.isConnected && !!label.dataset.placement && label.dataset.placement !== 'inline';
+    const moved = pill.hasAttribute('data-merged') !== merge || !pill.isConnected;
+    if (merge) {
+      if (!floatingHeader.addonSeparator) {
+        floatingHeader.addonSeparator = document.createElement('span');
+        floatingHeader.addonSeparator.className = 'ws-loc-sep';
+        floatingHeader.addonSeparator.textContent = '|';
+      }
+      if (floatingHeader.addonSeparator.parentElement !== label) label.append(floatingHeader.addonSeparator);
+      if (pill.parentElement !== label) label.append(pill);
+      if (!pill.hasAttribute('data-merged')) pill.setAttribute('data-merged', '');
+      if (!label.hasAttribute('data-ws-addons-merged')) label.setAttribute('data-ws-addons-merged', '');
+    } else {
+      floatingHeader.addonSeparator?.remove();
+      label?.removeAttribute('data-ws-addons-merged');
+      if (pill.hasAttribute('data-merged')) pill.removeAttribute('data-merged');
+      if (pill.parentElement !== header) header.append(pill);
+    }
+    if (moved) queueCompactAuxiliaryPlacement();
+    if (label) {
+      if (merge || document.getElementById('addNodeButton')) label.removeAttribute('aria-hidden');
+      else label.setAttribute('aria-hidden', 'true');
+    }
+  }
+  function updateHeaderAddons() {
+    const active = compactHeaderActive();
+    const zipRegion = active && headerAddonOriginal('zip-boundary');
+    const countyRegion = active && headerAddonOriginal('county-boundary');
+    const zip = (zipRegion?.textContent || '').replace(/\s+/g, ' ').trim();
+    const county = (countyRegion?.textContent || '').replace(/\s+/g, ' ').trim();
+    const zipHref = zipRegion?.querySelector('a[href]')?.href || '';
+    const gisStatus = active && headerAddonOriginal('gisStatus');
+    watchExternalHeaderAddons(active ? [zipRegion?.parentElement, countyRegion?.parentElement,
+      gisStatus?.parentElement?.parentElement] : []);
+    const gisLinks = gisStatus ? ['gisSubLocality','gisLocality','gisCounty','gisState'].map(id => {
+      const original = headerAddonOriginal(id);
+      return original && { id, text: original.textContent.replace(/\s+/g, ' ').trim(),
+        href: original.getAttribute('href') || '',
+        disabled: original.hidden || original.classList.contains('hidden') || original.classList.contains('disabled') };
+    }).filter(Boolean) : [];
+    if (!zip && !county && !gisStatus) {
+      const hadPill = !!floatingHeader.addonPill;
+      floatingHeader.addonPill?.remove();
+      floatingHeader.addonSeparator?.remove();
+      floatingHeader.locationLabel?.removeAttribute('data-ws-addons-merged');
+      floatingHeader.addonPill = null;
+      floatingHeader.addonSignature = '';
+      if (floatingHeader.locationLabel && !document.getElementById('addNodeButton'))
+        floatingHeader.locationLabel.setAttribute('aria-hidden', 'true');
+      if (hadPill) queueCompactAuxiliaryPlacement();
+      return;
+    }
+    const signature = JSON.stringify([zip, zipHref, county, gisStatus?.className, gisStatus?.title, gisLinks]);
+    let pill = floatingHeader.addonPill;
+    if (!pill) {
+      pill = document.createElement('div');
+      pill.className = 'wme-studio-header-addons';
+      pill.dataset.placement = 'below';
+      pill.setAttribute('aria-label', 'Map location tools');
+      floatingHeader.addonPill = pill;
+    }
+    if (floatingHeader.addonSignature !== signature) {
+      floatingHeader.addonSignature = signature;
+      const segments = [];
+      const segment = (name, value, href) => {
+        const group = document.createElement('span'); group.className = 'ws-header-addon-group';
+        const key = document.createElement('span'); key.className = 'ws-header-addon-key'; key.textContent = name;
+        const detail = document.createElement(href ? 'a' : 'span');
+        detail.className = href ? 'ws-header-addon-link' : 'ws-header-addon-value';
+        detail.textContent = value; detail.title = value;
+        if (href) { detail.href = href; detail.target = '_blank'; detail.rel = 'noopener noreferrer'; }
+        group.append(key, detail); segments.push(group);
+      };
+      if (zip) segment('ZIP', zip, zipHref);
+      if (county) segment('County', county);
+      if (gisStatus) {
+        const group = document.createElement('span'); group.className = 'ws-header-addon-group';
+        const key = document.createElement('span'); key.className = 'ws-header-addon-key'; key.textContent = 'GIS';
+        const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'ws-header-addon-toggle';
+        toggle.title = gisStatus.title || 'Click to toggle GIS Buttons; right-click to set its API key';
+        toggle.setAttribute('aria-label', toggle.title);
+        const icon = document.createElement('span'); icon.className = gisStatus.className || 'fa fa-power-off';
+        if (gisStatus.style.color) icon.style.color = gisStatus.style.color;
+        toggle.append(icon);
+        toggle.addEventListener('click', event => {
+          event.stopPropagation();
+          headerAddonOriginal('gisStatus')?.click();
+        });
+        toggle.addEventListener('contextmenu', event => {
+          const original = headerAddonOriginal('gisStatus');
+          if (original) { event.preventDefault(); original.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })); }
+        });
+        group.append(key, toggle);
+        for (const link of gisLinks) {
+          if (link.disabled || !link.href || link.href === '#' || !link.text) continue;
+          const button = document.createElement('a'); button.className = 'ws-header-addon-link';
+          button.textContent = link.text; button.title = `${link.text} GIS`;
+          button.href = link.href; button.target = '_blank'; button.rel = 'noopener noreferrer';
+          group.append(button);
+        }
+        segments.push(group);
+      }
+      const nodes = [];
+      for (const part of segments) {
+        if (nodes.length) {
+          const divider = document.createElement('span'); divider.className = 'ws-header-addon-divider'; divider.textContent = '|';
+          nodes.push(divider);
+        }
+        nodes.push(part);
+      }
+      pill.replaceChildren(...nodes);
+      queueCompactAuxiliaryPlacement();
+    }
+    syncHeaderAddonPlacement();
   }
   function updateHeaderLocation() {
     const text = (floatingHeader.locationSource?.querySelector('.location-info')?.textContent || '')
@@ -12705,6 +13022,7 @@ ${studioRangeCSS('.picker-hue')}
     if (!compactHeaderActive() || !text) {
       floatingHeader.locationLabel?.remove();
       floatingHeader.locationLabel = null;
+      updateHeaderAddons();
       watchHeaderLocationLayout();
       return;
     }
@@ -12714,18 +13032,25 @@ ${studioRangeCSS('.picker-hue')}
       label = document.createElement('div');
       label.className = 'wme-studio-header-location';
       label.setAttribute('aria-hidden', 'true');
-      label.append(document.createElement('span'));
+      const base = document.createElement('span'); base.className = 'ws-loc-base';
+      label.append(base);
       floatingHeader.header.append(label);
       floatingHeader.locationLabel = label;
     }
     // With the Area managers layer on, the editor lists them in the same bar the location comes from. That bar is
     // hidden in Floating mode, so they join the location in the pill: "Place | AMs: names".
     const managers = headerAreaManagers();
-    const signature = `${text}\u0001${managers.text}\u0001${managers.names}`;
-    if (label.dataset.wsLocation !== signature) {
+    // Bookmarks keeps its real button in the hidden topbar. The visible pin forwards to that button,
+    // preserving Bookmarks' own click handler without relocating its DOM node on map updates.
+    const hasBookmarkPin = !!document.getElementById('addNodeButton');
+    if (hasBookmarkPin) label.removeAttribute('aria-hidden');
+    else if (label.getAttribute('aria-hidden') !== 'true') label.setAttribute('aria-hidden', 'true');
+    const signature = `${text}\u0001${managers.text}\u0001${managers.names}\u0001${hasBookmarkPin ? 1 : 0}`;
+    const locationChanged = label.dataset.wsLocation !== signature;
+    if (locationChanged) {
       label.dataset.wsLocation = signature;
       const place = document.createElement('span'); place.className = 'ws-loc-place'; place.textContent = text;
-      const parts = [place];
+      const parts = hasBookmarkPin ? [headerBookmarkPin(), place] : [place];
       if (managers.text) {
         const bar = document.createElement('span'); bar.className = 'ws-loc-sep'; bar.textContent = '|';
         const ams = document.createElement('span'); ams.className = 'ws-loc-ams'; ams.textContent = managers.text;
@@ -12737,7 +13062,10 @@ ${studioRangeCSS('.picker-hue')}
       label.toggleAttribute('data-ws-managers', !!managers.text);
       if (!managers.text) hideAreaManagerTip();
     }
-    watchHeaderLocationLayout();
+    const addonSignature = floatingHeader.addonSignature;
+    updateHeaderAddons();
+    if (locationChanged || !floatingHeader.locationLayoutObserver) watchHeaderLocationLayout();
+    else if (addonSignature !== floatingHeader.addonSignature) queueHeaderLocationLayout();
   }
   // The names behind "Multiple managers". The editor shows them only in its own hover bubble, on the bar that Floating
   // mode hides, so Studio shows a bubble of its own under the pill. The names are read from the editor's element when
@@ -12866,7 +13194,7 @@ ${studioRangeCSS('.picker-hue')}
       floatingHeader.locationObserver?.disconnect();
       floatingHeader.locationSource = source;
       floatingHeader.locationObserver = source ? new MutationObserver(updateHeaderLocation) : null;
-      floatingHeader.locationObserver?.observe(source, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class','style','hidden','title'] });
+      floatingHeader.locationObserver?.observe(source, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class','style','hidden','title','href'] });
     }
     updateHeaderLocation();
   }
@@ -12877,6 +13205,10 @@ ${studioRangeCSS('.picker-hue')}
       resetHeaderPosition();
       floatingHeader.locationLabel?.remove();
       floatingHeader.locationLabel = null;
+      floatingHeader.addonPill?.remove();
+      floatingHeader.addonSeparator?.remove();
+      floatingHeader.addonPill = null;
+      floatingHeader.addonSignature = '';
       if (floatingHeader.handle) {
         if (floatingHeader.originalTitle == null) floatingHeader.handle.removeAttribute('title');
         else floatingHeader.handle.setAttribute('title', floatingHeader.originalTitle);
@@ -12911,6 +13243,7 @@ ${studioRangeCSS('.picker-hue')}
       document.getElementById('product-icon') !== floatingHeader.handle ||
       document.getElementById('topbar-container') !== floatingHeader.locationSource ||
       (floatingHeader.locationLabel && !floatingHeader.locationLabel.isConnected) ||
+      (floatingHeader.addonPill && !floatingHeader.addonPill.isConnected) ||
       compactHeaderActive() !== floatingHeader.active;
     if (stale) {
       clearTimeout(floatingHeader.refreshTimer); floatingHeader.refreshTimer = 0;
@@ -13505,7 +13838,7 @@ ${studioControlsCSS()}
       const base = `${opacity}%`, hover = `${Math.min(100, opacity + 48)}%`;
       if (!commit && open) {
         const elements = new Set(targets.map(item => item.element));
-        for (const pill of document.querySelectorAll('.wme-studio-header-location')) elements.add(pill);
+        for (const pill of document.querySelectorAll('.wme-studio-header-location,.wme-studio-header-addons')) elements.add(pill);
         for (const element of elements) {
           if (!element.isConnected) continue;
           element.style.setProperty('--ws-compact-opacity', base); element.style.setProperty('--ws-compact-hover-opacity', hover);
@@ -15461,7 +15794,7 @@ ${studioControlsCSS()}
     if (!tools.hasAttribute('data-wme-studio-street-tools')) tools.setAttribute('data-wme-studio-street-tools','on');
     const toolRect = tools.getBoundingClientRect(), railHeight = Math.min(toolRect.height,availableHeight);
     const preferred = {left:pane.left-toolRect.width-20,top:Math.max(limits.top,Math.min(center-railHeight/2,limits.bottom-railHeight)),width:toolRect.width,height:railHeight};
-    const obstacles = [document.getElementById('app-head'),document.getElementById('drawer'),document.getElementById('sidebar'),floatingHeader.locationLabel,
+    const obstacles = [document.getElementById('app-head'),document.getElementById('drawer'),document.getElementById('sidebar'),floatingHeader.locationLabel,floatingHeader.addonPill,
       ...compactLauncherObstacles(),...headerGuardWindows.keys()].filter(e=>e!==tools&&e!==state.container).map(compactVisibleRect).filter(Boolean);
     const placed = compactFreePosition(preferred,obstacles,{width:pane.left-8,height:limits.bottom+12},rect=>rect.left>=limits.left&&rect.top>=limits.top) || preferred;
     for (const [axis,value] of Object.entries({left:placed.left,top:placed.top})) setElementVariable(tools,`--ws-street-tools-${axis}`,`${Math.round(value/zoom*100)/100}px`);
@@ -15642,6 +15975,213 @@ ${studioControlsCSS()}
     update();
     for (const type of ['input','change','focus','pointerdown']) input.addEventListener(type, update, { passive: true });
   }
+  const restrictionPanels = new Map();
+  const lastRestrictionPanelPlacement = new Map();
+  const restrictionViewport = () => {
+    const view = window.visualViewport;
+    const left = view?.offsetLeft || 0, top = view?.offsetTop || 0;
+    return {left,top,right:left+(view?.width || innerWidth),bottom:top+(view?.height || innerHeight)};
+  };
+  const restrictionClamp = (value, low, high) => Math.max(low,Math.min(value,Math.max(low,high)));
+  function writeRestrictionPanel(state) {
+    state.host.style.setProperty('--ws-restriction-x',`${Math.round(state.x)}px`);
+    state.host.style.setProperty('--ws-restriction-y',`${Math.round(state.y)}px`);
+    state.host.style.setProperty('--ws-restriction-scale',String(Number(state.scale.toFixed(3))));
+  }
+  function rememberRestrictionPanel(state) {
+    if (!state.surface?.isConnected) return;
+    const rect = state.surface.getBoundingClientRect();
+    lastRestrictionPanelPlacement.set(state.kind,{left:rect.left,top:rect.top,scale:state.scale});
+  }
+  function constrainRestrictionPanel(state) {
+    if (!state.surface?.isConnected || !compactLayoutActive()) return;
+    const rect = state.surface.getBoundingClientRect(), view = restrictionViewport(), gap = 12;
+    state.x += restrictionClamp(rect.left,view.left+gap,view.right-rect.width-gap)-rect.left;
+    state.y += restrictionClamp(rect.top,view.top+gap,view.bottom-rect.height-gap)-rect.top;
+    writeRestrictionPanel(state);
+  }
+  function renderRestrictionGesture(state) {
+    state.frame = 0;
+    const drag = state.drag;
+    if (!drag || !state.surface?.isConnected || !compactLayoutActive()) return;
+    const dx = drag.clientX-drag.startX, dy = drag.clientY-drag.startY;
+    if (drag.mode === 'move') {
+      const view = restrictionViewport(), gap = 12;
+      state.x = drag.x + restrictionClamp(drag.rect.left+dx,view.left+gap,view.right-drag.rect.width-gap)-drag.rect.left;
+      state.y = drag.y + restrictionClamp(drag.rect.top+dy,view.top+gap,view.bottom-drag.rect.height-gap)-drag.rect.top;
+    } else {
+      // A single scale changes both axes together, so the form never reflows while it is resized.
+      const width = drag.rect.width/drag.scale, height = drag.rect.height/drag.scale;
+      const view = restrictionViewport(), gap = 12;
+      const limit = Math.max(.4,Math.min(1.6,(view.right-drag.rect.left-gap)/width,(view.bottom-drag.rect.top-gap)/height));
+      state.scale = restrictionClamp(drag.scale+(dx/width+dy/height)/2,Math.min(.65,limit),limit);
+    }
+    writeRestrictionPanel(state);
+  }
+  function finishRestrictionGesture(state, event) {
+    const drag = state.drag;
+    if (!drag || event?.pointerId != null && event.pointerId !== drag.pointerId) return;
+    if (event?.type === 'pointerup') { drag.clientX=event.clientX; drag.clientY=event.clientY; }
+    if (event?.type === 'pointercancel') { drag.clientX=drag.startX; drag.clientY=drag.startY; }
+    cancelAnimationFrame(state.frame); state.frame=0;
+    if (state.surface?.isConnected && compactLayoutActive()) renderRestrictionGesture(state);
+    state.drag=null;
+    state.host.removeAttribute('data-wme-studio-restriction-moving');
+    window.removeEventListener('pointermove',state.onMove,true);
+    window.removeEventListener('pointerup',state.onEnd,true);
+    window.removeEventListener('pointercancel',state.onEnd,true);
+    const handle = drag.mode === 'move' ? state.header : state.handle;
+    if (handle?.hasPointerCapture?.(drag.pointerId)) {
+      try { handle.releasePointerCapture(drag.pointerId); } catch (_) { /* already released by WME */ }
+    }
+    if (state.surface?.isConnected && compactLayoutActive()) { constrainRestrictionPanel(state); rememberRestrictionPanel(state); }
+  }
+  function beginRestrictionGesture(state, mode, event) {
+    if (!compactLayoutActive() || compactLayoutEditing || state.drag || event.button !== 0 || event.isPrimary === false || !state.surface?.isConnected) return;
+    if (mode === 'move' && event.composedPath().some(node => node?.matches?.('button,a,input,select,textarea,wz-button,[role="button"],[contenteditable="true"]'))) return;
+    const rect = state.surface.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    state.drag = {mode,pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,
+      clientX:event.clientX,clientY:event.clientY,rect,x:state.x,y:state.y,scale:state.scale};
+    if (mode === 'move') state.host.setAttribute('data-wme-studio-restriction-moving','');
+    event.preventDefault(); event.stopPropagation();
+    try { (mode === 'move' ? state.header : state.handle).setPointerCapture(event.pointerId); } catch (_) { /* window listeners also finish the gesture */ }
+    window.addEventListener('pointermove',state.onMove,true);
+    window.addEventListener('pointerup',state.onEnd,true);
+    window.addEventListener('pointercancel',state.onEnd,true);
+  }
+  function restrictionSurface(shadow) {
+    const view = restrictionViewport();
+    for (const selector of ['.wz-dialog','.wz-modal','.wz-dialog-content','[role="dialog"]','dialog']) {
+      for (const element of shadow.querySelectorAll(selector)) {
+        const rect = element.getBoundingClientRect();
+        if (rect.width > 220 && rect.height > 100 && rect.width < view.right-view.left-8 && rect.height < view.bottom-view.top-8) return element;
+      }
+    }
+    return null;
+  }
+  function releaseRestrictionSurface(state) {
+    state.host.removeAttribute('data-wme-studio-map-dialog-active');
+    state.surface?.removeAttribute('data-wme-studio-restriction-surface');
+    if (state.surface && state.originalPosition) {
+      const [value,priority]=state.originalPosition;
+      if (value) state.surface.style.setProperty('position',value,priority);
+      else state.surface.style.removeProperty('position');
+    }
+    state.originalPosition=null;
+    state.handle?.remove(); state.handle=null;
+  }
+  function syncRestrictionPanel(state) {
+    const {host} = state;
+    const header = host.querySelector(':scope > .modal-header,:scope > wz-dialog-header') || host.querySelector('.modal-header,wz-dialog-header');
+    if (header !== state.header) {
+      finishRestrictionGesture(state);
+      state.header?.removeEventListener('pointerdown',state.onHeaderDown);
+      state.header=header;
+      header?.addEventListener('pointerdown',state.onHeaderDown);
+    }
+    const shadow=host.shadowRoot;
+    if (shadow && state.shadow !== shadow) {
+      state.shadowObserver?.disconnect(); state.shadow=shadow;
+      state.shadowObserver=new MutationObserver(records => {
+        if (!state.surface?.isConnected || !state.handle?.isConnected || records.some(record =>
+          record.type === 'attributes' && record.target?.matches?.('.wz-dialog-wrapper'))) syncRestrictionPanel(state);
+      });
+      state.shadowObserver.observe(shadow,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','hidden']});
+    }
+    const active=compactLayoutActive() && !host.hidden && host.getAttribute('aria-hidden') !== 'true' &&
+      host.checkVisibility?.({checkVisibilityCSS:true}) !== false;
+    if (!active) {
+      finishRestrictionGesture(state);
+      releaseRestrictionSurface(state);
+      return;
+    }
+    if (!shadow) return;
+    if (state.surface?.isConnected && state.handle?.isConnected) {
+      const rect=state.surface.getBoundingClientRect();
+      if (rect.width && rect.height) return;
+    }
+    finishRestrictionGesture(state);
+    releaseRestrictionSurface(state);
+    const surface=restrictionSurface(shadow);
+    if (!surface) return;
+    state.surface=surface;
+    if (getComputedStyle(surface).position === 'static') {
+      state.originalPosition=[surface.style.getPropertyValue('position'),surface.style.getPropertyPriority('position')];
+      surface.style.setProperty('position','relative');
+    }
+    state.x=0; state.y=0; state.scale=1;
+    host.setAttribute('data-wme-studio-map-dialog-active','on');
+    surface.setAttribute('data-wme-studio-restriction-surface','');
+    writeRestrictionPanel(state);
+    const previous=lastRestrictionPanelPlacement.get(state.kind);
+    if (previous) {
+      const natural=surface.getBoundingClientRect(), view=restrictionViewport(), gap=12;
+      const desiredLeft=restrictionClamp(previous.left,view.left+gap,view.right-natural.width*.65-gap);
+      const desiredTop=restrictionClamp(previous.top,view.top+gap,view.bottom-natural.height*.65-gap);
+      state.scale=restrictionClamp(previous.scale,.65,Math.max(.65,Math.min(1.6,(view.right-desiredLeft-gap)/natural.width,(view.bottom-desiredTop-gap)/natural.height)));
+      writeRestrictionPanel(state);
+      const scaled=surface.getBoundingClientRect();
+      state.x=restrictionClamp(previous.left,view.left+gap,view.right-scaled.width-gap)-scaled.left;
+      state.y=restrictionClamp(previous.top,view.top+gap,view.bottom-scaled.height-gap)-scaled.top;
+      writeRestrictionPanel(state);
+    }
+    const grip=document.createElement('button');
+    grip.type='button'; grip.className='ws-restriction-resize';
+    grip.setAttribute('aria-label',state.kind === 'school-zone' ? 'Resize school zone schedule diagonally' : 'Resize restrictions panel diagonally');
+    grip.title='Drag diagonally to resize';
+    grip.addEventListener('pointerdown',event=>beginRestrictionGesture(state,'resize',event));
+    grip.addEventListener('click',event=>event.stopPropagation());
+    grip.addEventListener('keydown',event=>{
+      if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)) return;
+      event.preventDefault(); event.stopPropagation();
+      const rect=surface.getBoundingClientRect(), view=restrictionViewport(), gap=12;
+      const width=rect.width/state.scale, height=rect.height/state.scale;
+      const limit=Math.max(.4,Math.min(1.6,(view.right-rect.left-gap)/width,(view.bottom-rect.top-gap)/height));
+      state.scale=restrictionClamp(state.scale+(['ArrowDown','ArrowRight'].includes(event.key) ? .05 : -.05),Math.min(.65,limit),limit);
+      writeRestrictionPanel(state); constrainRestrictionPanel(state); rememberRestrictionPanel(state);
+    });
+    state.handle=grip; surface.append(grip);
+  }
+  function schoolZoneDialog(host) {
+    if (host?.localName !== 'wz-dialog' || host.classList.contains('restrictions-modal')) return false;
+    const title=host.querySelector(':scope > wz-dialog-header')?.textContent?.trim() || '';
+    return /school\s+zone\s+schedule/i.test(title) || host.classList.contains('dialog--NH0H4');
+  }
+  function trackRestrictionPanel(host) {
+    if (restrictionPanels.has(host)) { syncRestrictionPanel(restrictionPanels.get(host)); return; }
+    const kind=host.classList.contains('restrictions-modal') ? 'restriction' : 'school-zone';
+    host.setAttribute('data-wme-studio-map-dialog',kind);
+    const state={host,kind,header:null,surface:null,handle:null,shadow:null,shadowObserver:null,drag:null,frame:0,x:0,y:0,scale:1};
+    state.onHeaderDown=event=>beginRestrictionGesture(state,'move',event);
+    state.onMove=event=>{
+      if (!state.drag || event.pointerId !== state.drag.pointerId) return;
+      event.preventDefault(); event.stopPropagation();
+      state.drag.clientX=event.clientX; state.drag.clientY=event.clientY;
+      if (!state.frame) state.frame=requestAnimationFrame(()=>renderRestrictionGesture(state));
+    };
+    state.onEnd=event=>finishRestrictionGesture(state,event);
+    state.observer=new MutationObserver(records=>{
+      if (state.drag && records.every(record=>record.attributeName === 'style')) return;
+      syncRestrictionPanel(state);
+    });
+    state.observer.observe(host,{childList:true,attributes:true,attributeFilter:['open','hidden','aria-hidden','size','class','style']});
+    restrictionPanels.set(host,state);
+    syncRestrictionPanel(state);
+  }
+  function pruneRestrictionPanels() {
+    for (const [host,state] of restrictionPanels) if (!host.isConnected) {
+      finishRestrictionGesture(state);
+      state.observer.disconnect(); state.shadowObserver?.disconnect();
+      state.header?.removeEventListener('pointerdown',state.onHeaderDown);
+      releaseRestrictionSurface(state);
+      host.removeAttribute('data-wme-studio-map-dialog');
+      restrictionPanels.delete(host);
+    }
+  }
+  window.addEventListener('blur',()=>{for (const state of restrictionPanels.values()) finishRestrictionGesture(state);});
+  window.addEventListener('resize',()=>{for (const state of restrictionPanels.values()) constrainRestrictionPanel(state);},{passive:true});
+  window.visualViewport?.addEventListener('resize',()=>{for (const state of restrictionPanels.values()) constrainRestrictionPanel(state);},{passive:true});
   // Enhance only the legacy selects in Restrictions; the native field remains WME's source of truth.
   const restrictionSelects = (() => {
     const states = new Map(); let popup = null, sequence = 0, frame = 0;
@@ -16574,6 +17114,8 @@ ${studioControlsCSS()}
     if (id === 'WMETB_Dashboard') trackToolboxDashboard(host);
     if (id === 'RAUtilWindow' || id === 'header' && host.closest('#RAUtilWindow')) studioResourceRecovery.inspect(host);
     if (tag === 'select') restrictionSelects.inspect(host);
+    if (tag === 'wz-dialog' && (classes.contains('restrictions-modal') || schoolZoneDialog(host))) trackRestrictionPanel(host);
+    if (tag === 'wz-dialog-header' && schoolZoneDialog(host.parentElement)) trackRestrictionPanel(host.parentElement);
     if (classes.contains('nav-tabs')) scriptTabPicker.inspect(host);
     if (classes.contains('tab-pane') && host.closest('#sidebar')) scriptTabPicker.refresh();
     if (classes.contains('new-comment-form')) trackRequestReply(host);
@@ -16604,6 +17146,9 @@ ${studioControlsCSS()}
     if (tag === 'wz-card' && isFlowPanel(host.parentElement)) { host.setAttribute('data-wme-studio-flow-card', 'on'); queueHeaderGuardWindows(); }
     if (tag === 'wz-tooltip-content') rememberToolTooltipContent(host);
     if (id === 'app-head' || id === 'product-icon' || id === 'topbar-container') syncFloatingHeader();
+    if (id === 'addNodeButton') updateHeaderLocation();
+    if (id === 'gisStatus' || id === 'zip-boundary' || id === 'county-boundary' ||
+        id === 'zip-text' || id === 'county-text') queueHeaderAddonRefresh();
     if (classes.contains('menu') && host.parentElement?.classList.contains('layer-switcher')) trackMapLayerWindow(host);
     tagOnlineEditorsPanel(host);
     if (tag === 'wz-user-box') trackUserBox(host);
@@ -16677,8 +17222,10 @@ ${studioControlsCSS()}
     const headerChanged = floatingHeader.header !== document.getElementById('app-head') ||
       floatingHeader.handle !== document.getElementById('product-icon') ||
       floatingHeader.locationSource !== document.getElementById('topbar-container') ||
-      (floatingHeader.locationLabel && !floatingHeader.locationLabel.isConnected);
+      (floatingHeader.locationLabel && !floatingHeader.locationLabel.isConnected) ||
+      (floatingHeader.addonPill && !floatingHeader.addonPill.isConnected);
     restrictionSelects.prune();
+    pruneRestrictionPanels();
     scriptTabPicker.prune();
     if (streetViewWindow.container && !streetViewWindow.container.isConnected) queueStreetViewWindow();
     requestMinimizer.prune();
@@ -16694,6 +17241,7 @@ ${studioControlsCSS()}
       syncCompactToolTooltips();
       queueProfileMenus(); queueCompactAuxiliaryPlacement(); scheduleDefaultSideIslandCenters();
     }
+    if ([...floatingHeader.addonNativeRoots].some(root => !root.isConnected)) queueHeaderAddonRefresh();
     if (navigationMenusNeedSync()) queueNavigationMenus();
     for (const state of onlineEditorsPanels.values()) if (!state.panel.isConnected) releaseOnlineEditorsPanel(state);
     for (const state of [...notificationsBoxes.values()]) if (!state.box.isConnected) releaseNotificationsBox(state);
@@ -16866,8 +17414,17 @@ ${studioControlsCSS()}
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
   const studioUpdateNotes = `<p>What’s new in WME Studio ${USERSCRIPT_VERSION}:</p>
-<p><strong>Improved</strong></p><ul>
-<li>WME Color Highlights now follows Studio’s Light, Dark, and Full Black themes across its sidebar text, options, checkboxes, dropdowns, and footer link.</li>
+<p><strong>Supported Scripts</strong></p><ul>
+<li>WME Color Highlights (NEW)</li>
+<li>WME Bookmarks (NEW)</li>
+<li>WME US Government Boundaries (NEW)</li>
+<li>WME GIS Buttons (NEW)</li>
+<li>WME Map Layers (fixed)</li>
+<li>WME Quick Replies (fixed)</li>
+</ul>
+<p><strong>Panels</strong></p><ul>
+<li>Restrictions and School Zone Schedule: movable, diagonally resizable, clear clickable map (NEW).</li>
+<li>Fixed dialog switching after using Restrictions.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
