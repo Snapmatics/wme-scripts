@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.0.12
+// @version      1.0.13
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -142,7 +142,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.0.12';
+  const USERSCRIPT_VERSION = '1.0.13';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -613,6 +613,93 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
 `;
   }
 
+  // Ask Waze's Messenger fork uses chat-messenger variables (including private
+  // defaults); its df-* and Material children inherit the same palette.
+  function studioAIHelperTokensCSS() {
+    const tokens = {
+      'font-family':'var(--ws-font)', 'font-color':'var(--wme-studio-text)',
+      'default-font-color':'var(--wme-studio-text)', 'default-text-color':'var(--wme-studio-text)',
+      'primary-color':'var(--wme-studio-accent)', 'focus-color':'var(--wme-studio-accent)',
+      'focus-color-contrast':'var(--wme-studio-on-accent)', 'default-border-color':'var(--wme-studio-border)',
+      'chat-background':'var(--wme-studio-surface)', 'default-background':'var(--wme-studio-surface)',
+      'message-font-color':'var(--wme-studio-text)', 'message-font-family':'var(--ws-font)',
+      'message-bot-background':'var(--wme-studio-surface)', 'message-bot-font-color':'var(--wme-studio-text)',
+      'message-user-background':'var(--wme-studio-active)', 'message-user-font-color':'var(--wme-studio-text)',
+      'message-border':'none', 'message-feedback-icon-font-color':'var(--wme-studio-text-secondary)',
+      'message-feedback-icon-font-color-active':'var(--wme-studio-accent)',
+      'message-feedback-icon-background':'transparent', 'message-feedback-icon-border':'none',
+      'input-background':'var(--wme-studio-input)', 'input-font-color':'var(--wme-studio-text)',
+      'input-font-family':'var(--ws-font)', 'input-placeholder-font-color':'var(--wme-studio-text-muted)',
+      'input-border':'none', 'input-border-top':'none', 'input-box-border':'none', 'input-box-focus-border':'none',
+      'send-icon-color':'var(--wme-studio-text-muted)', 'send-icon-color-hover':'var(--wme-studio-accent)',
+      'send-icon-color-active':'var(--wme-studio-accent)', 'icon-color':'var(--wme-studio-text-secondary)',
+      'chips-background':'var(--wme-studio-input)', 'chips-background-hover':'var(--wme-studio-hover)',
+      'chips-font-color':'var(--wme-studio-text)', 'chips-font-family':'var(--ws-font)',
+      'chips-border-color':'var(--wme-studio-border-strong)', 'chips-border-color-hover':'var(--wme-studio-accent)',
+      'chips-box-shadow':'none', 'default-box-shadow':'none',
+      'link-font-color':'var(--wme-studio-accent)', 'link-visited-font-color':'var(--wme-studio-accent)',
+      'link-hover-font-color':'var(--wme-studio-accent)', 'citations-font-color':'var(--wme-studio-accent)',
+      'citations-message-font-color':'var(--wme-studio-text-secondary)', 'citations-background':'var(--wme-studio-input)',
+      'citations-background-hover':'var(--wme-studio-hover)', 'citations-border-color':'var(--wme-studio-border)',
+      'card-background':'var(--wme-studio-input)', 'card-border':'1px solid var(--wme-studio-border)',
+      'files-background':'var(--wme-studio-input)', 'files-font-color':'var(--wme-studio-text)',
+      'files-border':'1px solid var(--wme-studio-border)', 'table-font-color':'var(--wme-studio-text)',
+      'table-header-font-color':'var(--wme-studio-text)', 'input-error-color':'var(--wme-studio-text)',
+      'input-error-background':'color-mix(in srgb,#d94858 12%,var(--wme-studio-surface))',
+      'input-warning-color':'var(--wme-studio-text)',
+      'input-warning-background':'color-mix(in srgb,#d49231 12%,var(--wme-studio-surface))'
+    };
+    return ['chat-messenger','chat-messenger-internal','df-messenger','df-messenger-internal']
+      .flatMap(prefix => Object.entries(tokens).map(([name,value]) => `--${prefix}-${name}:${value} !important;`)).join('\n') + `
+      --md-sys-color-on-surface:var(--wme-studio-text) !important;
+      --md-sys-color-on-surface-variant:var(--wme-studio-text-secondary) !important;
+      --md-sys-color-primary:var(--wme-studio-accent) !important;
+      --md-icon-button-icon-color:var(--wme-studio-text-secondary) !important;
+      --md-icon-button-disabled-icon-color:var(--wme-studio-text-muted) !important;
+      --md-icon-button-state-layer-color:var(--wme-studio-accent) !important;
+      --md-focus-ring-color:var(--wme-studio-accent) !important;`;
+  }
+  globalThis.WMEStudioAIHelperComponents = String.raw`
+    :host-context(html[data-wme-studio="on"]):host {
+      ${studioAIHelperTokensCSS()}
+    }
+    :host-context(html[data-wme-studio="on"]):host(chat-messenger) { color:var(--wme-studio-text); font-family:var(--ws-font); }
+    :host-context(html[data-wme-studio="on"]):host([aria-pressed="true"]),
+    :host-context(html[data-wme-studio="on"]):host([selected]) { --md-icon-button-icon-color:var(--wme-studio-accent) !important; }
+    :host-context(html[data-wme-studio="on"]) .chip {
+      background:var(--wme-studio-input) !important; color:var(--wme-studio-text) !important;
+      border-color:var(--wme-studio-border-strong) !important; box-shadow:none !important;
+      font-family:var(--ws-font) !important;
+    }
+    :host-context(html[data-wme-studio="on"]) .chip:hover {
+      background:var(--wme-studio-hover) !important; border-color:var(--wme-studio-accent) !important;
+    }
+    :host-context(html[data-wme-studio="on"]) :is(.message,.message-container,.bot-message,.message-text,p,li,blockquote,pre,code) {
+      color:var(--wme-studio-text) !important;
+    }
+    :host-context(html[data-wme-studio="on"]) :is(.message,.message-container,.bot-message,.message-text) { font-family:var(--ws-font) !important; }
+    :host-context(html[data-wme-studio="on"]) :is(.footer,.disclaimer,.info-text) { color:var(--wme-studio-text-secondary) !important; border-color:var(--wme-studio-border) !important; }
+    :host-context(html[data-wme-studio="on"]) :is(.user-message,.message.user) {
+      background:var(--wme-studio-active) !important; color:var(--wme-studio-text) !important;
+    }
+    :host-context(html[data-wme-studio="on"]) a { color:var(--wme-studio-accent) !important; }
+    :host-context(html[data-wme-studio="on"]) :is(.input-wrapper,.input-element-wrapper) {
+      background:var(--wme-studio-input) !important; color:var(--wme-studio-text) !important;
+    }
+    :host-context(html[data-wme-studio="on"]) textarea.input-box {
+      background:transparent !important; color:var(--wme-studio-text) !important;
+      caret-color:var(--wme-studio-accent); font-family:var(--ws-font) !important;
+    }
+    :host-context(html[data-wme-studio="on"]) textarea.input-box::placeholder { color:var(--wme-studio-text-muted) !important; opacity:1; }
+    :host-context(html[data-wme-studio="on"]) :is(.thumb,.feedback-button) { color:var(--wme-studio-text-secondary) !important; }
+    :host-context(html[data-wme-studio="on"]) :is(.thumb[aria-pressed="true"],.feedback-button[aria-pressed="true"]) { color:var(--wme-studio-accent) !important; }
+    :host-context(html[data-wme-studio="on"]) :is(.message-list,.message-list-wrapper,.chat-wrapper) {
+      scrollbar-width:thin; scrollbar-color:var(--wme-studio-border-strong) transparent;
+    }
+    :host-context(html[data-wme-studio="on"][data-wme-studio-font="scaled"]) :is(.chip,.message,.message-text,p,li,blockquote,pre,code,textarea) {
+      font-size-adjust:var(--ws-font-adjust,none) !important;
+    }
+  `;
   globalThis.WMEStudioPageStyle = GM_addStyle(globalThis.WMEStudioSafari.page(String.raw`
 /* Notes on three selector forms used in this sheet (0.0.4). They change how fast rules are matched, never
    what they match or which rule wins.
@@ -981,6 +1068,19 @@ html[data-wme-studio="on"][data-wme-studio-street-view="docked"] #overlay-button
   position:fixed !important; left:var(--ws-street-tools-left) !important; top:var(--ws-street-tools-top) !important;
   right:auto !important; bottom:auto !important; margin:0 !important; transform:none !important; translate:none !important;
   max-height:var(--ws-street-tools-height) !important; overflow-y:auto;
+}
+@media (min-width: 1180px) and (min-height: 640px) {
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-street-view="docked"] #overlay-buttons[data-wme-studio-street-tools="on"] {
+  overflow-x:hidden !important; overflow-y:auto !important; overscroll-behavior:contain;
+  scrollbar-width:thin; scrollbar-color:var(--wme-studio-border-strong) transparent;
+  pointer-events:auto;
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-street-view="docked"] #overlay-buttons[data-wme-studio-street-tools="on"] :is(.overlay-buttons-container.top,.overlay-buttons-container.bottom) {
+  max-height:none !important; overflow:visible !important; flex:0 0 auto !important;
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-street-view="docked"] #overlay-buttons[data-wme-studio-street-tools="on"] .zoom-bar-container {
+  flex:0 0 auto !important;
+}
 }
 @media all {
 html[data-wme-studio="on"] #street-view-container[data-wme-studio-street-view="floating"] > .close-button {
@@ -3457,12 +3557,18 @@ html[data-wme-studio="on"][data-wme-studio-addons="on"] #uroControlsContainer :i
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #uroControlsContainer div[id^="_uroPlacesGroup-"] { border-color: var(--wme-studio-border) !important; }
 /* WME Speedhelper: the notice it shows in the segment panel. */
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #_wmesh_msg1 { background: color-mix(in srgb, #e5484d 16%, var(--wme-studio-surface)) !important; border-color: color-mix(in srgb, #e5484d 60%, var(--wme-studio-surface)) !important; color: var(--wme-studio-text) !important; }
-/* WME Color Highlights and WME Junction Angle Info: plain fields in their tabs. */
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #highlight-addon :is(select,input[type="number"],input[type="text"]),
+/* WME Color Highlights copies the contents of #highlight-addon into its SDK tab, dropping
+   the section itself. Anchor the theme to the four IDs that actually remain in the DOM. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#highlightOptions,#advancedOptions,#highlightPlaces,#highlightPermanentHazards) { color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#highlightOptions,#advancedOptions,#highlightPlaces,#highlightPermanentHazards) :is(label,b) { color: inherit !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#highlightOptions,#advancedOptions,#highlightPlaces,#highlightPermanentHazards) :is(i,span[id^="_num"]) { color: var(--wme-studio-text-secondary) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#highlightOptions,#advancedOptions,#highlightPlaces,#highlightPermanentHazards) :is(select,option,input[type="number"],input[type="text"]) { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius); color-scheme: inherit; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#highlightOptions,#advancedOptions,#highlightPlaces,#highlightPermanentHazards) input[type="checkbox"] { accent-color: var(--wme-studio-accent) !important; color-scheme: inherit; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#highlightOptions,#advancedOptions,#highlightPlaces,#highlightPermanentHazards) :is(select,input):focus-visible { border-color: var(--wme-studio-accent) !important; outline: 2px solid var(--wme-studio-accent) !important; outline-offset: 2px; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #highlightPermanentHazards + b > a[href*="3206-wme-color-highlights"] { color: var(--wme-studio-accent) !important; }
+/* WME Junction Angle Info: plain fields in its tab. */
 html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane :is(select,input[type="number"],input[type="text"]) { background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius); }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #highlight-addon :is(select,input):focus-visible,
 html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane :is(select,input):focus-visible { outline: 2px solid var(--wme-studio-accent) !important; outline-offset: 2px; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #highlight-addon { color: var(--wme-studio-text); }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-ja-pane .ja-card,
 html[data-wme-studio="on"][data-wme-studio-addons="on"] .wme-hnp-panel .hnp-card { border-color: var(--wme-studio-border) !important; }
 /* WME Route Speeds: the hint text and the passes box are coloured inline. */
@@ -3853,6 +3959,33 @@ html[data-wme-studio="on"] [aria-roledescription="draggable"] {
   transition: none !important; animation: none !important; transform: none !important; scale: none !important;
 }
 html[data-wme-studio="on"] [aria-roledescription="draggable"]:has(~ :is(.problem-edit,.place-update-edit)) wz-button { --wme-studio-hover: transparent; }
+
+/* Native Ask Waze window: preserve its controls and Messenger DOM. */
+html[data-wme-studio="on"] :is(#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]) {
+  ${studioAIHelperTokensCSS()}
+  background:var(--wme-studio-surface) !important; color:var(--wme-studio-text) !important;
+  border:1px solid var(--wme-studio-border) !important; border-radius:var(--wme-studio-panel-radius) !important;
+  box-shadow:var(--wme-studio-shadow) !important; overflow:hidden !important;
+  display:flex !important; flex-direction:column !important; box-sizing:border-box;
+  transition:none !important;
+}
+html[data-wme-studio="on"] :is(#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]):is([hidden],[aria-hidden="true"],[data-window-hidden="true"]) { display:none !important; }
+html[data-wme-studio="on"] :is(#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]) > [data-testid="floating-window-handle"] {
+  flex:0 0 auto; background:var(--wme-studio-surface-3) !important;
+  color:var(--wme-studio-text) !important; font-family:var(--ws-font); cursor:grab; touch-action:none;
+}
+html[data-wme-studio="on"] :is(#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]) > :is([class*="container--"],[class^="container-"]) {
+  flex:1 1 auto; min-height:0; display:flex; flex-direction:column; background:transparent !important;
+}
+html[data-wme-studio="on"] :is(#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]) :is([class*="chatWrapper--"],[class^="chatWrapper-"]) { flex:1 1 auto; min-height:0; }
+html[data-wme-studio="on"] :is(#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]) > :is([class*="container--"],[class^="container-"]) > :not([class*="chatWrapper--"],[class^="chatWrapper-"],chat-messenger) {
+  color:var(--wme-studio-text-secondary) !important; border-color:var(--wme-studio-border) !important;
+}
+html[data-wme-studio="on"] :is(#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]) chat-messenger {
+  ${studioAIHelperTokensCSS()}
+  display:block; width:100%; height:100%; min-height:0;
+}
+html[data-wme-studio="on"] :is(#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"])[data-wme-studio-panel-dragging="on"] { will-change:translate; contain:layout paint; }
 
 html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) [class*="footer--"] .content {
   display: flex !important; flex-wrap: wrap; align-items: stretch; gap: 8px;
@@ -7994,6 +8127,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     Object.freeze({ id: 'navigation', label: 'Navigation', selector: '#drawer', width: () => 52, height: () => Math.min(390, innerHeight - 180), legacy: Object.freeze([.035, .36]) }),
     Object.freeze({ id: 'sidePanel', popup: true, arrange: false, label: 'Side panel', selector: '#sidebar', width: () => 330, height: () => Math.min(620,innerHeight - 160) }),
     Object.freeze({ id: 'layers', popup: true, arrange: false, label: 'Map Layers', selector: '.layer-switcher .menu', width: () => settings.layerColumns === 'two' ? 620 : 320, height: () => Math.min(560, innerHeight - 120), legacy: Object.freeze([.62, .14]) }),
+    Object.freeze({ id: 'aiHelper', popup: true, arrange: false, label: 'Ask Waze', selector: '#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]', width: () => 375, height: () => Math.min(600,innerHeight - 120) }),
     Object.freeze({ id: 'streetView', popup: true, arrange: false, label: 'Street View', selector: '#street-view-container', width: () => streetViewWindow.size.width, height: () => streetViewWindow.size.height }),
     Object.freeze({ id: 'tools', label: 'Map tools', selector: '#overlay-buttons', width: () => 52, height: () => Math.min(360, innerHeight - 180), legacy: Object.freeze([.965, .36]) }),
     Object.freeze({ id: 'online', label: 'Online Editors', selector: '[data-wme-studio-online-editors-status="on"],.online-editors-bubble', width: () => 52, height: () => 52 }),
@@ -8246,7 +8380,10 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   }
   let compactAuxiliaryFrame = 0;
   const compactPlacementElements = new Set();
-  const compactPlacementResize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {queueCompactAuxiliaryPlacement();queueHeaderGuardWindows();}) : null;
+  const compactPlacementResize = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
+    queueCompactAuxiliaryPlacement(); queueHeaderGuardWindows();
+    if (streetViewWindow.active && streetViewWindow.docked && entries.some(entry => entry.target === streetViewWindow.dockTools?.element)) queueStreetViewWindow();
+  }) : null;
   const compactPlacementObserver = new MutationObserver(records => {
     if (records.some(record => record.attributeName !== 'style' || !mapLayerWindows.get(record.target)?.drag)) {queueCompactAuxiliaryPlacement();queueHeaderGuardWindows();}
   });
@@ -10063,11 +10200,13 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
   const roots = new Map();
   const pending = new Map();
   const queue = new Set();
-  let componentSheet = null;
+  let componentSheet = null, aiHelperSheet = null;
   try {
     if ('adoptedStyleSheets' in ShadowRoot.prototype && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
       componentSheet = new CSSStyleSheet();
       componentSheet.replaceSync(globalThis.WMEStudioSafari.css(globalThis.WMEStudioComponents));
+      aiHelperSheet = new CSSStyleSheet();
+      aiHelperSheet.replaceSync(globalThis.WMEStudioSafari.css(globalThis.WMEStudioAIHelperComponents));
     }
   } catch (studioError) { reportStudioError("Studio initialization",studioError); componentSheet = null; }
   function gateComponentSheet(sheet) {
@@ -10299,12 +10438,13 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
   }
   function attachComponentStyle(shadow, item) {
     if (item.host) markUserContext(item.host);
-    const componentText = globalThis.WMEStudioSafari.bind(item.host,globalThis.WMEStudioComponents);
-    if (componentSheet && item.shared !== false) {
+    const componentText = globalThis.WMEStudioSafari.bind(item.host,item.aiHelper ? globalThis.WMEStudioAIHelperComponents : globalThis.WMEStudioComponents);
+    const sheet = item.aiHelper ? aiHelperSheet : componentSheet;
+    if (sheet && item.shared !== false) {
       try {
-        if (finishComponentGates) { const finish = finishComponentGates; finishComponentGates = null; finish(); }
+        if (!item.aiHelper && finishComponentGates) { const finish = finishComponentGates; finishComponentGates = null; finish(); }
         const sheets = shadow.adoptedStyleSheets;
-        if (sheets[sheets.length - 1] !== componentSheet) shadow.adoptedStyleSheets = [...sheets.filter(sheet => sheet !== componentSheet), componentSheet];
+        if (sheets[sheets.length - 1] !== sheet) shadow.adoptedStyleSheets = [...sheets.filter(existing => existing !== sheet), sheet];
         item.shared = true; syncNavigationTooltip(item, shadow); return;
       } catch (studioError) { reportStudioError("attachComponentStyle",studioError); item.shared = false; }
     }
@@ -10604,7 +10744,13 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
   const headerGuardWindows = new Map();
   let headerGuardQueued = false, headerGuardHeader = null, headerGuardFooter = null;
   const headerGuardProperties = ['translate', 'max-height', 'min-height', 'overflow-y','--ws-request-body-max-height'];
-  const REQUEST_WINDOW_SELECTOR = '[data-issues-tracker-window],[id^="ISSUE_WINDOW"],[data-testid="floating-window"]';
+  const AI_HELPER_WINDOW_SELECTOR = '#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]';
+  const REQUEST_WINDOW_SELECTOR = `[data-issues-tracker-window],[id^="ISSUE_WINDOW"],[data-testid="floating-window"],${AI_HELPER_WINDOW_SELECTOR}`;
+  function isAIHelperComponent(host) {
+    if (host.localName !== 'chat-messenger' && !/^(?:df|chat|md)-/.test(host.localName)) return false;
+    for (let node = host; node?.nodeType === 1; node = composedParent(node)) if (node.matches(AI_HELPER_WINDOW_SELECTOR)) return true;
+    return false;
+  }
   function isRequestPopup(element) {
     return !!element && (element.matches('[data-issues-tracker-window],[id^="ISSUE_WINDOW"]') ||
       !!element.querySelector('.problem-edit,.place-update-edit'));
@@ -10715,6 +10861,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     if (root.getAttribute('data-wme-studio-locale') !== value) root.setAttribute('data-wme-studio-locale', value);
   }
   function requestPopupKind(element) {
+    if (element?.matches?.(AI_HELPER_WINDOW_SELECTOR)) return 'aiHelper';
     if (!element?.matches?.(REQUEST_WINDOW_SELECTOR) && !element?.querySelector?.('.problem-edit,.place-update-edit')) return null;
     const heading = element.querySelector('[aria-roledescription="draggable"]') || element.querySelector('h1,h2,h3,h4,h5,h6,[class*="header" i]');
     const text = (heading?.textContent || element.textContent || '').slice(0,240).replace(/\s+/g,' ');
@@ -11552,13 +11699,13 @@ ${studioRangeCSS('.picker-hue')}
     }
     state.shiftX = 0; state.shift = 0;
   }
-  function writeRequestPosition(state,rect,left,top) {
+  function writeRequestPosition(state,rect,left,top,cachedZoom) {
     if (isFlowPanel(state.element)) { writeFlowPosition(state, left, top); return; }
     const rawLeft = rect.left - state.shiftX, rawTop = rect.top - state.shift;
     const nextX = Math.round((left - rawLeft) * 100) / 100, nextY = Math.round((top - rawTop) * 100) / 100;
     if (Math.abs(nextX - state.shiftX) < .5 && Math.abs(nextY - state.shift) < .5 && state.element.style.getPropertyValue('translate')) return;
     state.shiftX = nextX; state.shift = nextY;
-    const zoom = state.element.currentCSSZoom || 1;
+    const zoom = cachedZoom ?? (state.element.currentCSSZoom || 1);
     const value = `${Math.round(state.shiftX / zoom * 100) / 100}px ${Math.round(state.shift / zoom * 100) / 100}px`;
     if (state.element.style.getPropertyValue('translate') !== value || state.element.style.getPropertyPriority('translate') !== 'important') state.element.style.setProperty('translate',value,'important');
   }
@@ -11587,19 +11734,24 @@ ${studioRangeCSS('.picker-hue')}
     return {left, right: Math.max(left, right - width)};
   }
   const AREA_PILL_GAP = 8;
-  function areaPillLimits(limits, left, width) {
+  function areaPillGeometry() {
     const pill = document.querySelector('.wme-studio-header-location[data-placement]:not([data-placement="inline"])');
-    if (!pill?.isConnected || pill.hidden) return limits;
+    if (!pill?.isConnected || pill.hidden) return null;
     const rect = pill.getBoundingClientRect();
-    if (rect.width < 12 || rect.height < 12 || left + width <= rect.left - AREA_PILL_GAP || left >= rect.right + AREA_PILL_GAP) return limits;
+    if (rect.width < 12 || rect.height < 12) return null;
     const style = getComputedStyle(pill);
-    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return limits;
+    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return null;
     const head = document.getElementById('app-head')?.getBoundingClientRect();
-    if (head && rect.top + rect.height / 2 < head.top + head.height / 2) limits.bottom = Math.min(limits.bottom, rect.top - AREA_PILL_GAP);   // header at the bottom, pill above it
-    else limits.top = Math.max(limits.top, rect.bottom + AREA_PILL_GAP);
+    return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,above:!!head && rect.top + rect.height / 2 < head.top + head.height / 2};
+  }
+  function areaPillLimits(limits, left, width, cachedPill) {
+    const pill = cachedPill === undefined ? areaPillGeometry() : cachedPill;
+    if (!pill || left + width <= pill.left - AREA_PILL_GAP || left >= pill.right + AREA_PILL_GAP) return limits;
+    if (pill.above) limits.bottom = Math.min(limits.bottom,pill.top - AREA_PILL_GAP);
+    else limits.top = Math.max(limits.top,pill.bottom + AREA_PILL_GAP);
     return limits;
   }
-  function headerPanelLimits(left, width, gap = 12, geometry = null, panel = null) { return areaPillLimits(headerBarLimits(left, width, gap, geometry, panel), left, width); }
+  function headerPanelLimits(left, width, gap = 12, geometry = null, panel = null, cachedPill) { return areaPillLimits(headerBarLimits(left, width, gap, geometry, panel), left, width, cachedPill); }
   function headerBarLimits(left, width, gap = 12, geometry = null, panel = null) {
     const limits = { top: gap, bottom: innerHeight - gap };
     if (!ready || !settings.enabled || standaloneSignin || editorProfile) return limits;
@@ -12220,12 +12372,21 @@ ${studioRangeCSS('.picker-hue')}
   }
   function trackHeaderGuardWindow(element) {
     if (!element || headerGuardWindows.has(element)) return;
+    const aiHelper = element.matches(AI_HELPER_WINDOW_SELECTOR);
+    const nativePosition = () => ['left','top','transform'].map(name => element.style.getPropertyValue(name)).join('|');
+    let lastNativePosition = aiHelper ? nativePosition() : null;
     const state = { element, shift: 0, shiftX: 0, appliedPopupPoint: null, cap: null, compact: null, original: new Map(headerGuardProperties.map(name =>
       [name, [element.style.getPropertyValue(name), element.style.getPropertyPriority(name)]])), observer: null };
     state.observer = new MutationObserver(records => {
       if (records.every(record => record.type === 'attributes' && record.attributeName === 'style')) {
         if (mapLayerWindows.get(element)?.drag) return;
         if (requestHeaderDrag?.element === element) return;
+      }
+      // Native keyboard dragging and native position resets change left/top/transform.
+      // Honour those moves rather than snapping the helper back to its last pointer drag.
+      if (aiHelper && records.some(record => record.attributeName === 'style')) {
+        const next = nativePosition();
+        if (next !== lastNativePosition) { lastNativePosition = next; state.requestPoint = null; }
       }
       queueHeaderGuardWindows();
     });
@@ -12277,9 +12438,9 @@ ${studioRangeCSS('.picker-hue')}
     if (drag.active) {
       const rect = {...drag.rect,left:drag.baseLeft + drag.state.shiftX,top:drag.baseTop + drag.state.shift};
       const {width,height} = drag.rect;
-      const horizontal = standardPanelHorizontalBounds(width, drag.geometry);
+      const horizontal = drag.horizontal;
       const left = Math.max(horizontal.left,Math.min(drag.left + drag.clientX - drag.startX,horizontal.right));
-      const limits = headerPanelLimits(left,width,12,drag.geometry,{...drag.previous,height});
+      const limits = headerPanelLimits(left,width,12,drag.geometry,{...drag.previous,height},drag.areaPill);
       const top = Math.max(limits.top,Math.min(drag.top + drag.clientY - drag.startY,limits.bottom - height));
       const previous = {...drag.previous,width,height};
       const viewport = {width:drag.geometry.width,height:limits.bottom + 12};
@@ -12287,7 +12448,7 @@ ${studioRangeCSS('.picker-hue')}
       // no clear spot to slide from (everything is taken): move freely inside the limits rather than not at all
       const placed = origin ? compactSlidePosition({left,top,width,height},origin,drag.obstacles,viewport) : {left,top};
       if (placed) {
-        writeRequestPosition(drag.state,rect,placed.left,placed.top);
+        writeRequestPosition(drag.state,rect,placed.left,placed.top,drag.zoom);
         drag.previous = {left:placed.left,top:placed.top};
       }
     }
@@ -12323,6 +12484,7 @@ ${studioRangeCSS('.picker-hue')}
       baseLeft:rect.left - state.shiftX,baseTop:rect.top - state.shift,unlockSize:lockPanelDragSize(element,rect),
       pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,
       clientX:event.clientX,clientY:event.clientY,left:rect.left,top:rect.top,geometry,obstacles,
+      horizontal:standardPanelHorizontalBounds(rect.width,geometry),areaPill:areaPillGeometry(),zoom:element.currentCSSZoom || 1,
       previous:{left:rect.left,top:rect.top},active:false,finishing:false,frame:0};
     element.setAttribute('data-wme-studio-panel-dragging','on');
     handle.addEventListener('lostpointercapture',finishRequestHeaderDrag);
@@ -15278,8 +15440,10 @@ ${studioControlsCSS()}
     // Neither the Google panorama nor WME's native chevron/splitter is reparented.
     const tools = document.getElementById('overlay-buttons');
     if (state.dockTools?.element !== tools) clearDockedStreetViewTools();
-    const toolRect = tools?.getBoundingClientRect();
-    if (tools && !state.dockTools) state.dockTools = {element:tools,center:(toolRect.top+toolRect.height/2)/innerHeight};
+    if (tools && !state.dockTools) {
+      const original = tools.getBoundingClientRect();
+      state.dockTools = {element:tools,center:(original.top+original.height/2)/innerHeight};
+    }
     const width = 52, height = 84, left = innerWidth-width-12;
     const center = (state.dockTools?.center ?? .5)*innerHeight;
     const top = Math.max(limits.top,Math.min(center-height/2,limits.bottom-height));
@@ -15291,13 +15455,16 @@ ${studioControlsCSS()}
       if (compactLayoutEditing) clearDockedStreetViewTools();
       return;
     }
-    const zoom = tools.currentCSSZoom || 1, railHeight = Math.min(toolRect.height,Math.max(1,limits.bottom-limits.top));
+    // Cap the rail to available space, never to its last (possibly clipped) height.
+    const zoom = tools.currentCSSZoom || 1, availableHeight = Math.max(1,limits.bottom-limits.top);
+    setElementVariable(tools,'--ws-street-tools-height',`${availableHeight/zoom}px`);
+    if (!tools.hasAttribute('data-wme-studio-street-tools')) tools.setAttribute('data-wme-studio-street-tools','on');
+    const toolRect = tools.getBoundingClientRect(), railHeight = Math.min(toolRect.height,availableHeight);
     const preferred = {left:pane.left-toolRect.width-20,top:Math.max(limits.top,Math.min(center-railHeight/2,limits.bottom-railHeight)),width:toolRect.width,height:railHeight};
     const obstacles = [document.getElementById('app-head'),document.getElementById('drawer'),document.getElementById('sidebar'),floatingHeader.locationLabel,
       ...compactLauncherObstacles(),...headerGuardWindows.keys()].filter(e=>e!==tools&&e!==state.container).map(compactVisibleRect).filter(Boolean);
     const placed = compactFreePosition(preferred,obstacles,{width:pane.left-8,height:limits.bottom+12},rect=>rect.left>=limits.left&&rect.top>=limits.top) || preferred;
-    for (const [axis,value] of Object.entries({left:placed.left,top:placed.top,height:railHeight})) setElementVariable(tools,`--ws-street-tools-${axis}`,`${Math.round(value/zoom*100)/100}px`);
-    if (!tools.hasAttribute('data-wme-studio-street-tools')) tools.setAttribute('data-wme-studio-street-tools','on');
+    for (const [axis,value] of Object.entries({left:placed.left,top:placed.top})) setElementVariable(tools,`--ws-street-tools-${axis}`,`${Math.round(value/zoom*100)/100}px`);
     observeCompactPlacement(tools);
   }
   function syncStreetViewWindow() {
@@ -16413,7 +16580,7 @@ ${studioControlsCSS()}
     if (tag === 'wz-textarea') trackRequestReply(host.closest('.new-comment-form'));
     if (BETA_TOOLTIP_IDS.has(id)) queueBetaVersionTooltip();
     if (tag === 'input' && host.matches('input[type="range"]')) enhanceStudioRange(host);
-    if (host.hasAttribute('data-issues-tracker-window') || idAttribute.startsWith('ISSUE_WINDOW') || testId === 'floating-window') trackHeaderGuardWindow(host);
+    if (host.hasAttribute('data-issues-tracker-window') || idAttribute.startsWith('ISSUE_WINDOW') || testId === 'floating-window' || host.matches(AI_HELPER_WINDOW_SELECTOR)) trackHeaderGuardWindow(host);
     const problemEdit = classes.contains('problem-edit');
     if (problemEdit || classes.contains('place-update-edit')) trackRequestHeaderGuard(host);
     if (modular && (moduleClass.includes('noteFromSuggester--') || moduleClass.includes('suggestionCallToActions--'))) host.closest('wz-card')?.setAttribute('data-wme-studio-map-suggestion','on');
@@ -16467,7 +16634,8 @@ ${studioControlsCSS()}
       laneSidebars.set(host, { app: host.closest('.app'), observer });
       scheduleLaneSizing();
     }
-    if (!host.localName.startsWith('wz-')) return;
+    const aiHelper = isAIHelperComponent(host);
+    if (!host.localName.startsWith('wz-') && !aiHelper) return;
     const shadow = host.shadowRoot;
     if (!shadow) {
       if (!pending.has(host)) pending.set(host, performance.now() + 2000);
@@ -16484,7 +16652,7 @@ ${studioControlsCSS()}
     if (host.localName === 'wz-menu' || host.localName === 'wz-menu-sub-menu') trackNavigationMenu(host, shadow);
     if (host.localName === 'wz-menu') { trackProfileMenu(host, shadow); trackTaskMenu(host, shadow); }
     if (roots.has(shadow)) return;
-    const item = { host, style: null, shared: null, observer: null };
+    const item = { host, aiHelper, style: null, shared: null, observer: null };
     attachComponentStyle(shadow, item);
     if (host.localName === 'wz-card' && headerGuardWindows.has(host.closest(REQUEST_WINDOW_SELECTOR))) queueHeaderGuardWindows();
     const observer = new MutationObserver(records => {
@@ -16698,9 +16866,8 @@ ${studioControlsCSS()}
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
   // Use WazeWrap's shared update window and per-version history.
   const studioUpdateNotes = `<p>What’s new in WME Studio ${USERSCRIPT_VERSION}:</p>
-<p><strong>Fixed</strong></p><ul>
-<li>Fixed Map Layers in production WME: restored theme styling, floating positioning, dragging, and one- or two-column layouts.</li>
-<li>Fixed WME Quick Replies: restored buttons in compact request panels in Normal and SuperFast modes, corrected comment layout and scrolling after inserting replies, and added Studio theme matching.</li>
+<p><strong>Improved</strong></p><ul>
+<li>WME Color Highlights now follows Studio’s Light, Dark, and Full Black themes across its sidebar text, options, checkboxes, dropdowns, and footer link.</li>
 </ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
