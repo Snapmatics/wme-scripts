@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.1.0
+// @version      1.1.1
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -142,7 +142,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.1.0';
+  const USERSCRIPT_VERSION = '1.1.1';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -2398,7 +2398,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
     --ws-header-search-bg: color-mix(in srgb, var(--wme-studio-input) 20%, transparent);
     --ws-header-search-border: transparent;
     -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
-    box-shadow: 0 8px 28px #00000026 !important;
+    box-shadow: none !important;
     transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease !important;
     z-index: 510;
   }
@@ -2424,7 +2424,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
     transition: background-color 160ms ease !important;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head > .container-fluid {
-    height: 100%; padding-inline: 10px;
+    height: 100%; padding-inline: 10px; background: transparent !important; box-shadow: none !important;
+  }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head :is(wz-header,wz-header-branding,wz-header-controls,#left-app-head,#right-app-head) {
+    background: transparent !important; box-shadow: none !important;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #app-head #waze-logo {
     width: 116px !important; height: 17px !important;
@@ -2485,7 +2488,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
     overflow: visible;
     background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-opacity, 60%), transparent) !important;
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-    box-shadow: 0 8px 28px #00000026 !important;
+    box-shadow: none !important;
     transition: background-color 160ms ease, box-shadow 160ms ease !important;
     z-index: 509;
   }
@@ -2497,6 +2500,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
     width: 100% !important; height: auto !important; min-height: 0 !important; max-height: none !important;
     overflow: visible !important;
     border-inline-end: 0 !important; border-radius: var(--ws-compact-radius) !important;
+    background: transparent !important; box-shadow: none !important;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer wz-navigation-item {
     position: relative; display: block !important; box-sizing: border-box !important;
@@ -6443,6 +6447,10 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     border-radius: var(--ws-compact-radius) !important;
     align-items: center !important; height: 100% !important;
   }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-header),
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-header) :is(.content-wrapper,header,div.wz-header) {
+    background: transparent !important; box-shadow: none !important;
+  }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-header-branding) .wz-header-branding {
     display: flex !important; align-items: center !important; height: var(--ws-control) !important;
     margin-block: 0 !important; padding-block: 0 !important;
@@ -6907,6 +6915,46 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   @media all {
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-navigation-drawer) {
     height: fit-content !important; align-self: center !important; min-height: 0 !important; max-height: none !important; overflow: visible !important;
+    background: transparent !important; box-shadow: none !important;
+  }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer) {
+    position: fixed !important; zoom: var(--ws-hud-zoom, 1);
+    top: calc(50vh / var(--ws-hud-zoom, 1)) !important; bottom: auto !important;
+    left: var(--ws-compact-side-inset, 12px) !important; right: auto !important;
+    width: var(--ws-compact-rail, 52px) !important; height: fit-content !important;
+    min-height: 0 !important; max-height: none !important; box-sizing: border-box;
+    padding: 4px 0 !important; margin: 0 !important; border: 0 !important;
+    border-radius: var(--ws-compact-radius, 20px) !important; overflow: visible !important;
+    transform: translateY(-50%) !important; z-index: 509;
+    background: transparent !important;
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"][data-wme-studio-layout~="navigation"]):host(wz-navigation-drawer#drawer) {
+    top: calc(var(--ws-island-navigation-top) / var(--ws-hud-zoom, 1)) !important;
+    left: calc(var(--ws-island-navigation-left) / var(--ws-hud-zoom, 1)) !important;
+    transform: none !important;
+  }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer:hover) {
+    background: transparent !important;
+  }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer)::before {
+    content: "" !important; position: absolute !important; inset: 0 !important; z-index: -1 !important;
+    pointer-events: none !important; border-radius: inherit !important;
+    background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-opacity, 60%), transparent) !important;
+    -webkit-backdrop-filter: blur(8px) !important; backdrop-filter: blur(8px) !important;
+    box-shadow: none !important;
+  }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer:hover)::before {
+    background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-hover-opacity, 100%), transparent) !important;
+  }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer) .wz-navigation-drawer {
+    width: 100% !important; height: auto !important; min-height: 0 !important; max-height: none !important;
+    border-inline-end: 0 !important; border-radius: inherit !important; overflow: visible !important;
+    background: transparent !important; box-shadow: none !important;
+  }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer) .wz-navigation-drawer::before {
+    background: transparent !important; box-shadow: none !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-drawer {
     width: 100% !important; height: auto !important; min-height: 0 !important; border-inline-end: 0 !important;
@@ -8126,6 +8174,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   globalThis.__wmeStudioRunning = true;
   const config = globalThis.WMEStudioSettings;
   const root = document.documentElement;
+  const betaEditor = location.hostname === 'beta.waze.com';
+  if (betaEditor) root.setAttribute('data-wme-studio-beta', 'on');
   const attr = (key, value) => {
     const name = 'data-wme-studio' + (key ? '-' + key : '');
     if (value == null) {
@@ -8301,7 +8351,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       if (spec.legacy && x === spec.legacy[0] && y === spec.legacy[1]) continue;
       out[spec.id] = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
-      if (spec.popup && point.anchor === 'viewport') out[spec.id].anchor = 'viewport';
+      if ((spec.popup || spec.id === 'tools') && point.anchor === 'viewport') out[spec.id].anchor = 'viewport';
     }
     return Object.keys(out).length ? out : null;
   }
@@ -9082,6 +9132,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     const viewport = visibleViewportBox();
     let needsAnotherPass = false;
     for (const [id, center] of Object.entries(defaultSideCenters)) {
+      if (betaEditor && id === 'navigation') { center[2] = null; continue; }
       if (layout[id] && !force) {
         center[2] = null;
         continue;
@@ -9123,13 +9174,32 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       syncDefaultSideIslandCenters(false);
     });
   }
+  let compactToolsPositionFrame = 0;
+  const compactToolsObservedSizes = new WeakMap();
+  function scheduleCompactToolsPosition() {
+    if (!compactIslandLayout?.tools || !compactLayoutActive() || compactLayoutEditing || compactToolsPositionFrame) return;
+    compactToolsPositionFrame = requestAnimationFrame(() => {
+      compactToolsPositionFrame = 0;
+      if (compactIslandLayout?.tools && compactLayoutActive() && !compactLayoutEditing) applyCompactLayoutVariables();
+    });
+  }
   const defaultSideCenterResize = typeof ResizeObserver === 'function'
-    ? new ResizeObserver(() => scheduleDefaultSideIslandCenters()) : null;
+    ? new ResizeObserver(entries => {
+      scheduleDefaultSideIslandCenters();
+      for (const entry of entries) {
+        if (entry.target.id !== 'overlay-buttons') continue;
+        const size = entry.target.getBoundingClientRect();
+        const previous = compactToolsObservedSizes.get(entry.target);
+        compactToolsObservedSizes.set(entry.target, { width: size.width, height: size.height });
+        if (!previous || Math.abs(previous.width - size.width) > .5 || Math.abs(previous.height - size.height) > .5) scheduleCompactToolsPosition();
+      }
+    }) : null;
   function observeDefaultSideIslandCenter(element) {
     if (!element?.isConnected || defaultSideCenterObserved.has(element)) return;
     defaultSideCenterObserved.add(element);
     defaultSideCenterResize?.observe(element);
     scheduleDefaultSideIslandCenters();
+    if (element.id === 'overlay-buttons') scheduleCompactToolsPosition();
   }
   window.visualViewport?.addEventListener('resize', () => scheduleDefaultSideIslandCenters());
   window.visualViewport?.addEventListener('scroll', () => scheduleDefaultSideIslandCenters());
@@ -9178,6 +9248,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       else rootStyle(name, value);
     }
     attr('layout', placedIslands.length ? placedIslands.join(' ') : null);
+    syncBetaNavigationGlassState();
     syncCompactDocks(sizes);
     queueHeaderLocationLayout();
     if (layout.messages) {
@@ -10303,6 +10374,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     requestMinimizer.refresh();
     panelResizeHints.prune();
     syncCompactGlassAppearance();
+    syncBetaNavigationGlassState();
     if (affects('enabled','addons','compactMode')) queueCompactAuxiliaryPlacement();
     if (affects('enabled', 'addons')) queueRightClickHeaderLaunchers();
     if (affects('enabled', 'motion')) syncInterfaceMotion();
@@ -10572,6 +10644,69 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     markNavigationLabelText(shadow.querySelector('.wz-navigation-item') || button);
     markNavigationLabelText(item.host);
   }
+  const betaNavigationGlassCSS = `
+@media (min-width:1180px) and (min-height:640px) {
+  :host(#drawer[data-wme-studio-beta-glass="on"]) {
+    position:fixed!important;zoom:var(--ws-hud-zoom,1);top:calc(50vh / var(--ws-hud-zoom,1))!important;
+    bottom:auto!important;left:var(--ws-compact-side-inset,12px)!important;right:auto!important;
+    width:var(--ws-compact-rail,52px)!important;height:fit-content!important;min-height:0!important;max-height:none!important;
+    margin:0!important;padding:4px 0!important;border:0!important;border-radius:var(--ws-compact-radius,20px)!important;
+    overflow:visible!important;transform:translateY(-50%)!important;z-index:509!important;
+    background:transparent!important;
+    -webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none!important;
+  }
+  :host(#drawer[data-wme-studio-beta-glass="on"][data-wme-studio-beta-placed="on"]) {
+    top:calc(var(--ws-island-navigation-top,0px) / var(--ws-hud-zoom,1))!important;
+    left:calc(var(--ws-island-navigation-left,12px) / var(--ws-hud-zoom,1))!important;transform:none!important;
+  }
+  :host(#drawer[data-wme-studio-beta-glass="on"]:hover) {
+    background:transparent!important;
+  }
+  :host(#drawer[data-wme-studio-beta-glass="on"])::before {
+    content:""!important;position:absolute!important;inset:0!important;z-index:-1!important;
+    pointer-events:none!important;border-radius:inherit!important;
+    background:color-mix(in srgb,var(--wme-studio-bg) var(--ws-compact-opacity,60%),transparent)!important;
+    -webkit-backdrop-filter:blur(8px)!important;backdrop-filter:blur(8px)!important;box-shadow:none!important;
+  }
+  :host(#drawer[data-wme-studio-beta-glass="on"]:hover)::before {
+    background:color-mix(in srgb,var(--wme-studio-bg) var(--ws-compact-hover-opacity,100%),transparent)!important;
+  }
+  :host(#drawer[data-wme-studio-beta-glass="on"]) .wz-navigation-drawer {
+    width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;
+    border-inline-end:0!important;border-radius:inherit!important;overflow:visible!important;
+    background:transparent!important;background-color:transparent!important;box-shadow:none!important;
+  }
+  :host(#drawer[data-wme-studio-beta-glass="on"]) .wz-navigation-drawer::before {
+    background:transparent!important;box-shadow:none!important;
+  }
+}`;
+  function syncBetaNavigationGlass(shadow, item) {
+    if (!betaEditor || item.host.localName !== 'wz-navigation-drawer' || item.host.id !== 'drawer') return;
+    const active = compactLayoutActive();
+    if (active) {
+      if (item.host.getAttribute('data-wme-studio-beta-glass') !== 'on') item.host.setAttribute('data-wme-studio-beta-glass', 'on');
+    } else if (item.host.hasAttribute('data-wme-studio-beta-glass')) item.host.removeAttribute('data-wme-studio-beta-glass');
+    const placed = active && !!compactIslandLayout?.navigation;
+    if (item.host.hasAttribute('data-wme-studio-beta-placed') !== placed) item.host.toggleAttribute('data-wme-studio-beta-placed', placed);
+    if (!item.betaNavSheet && componentSheet) {
+      try { item.betaNavSheet = new CSSStyleSheet(); item.betaNavSheet.replaceSync(betaNavigationGlassCSS); }
+      catch (studioError) { reportStudioError('beta navigation glass', studioError); item.betaNavSheet = null; }
+    }
+    if (item.betaNavSheet) {
+      const sheets = shadow.adoptedStyleSheets;
+      if (sheets[sheets.length - 1] !== item.betaNavSheet) shadow.adoptedStyleSheets = [...sheets.filter(sheet => sheet !== item.betaNavSheet), item.betaNavSheet];
+    } else {
+      if (!item.betaNavStyle) {
+        item.betaNavStyle = document.createElement('style');
+        item.betaNavStyle.textContent = betaNavigationGlassCSS;
+      }
+      if (!item.betaNavStyle.isConnected) shadow.append(item.betaNavStyle);
+    }
+  }
+  function syncBetaNavigationGlassState() {
+    if (!betaEditor) return;
+    for (const [shadow, item] of roots) syncBetaNavigationGlass(shadow, item);
+  }
   function attachComponentStyle(shadow, item) {
     if (item.host) markUserContext(item.host);
     const componentText = globalThis.WMEStudioSafari.bind(item.host,item.aiHelper ? globalThis.WMEStudioAIHelperComponents : globalThis.WMEStudioComponents);
@@ -10580,8 +10715,8 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       try {
         if (!item.aiHelper && finishComponentGates) { const finish = finishComponentGates; finishComponentGates = null; finish(); }
         const sheets = shadow.adoptedStyleSheets;
-        if (sheets[sheets.length - 1] !== sheet) shadow.adoptedStyleSheets = [...sheets.filter(existing => existing !== sheet), sheet];
-        item.shared = true; syncNavigationTooltip(item, shadow); return;
+        if (!sheets.includes(sheet) || sheets[sheets.length - 1] !== sheet && sheets[sheets.length - 1] !== item.betaNavSheet) shadow.adoptedStyleSheets = [...sheets.filter(existing => existing !== sheet), sheet];
+        item.shared = true; syncNavigationTooltip(item, shadow); syncBetaNavigationGlass(shadow, item); return;
       } catch (studioError) { reportStudioError("attachComponentStyle",studioError); item.shared = false; }
     }
     if (!item.style) {
@@ -10591,6 +10726,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     }
     if (!item.style.isConnected && item.host.isConnected) shadow.append(item.style);
     syncNavigationTooltip(item, shadow);
+    syncBetaNavigationGlass(shadow, item);
   }
   const laneSidebars = new Map();
   let laneFrame = 0;
@@ -11010,7 +11146,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
   // Keep named requests available for cycling through the native single-request editor.
   const requestMinimizer = (() => {
     const limit = 4, items = new Map(), panels = new Map();
-    let sdk = null, zoomSDK = null, zoomLevel = null, sdkReadyHooked = false, connectedApp = null, active = null, host = null, shadow = null, naming = null, pendingRestore = null, refreshFrame = 0, positionFrame = 0, footer = null, pillPicker = null, pillColor = '#0099ff', tooltipButton = null;
+    let sdk = null, zoomSDK = null, zoomLevel = null, sdkReadyHooked = false, sdkReady = false, connectedApp = null, active = null, host = null, shadow = null, naming = null, pendingRestore = null, refreshFrame = 0, positionFrame = 0, footer = null, pillPicker = null, pillColor = '#0099ff', tooltipButton = null;
     const positions = typeof ResizeObserver==='function' ? new ResizeObserver(queuePositions) : null;
     const footerChanges = new MutationObserver(queuePositions);
     const colorValue = value => /^#[0-9a-f]{6}$/i.test(value || '') ? value : settings.accent;
@@ -11243,19 +11379,21 @@ ${studioRangeCSS('.picker-hue')}
       const hidden=!settings.enabled || compactLayoutEditing || !items.size || zoomLevel===null || zoomLevel<12 || zoomLevel>22;
       if (dock.hidden!==hidden) dock.hidden=hidden;
     }
-    function updateZoom() {
-      try { const level=sdk?.Map?.getZoomLevel(); zoomLevel=Number.isFinite(level)?level:null; }
-      catch (_) { reportStudioError("updateZoom",_); zoomLevel=null; }
+    let zoomQuery=0;
+    async function updateZoom() {
+      const query=++zoomQuery;
+      try { const level=await sdk?.Map?.getZoomLevel(); if (query!==zoomQuery) return; zoomLevel=Number.isFinite(level)?level:null; }
+      catch (_) { if (query!==zoomQuery) return; reportStudioError("updateZoom",_); zoomLevel=null; }
       updateDockVisibility();
     }
     function connectZoom() {
-      if (sdk?.Map?.getZoomLevel && sdk?.Events?.on && zoomSDK!==sdk) {
-        try {
+      try {
+        if (sdk?.Map?.getZoomLevel && sdk?.Events?.on && zoomSDK!==sdk) {
           sdk.Events.on({eventName:'wme-map-zoom-changed',eventHandler:updateZoom});
           zoomSDK=sdk;
           sdk.Events.once?.({eventName:'wme-ready'})?.then(updateZoom).catch(()=>{});
-        } catch (_) { reportStudioError("connectZoom",_);}
-      }
+        }
+      } catch (_) { reportStudioError("connectZoom",_); }
       updateZoom();
     }
     function message(text) { ensureUI(); const status=shadow.querySelector('.status'); status.textContent=text; status.hidden=!text; }
@@ -11315,9 +11453,9 @@ ${studioRangeCSS('.picker-hue')}
       const rect=element.getBoundingClientRect(), guard=headerGuardWindows.get(element);
       return {...active,name:name.trim().slice(0,48),color:colorValue(color || active.color),draft:replyValue(panel),point:guard?.requestPoint?{...guard.requestPoint}:{left:rect.left,top:rect.top}};
     }
-    function nativeOpen(item) {
+    async function nativeOpen(item) {
       try {
-        if (sdk?.IssueTracker?.showPanel && Number.isFinite(item.mapIssueId)) return sdk.IssueTracker.showPanel({issueTrackerId:item.mapIssueId,type:'mapUpdateRequest'});
+        if (sdk?.IssueTracker?.showPanel && Number.isFinite(item.mapIssueId)) return await sdk.IssueTracker.showPanel({issueTrackerId:item.mapIssueId,type:'mapUpdateRequest'});
       } catch (error) { reportStudioError("nativeOpen",error);
         // A minimized request may have left the loaded map data after a pan.
         if (!item.model || !pageWindow.W?.reqres?.request) throw error;
@@ -11508,12 +11646,16 @@ ${studioRangeCSS('.picker-hue')}
     }
     function connect() {
       if (standaloneSignin || editorProfile) return;
-      if (!sdkReadyHooked && pageWindow.SDK_INITIALIZED?.then) { sdkReadyHooked=true; Promise.resolve(pageWindow.SDK_INITIALIZED).then(connect).catch((studioError)=>{ reportStudioError("connect",studioError);}); }
-      if (!sdk) try { sdk=pageWindow.getWmeSdk?.({scriptId:'wme-studio',scriptName:'WME Studio'}); } catch (_) { reportStudioError("connect",_);}
+      const initialized = pageWindow.SDK_INITIALIZED;
+      if (!sdkReadyHooked && initialized?.then) {
+        sdkReadyHooked = true;
+        Promise.resolve(initialized).then(() => { sdkReady = true; connect(); }).catch((studioError) => { reportStudioError("connect",studioError); });
+      }
+      if (!sdk && (!initialized?.then || sdkReady)) try { sdk=pageWindow.getWmeSdk?.({scriptId:'wme-studio',scriptName:'WME Studio',mode:'async'}); } catch (_) { reportStudioError("connect",_);}
       connectZoom();
-      trackStreetViewSDK(sdk);
+      try { trackStreetViewSDK(sdk); } catch (studioError) { reportStudioError("connect",studioError); }
       // connect() can run before requestReveal has been initialized further down this script.
-      queueMicrotask(() => requestReveal.connectPlaceUpdates(sdk));
+      queueMicrotask(() => { try { requestReveal.connectPlaceUpdates(sdk); } catch (studioError) { reportStudioError("connect",studioError); } });
       const app=pageWindow.W?.app;
       if (!app?.on) return;
       if (connectedApp===app) return;
@@ -12927,12 +13069,12 @@ ${studioRangeCSS('.picker-hue')}
   }
   function updateHeaderAddons() {
     const active = compactHeaderActive();
-    const zipRegion = active && headerAddonOriginal('zip-boundary');
-    const countyRegion = active && headerAddonOriginal('county-boundary');
+    const zipRegion = active ? headerAddonOriginal('zip-boundary') : null;
+    const countyRegion = active ? headerAddonOriginal('county-boundary') : null;
     const zip = (zipRegion?.textContent || '').replace(/\s+/g, ' ').trim();
     const county = (countyRegion?.textContent || '').replace(/\s+/g, ' ').trim();
     const zipHref = zipRegion?.querySelector('a[href]')?.href || '';
-    const gisStatus = active && headerAddonOriginal('gisStatus');
+    const gisStatus = active ? headerAddonOriginal('gisStatus') : null;
     watchExternalHeaderAddons(active ? [zipRegion?.parentElement, countyRegion?.parentElement,
       gisStatus?.parentElement?.parentElement] : []);
     const gisLinks = gisStatus ? ['gisSubLocality','gisLocality','gisCounty','gisState'].map(id => {
@@ -14131,7 +14273,7 @@ ${studioControlsCSS()}
       horizontalGuide.style.top = guideY != null ? `${Math.round(guideY)}px` : '';
       verticalGuide.classList.toggle('show', centerX || guideX != null); horizontalGuide.classList.toggle('show', centerY || guideY != null);
       arrangeBaseline.delete(item.spec.id);
-      draft[item.spec.id] = item.spec.popup ? {
+      draft[item.spec.id] = item.spec.popup || item.spec.id === 'tools' ? {
         x: nextLeft / geometry.width, y: nextTop / geometry.height, anchor: 'viewport'
       } : {
         x: expandedHeader ? (draft.header?.x ?? .5) : maxLeft === horizontalInset ? 0 : (nextLeft - horizontalInset) / (maxLeft - horizontalInset),
@@ -15568,7 +15710,7 @@ ${studioControlsCSS()}
   }, true);
   const STREET_VIEW_WINDOW_KEY = 'wmeStudio.streetViewWindow.v1';
   const streetViewWindow = { container: null, map: null, toolbar: null, dockButton: null, observer: null, resize: null,
-    active: false, docked: false, size: {width: 560, height: 360}, rect: null, drag: null, frame: 0, dragFrame: 0, resizeTimer: 0, lastResize: 0, popup: null, sdk: null, sdkStop: null };
+    active: false, docked: false, size: {width: 560, height: 360}, rect: null, drag: null, frame: 0, dragFrame: 0, resizeTimer: 0, lastResize: 0, popup: null, sdk: null, sdkStop: null, sdkCheck: 0 };
   function trackStreetViewSDK(sdk) {
     if (!sdk || (typeof sdk.StreetView?.isActive !== 'function' && typeof sdk.Map?.getLonLatFromPixel !== 'function')) return;
     queueMicrotask(() => {
@@ -15673,7 +15815,7 @@ ${studioControlsCSS()}
     window.addEventListener('pointerup',finishStreetViewDrag,true);
     window.addEventListener('pointercancel',finishStreetViewDrag,true);
   }
-  function streetViewMarkerLink() {
+  async function streetViewMarkerLink() {
     const sdk = streetViewWindow.sdk;
     if (!streetViewWindow.active || typeof sdk?.Map?.getLonLatFromPixel !== 'function') return null;
     const pin = document.querySelector('.street-view-layer .pin.pano-available:not(.dragging)');
@@ -15683,7 +15825,7 @@ ${studioControlsCSS()}
     try {
       const style = getComputedStyle(pin);
       if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return null;
-      const pixel = pin.getBoundingClientRect(), position = sdk.Map.getLonLatFromPixel({x:pixel.left,y:pixel.top});
+      const pixel = pin.getBoundingClientRect(), position = await sdk.Map.getLonLatFromPixel({x:pixel.left,y:pixel.top});
       if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lon) || Math.abs(position.lat) > 90 || Math.abs(position.lon) > 180) return null;
       const url = new URL('https://www.google.com/maps/@');
       url.search = new URLSearchParams({api:'1',map_action:'pano',viewpoint:`${position.lat},${position.lon}`}).toString();
@@ -15693,7 +15835,7 @@ ${studioControlsCSS()}
       return url.href;
     } catch (studioError) { reportStudioError("streetViewMarkerLink",studioError); return null; }
   }
-  function openStreetViewWindow() {
+  async function openStreetViewWindow() {
     const state = streetViewWindow, links = state.container?.querySelectorAll('.panorama a[href]') || [];
     let url = null;
     // Google's own live Maps link contains the panorama/viewpoint, including historical imagery.
@@ -15709,10 +15851,22 @@ ${studioControlsCSS()}
         }
       } catch (studioError) { reportStudioError("openStreetViewWindow",studioError);}
     }
-    url ||= streetViewMarkerLink();
+    let lookupPopup = null;
+    if (!url && typeof state.sdk?.Map?.getLonLatFromPixel === 'function' && document.querySelector('.street-view-layer .pin.pano-available:not(.dragging)')) {
+      try {
+        if (!state.popup || state.popup.closed) {
+          lookupPopup = window.open('about:blank','WMEStudioStreetView','popup=yes,width=1000,height=700,resizable=yes,scrollbars=yes');
+          if (lookupPopup) { state.popup = lookupPopup; lookupPopup.opener = null; }
+        }
+      } catch (studioError) { reportStudioError("openStreetViewWindow",studioError); }
+      url = await streetViewMarkerLink();
+    }
     const notice = state.container?.querySelector('.ws-street-view-notice');
     const message = text => { if (notice) { notice.textContent = globalThis.WMEStudioI18n.translate(text); notice.hidden = false; } };
-    if (!url) { message('Street View location is unavailable. Close and reopen Street View, then try again.'); return; }
+    if (!url) {
+      if (lookupPopup) { try { lookupPopup.close(); } catch (studioError) { reportStudioError("openStreetViewWindow",studioError); } if (state.popup === lookupPopup) state.popup = null; }
+      message('Street View location is unavailable. Close and reopen Street View, then try again.'); return;
+    }
     try {
       let popup = state.popup;
       const opening = !popup || popup.closed;
@@ -15800,8 +15954,9 @@ ${studioControlsCSS()}
     for (const [axis,value] of Object.entries({left:placed.left,top:placed.top})) setElementVariable(tools,`--ws-street-tools-${axis}`,`${Math.round(value/zoom*100)/100}px`);
     observeCompactPlacement(tools);
   }
-  function syncStreetViewWindow() {
+  async function syncStreetViewWindow() {
     const state = streetViewWindow; state.frame = 0;
+    const sdkCheck = ++state.sdkCheck;
     const container = document.getElementById('street-view-container'), map = container?.closest('#map') || container?.parentElement;
     if (container !== state.container || map !== state.map) {
       finishStreetViewDrag(null,false); state.observer?.disconnect(); state.resize?.disconnect();
@@ -15821,7 +15976,12 @@ ${studioControlsCSS()}
       }
     }
     let nativeActive = map?.id === 'map' ? map.classList.contains('street-view-mode') : !!container && getComputedStyle(container).display !== 'none';
-    if (state.sdk) { try { const value = state.sdk.StreetView.isActive(); if (typeof value === 'boolean') nativeActive = value; } catch (studioError) { reportStudioError("syncStreetViewWindow",studioError);} }
+    if (typeof state.sdk?.StreetView?.isActive === 'function') {
+      try { const value = await state.sdk.StreetView.isActive(); if (typeof value === 'boolean') nativeActive = value; }
+      catch (studioError) { reportStudioError("syncStreetViewWindow",studioError); }
+    }
+    if (sdkCheck !== state.sdkCheck) return;
+    if (container !== document.getElementById('street-view-container')) { queueStreetViewWindow(); return; }
     const active = !!(container && map && ready && settings.enabled && !standaloneSignin && !editorProfile && !container.hidden && container.getAttribute('aria-hidden') !== 'true' && nativeActive);
     if (!active) {
       const wasActive = state.active; state.active = false; finishStreetViewDrag(null,false);
@@ -17321,7 +17481,6 @@ ${studioControlsCSS()}
     })) scheduleLaneSizing();
     for (const record of records) {
       for (const node of record.addedNodes) if (node.nodeType === 1) {
-        if (!studioUpdateReported && !studioUpdateTimer && (node.id==='WazeMap' || node.id==='WWSU-Container' || node.matches('.app') && node.querySelector('#WazeMap'))) showStudioUpdateNotes();
         if (node.localName === 'iframe') trackChatFrame(node);
         if (!excluded(node)) queue.add(node);
       }
@@ -17412,44 +17571,31 @@ ${studioControlsCSS()}
   })();
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
-  // Use WazeWrap's shared update window and per-version history.
-  const studioUpdateNotes = `<p>What’s new in WME Studio ${USERSCRIPT_VERSION}:</p>
-<p><strong>Supported Scripts</strong></p><ul>
-<li>WME Color Highlights (NEW)</li>
-<li>WME Bookmarks (NEW)</li>
-<li>WME US Government Boundaries (NEW)</li>
-<li>WME GIS Buttons (NEW)</li>
-<li>WME Map Layers (fixed)</li>
-<li>WME Quick Replies (fixed)</li>
-</ul>
-<p><strong>Panels</strong></p><ul>
-<li>Restrictions and School Zone Schedule: movable, diagonally resizable, clear clickable map (NEW).</li>
-<li>Fixed dialog switching after using Restrictions.</li>
-</ul>`;
-  let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
-  function showStudioUpdateNotes() {
-    if (studioUpdateReported || studioUpdateTimer || !document.getElementById('WazeMap')) return;
-    const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
-    if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
-      try {
-        wrap.Interface.ShowScriptUpdate('WME Studio',USERSCRIPT_VERSION,studioUpdateNotes);
-        studioUpdateReported=true;
-      } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
-      return;
-    }
-    if (++studioUpdateAttempts<=60) studioUpdateTimer=setTimeout(()=>{studioUpdateTimer=0;showStudioUpdateNotes();},1000);
-  }
   function boot() {
-    showStudioUpdateNotes();
-    for (const link of document.querySelectorAll('link[rel~="stylesheet"][href^="data:text/css"]')) if (!link.sheet) studioResourceRecovery.repair(link);
-    trackTileBuildStatus(document.getElementById('tile-build-status'));
-    for (const card of document.querySelectorAll('.tile-build-status-card')) trackTileBuildCard(card);
-    watchNativeScopes(); compatibility.discover(); discover(root); initTileBuildFeed();
-    if (ready) { syncViewportOverlay(); syncChatTheme(); }
-    scheduleLaneSizing(); scheduleCompactDrawerTop(); scheduleDefaultSideIslandCenters(); queueCompactAuxiliaryPlacement();
+    const step = (name, action) => {
+      try { action(); } catch (error) { console.error(`[WME Studio] Beta startup: ${name} failed`, error); }
+    };
+    step('stylesheet recovery', () => {
+      for (const link of document.querySelectorAll('link[rel~="stylesheet"][href^="data:text/css"]')) if (!link.sheet) studioResourceRecovery.repair(link);
+    });
+    step('tile status', () => {
+      trackTileBuildStatus(document.getElementById('tile-build-status'));
+      for (const card of document.querySelectorAll('.tile-build-status-card')) trackTileBuildCard(card);
+    });
+    step('native theme', watchNativeScopes);
+    step('script compatibility', () => compatibility.discover());
+    step('editor components', () => discover(root));
+    step('tile feed', initTileBuildFeed);
+    if (ready) {
+      step('viewport overlay', syncViewportOverlay);
+      step('chat theme', syncChatTheme);
+    }
+    step('panel layout', () => {
+      scheduleLaneSizing(); scheduleCompactDrawerTop(); scheduleDefaultSideIslandCenters(); queueCompactAuxiliaryPlacement();
+    });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
-  else boot();
+  else queueMicrotask(boot);
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
@@ -17716,8 +17862,15 @@ ${studioControlsCSS()}
     };
     return Object.freeze(api);
   })();
-  config.read().then(value => { settings = value; ready = true; apply(); }).catch(error => {
-    if (reportStudioError.active) reportStudioError('Appearance settings could not be loaded',error); else console.warn('[WME Studio] Appearance settings could not be loaded.', error.message);
+  config.read().then(value => {
+    settings = value; ready = true;
+    try { apply(); } catch (error) { console.error('[WME Studio] Appearance could not be applied.', error); }
+  }, error => {
+    console.error('[WME Studio] Appearance settings could not be loaded; using defaults for this tab.', error);
+    if (!ready) {
+      settings = { ...config.defaults }; ready = true;
+      try { apply(); } catch (startupError) { console.error('[WME Studio] Default appearance could not be applied.', startupError); }
+    }
   });
 })();
 
@@ -19575,9 +19728,23 @@ ${studioControlsCSS()}
   }
 
   function createStudioLauncher() {
-    if (studioLauncher?.host?.isConnected) return studioLauncher;
-    const toolbar = document.querySelector('.overlay-buttons-container');
-    if (!toolbar) return null;
+    const toolbar = document.querySelector('.overlay-buttons-container') || document.getElementById('overlay-buttons');
+    const loading = document.querySelector('.app-loading');
+    if (!toolbar || !document.getElementById('app-head') || !document.getElementById('WazeMap') ||
+      loading && !loading.classList.contains('hide') && !loading.hidden && getComputedStyle(loading).display !== 'none') {
+      if (studioLauncher?.host?.isConnected) studioLauncher.host.remove();
+      studioLauncher = null;
+      return null;
+    }
+    if (studioLauncher?.host?.isConnected) {
+      if (toolbar && studioLauncher.toolbar !== toolbar) {
+        studioLauncher.host.style.cssText = 'display:block;width:var(--wme-studio-map-control-size,38px);height:var(--wme-studio-map-control-size,38px);flex:0 0 var(--wme-studio-map-control-size,38px);pointer-events:auto;';
+        toolbar.prepend(studioLauncher.host);
+        studioLauncher.toolbar = toolbar;
+        scheduleCompactToolsPosition();
+      }
+      return studioLauncher;
+    }
 
     document.getElementById(LAUNCHER_HOST_ID)?.remove();
     const host = document.createElement('div');
@@ -19627,6 +19794,7 @@ ${studioControlsCSS()}
     });
     studioLauncher = { host, shadow, toolbar };
     setLauncherActive(studioPanelOpen);
+    scheduleCompactToolsPosition();
     return studioLauncher;
   }
 
@@ -19634,13 +19802,23 @@ ${studioControlsCSS()}
   // or command palette), so a session that never opens the settings never pays for the dialog.
   function mountStudioLauncher() {
     if (!uiRouteAllowed() || window.top !== window.self) return;
-    createStudioLauncher();
+    if (createStudioLauncher()) {
+      launcherReadyObserver?.disconnect(); launcherReadyObserver = null;
+      return;
+    }
+    if (!launcherReadyObserver) {
+      launcherReadyObserver = new MutationObserver(() => {
+        if (createStudioLauncher()) { launcherReadyObserver.disconnect(); launcherReadyObserver = null; }
+      });
+      launcherReadyObserver.observe(document.documentElement, { childList:true, subtree:true, attributes:true, attributeFilter:['class','hidden'] });
+    }
   }
+  let launcherReadyObserver = null;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountStudioLauncher, { once: true });
   else mountStudioLauncher();
 
   refreshStudioLauncher = () => {
-    if (!studioLauncher?.host?.isConnected && uiRouteAllowed()) createStudioLauncher();
+    if (uiRouteAllowed()) mountStudioLauncher();
     if (setupSeen === false && !setupStarted) maybeStartSetup();
   };
 
