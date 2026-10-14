@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.1.1
+// @version      1.1.2
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -142,7 +142,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.1.1';
+  const USERSCRIPT_VERSION = '1.1.2';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -4653,6 +4653,28 @@ html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) [class*="footer
 }
 html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) [class*="footer--"] :is(form[class*="controlsContainer--"],.controls-container) > label:not(#ws-0)::before { margin-inline-end: clamp(2px, 1.2cqw, 6px) !important; }
 html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) [class*="footer--"] .navigation { flex: 0 0 auto !important; }
+html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) [class*="footer--"] :is(form[class*="controlsContainer--"],.controls-container):has(> .no-permissions-alert) {
+  flex-wrap: wrap !important; align-content: flex-start !important; align-items: center !important;
+}
+html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) [class*="footer--"] :is(form[class*="controlsContainer--"],.controls-container) > .no-permissions-alert {
+  order: -1; flex: 0 0 100% !important; width: 100% !important; max-width: 100% !important;
+  min-width: 0 !important; box-sizing: border-box; margin: 0 !important;
+  padding: 6px 8px !important; white-space: normal !important; line-height: 16px !important;
+  display: flex !important; align-items: center !important; justify-content: flex-start !important; gap: 7px !important;
+  text-align: left !important; color: var(--wme-studio-text) !important; background: var(--wme-studio-input) !important;
+  border: 1px solid var(--wme-studio-border) !important; border-radius: 8px !important;
+}
+html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) [class*="footer--"] :is(form[class*="controlsContainer--"],.controls-container) > .no-permissions-alert::before {
+  content: "" !important; position: static !important; inset: auto !important; transform: none !important;
+  display: block !important; float: none !important; flex: 0 0 15px !important;
+  width: 15px !important; height: 15px !important; margin: 0 !important; padding: 0 !important;
+  border: 0 !important; opacity: 1 !important; background: var(--wme-studio-text) !important;
+  -webkit-mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJibGFjayIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxyZWN0IHg9IjUiIHk9IjExIiB3aWR0aD0iMTQiIGhlaWdodD0iMTAiIHJ4PSIyIi8+PHBhdGggZD0iTTggMTFWN2E0IDQgMCAwIDEgOCAwdjQiLz48L3N2Zz4=") center / contain no-repeat !important;
+  mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJibGFjayIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxyZWN0IHg9IjUiIHk9IjExIiB3aWR0aD0iMTQiIGhlaWdodD0iMTAiIHJ4PSIyIi8+PHBhdGggZD0iTTggMTFWN2E0IDQgMCAwIDEgOCAwdjQiLz48L3N2Zz4=") center / contain no-repeat !important;
+}
+html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) [class*="footer--"] .content:has(.no-permissions-alert) .navigation {
+  align-self: flex-end !important;
+}
 html[data-wme-studio="on"] [data-wme-studio-popup-kind]:is([data-testid="floating-window"],[id^="ISSUE_WINDOW"],[data-issues-tracker-window]):has(> :is(.problem-edit,.place-update-edit)) {
   background: var(--wme-studio-surface) !important;
 }
@@ -17481,6 +17503,7 @@ ${studioControlsCSS()}
     })) scheduleLaneSizing();
     for (const record of records) {
       for (const node of record.addedNodes) if (node.nodeType === 1) {
+        if (!studioUpdateReported && !studioUpdateTimer && (node.id==='WazeMap' || node.id==='WWSU-Container' || node.matches('.app') && node.querySelector('#WazeMap'))) showStudioUpdateNotes();
         if (node.localName === 'iframe') trackChatFrame(node);
         if (!excluded(node)) queue.add(node);
       }
@@ -17571,10 +17594,25 @@ ${studioControlsCSS()}
   })();
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
+  const studioUpdateNotes = `<p>What’s new in WME Studio ${USERSCRIPT_VERSION}:</p><p><strong>Fixed</strong></p><ul><li>Editing area warnings now fit the request panel without squeezing its controls.</li></ul>`;
+  let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
+  function showStudioUpdateNotes() {
+    if (studioUpdateReported || studioUpdateTimer || !document.getElementById('WazeMap')) return;
+    const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
+    if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
+      try {
+        wrap.Interface.ShowScriptUpdate('WME Studio',USERSCRIPT_VERSION,studioUpdateNotes);
+        studioUpdateReported=true;
+      } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
+      return;
+    }
+    if (++studioUpdateAttempts<=60) studioUpdateTimer=setTimeout(()=>{studioUpdateTimer=0;showStudioUpdateNotes();},1000);
+  }
   function boot() {
     const step = (name, action) => {
       try { action(); } catch (error) { console.error(`[WME Studio] Beta startup: ${name} failed`, error); }
     };
+    step('update notes', showStudioUpdateNotes);
     step('stylesheet recovery', () => {
       for (const link of document.querySelectorAll('link[rel~="stylesheet"][href^="data:text/css"]')) if (!link.sheet) studioResourceRecovery.repair(link);
     });
