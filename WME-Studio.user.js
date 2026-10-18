@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.0.1
+// @version      2.0.2
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -150,7 +150,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.0.1';
+  const USERSCRIPT_VERSION = '2.0.2';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -10435,9 +10435,9 @@ ${studioRangeCSS('.picker-hue')}
   }
   // The point and area buttons WME shows on an item that can be either (a note, most place categories), first
   // point, then area. Found by pointing at the item, as WME only shows them then.
-  function createShapeButtons(item) {
+  function createShapeButtons(item, shownOnly = true) {
     const own = node => { for (let up = createUp(node); up && up !== item; up = createUp(up)) if (up.matches?.(`${CREATE_SKIP},${CREATE_ITEM},${CREATE_MENU}`)) return false; return true; };
-    return createDeepAll(item, 'wz-button,button,[role="button"]').filter(node => own(node) && !node.matches(CREATE_SKIP) && createShown(node))
+    return createDeepAll(item, 'wz-button,button,[role="button"]').filter(node => own(node) && !node.matches(CREATE_SKIP) && (!shownOnly || createShown(node)))
       .filter((node, index, list) => !list.some(other => other !== node && other.contains(node)));
   }
   async function runCreateShortcut(id, shape = null, anchor = null) {
@@ -10461,11 +10461,19 @@ ${studioRangeCSS('.picker-hue')}
       }
       if (entry.sub) { createHover(item); if (!createVisibleItems(trigger).some(other => createParentItem(other) === item)) createPress(item); done = true; return; }
       if (createDisabled(item)) {
-        // WME says why it cannot be made here: the menu is shown with the item, as if it had been opened by hand.
-        html.removeAttribute('data-wme-studio-create-run'); createHover(item); done = true; return;
+        // A whole group switched off in Map layers (Hazard, while its layer is off): Studio says so beside the
+        // button and offers to turn the layer on, then makes the item.
+        const off = createToggledOffGroup(item);
+        if (off) { createCloseMenu(trigger); done = true; queueMicrotask(() => openCreateOffNotice(entry, anchor, off, shape)); return; }
+        // Any other reason: the menu is shown with the item, as if it had been opened by hand, and WME's own note
+        // on why is brought up.
+        html.removeAttribute('data-wme-studio-create-run'); createHover(item); createShowReason(item); done = true; return;
       }
       createHover(item);
-      const shapes = await createUntil(() => createShapeButtons(item).length >= 2 ? createShapeButtons(item) : null, shape ? 700 : 300);
+      // Only an item that has point and area buttons at all (shown on hover) is waited for; anything else (a road,
+      // a traffic light) is pressed at once, which made every such button about a third of a second slower.
+      const shapes = createShapeButtons(item, false).length >= 2
+        ? await createUntil(() => createShapeButtons(item).length >= 2 ? createShapeButtons(item) : null, shape ? 700 : 300) : null;
       if (shapes) {
         if (!entry.shapes) { entry.shapes = true; saveCreateCatalog(); }
         if (!shape) { createCloseMenu(trigger); done = true; queueMicrotask(() => openCreateShapePicker(entry, anchor)); return; }
@@ -10480,6 +10488,67 @@ ${studioRangeCSS('.picker-hue')}
       if (!done) createCloseMenu(trigger);
       requestAnimationFrame(() => requestAnimationFrame(() => { html.removeAttribute('data-wme-studio-create-run'); createRunning = false; }));
     }
+  }
+  // WME marks a + menu group whose layer is off in Map layers with a "toggled off" note (Hazard has one while the
+  // Hazards layer is off, and every hazard in it is greyed out). The matching switch is found in Map layers.
+  function createToggledOffGroup(item) {
+    if (!item.querySelector('[data-testid="toggled-off-group-info"]')) return null;
+    const title = item.getAttribute('sub-menu-title') || createItemLabel(item);
+    const id = (item.getAttribute('data-testid') || '').replace(/-button$/, '').replace(/-/g, '_');
+    const fold = text => String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const switches = [...document.querySelectorAll('[id^="layer-switcher-group_"]')].filter(element => element.localName !== 'div');
+    const toggle = (id && (document.getElementById(`layer-switcher-group_${id}`) || document.getElementById(`layer-switcher-group_${id.replace(/s$/, '')}`)))
+      || switches.find(element => { const row = element.closest('li,[class*="group"],[class*="Group"]') || element.parentElement; return fold(row?.textContent).startsWith(fold(title)); }) || null;
+    return { title, toggle };
+  }
+  function createShowReason(item) {
+    const target = item.querySelector('[data-testid="create-pane-info-icon"]')?.closest('wz-tooltip-target') || item.querySelector('wz-tooltip-target');
+    if (!target) return;
+    for (const type of ['pointerover', 'pointerenter', 'mouseover', 'mouseenter']) target.dispatchEvent(new (type.startsWith('pointer') ? PointerEvent : MouseEvent)(type, { bubbles: !type.endsWith('enter'), composed: true }));
+  }
+  function createLayerOn(toggle) {
+    return toggle?.hasAttribute('checked') || toggle?.checked === true || toggle?.getAttribute('aria-checked') === 'true';
+  }
+  function openCreateOffNotice(entry, anchor, off, shape) {
+    closeCreateShapePicker();
+    const button = anchor?.isConnected ? anchor : createElements.get(entry.id);
+    const rect = button?.getBoundingClientRect();
+    if (!rect || !rect.width) return;
+    const tr = text => globalThis.WMEStudioI18n?.translate?.(text) || text;
+    const notice = document.createElement('div');
+    notice.className = 'ws-create-shape ws-create-off'; notice.setAttribute('role', 'dialog');
+    notice.setAttribute('aria-label', entry.labels.join(' › '));
+    const text = document.createElement('span'); text.className = 'ws-create-off-text';
+    text.textContent = tr(`${off.title} is turned off in Map layers.`);
+    notice.append(text);
+    if (off.toggle) {
+      const on = document.createElement('button');
+      on.type = 'button'; on.className = 'ws-create-off-on'; on.textContent = tr('Turn it on');
+      on.addEventListener('click', async event => {
+        event.preventDefault(); event.stopPropagation();
+        closeCreateShapePicker();
+        if (!createLayerOn(off.toggle)) off.toggle.click();
+        if (!await createUntil(() => createLayerOn(off.toggle) || null, 400)) off.toggle.shadowRoot?.querySelector('input,button,[role="switch"]')?.click();
+        await createUntil(() => createLayerOn(off.toggle) || null, 800);
+        setTimeout(() => runCreateShortcut(entry.id, shape, button), 250);
+      });
+      notice.append(on);
+    }
+    document.body.append(notice);
+    placeCreateBubble(notice, rect);
+    createShapePicker = notice;
+    document.addEventListener('pointerdown', createShapeOutside, true);
+    document.addEventListener('keydown', createShapeKey, true);
+    notice.querySelector('button')?.focus({ preventScroll: true });
+  }
+  // Beside the button, on the side with room, and never off screen.
+  function placeCreateBubble(bubble, rect) {
+    const own = bubble.getBoundingClientRect(), gap = 8;
+    let left = rect.right + gap, top = rect.top + rect.height / 2 - own.height / 2;
+    if (left + own.width > innerWidth - 8) left = rect.left - gap - own.width;
+    if (left < 8) { left = Math.max(8, Math.min(innerWidth - own.width - 8, rect.left + rect.width / 2 - own.width / 2)); top = rect.bottom + gap; if (top + own.height > innerHeight - 8) top = rect.top - gap - own.height; }
+    top = Math.max(8, Math.min(innerHeight - own.height - 8, top));
+    bubble.style.left = `${Math.round(left)}px`; bubble.style.top = `${Math.round(top)}px`;
   }
   // A small choice beside the button: Point or Area, as WME asks for it in its menu.
   let createShapePicker = null;
@@ -10515,13 +10584,7 @@ ${studioRangeCSS('.picker-hue')}
       picker.append(choice);
     }
     document.body.append(picker);
-    // Beside the button, on the side with room, and never off screen.
-    const own = picker.getBoundingClientRect(), gap = 8;
-    let left = rect.right + gap, top = rect.top + rect.height / 2 - own.height / 2;
-    if (left + own.width > innerWidth - 8) left = rect.left - gap - own.width;
-    if (left < 8) { left = Math.max(8, Math.min(innerWidth - own.width - 8, rect.left + rect.width / 2 - own.width / 2)); top = rect.bottom + gap; if (top + own.height > innerHeight - 8) top = rect.top - gap - own.height; }
-    top = Math.max(8, Math.min(innerHeight - own.height - 8, top));
-    picker.style.left = `${Math.round(left)}px`; picker.style.top = `${Math.round(top)}px`;
+    placeCreateBubble(picker, rect);
     createShapePicker = picker;
     document.addEventListener('pointerdown', createShapeOutside, true);
     document.addEventListener('keydown', createShapeKey, true);
@@ -10595,7 +10658,9 @@ ${studioRangeCSS('.picker-hue')}
   // Returns whether buttons came or went (only then do the islands need laying out again).
   function syncCreateElements() {
     let changedSet = false;
-    const wanted = new Set(createCatalog.map(entry => entry.id));
+    // A submenu (Place, Hazard › Traffic lights & signs) only opens a list in WME's menu: it is not a button of
+    // its own, so it is not offered as a control. Its items are.
+    const wanted = new Set(createCatalog.filter(entry => !entry.sub).map(entry => entry.id));
     for (const [id, element] of createElements) if (!wanted.has(id)) { releaseControl(element); element.remove(); createElements.delete(id); changedSet = true; }
     if (!createCatalog.length) return changedSet;
     let dock = document.getElementById('ws-link-dock');
@@ -10603,6 +10668,7 @@ ${studioRangeCSS('.picker-hue')}
     const host = document.querySelector('.app:not(.sidebar-fullscreen) .edit-area-main') || document.querySelector('.app') || document.body || document.documentElement;
     if (dock.parentElement !== host) host.append(dock);
     for (const entry of createCatalog) {
+      if (!wanted.has(entry.id)) continue;
       let element = createElements.get(entry.id);
       if (!element) {
         element = document.createElement('button');
@@ -10618,7 +10684,7 @@ ${studioRangeCSS('.picker-hue')}
       if (element.parentElement !== dock) dock.append(element);
     }
     // In the menu's order, so the Controls list shows them as the menu does.
-    const order = createCatalog.map(entry => entry.id);
+    const order = createCatalog.filter(entry => wanted.has(entry.id)).map(entry => entry.id);
     if ([...createElements.keys()].some((id, index) => id !== order[index])) {
       const sorted = new Map(order.filter(id => createElements.has(id)).map(id => [id, createElements.get(id)]));
       createElements.clear(); for (const [id, element] of sorted) createElements.set(id, element);
@@ -10787,6 +10853,10 @@ ${studioRangeCSS('.picker-hue')}
     .ws-create-shape button:hover, .ws-create-shape button:focus-visible { background: var(--wme-studio-hover, #363c42); outline: none; }
     .ws-create-shape button:focus-visible { box-shadow: inset 0 0 0 2px var(--wme-studio-accent, #0099ff); }
     .ws-create-shape svg { width: 20px; height: 20px; }
+    .ws-create-off { gap: 10px; max-width: min(340px, calc(100vw - 16px)); padding: 6px 6px 6px 12px; }
+    .ws-create-off-text { flex: 1; min-width: 0; color: var(--wme-studio-text, #e8eaed); font-size: 12px; line-height: 1.35; }
+    .ws-create-shape button.ws-create-off-on { width: auto; height: 32px; padding: 0 12px; flex: none; background: var(--wme-studio-accent, #0099ff); color: var(--wme-studio-on-accent, #fff); font: inherit; font-size: 12px; font-weight: 650; white-space: nowrap; }
+    .ws-create-shape button.ws-create-off-on:hover { background: var(--wme-studio-accent, #0099ff); filter: brightness(1.08); }
     html[data-wme-studio-motion="reduced"] .ws-create-shape { animation: none; }
     /* While a shortcut opens the + menu to pick its item, the menu stays out of sight. */
     html[data-wme-studio-create-run] :is(wz-menu, [role="menu"], wz-menu-item, wz-menu-sub-menu, [role="menuitem"], wz-tooltip-content) { opacity: 0 !important; pointer-events: none !important; transition: none !important; animation: none !important; }
@@ -11700,10 +11770,10 @@ ${studioControlsCSS()}
       .drag-shield[data-selected]{outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:4px;border-width:2px}
       .library{position:fixed;right:84px;top:84px;z-index:22;width:300px;max-height:calc(100vh - 210px);display:flex;flex-direction:column;border:1px solid var(--wme-studio-border,#4b5560);border-radius:18px;background:var(--wme-studio-surface,#292d31);box-shadow:0 16px 40px #0007;overflow:hidden;pointer-events:auto}
       .library[hidden]{display:none}.library[data-drop]{box-shadow:0 0 0 3px var(--wme-studio-accent,#0099ff),0 16px 40px #0007}
-      .lib-head{display:flex;align-items:flex-start;gap:8px;padding:14px 10px 8px 16px}.lib-head>div{flex:1;min-width:0}
+      .lib-head{flex:none;display:flex;align-items:flex-start;gap:8px;padding:14px 10px 8px 16px}.lib-head>div{flex:1;min-width:0}
       .lib-head strong{display:block;font-size:13px}.lib-head span{display:block;margin-top:3px;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px;line-height:1.4}
       .lib-body{flex:1;min-height:0;overflow:auto;padding:0 8px 8px;scrollbar-width:thin}
-      .lib-search{display:flex;align-items:center;gap:7px;margin:0 12px 6px;padding:0 4px 0 10px;height:34px;border:1px solid var(--wme-studio-border,#4b5560);border-radius:10px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text-muted,#99a4ae);cursor:text}
+      .lib-search{flex:none;box-sizing:border-box;display:flex;align-items:center;gap:7px;margin:0 12px 6px;padding:0 4px 0 10px;height:34px;border:1px solid var(--wme-studio-border,#4b5560);border-radius:10px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text-muted,#99a4ae);cursor:text}
       .lib-search:focus-within{border-color:var(--wme-studio-accent,#0099ff)}
       .lib-search>svg{flex:none;width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
       .lib-search input{flex:1;min-width:0;height:100%;padding:0;border:0;outline:0;background:transparent;color:var(--wme-studio-text,#fff);font:inherit;font-size:12px}
@@ -11723,12 +11793,15 @@ ${studioControlsCSS()}
       .lib-row[data-off] .lbl,.lib-row[data-off] .lib-ic{opacity:.45}.lib-row[data-off] .where{color:var(--ws-change-alert,#ff8f8f)}
       .eye{flex:none;display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--wme-studio-text-muted,#99a4ae);cursor:pointer}
       .eye:hover:not(:disabled){background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff)}.eye:disabled{opacity:.3;cursor:default}
-      .lib-drop{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 10px 10px;min-height:42px;border:1.5px dashed var(--wme-studio-border-strong,#5b6671);border-radius:12px;color:var(--wme-studio-text-muted,#99a4ae);font-size:11px}
+      .lib-drop{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;margin:0 10px 10px;min-height:42px;border:1.5px dashed var(--wme-studio-border-strong,#5b6671);border-radius:12px;color:var(--wme-studio-text-muted,#99a4ae);font-size:11px}
       .library[data-drop] .lib-drop{border-color:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-accent,#0099ff);background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 10%,transparent)}
       .lib-add{display:flex;align-items:center;gap:8px;width:calc(100% - 8px);margin:10px 4px 4px;padding:9px 10px;border:1.5px dashed var(--wme-studio-border,#4b5560);border-radius:11px;background:transparent;color:var(--wme-studio-text,#e8eaed);font:inherit;font-weight:650;cursor:pointer}
       .lib-add:hover{border-color:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-accent,#0099ff)}
       .lib-add svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
       .lib-row[data-depth="1"]{padding-left:22px}.lib-row[data-depth="2"]{padding-left:38px}
+      .lib-sub{display:flex;align-items:center;gap:6px;min-height:26px;padding:4px 6px 0;color:var(--wme-studio-text-secondary,#b7c0c8);font-size:11.5px;font-weight:650}
+      .lib-sub::after{content:"";flex:1;height:1px;background:var(--wme-studio-border,#4b5560);opacity:.6}
+      .lib-sub[data-depth="1"]{padding-left:22px}.lib-sub[data-depth="2"]{padding-left:38px}
       .lib-read{margin:4px 4px 2px;padding:7px 10px;border-style:solid;border-width:1px;font-size:12px;color:var(--wme-studio-text-secondary,#b7c0c8)}.lib-read:disabled{opacity:.6;cursor:progress}.lib-read svg{stroke-linejoin:round}
       .lib-link-form{display:grid;gap:9px;margin:10px 4px 4px;padding:12px;border:1px solid var(--wme-studio-border,#4b5560);border-radius:12px;background:var(--wme-studio-surface-2,#30363c)}
       .lib-link-form strong{font-size:12.5px}
@@ -12181,10 +12254,21 @@ ${studioControlsCSS()}
         const entries = all.filter(entry => matching(entry, group === 'create' ? '' : title));
         matches += entries.length;
         if (!entries.length) continue;
+        let menuPath = [];
         const heading = document.createElement('div'); heading.className = 'lib-group'; heading.textContent = tr(title);
         rows.push(heading);
         for (const entry of entries) {
           const hidden = model.hidden.includes(entry.key) && !entry.required;
+          // The + menu's submenus are shown as the headings their items sit under, not as controls.
+          const parents = !words.length && shortcutOf(entry)?.labels.slice(0, -1) || [];
+          let same = 0;
+          while (same < parents.length && same < menuPath.length && parents[same] === menuPath[same]) same++;
+          for (let depth = same; depth < parents.length; depth++) {
+            const sub = document.createElement('div'); sub.className = 'lib-sub'; sub.textContent = parents[depth];
+            if (depth) sub.dataset.depth = String(Math.min(2, depth));
+            rows.push(sub);
+          }
+          menuPath = parents;
           const row = document.createElement('div');
           row.className = 'lib-row'; row.dataset.key = entry.key;
           if (hidden) row.dataset.off = 'on';
@@ -17183,15 +17267,16 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.0.1-2026-10-18d';
+  const STUDIO_BUILD = '2.0.2-2026-10-18b';
   const STUDIO_CHANGELOG = Object.freeze([
-    { version: '2.0.1', items: [
+    { version: '2.0.2', items: [
       'New: search in the Controls list, by name or by + menu path.',
       'New: this changelog. It shows once after an update, and stays in Settings › Studio.',
       'Studio checks whether your bug reports were fixed every time the editor loads.',
       'Report a bug: the Where box starts empty, so you choose where it happened.',
       'Place categories in the + menu ask for a point or an area first. Note is no longer offered as a control.',
-      'Shortcuts under a menu WME has turned off (Hazard › Traffic light until you zoom in) open the menu to show why, instead of doing nothing.',
+      'Hazard shortcuts (like Traffic light) tell you when the Hazards layer is off, and turn it on with one click.',
+      '+ menu buttons act at once, and submenus such as Traffic lights & signs are no longer offered as controls.',
       'Street View in a floating window no longer makes the map jump.',
       'Place › Crisis location no longer makes the menu wider every time you point at it.',
       'Moved islands no longer jump when you press Share location, and the island stays lit while you point at it.',
@@ -17228,7 +17313,12 @@ ${studioControlsCSS()}
     if (document.visibilityState !== 'visible') await new Promise(ok => document.addEventListener('visibilitychange', function shown() { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', shown); ok(); } }));
     const value = await globalThis.WMEStudioSettings.read().catch(() => null);
     if (!value?.enabled || studioSetup?.isOpen?.() || studioTour?.isOpen?.() || document.documentElement.hasAttribute('data-wme-studio-layout-editing')) { changelogStarted = false; return; }
-    buildStudioUI()?.showChangelog?.('new');
+    // Built first, shown a moment later: building the settings dialog is heavy, and a card that starts its
+    // entrance during that work stutters.
+    const ui = buildStudioUI();
+    if (!ui) return;
+    await new Promise(ok => (window.requestIdleCallback || setTimeout)(() => ok(), { timeout: 600 }));
+    requestAnimationFrame(() => ui.showChangelog?.('new'));
   }
 
   function buildStudioUI() {
@@ -17494,11 +17584,17 @@ ${studioControlsCSS()}
   .bug-done{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px;text-align:center;background:var(--surface);animation:bug-in 180ms ease}
   .bug-as{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--text);font-size:12px;line-height:1.35}.bug-as svg{flex:none;width:15px;height:15px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.bug-as b{font-weight:700}
   .fix-notice{--accent:var(--wme-studio-accent,#0099ff);--on-accent:var(--wme-studio-on-accent,#fff);--surface:var(--wme-studio-surface,#fff);--surface2:var(--wme-studio-surface-2,#f5f7fa);--text:var(--wme-studio-text,#202830);--muted:var(--wme-studio-text-muted,#72767d);--line:var(--wme-studio-border,#d5d7db);--hover:var(--wme-studio-hover,#e8eaed);
-    position:fixed;left:50%;bottom:44px;transform:translateX(-50%);z-index:4;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;width:min(460px,calc(100vw - 32px));padding:14px 16px 12px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);box-shadow:0 18px 50px rgba(0,0,0,.32);font:13px/1.4 var(--ws-font,system-ui,sans-serif);pointer-events:auto;animation:bug-in 220ms cubic-bezier(.2,.8,.2,1)}
+    position:fixed;left:50%;bottom:44px;translate:-50% 0;z-index:4;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;width:min(460px,calc(100vw - 32px));padding:14px 16px 12px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);box-shadow:0 18px 50px rgba(0,0,0,.32);font:13px/1.4 var(--ws-font,system-ui,sans-serif);pointer-events:auto;will-change:transform,opacity;animation:notice-in 240ms cubic-bezier(.2,.8,.2,1) both}
   .fix-icon{grid-row:1/3;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center}.fix-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
   .fix-text strong{display:block;font-size:14px;line-height:1.3}.fix-list{display:flex;flex-direction:column;gap:6px;margin-top:5px;color:var(--muted);font-size:12.5px}
   .fix-item q{quotes:"\\201C" "\\201D";color:var(--text)}.fix-item .fix-version{color:var(--text);font-weight:600}.fix-item .fix-note{display:block;margin-top:2px;padding-left:8px;border-left:2px solid var(--line);font-style:italic}
-  .log-notice{bottom:calc(44px + var(--ws-log-lift,0px))}
+  /* Centred on the screen. The centring is its own "translate", so the entrance (opacity and a small scale on
+     "transform") never fights it: with both on "transform", the card was drawn off to one side while it faded in,
+     then jumped into place. */
+  .log-notice{top:50%;bottom:auto;translate:-50% -50%;width:min(480px,calc(100vw - 32px));animation-name:notice-pop}
+  @keyframes notice-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  @keyframes notice-pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+  html[data-wme-studio-motion="reduced"] .fix-notice,:host-context(html[data-wme-studio-motion="reduced"]) .fix-notice{animation:none}
   .log-version{display:block;margin-top:1px;color:var(--muted);font-size:11.5px}
   .log-list{display:flex;flex-direction:column;gap:5px;max-height:min(42vh,340px);overflow:auto;margin:8px 0 0;padding:0 4px 0 16px;color:var(--text);font-size:12.5px;line-height:1.4;scrollbar-width:thin}
   .log-list li::marker{color:var(--accent)}
@@ -18863,8 +18959,6 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         const release = STUDIO_CHANGELOG[0];
         log.version.textContent = `WME Studio ${USERSCRIPT_VERSION}`;
         changelogItems(log.list, release.items);
-        // Over the "report fixed" note when both show.
-        log.box.style.setProperty('--ws-log-lift', fix.box.hidden ? '0px' : `${Math.ceil(fix.box.getBoundingClientRect().height) + 12}px`);
         log.box.hidden = false;
         return;
       }
@@ -20806,7 +20900,10 @@ ${studioControlsCSS()}
       const saved = await Promise.resolve(studioKeep.get(BUG_FIXES_STORE, null)).catch(() => null);
       const seen = Array.isArray(saved?.seen) ? saved.seen : [];
       const fresh = (Array.isArray(data?.fixed) ? data.fixed : []).filter(item => item && Number.isInteger(item.id) && !seen.includes(item.id));
-      if (fresh.length && buildStudioUI()) await studioUIFixes?.check(false, true);
+      if (fresh.length && buildStudioUI()) {
+        await new Promise(ok => (window.requestIdleCallback || setTimeout)(() => ok(), { timeout: 600 }));
+        await studioUIFixes?.check(false, true);
+      }
     } catch (_) { /* asked again next time */ } finally { bugFixesChecking = false; }
     return true;
   }
