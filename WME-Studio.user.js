@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      1.1.2
+// @version      2.0.0
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -18,6 +18,12 @@
 // @match        https://waze.com/*/signin*
 // @match        https://beta.waze.com/signin*
 // @match        https://beta.waze.com/*/signin*
+// @exclude      https://www.waze.com/editor/sdk*
+// @exclude      https://www.waze.com/*/editor/sdk*
+// @exclude      https://waze.com/editor/sdk*
+// @exclude      https://waze.com/*/editor/sdk*
+// @exclude      https://beta.waze.com/editor/sdk*
+// @exclude      https://beta.waze.com/*/editor/sdk*
 // @require      https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
 // @run-at       document-start
 // @noframes
@@ -31,8 +37,9 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
 // @connect      update.greasyfork.org
-// @downloadURL  https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js
-// @updateURL    https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js
+// @connect      workers.dev
+// @downloadURL https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js
+// @updateURL https://update.greasyfork.org/scripts/599569/WME%20Studio.meta.js
 // ==/UserScript==
 
 /*
@@ -142,7 +149,11 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '1.1.2';
+  const USERSCRIPT_VERSION = '2.0.0';
+  // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
+  // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
+  const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
+  const BUG_REPORT_FALLBACK_URL = 'https://greasyfork.org/scripts/599569/feedback';
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -151,7 +162,7 @@
     }
     function repair(element,failed = false) {
       if (repairedImages.has(element)) return true;
-      if (element?.localName === 'img' && element.closest('#RAUtilWindow #header') &&
+      if (element?.localName === 'img' && element.closest(':is(#RAUtilWindow,#SSUtilWindow) #header') &&
           /^https:\/\/storage\.googleapis\.com\/waze?opedia-files\/1\/1e\/RA_Util\.png(?:[?#]|$)/i.test(element.getAttribute('src') || '')) {
         const svg = element.ownerDocument.createElementNS('http://www.w3.org/2000/svg','svg');
         svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('width','24');svg.setAttribute('height','24');
@@ -189,8 +200,8 @@
       } catch (error) {reportStudioError('Stylesheet recovery failed',error);return false;}
     }
     function inspect(node) {
-      for (const image of node.querySelectorAll?.('#RAUtilWindow #header img') || []) repair(image);
-      if (node.matches?.('#RAUtilWindow #header img')) repair(node);
+      for (const image of node.querySelectorAll?.(':is(#RAUtilWindow,#SSUtilWindow) #header img') || []) repair(image);
+      if (node.matches?.(':is(#RAUtilWindow,#SSUtilWindow) #header img')) repair(node);
     }
     function prune() {for (const [link,state] of styles) if (!link.isConnected) release(link,state);}
     function onError(event) {
@@ -203,10 +214,23 @@
   const reportStudioError = (() => {
     const diagnosticVersion = '0.0.4';
     const installedVersion = typeof GM_info === 'object' && GM_info?.script?.version || USERSCRIPT_VERSION;
-    if (USERSCRIPT_VERSION !== diagnosticVersion || installedVersion !== diagnosticVersion) return () => {};
+    // The last few problems Studio caught, kept in memory only, for the bug report in Settings › Studio.
+    const recent = [];
+    const remember = (context, error) => {
+      try {
+        const message = String(error?.message || error || '').slice(0, 300);
+        const last = recent[recent.length - 1];
+        if (last && last.context === String(context) && last.message === message) { last.count += 1; return; }
+        recent.push({ time: new Date().toISOString().slice(11, 19), context: String(context).slice(0, 120), message, count: 1,
+          where: String(error?.stack || '').split('\n').slice(1, 3).map(line => line.trim()).join(' / ').slice(0, 300) });
+        if (recent.length > 20) recent.shift();
+      } catch { /* never in the way */ }
+    };
+    if (USERSCRIPT_VERSION !== diagnosticVersion || installedVersion !== diagnosticVersion) return Object.assign((context, error) => remember(context, error), { recent });
     const log = console.error.bind(console), seenErrors = new WeakSet(), seenEvents = new WeakSet();
     const source = value => /^data:/i.test(String(value || '')) ? String(value).split(',',1)[0]+',…' : String(value || '').split(/[?#]/,1)[0];
     const report = (context,error,details = {}) => {
+      remember(context,error);
       try {
         if (error && (typeof error === 'object' || typeof error === 'function')) {
           if (seenErrors.has(error)) return;
@@ -242,7 +266,7 @@
       target.addEventListener('unhandledrejection',onRejection);
     }
     console.info(`[WME Studio ${diagnosticVersion}] Temporary error logging enabled for this release only.`);
-    return Object.assign(report,{active:true});
+    return Object.assign(report,{active:true,recent});
   })();
   // Asset recovery remains available after the temporary diagnostic release.
   document.addEventListener('error',studioResourceRecovery.onError,true);
@@ -439,7 +463,8 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
   const trackedStorageKeys = [
     'wmeStudio.workspaceProfiles.v1','wmeStudio.scriptTabPins.v1','wmeStudio.panelSizes.v1','wmeStudio.chatPanelOffset.v3','wmeStudio.streetViewWindow.v1',
     'wmeStudio.enabled','wmeStudio.theme','wmeStudio.corners','wmeStudio.accent',
-    'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.compactRequests','wmeStudio.commandShortcut'
+    'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.compactRequests','wmeStudio.commandShortcut',
+    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.islandControls.v1'
   ];
   const emitStorage = changes => {
     if (!Object.keys(changes).length) return;
@@ -510,7 +535,8 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
   function studioControlsCSS() {
     return `${studioKeyedList('button,.btn,[role="button"]', ':host-context(html[data-wme-studio="on"]) ', ':not(.drag-shield)')} {border-radius:var(--wme-studio-button-radius,var(--wme-studio-radius,5px)) !important;}
 ${studioKeyedList('button,.btn,[role="button"]', ':host-context(html[data-wme-studio="on"]) ', ':hover')} {box-shadow:none !important;}
-${studioButtonMotionCSS('button,.btn,[role="button"]', ':host-context(html[data-wme-studio="on"][data-wme-studio-motion="normal"]):host-context(html:not([data-wme-studio-layout-editing="on"]))', false)}`;
+${studioButtonMotionCSS('button,.btn,[role="button"]', ':host-context(html[data-wme-studio="on"][data-wme-studio-motion="normal"]):host-context(html:not([data-wme-studio-layout-editing="on"]))', false)}
+@supports selector(::-webkit-scrollbar){:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *{scrollbar-width:auto!important;scrollbar-color:auto!important}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar{width:11px;height:11px;background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-track{background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-corner{background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-button{display:none;width:0;height:0}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb{min-height:36px;min-width:36px;border:3px solid transparent;border-radius:999px;background-clip:padding-box;background-color:color-mix(in srgb,var(--wme-studio-text-muted,#8b96a1) 45%,transparent)}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 75%,transparent)}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb:active{background-color:var(--wme-studio-accent,#0099ff)}}@supports not selector(::-webkit-scrollbar){:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *{scrollbar-width:thin!important;scrollbar-color:color-mix(in srgb,var(--wme-studio-text-muted,#8b96a1) 55%,transparent) transparent!important}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *:hover{scrollbar-color:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 80%,transparent) transparent!important}}`;
   }
   function studioGlassFeedbackCSS(scope, contrastScope) {
     return String.raw`
@@ -856,10 +882,14 @@ ${studioKeyedList('button,.btn,[role="button"],input[type="button"],input[type="
 ${studioButtonMotionCSS('button,.btn,[role="button"],input[type="button"],input[type="submit"],input[type="reset"],.WWSU-script-item', 'html[data-wme-studio="on"][data-wme-studio-motion="normal"]:not([data-wme-studio-layout-editing="on"])', false)}
 
 
+/* The warm layer blends on the graphics card, as a layer of its own over the finished picture. Blended while the
+   page is drawn instead, it only sees what was drawn again: when a control under it changes (a button's hover),
+   the glass of the island around it shows a lighter or darker band for a moment. */
 html[data-wme-studio="on"][data-wme-studio-eye-saver="on"]::after {
   content: ""; position: fixed; inset: 0; z-index: 2147483647;
   pointer-events: none; background: #ffad55; mix-blend-mode: multiply;
   opacity: var(--ws-eye-saver-opacity, 0);
+  transform: translateZ(0); will-change: transform; backface-visibility: hidden;
 }
 }
 @media all {
@@ -1822,6 +1852,7 @@ html[data-wme-studio="on"] .tile-build-status-card .tile-build-status-card-block
 html[data-wme-studio="on"] .tile-build-status-card .tile-build-status-card-block__upper { align-items: center; gap: 8px; flex-wrap: wrap; }
 html[data-wme-studio="on"] .tile-build-status-card .tile-build-status-card-block__upper wz-button { margin: 8px; }
 html[data-wme-studio="on"] .tile-build-status-card .tile-build-status-card-block__upper wz-button .phone-icon { filter: var(--ws-on-accent-filter); flex-shrink: 0; }
+html[data-wme-studio="on"] [data-wme-studio-on-accent]:not(#ws-oa-a):not(#ws-oa-b) { color: var(--wme-studio-on-accent) !important; --always_white: var(--wme-studio-on-accent); }
 html[data-wme-studio="on"] .tile-build-status-card :where(.rss-button):is(.rss-button,.tile-build-status-card__link a,.info),
 html[data-wme-studio="on"] .tile-build-status-card :where(.tile-build-status-card__link a):is(.rss-button,.tile-build-status-card__link a,.info),
 html[data-wme-studio="on"] .tile-build-status-card :where(.info):is(.rss-button,.tile-build-status-card__link a,.info) { color: var(--wme-studio-accent); }
@@ -2122,8 +2153,8 @@ html[data-wme-studio="on"][data-wme-studio-addons="on"] #wme-poi-shortcuts-conte
 html[data-wme-studio="on"] wz-card[class*="panel--"] { border-radius: 0 0 var(--wme-studio-panel-radius) var(--wme-studio-panel-radius); background: var(--wme-studio-surface); }
 }
 @media all {
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :where(#urt-addon):is(#urt-addon,#RAUtilWindow),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :where(#RAUtilWindow):is(#urt-addon,#RAUtilWindow) {
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :where(#urt-addon):is(#urt-addon,#RAUtilWindow,#SSUtilWindow),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :where(#RAUtilWindow,#SSUtilWindow):is(#urt-addon,#RAUtilWindow,#SSUtilWindow) {
   color: var(--wme-studio-text) !important; color-scheme: inherit;
   font-family: var(--ws-font); accent-color: var(--wme-studio-accent);
 }
@@ -2164,50 +2195,59 @@ html[data-wme-studio="on"][data-wme-studio-addons="on"] #urt-addon a { color: va
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #urt-addon #urmp-tabs > li > a { background: transparent !important; color: var(--wme-studio-text-secondary) !important; border-color: transparent !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #urt-addon #urmp-tabs > li.active > a { background: var(--wme-studio-hover) !important; color: var(--wme-studio-accent) !important; }
 html[data-wme-studio="on"][data-wme-studio-addons="on"] #urt-addon #urmp-tabs > li > a:hover { background: var(--wme-studio-hover) !important; color: var(--wme-studio-text) !important; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow {
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) {
   background-color: var(--wme-studio-surface) !important; border: 1px solid var(--wme-studio-border) !important;
   border-radius: var(--wme-studio-panel-radius) !important; box-shadow: 0 12px 36px #00000030 !important;
 }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow #header {
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) #header {
   background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
   text-shadow: none !important; letter-spacing: 0;
 }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(#contentShift):is(#contentShift,#contentRotate,#diameterChange,#bumpNodes),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(#contentRotate):is(#contentShift,#contentRotate,#diameterChange,#bumpNodes),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(#diameterChange):is(#contentShift,#contentRotate,#diameterChange,#bumpNodes),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(#bumpNodes):is(#contentShift,#contentRotate,#diameterChange,#bumpNodes) { border-color: var(--wme-studio-border) !important; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(#controls):is(#controls,.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(.btnRotate):is(#controls,.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(.btnMoveNode):is(#controls,.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(#diameterChangeDecreaseBtn):is(#controls,.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(#diameterChangeIncreaseBtn):is(#controls,.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn) {
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(#contentShift):is(#contentShift,#contentRotate,#diameterChange,#bumpNodes),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(#contentRotate):is(#contentShift,#contentRotate,#diameterChange,#bumpNodes),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(#diameterChange):is(#contentShift,#contentRotate,#diameterChange,#bumpNodes),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(#bumpNodes):is(#contentShift,#contentRotate,#diameterChange,#bumpNodes) { border-color: var(--wme-studio-border) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(#controls):is(#controls,.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(.btnRotate):is(#controls,.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(.btnMoveNode):is(#controls,.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(#diameterChangeDecreaseBtn):is(#controls,.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(#diameterChangeIncreaseBtn):is(#controls,.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn) {
   background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
   border-color: var(--wme-studio-border-strong) !important; box-shadow: none !important; text-shadow: none !important;
 }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(a):is(a,.fa),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(.fa):is(a,.fa) { color: var(--wme-studio-text) !important; text-shadow: none !important; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(.btnRotate):is(.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn):hover,
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(.btnMoveNode):is(.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn):hover,
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(#diameterChangeDecreaseBtn):is(.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn):hover,
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow :where(#diameterChangeIncreaseBtn):is(.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn):hover { background-color: var(--wme-studio-hover) !important; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"])):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(select):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(textarea):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(button):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(input[type="button"]):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(input[type="submit"]):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]) {
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(a):is(a,.fa),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(.fa):is(a,.fa) { color: var(--wme-studio-text) !important; text-shadow: none !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(.btnRotate):is(.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn):hover,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(.btnMoveNode):is(.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn):hover,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(#diameterChangeDecreaseBtn):is(.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn):hover,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) :where(#diameterChangeIncreaseBtn):is(.btnRotate,.btnMoveNode,#diameterChangeDecreaseBtn,#diameterChangeIncreaseBtn):hover { background-color: var(--wme-studio-hover) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"])):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(select):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(textarea):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(button):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(input[type="button"]):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(input[type="submit"]):is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),select,textarea,button,input[type="button"],input[type="submit"]) {
   background-color: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
   border-color: var(--wme-studio-border-strong) !important; border-radius: var(--wme-studio-radius) !important;
   box-sizing: border-box; text-shadow: none !important;
 }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(option):is(option,optgroup),
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(optgroup):is(option,optgroup) { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :is(button,input,select,textarea,a):focus-visible { outline: 2px solid var(--wme-studio-accent) !important; outline-offset: 2px; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(button):is(button,input,select,textarea):disabled,
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(input):is(button,input,select,textarea):disabled,
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(select):is(button,input,select,textarea):disabled,
-html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow) :where(textarea):is(button,input,select,textarea):disabled { color: var(--wme-studio-text-muted) !important; opacity: .65; }
-html[data-wme-studio="on"][data-wme-studio-addons="on"] #RAUtilWindow #RAEditable { color: var(--alarming_variant, #dc4545) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(option):is(option,optgroup),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(optgroup):is(option,optgroup) { background-color: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :is(button,input,select,textarea,a):focus-visible { outline: 2px solid var(--wme-studio-accent) !important; outline-offset: 2px; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(button):is(button,input,select,textarea):disabled,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(input):is(button,input,select,textarea):disabled,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(select):is(button,input,select,textarea):disabled,
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#urt-addon,#RAUtilWindow,#SSUtilWindow) :where(textarea):is(button,input,select,textarea):disabled { color: var(--wme-studio-text-muted) !important; opacity: .65; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) #RAEditable { color: var(--alarming_variant, #dc4545) !important; }
+/* WME Segment Shift Utility: the same panel family, with captions under its arrows and a round arrow pad. */
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #SSUtilWindow :is(b,label,p,[id$="BtnCaption"]),
+html[data-wme-studio="on"][data-wme-studio-addons="on"] :is(#RAUtilWindow,#SSUtilWindow) #header :is(span,div,b) { color: var(--wme-studio-text) !important; text-shadow: none !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #SSUtilWindow [id^="SSShift"][id$="Btn"] { cursor: pointer; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #SSUtilWindow [id^="SSShift"][id$="Btn"]:hover :is(.fa,[id$="BtnCaption"]) { color: var(--wme-studio-accent) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #SSUtilWindow #controls { border: 1px solid var(--wme-studio-border-strong) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #SSUtilWindow :is(#contentShift,#contentTarget) { border-color: var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #SSUtilWindow :is(#contentShift,#contentTarget) { border-color: var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius) !important; }
+html[data-wme-studio="on"][data-wme-studio-addons="on"] #SSUtilWindow :is(input[type="radio"],input[type="checkbox"]) { accent-color: var(--wme-studio-accent); }
 }
 @media all {
 html[data-wme-studio="on"] wz-card.issue-tracker-card-content { background: transparent !important; border-radius: var(--wme-studio-panel-radius) !important; }
@@ -2363,15 +2403,20 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
   @media all {
   html[data-wme-studio="on"][data-wme-studio-page="editor"][data-wme-studio-compact="on"] {
     --ws-compact-gap: 24px;
+    /* The header sits at the top edge with the same 12px inset as every other island. */
+    --ws-compact-header-top: 12px;
     --ws-compact-header: 52px;
     --ws-compact-header-inset: clamp(96px, 10vw, 240px);
     --ws-compact-side-inset: 12px;
     --ws-compact-rail: var(--ws-compact-tools-width);
     --ws-compact-radius: 20px;
+    /* Hover and selected squares of the buttons in an island follow the island's corner: its radius less the
+       7px a 38px button sits from a 52px island's edge, so the two curves run side by side. */
+    --ws-island-button-radius: max(6px, calc(var(--ws-compact-radius) - 7px));
     --ws-compact-tools-width: 52px;
     --ws-compact-layers-width: 320px;
     --ws-compact-layers-gap: 16px;
-    --ws-compact-panel-top: calc((var(--ws-compact-gap) + var(--ws-compact-header)) * var(--ws-hud-zoom, 1) + var(--ws-compact-gap));
+    --ws-compact-panel-top: calc((var(--ws-compact-header-top) + var(--ws-compact-header)) * var(--ws-hud-zoom, 1) + var(--ws-compact-gap));
     --ws-header: var(--ws-compact-header) !important;
     --ws-control: 32px !important;
   }
@@ -2384,7 +2429,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
   html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #app-head {
     position: fixed !important;
     zoom: var(--ws-hud-zoom, 1);
-    top: calc(var(--ws-header-top, var(--ws-island-header-top, var(--ws-compact-gap))) / var(--ws-hud-zoom, 1)) !important; right: auto !important; bottom: auto !important;
+    top: calc(var(--ws-header-top, var(--ws-island-header-top, var(--ws-compact-header-top, 12px))) / var(--ws-hud-zoom, 1)) !important; right: auto !important; bottom: auto !important;
     left: calc(var(--ws-header-center, var(--ws-island-header-center, calc(50% * var(--ws-hud-zoom, 1)))) / var(--ws-hud-zoom, 1)) !important;
     --ws-header-base-width: min(1280px, calc((100vw - 2 * var(--ws-compact-header-inset)) / var(--ws-hud-zoom, 1)));
     width: var(--ws-header-base-width) !important;
@@ -2527,6 +2572,17 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
     min-height: 38px !important; max-height: 38px !important;
     padding-block: 0 !important; margin-block: 0 !important;
   }
+  /* WME keeps the + block pinned at the top of its drawer with a shade under it. In an island there is nothing
+     to scroll under it, so the shade only reads as a cut in the glass. */
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer [class*="menuContainer--"],
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer [class*="menuContainer--"]::before,
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer [class*="menuContainer--"]::after,
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer [class*="menuContainer--"] [class*="container--"],
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer [class*="menuContainer--"] [class*="container--"]::before,
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer [class*="menuContainer--"] [class*="container--"]::after {
+    background: transparent !important; background-image: none !important;
+    box-shadow: none !important; border: 0 !important; filter: none !important;
+  }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer wz-navigation-item :where(i.w-icon):is(i.w-icon,wz-icon,svg),
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer wz-navigation-item :where(wz-icon):is(i.w-icon,wz-icon,svg),
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer wz-navigation-item :where(svg):is(i.w-icon,wz-icon,svg) { color: var(--wme-studio-text) !important; }
@@ -2588,9 +2644,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
     min-height: 0 !important; margin: 0 !important; box-sizing: border-box;
     transform: none !important; translate: none !important;
     visibility: hidden !important; pointer-events: none !important;
-    overflow: hidden; border: 0 !important; border-radius: var(--ws-compact-radius) !important;
-    background: var(--ws-header-surface, color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent)) !important;
-    color: var(--wme-studio-text); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    overflow: hidden; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--ws-compact-radius) !important;
+    /* A filter panel is a form in use, not an idle island: solid, so the map does not show between its sections
+       (WME draws the section headers solid and leaves the rows in between clear). */
+    background: var(--wme-studio-surface) !important;
+    color: var(--wme-studio-text); -webkit-backdrop-filter: none; backdrop-filter: none;
     box-shadow: 0 8px 28px #00000026 !important;
     transition: background-color 160ms ease !important; z-index: 508;
   }
@@ -3065,6 +3123,16 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] :where(.layer-switc
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .overlay-buttons-container.bottom {
     border-top: 1px solid var(--wme-studio-border);
+  }
+  /* WME draws each group of map buttons as a card of its own (background, shadow, blur). Inside an island the
+     island is the card, so a group's own card only shows as a lighter band with a shade under it. */
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .overlay-buttons-container,
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .overlay-buttons-container::before,
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .overlay-buttons-container::after,
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .zoom-bar-container::before,
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .zoom-bar-container::after {
+    background: transparent !important; background-image: none !important; box-shadow: none !important;
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important; filter: none !important;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .overlay-buttons-container > * {
     margin: 0 !important; flex: 0 0 auto;
@@ -4290,6 +4358,11 @@ html[data-wme-studio="on"][data-wme-studio-requests="compact"] :is(.problem-edit
     opacity: 0; pointer-events: none; transition: opacity 140ms ease;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble:hover > .text { opacity: 1; }
+  /* On the right half of the screen the label opens to the bubble's left, so it never runs off the edge. */
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-label-side="left"] > .text { left: auto !important; right: calc(100% + 8px) !important; }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble:is([data-wme-studio-label-side="below"],[data-wme-studio-label-side="above"]) > .text { left: 50% !important; translate: -50% 0; }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-label-side="below"] > .text { top: calc(100% + 8px) !important; }
+  html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-label-side="above"] > .text { top: auto !important; bottom: calc(100% + 8px) !important; }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #online-editors:has(.online-editors-list-wrapper) wz-button.online-editors-bubble > .text { opacity: 0 !important; }
   }
 }
@@ -4435,7 +4508,9 @@ html[data-wme-studio="on"] .notifications-box-container [data-wme-studio-notific
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status > .tile-build-status > .tile-build-status-text {
     order: 1; flex: 0 0 auto; margin: 0 !important; padding: 0 4px 0 16px !important; white-space: nowrap;
-    color: var(--wme-studio-text) !important; font: 600 12px/16px var(--ws-font) !important;
+    color: var(--wme-studio-text) !important; font: 600 13px/16px var(--ws-font) !important;
+    /* A small HUD shrinks the controls, but the words stay readable (about 12px on screen at the least). */
+    font-size: max(13px, calc(12.5px / var(--ws-label-zoom, 1))) !important; line-height: 1.25 !important;
   }
   html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status > .tile-build-status > .tile-build-status-icon {
     flex: 0 0 auto; box-sizing: content-box !important; margin: 0 !important;
@@ -4738,6 +4813,15 @@ html[data-wme-studio="on"] #sidebar[data-wme-studio-side-resizable]::before {
     linear-gradient(var(--wme-studio-text-muted), var(--wme-studio-text-muted)) right 1px center / 3px 38px no-repeat;
 }
 html[data-wme-studio="on"] #sidebar[data-wme-studio-side-resizable="docked"]::before { background-position:right 1px center; background-size:3px 38px,0 0; }
+/* The top edge of a floating side panel is its handle: a short bar, like the one at the bottom edge. */
+html[data-wme-studio="on"] #sidebar[data-wme-studio-side-resizable="floating"]::before {
+  background: linear-gradient(var(--wme-studio-text-muted), var(--wme-studio-text-muted)) left 1px center / 3px 38px no-repeat,
+    linear-gradient(var(--wme-studio-text-muted), var(--wme-studio-text-muted)) right 1px center / 3px 38px no-repeat,
+    linear-gradient(var(--wme-studio-text-muted), var(--wme-studio-text-muted)) center top 2px / 38px 4px no-repeat;
+}
+html[data-wme-studio="on"] #sidebar[data-wme-studio-side-resizable="floating"]:is([data-wme-studio-resize-edge="move"],[data-wme-studio-panel-moving])::before {
+  opacity: 1; background: linear-gradient(var(--wme-studio-accent), var(--wme-studio-accent)) center top 2px / 38px 4px no-repeat;
+}
 html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-resize-edge="bottom"]::after,
 html[data-wme-studio="on"] #sidebar[data-wme-studio-side-resizable="floating"][data-wme-studio-resize-edge="bottom"]::after { background: var(--wme-studio-accent); opacity: 1; }
 html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-resize-edge="left"]::before,
@@ -5303,7 +5387,80 @@ html[data-wme-studio="on"] .ws-restriction-select-group { padding:7px 9px 3px; c
     'Default':{el:'Προεπιλογή',es:'Predeterminado',pt:'Predefinição',fr:'Par défaut',de:'Standard',it:'Predefinita',nl:'Standaard',pl:'Domyślny',ru:'По умолчанию',tr:'Varsayılan'},
     'Change shortcut':{el:'Αλλαγή συντόμευσης',es:'Cambiar atajo',pt:'Alterar atalho',fr:'Modifier le raccourci',de:'Tastenkürzel ändern',it:'Cambia scorciatoia',nl:'Sneltoets wijzigen',pl:'Zmień skrót',ru:'Изменить сочетание',tr:'Kısayolu değiştir'}
   };
-  for (const [key,translations] of Object.entries({ ...settingsStrings, ...setupStrings, ...shortcutStrings })) {
+  // Strings for the theme and eye saver schedules.
+  const scheduleStrings = {"Sun":{"el":"Ήλιος","es":"Sol","pt":"Sol","fr":"Soleil","de":"Sonne","it":"Sole","nl":"Zon","pl":"Słońce","ru":"Солнце","tr":"Güneş"},"Hours":{"el":"Ώρες","es":"Horas","pt":"Horas","fr":"Heures","de":"Uhrzeit","it":"Orari","nl":"Tijden","pl":"Godziny","ru":"По часам","tr":"Saatler"},"Always":{"el":"Πάντα","es":"Siempre","pt":"Sempre","fr":"Toujours","de":"Immer","it":"Sempre","nl":"Altijd","pl":"Zawsze","ru":"Всегда","tr":"Her zaman"},"Switch times":{"el":"Ώρες εναλλαγής","es":"Horas de cambio","pt":"Horários de troca","fr":"Heures de changement","de":"Wechselzeiten","it":"Orari di cambio","nl":"Wisseltijden","pl":"Godziny zmiany","ru":"Время переключения","tr":"Geçiş saatleri"},"Schedule":{"el":"Πρόγραμμα","es":"Horario","pt":"Agenda","fr":"Programmation","de":"Zeitplan","it":"Programma","nl":"Schema","pl":"Harmonogram","ru":"Расписание","tr":"Zamanlama"},"Keep it on, follow sunset and sunrise, or set your own hours.":{"el":"Μόνιμα, από τη δύση ως την ανατολή του ηλίου ή στις ώρες που ορίζετε.","es":"Siempre, del atardecer al amanecer o en tus propias horas.","pt":"Sempre, do pôr do sol ao nascer do sol ou nos seus horários.","fr":"Toujours, du coucher au lever du soleil, ou à vos heures.","de":"Immer, von Sonnenuntergang bis Sonnenaufgang oder zu eigenen Zeiten.","it":"Sempre, dal tramonto all'alba o nei tuoi orari.","nl":"Altijd, van zonsondergang tot zonsopgang, of op je eigen tijden.","pl":"Zawsze, od zachodu do wschodu słońca lub w wybranych godzinach.","ru":"Всегда, от заката до рассвета или в ваши часы.","tr":"Her zaman, gün batımından gün doğumuna kadar ya da kendi saatlerinizde."},"Eye saver schedule":{"el":"Πρόγραμμα προστασίας ματιών","es":"Horario del protector visual","pt":"Agenda do protetor ocular","fr":"Programmation du confort visuel","de":"Augenschutz-Zeitplan","it":"Programma protezione occhi","nl":"Schema oogbescherming","pl":"Harmonogram ochrony oczu","ru":"Расписание защиты глаз","tr":"Göz koruma zamanlaması"},"Active hours":{"el":"Ώρες λειτουργίας","es":"Horas activas","pt":"Horas ativas","fr":"Heures actives","de":"Aktive Zeit","it":"Ore attive","nl":"Actieve uren","pl":"Godziny działania","ru":"Часы работы","tr":"Etkin saatler"},"Warm colors between these times.":{"el":"Θερμά χρώματα ανάμεσα σε αυτές τις ώρες.","es":"Colores cálidos entre estas horas.","pt":"Cores quentes entre estes horários.","fr":"Couleurs chaudes entre ces heures.","de":"Warme Farben zwischen diesen Uhrzeiten.","it":"Colori caldi tra questi orari.","nl":"Warme kleuren tussen deze tijden.","pl":"Ciepłe kolory pomiędzy tymi godzinami.","ru":"Тёплые цвета в эти часы.","tr":"Bu saatler arasında sıcak renkler."},"From":{"el":"Από","es":"Desde","pt":"De","fr":"De","de":"Von","it":"Dalle","nl":"Van","pl":"Od","ru":"С","tr":"Başlangıç"},"To":{"el":"Έως","es":"Hasta","pt":"Até","fr":"À","de":"Bis","it":"Alle","nl":"Tot","pl":"Do","ru":"До","tr":"Bitiş"},"Fade in and out":{"el":"Σταδιακή μετάβαση","es":"Transición gradual","pt":"Transição gradual","fr":"Transition progressive","de":"Sanft überblenden","it":"Transizione graduale","nl":"Geleidelijk overgaan","pl":"Stopniowe przejście","ru":"Плавный переход","tr":"Kademeli geçiş"},"Warms up and cools down over 30 minutes.":{"el":"Ζεσταίνει και κρυώνει σταδιακά μέσα σε 30 λεπτά.","es":"Se calienta y se enfría en 30 minutos.","pt":"Aquece e arrefece ao longo de 30 minutos.","fr":"Se réchauffe et se refroidit sur 30 minutes.","de":"Wird über 30 Minuten wärmer und wieder kühler.","it":"Si scalda e si raffredda in 30 minuti.","nl":"Wordt in 30 minuten warmer en weer koeler.","pl":"Ociepla się i schładza przez 30 minut.","ru":"Теплеет и остывает за 30 минут.","tr":"30 dakika içinde ısınır ve soğur."},"Strength during the scheduled hours.":{"el":"Ένταση κατά τις προγραμματισμένες ώρες.","es":"Intensidad durante las horas programadas.","pt":"Intensidade durante o horário agendado.","fr":"Intensité pendant les heures programmées.","de":"Stärke während der geplanten Zeit.","it":"Intensità nelle ore programmate.","nl":"Sterkte tijdens de geplande uren.","pl":"Siła w zaplanowanych godzinach.","ru":"Сила в запланированные часы.","tr":"Zamanlanan saatlerdeki şiddet."},"On now · turns off at {0}":{"el":"Ενεργό τώρα · σβήνει στις {0}","es":"Activo ahora · se apaga a las {0}","pt":"Ativo agora · desliga às {0}","fr":"Actif · s'arrête à {0}","de":"Jetzt an · aus um {0}","it":"Attivo ora · si spegne alle {0}","nl":"Nu aan · gaat uit om {0}","pl":"Włączony · wyłączy się o {0}","ru":"Сейчас включено · выключится в {0}","tr":"Şu an açık · {0} saatinde kapanır"},"Off now · turns on at {0}":{"el":"Ανενεργό τώρα · ανάβει στις {0}","es":"Inactivo ahora · se activa a las {0}","pt":"Inativo agora · liga às {0}","fr":"Inactif · démarre à {0}","de":"Jetzt aus · an um {0}","it":"Spento ora · si accende alle {0}","nl":"Nu uit · gaat aan om {0}","pl":"Wyłączony · włączy się o {0}","ru":"Сейчас выключено · включится в {0}","tr":"Şu an kapalı · {0} saatinde açılır"},"On now":{"el":"Ενεργό τώρα","es":"Activo ahora","pt":"Ativo agora","fr":"Actif","de":"Jetzt an","it":"Attivo ora","nl":"Nu aan","pl":"Włączony","ru":"Сейчас включено","tr":"Şu an açık"},"Off now":{"el":"Ανενεργό τώρα","es":"Inactivo ahora","pt":"Inativo agora","fr":"Inactif","de":"Jetzt aus","it":"Spento ora","nl":"Nu uit","pl":"Wyłączony","ru":"Сейчас выключено","tr":"Şu an kapalı"},"Sunrise {0} · sunset {1} where the map is":{"el":"Ανατολή {0} · δύση {1} στο σημείο του χάρτη","es":"Amanecer {0} · atardecer {1} donde está el mapa","pt":"Nascer do sol {0} · pôr do sol {1} onde está o mapa","fr":"Lever {0} · coucher {1} à l'endroit de la carte","de":"Sonnenaufgang {0} · Sonnenuntergang {1} am Kartenort","it":"Alba {0} · tramonto {1} dove si trova la mappa","nl":"Zonsopgang {0} · zonsondergang {1} op de kaartlocatie","pl":"Wschód {0} · zachód {1} w miejscu mapy","ru":"Восход {0} · закат {1} в точке карты","tr":"Gün doğumu {0} · gün batımı {1} harita konumunda"},"The sun stays up all day where the map is":{"el":"Ο ήλιος δεν δύει σήμερα στο σημείο του χάρτη","es":"El sol no se pone hoy donde está el mapa","pt":"O sol não se põe hoje onde está o mapa","fr":"Le soleil ne se couche pas aujourd'hui à l'endroit de la carte","de":"Am Kartenort geht die Sonne heute nicht unter","it":"Oggi il sole non tramonta dove si trova la mappa","nl":"De zon gaat vandaag niet onder op de kaartlocatie","pl":"Słońce nie zachodzi dziś w miejscu mapy","ru":"Сегодня солнце не заходит в точке карты","tr":"Güneş bugün harita konumunda batmıyor"},"The sun stays down all day where the map is":{"el":"Ο ήλιος δεν ανατέλλει σήμερα στο σημείο του χάρτη","es":"El sol no sale hoy donde está el mapa","pt":"O sol não nasce hoje onde está o mapa","fr":"Le soleil ne se lève pas aujourd'hui à l'endroit de la carte","de":"Am Kartenort geht die Sonne heute nicht auf","it":"Oggi il sole non sorge dove si trova la mappa","nl":"De zon komt vandaag niet op op de kaartlocatie","pl":"Słońce nie wschodzi dziś w miejscu mapy","ru":"Сегодня солнце не восходит в точке карты","tr":"Güneş bugün harita konumunda doğmuyor"},"Dark at night":{"el":"Σκοτεινό τη νύχτα","es":"Oscuro de noche","pt":"Escuro à noite","fr":"Sombre la nuit","de":"Nachts dunkel","it":"Scuro di notte","nl":"'s Nachts donker","pl":"Ciemny w nocy","ru":"Тёмная ночью","tr":"Gece koyu"},"Switch from Light to a dark theme in the evening and back in the morning.":{"el":"Αλλάζει από Φωτεινό σε σκοτεινό θέμα το βράδυ και επιστρέφει το πρωί.","es":"Pasa de Claro a un tema oscuro por la tarde y vuelve por la mañana.","pt":"Muda de Claro para um tema escuro à noite e volta de manhã.","fr":"Passe de Clair à un thème sombre le soir et revient le matin.","de":"Wechselt abends von Hell zu einem dunklen Design und morgens zurück.","it":"Passa da Chiaro a un tema scuro la sera e torna al mattino.","nl":"Wisselt 's avonds van Licht naar een donker thema en 's ochtends terug.","pl":"Wieczorem zmienia Jasny na ciemny motyw, a rano przywraca Jasny.","ru":"Вечером меняет светлую тему на тёмную, а утром возвращает светлую.","tr":"Akşam Açık temadan koyu temaya geçer, sabah geri döner."},"Dark theme to use":{"el":"Σκοτεινό θέμα","es":"Tema oscuro","pt":"Tema escuro","fr":"Thème sombre","de":"Dunkles Design","it":"Tema scuro","nl":"Donker thema","pl":"Ciemny motyw","ru":"Тёмная тема","tr":"Koyu tema"},"When dark starts and when Light returns.":{"el":"Πότε ξεκινά το σκοτεινό και πότε επιστρέφει το Φωτεινό.","es":"Cuándo empieza el oscuro y cuándo vuelve Claro.","pt":"Quando começa o escuro e quando volta o Claro.","fr":"Quand le sombre commence et quand Clair revient.","de":"Wann Dunkel beginnt und wann Hell zurückkehrt.","it":"Quando inizia lo scuro e quando torna Chiaro.","nl":"Wanneer donker begint en wanneer Licht terugkomt.","pl":"Kiedy zaczyna się ciemny, a kiedy wraca Jasny.","ru":"Когда включается тёмная тема и когда возвращается светлая.","tr":"Koyunun başladığı ve Açık temanın döndüğü saat."},"Light now · dark begins at {0}":{"el":"Τώρα Φωτεινό · σκοτεινό από τις {0}","es":"Ahora Claro · oscuro desde las {0}","pt":"Agora Claro · escuro a partir das {0}","fr":"Clair actif · sombre à partir de {0}","de":"Jetzt Hell · dunkel ab {0}","it":"Ora Chiaro · scuro dalle {0}","nl":"Nu Licht · donker vanaf {0}","pl":"Teraz Jasny · ciemny od {0}","ru":"Сейчас светлая · тёмная с {0}","tr":"Şu an Açık · koyu {0} saatinde başlar"},"Dark now · Light returns at {0}":{"el":"Τώρα σκοτεινό · Φωτεινό ξανά στις {0}","es":"Ahora oscuro · Claro vuelve a las {0}","pt":"Agora escuro · Claro volta às {0}","fr":"Sombre actif · Clair revient à {0}","de":"Jetzt dunkel · Hell wieder um {0}","it":"Ora scuro · Chiaro torna alle {0}","nl":"Nu donker · Licht terug om {0}","pl":"Teraz ciemny · Jasny wraca o {0}","ru":"Сейчас тёмная · светлая вернётся в {0}","tr":"Şu an koyu · Açık {0} saatinde döner"},"Light now":{"el":"Τώρα Φωτεινό","es":"Ahora Claro","pt":"Agora Claro","fr":"Clair actif","de":"Jetzt Hell","it":"Ora Chiaro","nl":"Nu Licht","pl":"Teraz Jasny","ru":"Сейчас светлая","tr":"Şu an Açık"},"Dark now":{"el":"Τώρα σκοτεινό","es":"Ahora oscuro","pt":"Agora escuro","fr":"Sombre actif","de":"Jetzt dunkel","it":"Ora scuro","nl":"Nu donker","pl":"Teraz ciemny","ru":"Сейчас тёмная","tr":"Şu an koyu"}};
+  const arrangeStrings = {"Custom links":{"el":"Προσαρμοσμένοι σύνδεσμοι","es":"Enlaces personalizados","pt":"Ligações personalizadas","fr":"Liens personnalisés","de":"Eigene Links","it":"Link personalizzati","nl":"Eigen links","pl":"Własne linki","ru":"Свои ссылки","tr":"Özel bağlantılar"},"Add a custom link":{"el":"Προσθήκη συνδέσμου","es":"Añadir un enlace","pt":"Adicionar uma ligação","fr":"Ajouter un lien","de":"Eigenen Link hinzufügen","it":"Aggiungi un link","nl":"Eigen link toevoegen","pl":"Dodaj własny link","ru":"Добавить ссылку","tr":"Özel bağlantı ekle"},"Edit link":{"el":"Επεξεργασία συνδέσμου","es":"Editar enlace","pt":"Editar ligação","fr":"Modifier le lien","de":"Link bearbeiten","it":"Modifica link","nl":"Link bewerken","pl":"Edytuj link","ru":"Изменить ссылку","tr":"Bağlantıyı düzenle"},"Delete link":{"el":"Διαγραφή συνδέσμου","es":"Eliminar enlace","pt":"Eliminar ligação","fr":"Supprimer le lien","de":"Link löschen","it":"Elimina link","nl":"Link verwijderen","pl":"Usuń link","ru":"Удалить ссылку","tr":"Bağlantıyı sil"},"Save link":{"el":"Αποθήκευση","es":"Guardar enlace","pt":"Guardar ligação","fr":"Enregistrer","de":"Link speichern","it":"Salva link","nl":"Link opslaan","pl":"Zapisz link","ru":"Сохранить","tr":"Kaydet"},"Add link":{"el":"Προσθήκη","es":"Añadir","pt":"Adicionar","fr":"Ajouter","de":"Hinzufügen","it":"Aggiungi","nl":"Toevoegen","pl":"Dodaj","ru":"Добавить","tr":"Ekle"},"Cancel":{"el":"Ακύρωση","es":"Cancelar","pt":"Cancelar","fr":"Annuler","de":"Abbrechen","it":"Annulla","nl":"Annuleren","pl":"Anuluj","ru":"Отмена","tr":"İptal"},"Address":{"el":"Διεύθυνση","es":"Dirección","pt":"Endereço","fr":"Adresse","de":"Adresse","it":"Indirizzo","nl":"Adres","pl":"Adres","ru":"Адрес","tr":"Adres"},"Name":{"el":"Όνομα","es":"Nombre","pt":"Nome","fr":"Nom","de":"Name","it":"Nome","nl":"Naam","pl":"Nazwa","ru":"Название","tr":"Ad"},"Shown when you point at it":{"el":"Εμφανίζεται όταν το δείχνετε","es":"Se muestra al pasar el ratón","pt":"Aparece ao passar o rato","fr":"Affiché au survol","de":"Erscheint beim Darüberfahren","it":"Compare al passaggio del mouse","nl":"Verschijnt als je erover beweegt","pl":"Widoczna po najechaniu","ru":"Видно при наведении","tr":"Üzerine gelince görünür"},"Enter a web address, like https://www.waze.com/forum":{"el":"Γράψτε μια διεύθυνση, όπως https://www.waze.com/forum","es":"Escribe una dirección web, como https://www.waze.com/forum","pt":"Escreva um endereço web, como https://www.waze.com/forum","fr":"Saisissez une adresse web, comme https://www.waze.com/forum","de":"Gib eine Webadresse ein, z. B. https://www.waze.com/forum","it":"Inserisci un indirizzo web, come https://www.waze.com/forum","nl":"Voer een webadres in, zoals https://www.waze.com/forum","pl":"Wpisz adres strony, np. https://www.waze.com/forum","ru":"Введите веб-адрес, например https://www.waze.com/forum","tr":"Bir web adresi girin, örneğin https://www.waze.com/forum"},"link saved":{"el":"ο σύνδεσμος αποθηκεύτηκε","es":"enlace guardado","pt":"ligação guardada","fr":"lien enregistré","de":"Link gespeichert","it":"link salvato","nl":"link opgeslagen","pl":"link zapisany","ru":"ссылка сохранена","tr":"bağlantı kaydedildi"},"link added · drag it where you want it":{"el":"ο σύνδεσμος προστέθηκε · σύρετέ τον όπου θέλετε","es":"enlace añadido · arrástralo donde quieras","pt":"ligação adicionada · arraste-a para onde quiser","fr":"lien ajouté · faites-le glisser où vous voulez","de":"Link hinzugefügt · zieh ihn, wohin du willst","it":"link aggiunto · trascinalo dove vuoi","nl":"link toegevoegd · sleep hem waar je wilt","pl":"link dodany · przeciągnij go, gdzie chcesz","ru":"ссылка добавлена · перетащите её куда нужно","tr":"bağlantı eklendi · istediğiniz yere sürükleyin"},"link deleted":{"el":"ο σύνδεσμος διαγράφηκε","es":"enlace eliminado","pt":"ligação eliminada","fr":"lien supprimé","de":"Link gelöscht","it":"link eliminato","nl":"link verwijderd","pl":"link usunięty","ru":"ссылка удалена","tr":"bağlantı silindi"},"Not placed":{"el":"Δεν έχει τοποθετηθεί","es":"Sin colocar","pt":"Por colocar","fr":"Non placé","de":"Nicht platziert","it":"Non posizionato","nl":"Niet geplaatst","pl":"Nie umieszczony","ru":"Не размещена","tr":"Yerleştirilmedi"},"Send back to":{"el":"Επιστροφή στο","es":"Devolver a","pt":"Devolver a","fr":"Renvoyer vers","de":"Zurück nach","it":"Rimanda in","nl":"Terug naar","pl":"Przywróć do","ru":"Вернуть в","tr":"Şuraya geri gönder:"},"back where it started":{"el":"επέστρεψε στη θέση του","es":"de vuelta en su sitio","pt":"de volta ao seu lugar","fr":"revenu à sa place","de":"zurück an seinem Platz","it":"tornato al suo posto","nl":"terug op zijn plek","pl":"wrócił na swoje miejsce","ru":"возвращён на место","tr":"yerine döndü"},"Undo":{"el":"Αναίρεση","es":"Deshacer","pt":"Desfazer","fr":"Annuler","de":"Rückgängig","it":"Annulla","nl":"Ongedaan maken","pl":"Cofnij","ru":"Отменить","tr":"Geri al"},"Redo":{"el":"Επανάληψη","es":"Rehacer","pt":"Refazer","fr":"Rétablir","de":"Wiederholen","it":"Ripeti","nl":"Opnieuw","pl":"Ponów","ru":"Повторить","tr":"Yinele"},"New island":{"el":"Νέα νησίδα","es":"Nueva isla","pt":"Nova ilha","fr":"Nouvel îlot","de":"Neue Insel","it":"Nuova isola","nl":"Nieuw eiland","pl":"Nowa wyspa","ru":"Новый остров","tr":"Yeni ada"},"Controls":{"el":"Χειριστήρια","es":"Controles","pt":"Controlos","fr":"Commandes","de":"Bedienelemente","it":"Comandi","nl":"Knoppen","pl":"Przyciski","ru":"Элементы","tr":"Kontroller"},"Snap":{"el":"Ευθυγράμμιση","es":"Ajustar","pt":"Alinhar","fr":"Aimanter","de":"Einrasten","it":"Aggancia","nl":"Uitlijnen","pl":"Przyciąganie","ru":"Привязка","tr":"Hizala"},"Reset all":{"el":"Επαναφορά όλων","es":"Restablecer todo","pt":"Repor tudo","fr":"Tout réinitialiser","de":"Alles zurücksetzen","it":"Ripristina tutto","nl":"Alles herstellen","pl":"Resetuj wszystko","ru":"Сбросить всё","tr":"Tümünü sıfırla"},"Drag an island by its name or edge · Drag a control to move it · Arrow keys nudge · Esc cancels":{"el":"Σύρετε μια νησίδα από το όνομα ή την άκρη της · Σύρετε ένα χειριστήριο για να το μετακινήσετε · Τα βέλη τη μετακινούν λίγο · Esc για ακύρωση","es":"Arrastra una isla por su nombre o borde · Arrastra un control para moverlo · Las flechas la ajustan · Esc cancela","pt":"Arraste uma ilha pelo nome ou pela margem · Arraste um controlo para o mover · As setas ajustam · Esc cancela","fr":"Faites glisser un îlot par son nom ou son bord · Faites glisser une commande pour la déplacer · Flèches pour ajuster · Échap pour annuler","de":"Insel am Namen oder Rand ziehen · Bedienelement ziehen, um es zu verschieben · Pfeiltasten zum Feinjustieren · Esc bricht ab","it":"Trascina un'isola dal nome o dal bordo · Trascina un comando per spostarlo · Le frecce la spostano di poco · Esc annulla","nl":"Sleep een eiland aan de naam of de rand · Sleep een knop om hem te verplaatsen · Pijltjestoetsen schuiven · Esc annuleert","pl":"Przeciągnij wyspę za nazwę lub krawędź · Przeciągnij przycisk, aby go przenieść · Strzałki przesuwają · Esc anuluje","ru":"Перетаскивайте остров за название или край · Перетащите элемент, чтобы переместить его · Стрелки сдвигают · Esc — отмена","tr":"Adayı adından veya kenarından sürükleyin · Bir kontrolü taşımak için sürükleyin · Ok tuşları kaydırır · Esc iptal eder"},"Close the controls list":{"el":"Κλείσιμο λίστας χειριστηρίων","es":"Cerrar la lista de controles","pt":"Fechar a lista de controlos","fr":"Fermer la liste des commandes","de":"Liste der Bedienelemente schließen","it":"Chiudi l'elenco dei comandi","nl":"Lijst met knoppen sluiten","pl":"Zamknij listę przycisków","ru":"Закрыть список элементов","tr":"Kontrol listesini kapat"},"Drag a control onto an island, or onto the map for an island of its own.":{"el":"Σύρετε ένα χειριστήριο σε μια νησίδα ή στον χάρτη για δική του νησίδα.","es":"Arrastra un control a una isla, o al mapa para darle su propia isla.","pt":"Arraste um controlo para uma ilha, ou para o mapa para lhe dar uma ilha própria.","fr":"Faites glisser une commande sur un îlot, ou sur la carte pour lui donner son propre îlot.","de":"Ziehe ein Bedienelement auf eine Insel oder auf die Karte für eine eigene Insel.","it":"Trascina un comando su un'isola, o sulla mappa per dargli un'isola tutta sua.","nl":"Sleep een knop naar een eiland, of naar de kaart voor een eigen eiland.","pl":"Przeciągnij przycisk na wyspę albo na mapę, aby dostał własną wyspę.","ru":"Перетащите элемент на остров или на карту, чтобы создать ему отдельный остров.","tr":"Bir kontrolü bir adaya ya da kendi adası için haritaya sürükleyin."},"Drop a control here to hide it":{"el":"Αφήστε εδώ ένα χειριστήριο για να το κρύψετε","es":"Suelta aquí un control para ocultarlo","pt":"Largue aqui um controlo para o ocultar","fr":"Déposez une commande ici pour la masquer","de":"Bedienelement hier ablegen, um es auszublenden","it":"Rilascia qui un comando per nasconderlo","nl":"Zet een knop hier neer om hem te verbergen","pl":"Upuść tu przycisk, aby go ukryć","ru":"Перетащите сюда элемент, чтобы скрыть его","tr":"Gizlemek için bir kontrolü buraya bırakın"},"shown":{"el":"ορατά","es":"visibles","pt":"visíveis","fr":"visibles","de":"sichtbar","it":"visibili","nl":"zichtbaar","pl":"widoczne","ru":"показано","tr":"görünür"},"hidden":{"el":"κρυμμένα","es":"ocultos","pt":"ocultos","fr":"masqués","de":"ausgeblendet","it":"nascosti","nl":"verborgen","pl":"ukryte","ru":"скрыто","tr":"gizli"},"Hidden":{"el":"Κρυμμένο","es":"Oculto","pt":"Oculto","fr":"Masqué","de":"Ausgeblendet","it":"Nascosto","nl":"Verborgen","pl":"Ukryty","ru":"Скрыт","tr":"Gizli"},"Show":{"el":"Εμφάνιση","es":"Mostrar","pt":"Mostrar","fr":"Afficher","de":"Einblenden","it":"Mostra","nl":"Tonen","pl":"Pokaż","ru":"Показать","tr":"Göster"},"Hide":{"el":"Απόκρυψη","es":"Ocultar","pt":"Ocultar","fr":"Masquer","de":"Ausblenden","it":"Nascondi","nl":"Verbergen","pl":"Ukryj","ru":"Скрыть","tr":"Gizle"},"Save always stays visible":{"el":"Η Αποθήκευση μένει πάντα ορατή","es":"Guardar siempre queda visible","pt":"Guardar fica sempre visível","fr":"Enregistrer reste toujours visible","de":"Speichern bleibt immer sichtbar","it":"Salva resta sempre visibile","nl":"Opslaan blijft altijd zichtbaar","pl":"Zapisz zawsze pozostaje widoczny","ru":"Кнопка «Сохранить» всегда видна","tr":"Kaydet her zaman görünür kalır"},"No controls found yet. Open the editor fully, then try again.":{"el":"Δεν βρέθηκαν ακόμη χειριστήρια. Αφήστε τον επεξεργαστή να φορτώσει και δοκιμάστε ξανά.","es":"Aún no se encontraron controles. Deja que el editor cargue y vuelve a intentarlo.","pt":"Ainda não foram encontrados controlos. Deixe o editor carregar e tente de novo.","fr":"Aucune commande trouvée pour l'instant. Laissez l'éditeur se charger, puis réessayez.","de":"Noch keine Bedienelemente gefunden. Lass den Editor fertig laden und versuche es erneut.","it":"Nessun comando trovato. Lascia caricare l'editor e riprova.","nl":"Nog geen knoppen gevonden. Laat de editor laden en probeer het opnieuw.","pl":"Nie znaleziono jeszcze przycisków. Poczekaj, aż edytor się załaduje, i spróbuj ponownie.","ru":"Элементы пока не найдены. Дождитесь загрузки редактора и попробуйте снова.","tr":"Henüz kontrol bulunamadı. Düzenleyicinin yüklenmesini bekleyip yeniden deneyin."},"Header":{"el":"Κεφαλίδα","es":"Cabecera","pt":"Cabeçalho","fr":"En-tête","de":"Kopfleiste","it":"Intestazione","nl":"Kopbalk","pl":"Nagłówek","ru":"Шапка","tr":"Üst çubuk"},"Navigation":{"el":"Πλοήγηση","es":"Navegación","pt":"Navegação","fr":"Navigation","de":"Navigation","it":"Navigazione","nl":"Navigatie","pl":"Nawigacja","ru":"Навигация","tr":"Gezinme"},"Map tools":{"el":"Εργαλεία χάρτη","es":"Herramientas del mapa","pt":"Ferramentas do mapa","fr":"Outils de carte","de":"Kartenwerkzeuge","it":"Strumenti mappa","nl":"Kaartgereedschap","pl":"Narzędzia mapy","ru":"Инструменты карты","tr":"Harita araçları"},"Online Editors":{"el":"Συνδεδεμένοι συντάκτες","es":"Editores en línea","pt":"Editores online","fr":"Éditeurs en ligne","de":"Online-Editoren","it":"Editor online","nl":"Online editors","pl":"Edytorzy online","ru":"Редакторы онлайн","tr":"Çevrimiçi editörler"},"Tile Update":{"el":"Ενημέρωση πλακιδίων","es":"Actualización de teselas","pt":"Atualização de mosaicos","fr":"Mise à jour des tuiles","de":"Kachel-Update","it":"Aggiornamento tile","nl":"Tegelupdate","pl":"Aktualizacja kafelków","ru":"Обновление тайлов","tr":"Karo güncellemesi"},"Status":{"el":"Κατάσταση","es":"Estado","pt":"Estado","fr":"État","de":"Status","it":"Stato","nl":"Status","pl":"Stan","ru":"Статус","tr":"Durum"},"Make vertical":{"el":"Κάθετα","es":"Vertical","pt":"Vertical","fr":"Vertical","de":"Senkrecht","it":"Verticale","nl":"Verticaal","pl":"Pionowo","ru":"Вертикально","tr":"Dikey yap"},"Make horizontal":{"el":"Οριζόντια","es":"Horizontal","pt":"Horizontal","fr":"Horizontal","de":"Waagerecht","it":"Orizzontale","nl":"Horizontaal","pl":"Poziomo","ru":"Горизонтально","tr":"Yatay yap"},"Split after":{"el":"Διαχωρισμός μετά το","es":"Dividir tras","pt":"Dividir após","fr":"Séparer après","de":"Teilen nach","it":"Dividi dopo","nl":"Splitsen na","pl":"Podziel po","ru":"Разделить после","tr":"Sonrasından böl:"},"Remove island":{"el":"Αφαίρεση νησίδας","es":"Quitar isla","pt":"Remover ilha","fr":"Supprimer l'îlot","de":"Insel entfernen","it":"Rimuovi isola","nl":"Eiland verwijderen","pl":"Usuń wyspę","ru":"Удалить остров","tr":"Adayı kaldır"},"Reset island":{"el":"Επαναφορά νησίδας","es":"Restablecer isla","pt":"Repor ilha","fr":"Réinitialiser l'îlot","de":"Insel zurücksetzen","it":"Ripristina isola","nl":"Eiland herstellen","pl":"Resetuj wyspę","ru":"Сбросить остров","tr":"Adayı sıfırla"},"Select a control to split or hide it":{"el":"Επιλέξτε ένα χειριστήριο για διαχωρισμό ή απόκρυψη","es":"Elige un control para dividir u ocultarlo","pt":"Escolha um controlo para dividir ou ocultar","fr":"Choisissez une commande pour séparer ou masquer","de":"Wähle ein Bedienelement zum Teilen oder Ausblenden","it":"Scegli un comando per dividere o nasconderlo","nl":"Kies een knop om te splitsen of te verbergen","pl":"Wybierz przycisk, aby podzielić lub ukryć","ru":"Выберите элемент, чтобы разделить или скрыть","tr":"Bölmek ya da gizlemek için bir kontrol seçin"},"Drag controls here from the Controls list":{"el":"Σύρετε εδώ χειριστήρια από τη λίστα Χειριστήρια","es":"Arrastra aquí controles desde la lista Controles","pt":"Arraste para aqui controlos da lista Controlos","fr":"Faites glisser ici des commandes depuis la liste Commandes","de":"Ziehe Bedienelemente aus der Liste hierher","it":"Trascina qui i comandi dall'elenco Comandi","nl":"Sleep knoppen hierheen vanuit de lijst Knoppen","pl":"Przeciągnij tu przyciski z listy Przyciski","ru":"Перетащите сюда элементы из списка","tr":"Kontrolleri listeden buraya sürükleyin"},"Island":{"el":"Νησίδα","es":"Isla","pt":"Ilha","fr":"Îlot","de":"Insel","it":"Isola","nl":"Eiland","pl":"Wyspa","ru":"Остров","tr":"Ada"},"Island rotated":{"el":"Η νησίδα περιστράφηκε","es":"Isla girada","pt":"Ilha rodada","fr":"Îlot pivoté","de":"Insel gedreht","it":"Isola ruotata","nl":"Eiland gedraaid","pl":"Wyspa obrócona","ru":"Остров повёрнут","tr":"Ada döndürüldü"},"Island split in two":{"el":"Η νησίδα χωρίστηκε στα δύο","es":"Isla dividida en dos","pt":"Ilha dividida em duas","fr":"Îlot séparé en deux","de":"Insel in zwei geteilt","it":"Isola divisa in due","nl":"Eiland in tweeën gesplitst","pl":"Wyspa podzielona na dwie","ru":"Остров разделён на два","tr":"Ada ikiye bölündü"},"Island removed · its controls went back home":{"el":"Η νησίδα αφαιρέθηκε · τα χειριστήριά της επέστρεψαν στη θέση τους","es":"Isla quitada · sus controles volvieron a su sitio","pt":"Ilha removida · os controlos voltaram ao seu lugar","fr":"Îlot supprimé · ses commandes ont repris leur place","de":"Insel entfernt · ihre Bedienelemente sind zurück an ihrem Platz","it":"Isola rimossa · i comandi sono tornati al loro posto","nl":"Eiland verwijderd · de knoppen staan weer op hun plek","pl":"Wyspa usunięta · przyciski wróciły na miejsce","ru":"Остров удалён · элементы вернулись на место","tr":"Ada kaldırıldı · kontroller yerine döndü"},"controls restored":{"el":"τα χειριστήρια επανήλθαν","es":"controles restablecidos","pt":"controlos repostos","fr":"commandes rétablies","de":"Bedienelemente wiederhergestellt","it":"comandi ripristinati","nl":"knoppen hersteld","pl":"przyciski przywrócone","ru":"элементы восстановлены","tr":"kontroller geri yüklendi"},"New island · drag controls into it from the Controls list":{"el":"Νέα νησίδα · σύρετε μέσα της χειριστήρια από τη λίστα","es":"Nueva isla · arrastra controles a ella desde la lista","pt":"Nova ilha · arraste controlos para ela a partir da lista","fr":"Nouvel îlot · faites-y glisser des commandes depuis la liste","de":"Neue Insel · ziehe Bedienelemente aus der Liste hinein","it":"Nuova isola · trascinaci i comandi dall'elenco","nl":"Nieuw eiland · sleep er knoppen in vanuit de lijst","pl":"Nowa wyspa · przeciągnij do niej przyciski z listy","ru":"Новый остров · перетащите в него элементы из списка","tr":"Yeni ada · listeden kontrolleri içine sürükleyin"},"Release to hide":{"el":"Αφήστε για απόκρυψη:","es":"Suelta para ocultar","pt":"Largue para ocultar","fr":"Relâchez pour masquer","de":"Loslassen zum Ausblenden:","it":"Rilascia per nascondere","nl":"Loslaten om te verbergen:","pl":"Puść, aby ukryć","ru":"Отпустите, чтобы скрыть","tr":"Gizlemek için bırakın:"},"Release to give it an island of its own":{"el":"Αφήστε για να αποκτήσει δική του νησίδα","es":"Suelta para darle su propia isla","pt":"Largue para lhe dar uma ilha própria","fr":"Relâchez pour lui donner son propre îlot","de":"Loslassen für eine eigene Insel","it":"Rilascia per dargli un'isola tutta sua","nl":"Loslaten voor een eigen eiland","pl":"Puść, aby dostał własną wyspę","ru":"Отпустите, чтобы создать ему отдельный остров","tr":"Kendi adasını almak için bırakın"},"Release to put it back in the header":{"el":"Αφήστε για να επιστρέψει στην κεφαλίδα","es":"Suelta para devolverlo a la cabecera","pt":"Largue para o devolver ao cabeçalho","fr":"Relâchez pour le remettre dans l'en-tête","de":"Loslassen, um es in die Kopfleiste zurückzulegen","it":"Rilascia per rimetterlo nell'intestazione","nl":"Loslaten om hem terug te zetten in de kopbalk","pl":"Puść, aby wrócił do nagłówka","ru":"Отпустите, чтобы вернуть в шапку","tr":"Üst çubuğa geri koymak için bırakın"},"Release to move it to":{"el":"Αφήστε για μετακίνηση στο","es":"Suelta para moverlo a","pt":"Largue para o mover para","fr":"Relâchez pour le déplacer vers","de":"Loslassen zum Verschieben nach","it":"Rilascia per spostarlo in","nl":"Loslaten om te verplaatsen naar","pl":"Puść, aby przenieść do","ru":"Отпустите, чтобы переместить в","tr":"Şuraya taşımak için bırakın:"},"Control moved · Save layout to keep it":{"el":"Το χειριστήριο μετακινήθηκε · Αποθηκεύστε τη διάταξη για να μείνει","es":"Control movido · Guarda el diseño para conservarlo","pt":"Controlo movido · Guarde o esquema para o manter","fr":"Commande déplacée · Enregistrez la disposition pour la garder","de":"Bedienelement verschoben · Layout speichern, um es zu behalten","it":"Comando spostato · Salva il layout per mantenerlo","nl":"Knop verplaatst · Sla de indeling op om dit te bewaren","pl":"Przycisk przeniesiony · Zapisz układ, aby go zachować","ru":"Элемент перемещён · Сохраните раскладку, чтобы оставить так","tr":"Kontrol taşındı · Korumak için düzeni kaydedin"},"The header only takes back its own controls":{"el":"Η κεφαλίδα δέχεται μόνο τα δικά της χειριστήρια","es":"La cabecera solo admite sus propios controles","pt":"O cabeçalho só aceita os seus próprios controlos","fr":"L'en-tête ne reprend que ses propres commandes","de":"Die Kopfleiste nimmt nur ihre eigenen Bedienelemente zurück","it":"L'intestazione accetta solo i propri comandi","nl":"De kopbalk neemt alleen zijn eigen knoppen terug","pl":"Nagłówek przyjmuje tylko własne przyciski","ru":"Шапка принимает только свои элементы","tr":"Üst çubuk yalnızca kendi kontrollerini geri alır"},"shown again":{"el":"εμφανίζεται ξανά","es":"visible de nuevo","pt":"visível de novo","fr":"de nouveau visible","de":"wieder sichtbar","it":"di nuovo visibile","nl":"weer zichtbaar","pl":"znów widoczny","ru":"снова виден","tr":"yeniden görünür"},"Undone":{"el":"Αναιρέθηκε","es":"Deshecho","pt":"Desfeito","fr":"Annulé","de":"Rückgängig gemacht","it":"Annullato","nl":"Ongedaan gemaakt","pl":"Cofnięto","ru":"Отменено","tr":"Geri alındı"},"Redone":{"el":"Επαναλήφθηκε","es":"Rehecho","pt":"Refeito","fr":"Rétabli","de":"Wiederholt","it":"Ripetuto","nl":"Opnieuw gedaan","pl":"Ponowiono","ru":"Повторено","tr":"Yinelendi"},"Drop controls here":{"el":"Αφήστε εδώ χειριστήρια","es":"Suelta controles aquí","pt":"Largue controlos aqui","fr":"Déposez des commandes ici","de":"Bedienelemente hier ablegen","it":"Rilascia qui i comandi","nl":"Zet knoppen hier neer","pl":"Upuść tu przyciski","ru":"Перетащите элементы сюда","tr":"Kontrolleri buraya bırakın"},"Search":{"el":"Αναζήτηση","es":"Buscar","pt":"Pesquisar","fr":"Rechercher","de":"Suche","it":"Cerca","nl":"Zoeken","pl":"Szukaj","ru":"Поиск","tr":"Ara"},"Notifications":{"el":"Ειδοποιήσεις","es":"Notificaciones","pt":"Notificações","fr":"Notifications","de":"Benachrichtigungen","it":"Notifiche","nl":"Meldingen","pl":"Powiadomienia","ru":"Уведомления","tr":"Bildirimler"},"Save":{"el":"Αποθήκευση","es":"Guardar","pt":"Guardar","fr":"Enregistrer","de":"Speichern","it":"Salva","nl":"Opslaan","pl":"Zapisz","ru":"Сохранить","tr":"Kaydet"},"Profile":{"el":"Προφίλ","es":"Perfil","pt":"Perfil","fr":"Profil","de":"Profil","it":"Profilo","nl":"Profiel","pl":"Profil","ru":"Профиль","tr":"Profil"},"Zoom":{"el":"Ζουμ","es":"Zoom","pt":"Zoom","fr":"Zoom","de":"Zoom","it":"Zoom","nl":"Zoom","pl":"Powiększenie","ru":"Масштаб","tr":"Yakınlaştırma"},"Snapping to edges, centers and other islands":{"el":"Ευθυγράμμιση σε άκρες, κέντρα και άλλες νησίδες","es":"Ajuste a bordes, centros y otras islas","pt":"Alinhar às margens, centros e outras ilhas","fr":"Aimantation aux bords, aux centres et aux autres îlots","de":"Einrasten an Rändern, Mitten und anderen Inseln","it":"Aggancio a bordi, centri e altre isole","nl":"Uitlijnen op randen, middens en andere eilanden","pl":"Przyciąganie do krawędzi, środków i innych wysp","ru":"Привязка к краям, центрам и другим островам","tr":"Kenarlara, merkezlere ve diğer adalara hizalama"},"Snap is off · placing freely":{"el":"Η ευθυγράμμιση είναι ανενεργή · ελεύθερη τοποθέτηση","es":"Ajuste desactivado · colocación libre","pt":"Alinhamento desligado · posicionamento livre","fr":"Aimantation désactivée · placement libre","de":"Einrasten aus · freie Platzierung","it":"Aggancio disattivato · posizionamento libero","nl":"Uitlijnen uit · vrij plaatsen","pl":"Przyciąganie wyłączone · swobodne położenie","ru":"Привязка выключена · свободное размещение","tr":"Hizalama kapalı · serbest yerleşim"},"Default layout restored in preview":{"el":"Η προεπιλεγμένη διάταξη επανήλθε στην προεπισκόπηση","es":"Diseño predeterminado restablecido en la vista previa","pt":"Esquema predefinido reposto na pré-visualização","fr":"Disposition par défaut rétablie dans l'aperçu","de":"Standard-Layout in der Vorschau wiederhergestellt","it":"Layout predefinito ripristinato nell'anteprima","nl":"Standaardindeling hersteld in het voorbeeld","pl":"Przywrócono domyślny układ w podglądzie","ru":"Стандартная раскладка восстановлена в предпросмотре","tr":"Varsayılan düzen önizlemede geri yüklendi"},"Custom scrollbars":{"el":"Προσαρμοσμένες γραμμές κύλισης","es":"Barras de desplazamiento personalizadas","pt":"Barras de deslocamento personalizadas","fr":"Barres de défilement personnalisées","de":"Eigene Scrollleisten","it":"Barre di scorrimento personalizzate","nl":"Eigen schuifbalken","pl":"Własne paski przewijania","ru":"Свои полосы прокрутки","tr":"Özel kaydırma çubukları"},"Slim, rounded scrollbars in your theme colors.":{"el":"Λεπτές, στρογγυλεμένες γραμμές κύλισης στα χρώματα του θέματός σας.","es":"Barras finas y redondeadas con los colores de tu tema.","pt":"Barras finas e arredondadas nas cores do seu tema.","fr":"Barres fines et arrondies aux couleurs de votre thème.","de":"Schmale, abgerundete Scrollleisten in deinen Designfarben.","it":"Barre sottili e arrotondate nei colori del tuo tema.","nl":"Smalle, afgeronde schuifbalken in je themakleuren.","pl":"Cienkie, zaokrąglone paski w kolorach motywu.","ru":"Тонкие скруглённые полосы в цветах вашей темы.","tr":"Temanızın renklerinde ince, yuvarlatılmış kaydırma çubukları."},"Move islands, move or hide single controls, make new islands, and set where panels open.":{"el":"Μετακινήστε νησίδες, μετακινήστε ή κρύψτε μεμονωμένα χειριστήρια, φτιάξτε νέες νησίδες και ορίστε πού ανοίγουν τα πάνελ.","es":"Mueve islas, mueve u oculta controles sueltos, crea islas nuevas y elige dónde se abren los paneles.","pt":"Mova ilhas, mova ou oculte controlos, crie ilhas novas e defina onde os painéis abrem.","fr":"Déplacez les îlots, déplacez ou masquez des commandes, créez des îlots et choisissez où s'ouvrent les panneaux.","de":"Inseln verschieben, einzelne Bedienelemente verschieben oder ausblenden, neue Inseln anlegen und festlegen, wo Panels öffnen.","it":"Sposta le isole, sposta o nascondi singoli comandi, crea nuove isole e scegli dove si aprono i pannelli.","nl":"Verplaats eilanden, verplaats of verberg losse knoppen, maak nieuwe eilanden en kies waar panelen openen.","pl":"Przenoś wyspy, przenoś lub ukrywaj pojedyncze przyciski, twórz nowe wyspy i ustal, gdzie otwierają się panele.","ru":"Перемещайте острова, перемещайте или скрывайте отдельные элементы, создавайте острова и задавайте, где открываются панели.","tr":"Adaları taşıyın, tek tek kontrolleri taşıyın ya da gizleyin, yeni adalar oluşturun ve panellerin nerede açılacağını seçin."}};
+  Object.assign(arrangeStrings, {"Drag an island to move it · Ctrl + click to pick several · Click a control, then drag it to move it · Arrow keys nudge · Esc cancels": {"el": "Σύρετε μια νησίδα για να τη μετακινήσετε · Ctrl + κλικ για να επιλέξετε πολλές · Κάντε κλικ σε ένα χειριστήριο και μετά σύρετέ το · Τα βέλη μετακινούν λίγο · Esc για ακύρωση", "es": "Arrastra una isla para moverla · Ctrl + clic para elegir varias · Haz clic en un control y luego arrástralo · Las flechas ajustan · Esc cancela", "pt": "Arraste uma ilha para a mover · Ctrl + clique para escolher várias · Clique num controlo e depois arraste-o · As setas ajustam · Esc cancela", "fr": "Faites glisser un îlot pour le déplacer · Ctrl + clic pour en choisir plusieurs · Cliquez sur une commande, puis faites-la glisser · Flèches pour ajuster · Échap pour annuler", "de": "Insel ziehen, um sie zu verschieben · Strg + Klick, um mehrere zu wählen · Bedienelement anklicken, dann ziehen · Pfeiltasten zum Feinjustieren · Esc bricht ab", "it": "Trascina un'isola per spostarla · Ctrl + clic per sceglierne più di una · Fai clic su un comando, poi trascinalo · Le frecce spostano di poco · Esc annulla", "nl": "Sleep een eiland om het te verplaatsen · Ctrl + klik om er meerdere te kiezen · Klik op een knop en sleep hem dan · Pijltjestoetsen schuiven · Esc annuleert", "pl": "Przeciągnij wyspę, aby ją przenieść · Ctrl + klik, aby wybrać kilka · Kliknij przycisk, a potem go przeciągnij · Strzałki przesuwają · Esc anuluje", "ru": "Перетащите остров, чтобы переместить его · Ctrl + щелчок — выбрать несколько · Щёлкните элемент, затем перетащите его · Стрелки сдвигают · Esc — отмена", "tr": "Taşımak için adayı sürükleyin · Birden fazla seçmek için Ctrl + tıklayın · Bir kontrole tıklayın, sonra sürükleyin · Ok tuşları kaydırır · Esc iptal eder"},"Click a control to split, replace or hide it":{"el":"Κάντε κλικ σε ένα χειριστήριο για διαχωρισμό, αντικατάσταση ή απόκρυψη","es":"Haz clic en un control para dividir, reemplazar u ocultarlo","pt":"Clique num controlo para dividir, substituir ou ocultar","fr":"Cliquez sur une commande pour séparer, remplacer ou masquer","de":"Bedienelement anklicken zum Teilen, Ersetzen oder Ausblenden","it":"Fai clic su un comando per dividere, sostituire o nasconderlo","nl":"Klik op een knop om te splitsen, te vervangen of te verbergen","pl":"Kliknij przycisk, aby podzielić, zastąpić lub ukryć","ru":"Щёлкните элемент, чтобы разделить, заменить или скрыть","tr":"Bölmek, değiştirmek ya da gizlemek için bir kontrole tıklayın"},"Replace with…":{"el":"Αντικατάσταση με…","es":"Reemplazar por…","pt":"Substituir por…","fr":"Remplacer par…","de":"Ersetzen durch…","it":"Sostituisci con…","nl":"Vervangen door…","pl":"Zastąp…","ru":"Заменить на…","tr":"Şununla değiştir…"},"Choose what goes in its place":{"el":"Επιλέξτε τι μπαίνει στη θέση του","es":"Elige qué va en su lugar","pt":"Escolha o que fica no seu lugar","fr":"Choisissez ce qui prend sa place","de":"Wähle, was an seine Stelle kommt","it":"Scegli cosa va al suo posto","nl":"Kies wat er op zijn plek komt","pl":"Wybierz, co trafi na jego miejsce","ru":"Выберите, что будет на его месте","tr":"Yerine ne geleceğini seçin"},"{0} replaced with {1}":{"el":"Το {0} αντικαταστάθηκε από το {1}","es":"{0} reemplazado por {1}","pt":"{0} substituído por {1}","fr":"{0} remplacé par {1}","de":"{0} durch {1} ersetzt","it":"{0} sostituito con {1}","nl":"{0} vervangen door {1}","pl":"{0} zastąpiono przez {1}","ru":"{0} заменён на {1}","tr":"{0}, {1} ile değiştirildi"},"{0} selected · drag it to move it":{"el":"Επιλέχθηκε: {0} · σύρετέ το για μετακίνηση","es":"{0} seleccionado · arrástralo para moverlo","pt":"{0} selecionado · arraste-o para o mover","fr":"{0} sélectionné · faites-le glisser pour le déplacer","de":"{0} ausgewählt · zum Verschieben ziehen","it":"{0} selezionato · trascinalo per spostarlo","nl":"{0} geselecteerd · sleep om te verplaatsen","pl":"Wybrano {0} · przeciągnij, aby przenieść","ru":"Выбрано: {0} · перетащите, чтобы переместить","tr":"{0} seçildi · taşımak için sürükleyin"}});
+  Object.assign(arrangeStrings, {"Rename":{"el":"Μετονομασία","es":"Renombrar","pt":"Mudar nome","fr":"Renommer","de":"Umbenennen","it":"Rinomina","nl":"Naam wijzigen","pl":"Zmień nazwę","ru":"Переименовать","tr":"Yeniden adlandır"},"Island name":{"el":"Όνομα νησίδας","es":"Nombre de la isla","pt":"Nome da ilha","fr":"Nom de l'îlot","de":"Inselname","it":"Nome dell'isola","nl":"Naam van het eiland","pl":"Nazwa wyspy","ru":"Название острова","tr":"Ada adı"},"Island renamed":{"el":"Η νησίδα μετονομάστηκε","es":"Isla renombrada","pt":"Ilha com novo nome","fr":"Îlot renommé","de":"Insel umbenannt","it":"Isola rinominata","nl":"Eiland hernoemd","pl":"Zmieniono nazwę wyspy","ru":"Остров переименован","tr":"Ada yeniden adlandırıldı"},"Double-click the name tag to rename":{"el":"Διπλό κλικ στην ετικέτα ονόματος για μετονομασία","es":"Doble clic en la etiqueta para renombrar","pt":"Duplo clique na etiqueta para mudar o nome","fr":"Double-cliquez sur l'étiquette pour renommer","de":"Doppelklick auf das Namensschild zum Umbenennen","it":"Doppio clic sull'etichetta per rinominare","nl":"Dubbelklik op het naamlabel om te hernoemen","pl":"Kliknij dwukrotnie etykietę, aby zmienić nazwę","ru":"Дважды щёлкните ярлык, чтобы переименовать","tr":"Yeniden adlandırmak için ad etiketine çift tıklayın"}});
+  // Strings for the Studio right-click menu on the map.
+  const contextMenuStrings = {"{0} islands": {"el": "{0} νησίδες", "es": "{0} islas", "pt": "{0} ilhas", "fr": "{0} îlots", "de": "{0} Inseln", "it": "{0} isole", "nl": "{0} eilanden", "pl": "Wyspy: {0}", "ru": "Островов: {0}", "tr": "{0} ada"}, "{0} islands selected · drag one to move them together": {"el": "{0} νησίδες επιλέχθηκαν · σύρετε μία για να τις μετακινήσετε μαζί", "es": "{0} islas seleccionadas · arrastra una para moverlas juntas", "pt": "{0} ilhas selecionadas · arraste uma para as mover juntas", "fr": "{0} îlots sélectionnés · faites-en glisser un pour les déplacer ensemble", "de": "{0} Inseln ausgewählt · eine ziehen, um alle zusammen zu verschieben", "it": "{0} isole selezionate · trascinane una per spostarle insieme", "nl": "{0} eilanden geselecteerd · sleep er een om ze samen te verplaatsen", "pl": "Zaznaczone wyspy: {0} · przeciągnij jedną, aby przenieść je razem", "ru": "Выбрано островов: {0} · перетащите один, чтобы двигать их вместе", "tr": "{0} ada seçildi · birlikte taşımak için birini sürükleyin"}, "{0} islands moved · Save layout to keep it": {"el": "{0} νησίδες μετακινήθηκαν · Αποθηκεύστε τη διάταξη για να μείνει", "es": "{0} islas movidas · Guarda el diseño para conservarlo", "pt": "{0} ilhas movidas · Guarde a disposição para a manter", "fr": "{0} îlots déplacés · Enregistrez la disposition pour la garder", "de": "{0} Inseln verschoben · Layout speichern, um es zu behalten", "it": "{0} isole spostate · Salva il layout per mantenerlo", "nl": "{0} eilanden verplaatst · Sla de indeling op om die te bewaren", "pl": "Przeniesiono wyspy: {0} · Zapisz układ, aby go zachować", "ru": "Перемещено островов: {0} · Сохраните раскладку, чтобы оставить её", "tr": "{0} ada taşındı · Korumak için düzeni kaydedin"},"Copy street name": {"el": "Αντιγραφή ονόματος οδού", "es": "Copiar nombre de la calle", "pt": "Copiar nome da rua", "fr": "Copier le nom de la rue", "de": "Straßennamen kopieren", "it": "Copia nome della via", "nl": "Straatnaam kopiëren", "pl": "Kopiuj nazwę ulicy", "ru": "Копировать название улицы", "tr": "Sokak adını kopyala"}, "Copy street names": {"el": "Αντιγραφή ονομάτων οδών", "es": "Copiar nombres de las calles", "pt": "Copiar nomes das ruas", "fr": "Copier les noms des rues", "de": "Straßennamen kopieren", "it": "Copia nomi delle vie", "nl": "Straatnamen kopiëren", "pl": "Kopiuj nazwy ulic", "ru": "Копировать названия улиц", "tr": "Sokak adlarını kopyala"}, "Street name copied": {"el": "Το όνομα οδού αντιγράφηκε", "es": "Nombre de la calle copiado", "pt": "Nome da rua copiado", "fr": "Nom de la rue copié", "de": "Straßenname kopiert", "it": "Nome della via copiato", "nl": "Straatnaam gekopieerd", "pl": "Skopiowano nazwę ulicy", "ru": "Название улицы скопировано", "tr": "Sokak adı kopyalandı"}, "Copy name": {"el": "Αντιγραφή ονόματος", "es": "Copiar nombre", "pt": "Copiar nome", "fr": "Copier le nom", "de": "Namen kopieren", "it": "Copia nome", "nl": "Naam kopiëren", "pl": "Kopiuj nazwę", "ru": "Копировать название", "tr": "Adı kopyala"}, "Copy names": {"el": "Αντιγραφή ονομάτων", "es": "Copiar nombres", "pt": "Copiar nomes", "fr": "Copier les noms", "de": "Namen kopieren", "it": "Copia nomi", "nl": "Namen kopiëren", "pl": "Kopiuj nazwy", "ru": "Копировать названия", "tr": "Adları kopyala"}, "Name copied": {"el": "Το όνομα αντιγράφηκε", "es": "Nombre copiado", "pt": "Nome copiado", "fr": "Nom copié", "de": "Name kopiert", "it": "Nome copiato", "nl": "Naam gekopieerd", "pl": "Skopiowano nazwę", "ru": "Название скопировано", "tr": "Ad kopyalandı"}, "Map options here": {"el": "Επιλογές χάρτη εδώ", "es": "Opciones del mapa aquí", "pt": "Opções do mapa aqui", "fr": "Options de carte ici", "de": "Kartenoptionen hier", "it": "Opzioni mappa qui", "nl": "Kaartopties hier", "pl": "Opcje mapy tutaj", "ru": "Действия с картой здесь", "tr": "Buradaki harita seçenekleri"},"Copy coordinates": {"el": "Αντιγραφή συντεταγμένων", "es": "Copiar coordenadas", "pt": "Copiar coordenadas", "fr": "Copier les coordonnées", "de": "Koordinaten kopieren", "it": "Copia coordinate", "nl": "Coördinaten kopiëren", "pl": "Kopiuj współrzędne", "ru": "Копировать координаты", "tr": "Koordinatları kopyala"}, "Copy permalink": {"el": "Αντιγραφή μόνιμου συνδέσμου", "es": "Copiar enlace permanente", "pt": "Copiar ligação permanente", "fr": "Copier le permalien", "de": "Permalink kopieren", "it": "Copia permalink", "nl": "Permalink kopiëren", "pl": "Kopiuj permalink", "ru": "Копировать постоянную ссылку", "tr": "Kalıcı bağlantıyı kopyala"}, "Center map here": {"el": "Κεντράρισμα χάρτη εδώ", "es": "Centrar el mapa aquí", "pt": "Centrar o mapa aqui", "fr": "Centrer la carte ici", "de": "Karte hier zentrieren", "it": "Centra la mappa qui", "nl": "Kaart hier centreren", "pl": "Wyśrodkuj mapę tutaj", "ru": "Центрировать карту здесь", "tr": "Haritayı buraya ortala"}, "Zoom in here": {"el": "Μεγέθυνση εδώ", "es": "Acercar aquí", "pt": "Aproximar aqui", "fr": "Zoomer ici", "de": "Hier vergrößern", "it": "Ingrandisci qui", "nl": "Hier inzoomen", "pl": "Przybliż tutaj", "ru": "Приблизить здесь", "tr": "Buraya yakınlaştır"}, "Open in Google Maps": {"el": "Άνοιγμα στους Χάρτες Google", "es": "Abrir en Google Maps", "pt": "Abrir no Google Maps", "fr": "Ouvrir dans Google Maps", "de": "In Google Maps öffnen", "it": "Apri in Google Maps", "nl": "Openen in Google Maps", "pl": "Otwórz w Mapach Google", "ru": "Открыть в Google Картах", "tr": "Google Haritalar'da aç"}, "Open here in a new tab": {"el": "Άνοιγμα εδώ σε νέα καρτέλα", "es": "Abrir aquí en una pestaña nueva", "pt": "Abrir aqui num novo separador", "fr": "Ouvrir ici dans un nouvel onglet", "de": "Hier in neuem Tab öffnen", "it": "Apri qui in una nuova scheda", "nl": "Hier openen in een nieuw tabblad", "pl": "Otwórz tutaj w nowej karcie", "ru": "Открыть здесь в новой вкладке", "tr": "Burayı yeni sekmede aç"}, "Selection": {"el": "Επιλογή", "es": "Selección", "pt": "Seleção", "fr": "Sélection", "de": "Auswahl", "it": "Selezione", "nl": "Selectie", "pl": "Zaznaczenie", "ru": "Выделение", "tr": "Seçim"}, "Copy IDs": {"el": "Αντιγραφή ID", "es": "Copiar ID", "pt": "Copiar IDs", "fr": "Copier les ID", "de": "IDs kopieren", "it": "Copia ID", "nl": "ID’s kopiëren", "pl": "Kopiuj ID", "ru": "Копировать ID", "tr": "ID'leri kopyala"}, "Copy ID": {"el": "Αντιγραφή ID", "es": "Copiar ID", "pt": "Copiar ID", "fr": "Copier l’ID", "de": "ID kopieren", "it": "Copia ID", "nl": "ID kopiëren", "pl": "Kopiuj ID", "ru": "Копировать ID", "tr": "ID'yi kopyala"}, "Zoom to selection": {"el": "Εστίαση στην επιλογή", "es": "Ir a la selección", "pt": "Ir para a seleção", "fr": "Zoomer sur la sélection", "de": "Auf Auswahl zoomen", "it": "Zoom sulla selezione", "nl": "Inzoomen op selectie", "pl": "Przybliż do zaznaczenia", "ru": "Показать выделение", "tr": "Seçime yakınlaştır"}, "Deselect": {"el": "Αποεπιλογή", "es": "Deseleccionar", "pt": "Desmarcar", "fr": "Désélectionner", "de": "Auswahl aufheben", "it": "Deseleziona", "nl": "Selectie opheffen", "pl": "Odznacz", "ru": "Снять выделение", "tr": "Seçimi kaldır"}, "Editor": {"el": "Επεξεργαστής", "es": "Editor", "pt": "Editor", "fr": "Éditeur", "de": "Editor", "it": "Editor", "nl": "Editor", "pl": "Edytor", "ru": "Редактор", "tr": "Düzenleyici"}, "Undo": {"el": "Αναίρεση", "es": "Deshacer", "pt": "Anular", "fr": "Annuler", "de": "Rückgängig", "it": "Annulla", "nl": "Ongedaan maken", "pl": "Cofnij", "ru": "Отменить", "tr": "Geri al"}, "Redo": {"el": "Επανάληψη", "es": "Rehacer", "pt": "Refazer", "fr": "Rétablir", "de": "Wiederholen", "it": "Ripeti", "nl": "Opnieuw", "pl": "Ponów", "ru": "Повторить", "tr": "Yinele"}, "Save": {"el": "Αποθήκευση", "es": "Guardar", "pt": "Guardar", "fr": "Enregistrer", "de": "Speichern", "it": "Salva", "nl": "Opslaan", "pl": "Zapisz", "ru": "Сохранить", "tr": "Kaydet"}, "Refresh map data": {"el": "Ανανέωση δεδομένων χάρτη", "es": "Actualizar datos del mapa", "pt": "Atualizar dados do mapa", "fr": "Actualiser les données de la carte", "de": "Kartendaten aktualisieren", "it": "Aggiorna dati mappa", "nl": "Kaartgegevens vernieuwen", "pl": "Odśwież dane mapy", "ru": "Обновить данные карты", "tr": "Harita verilerini yenile"}, "Reload editor here": {"el": "Επαναφόρτωση επεξεργαστή εδώ", "es": "Recargar el editor aquí", "pt": "Recarregar o editor aqui", "fr": "Recharger l’éditeur ici", "de": "Editor hier neu laden", "it": "Ricarica l’editor qui", "nl": "Editor hier herladen", "pl": "Przeładuj edytor tutaj", "ru": "Перезагрузить редактор здесь", "tr": "Düzenleyiciyi burada yeniden yükle"}, "Studio": {"el": "Studio", "es": "Studio", "pt": "Studio", "fr": "Studio", "de": "Studio", "it": "Studio", "nl": "Studio", "pl": "Studio", "ru": "Studio", "tr": "Studio"}, "Floating mode": {"el": "Αιωρούμενη λειτουργία", "es": "Modo flotante", "pt": "Modo flutuante", "fr": "Mode flottant", "de": "Schwebender Modus", "it": "Modalità fluttuante", "nl": "Zwevende modus", "pl": "Tryb pływający", "ru": "Плавающий режим", "tr": "Yüzen mod"}, "Command palette": {"el": "Παλέτα εντολών", "es": "Paleta de comandos", "pt": "Paleta de comandos", "fr": "Palette de commandes", "de": "Befehlspalette", "it": "Tavolozza comandi", "nl": "Opdrachtpalet", "pl": "Paleta poleceń", "ru": "Палитра команд", "tr": "Komut paleti"}, "Studio settings": {"el": "Ρυθμίσεις Studio", "es": "Ajustes de Studio", "pt": "Definições do Studio", "fr": "Paramètres de Studio", "de": "Studio-Einstellungen", "it": "Impostazioni di Studio", "nl": "Studio-instellingen", "pl": "Ustawienia Studio", "ru": "Настройки Studio", "tr": "Studio ayarları"}, "Shift + right-click opens the browser menu.": {"el": "Το Shift + δεξί κλικ ανοίγει το μενού του προγράμματος περιήγησης.", "es": "Mayús + clic derecho abre el menú del navegador.", "pt": "Shift + clique direito abre o menu do navegador.", "fr": "Maj + clic droit ouvre le menu du navigateur.", "de": "Umschalt + Rechtsklick öffnet das Browsermenü.", "it": "Maiusc + clic destro apre il menu del browser.", "nl": "Shift + rechtsklik opent het browsermenu.", "pl": "Shift + prawy przycisk otwiera menu przeglądarki.", "ru": "Shift + правый клик открывает меню браузера.", "tr": "Shift + sağ tık tarayıcı menüsünü açar."}, "Map": {"el": "Χάρτης", "es": "Mapa", "pt": "Mapa", "fr": "Carte", "de": "Karte", "it": "Mappa", "nl": "Kaart", "pl": "Mapa", "ru": "Карта", "tr": "Harita"}, "Map menu": {"el": "Μενού χάρτη", "es": "Menú del mapa", "pt": "Menu do mapa", "fr": "Menu de la carte", "de": "Kartenmenü", "it": "Menu della mappa", "nl": "Kaartmenu", "pl": "Menu mapy", "ru": "Меню карты", "tr": "Harita menüsü"}, "Segment": {"el": "Τμήμα", "es": "Segmento", "pt": "Segmento", "fr": "Segment", "de": "Segment", "it": "Segmento", "nl": "Segment", "pl": "Segment", "ru": "Сегмент", "tr": "Segment"}, "{0} segments": {"el": "{0} τμήματα", "es": "{0} segmentos", "pt": "{0} segmentos", "fr": "{0} segments", "de": "{0} Segmente", "it": "{0} segmenti", "nl": "{0} segmenten", "pl": "Segmenty: {0}", "ru": "Сегментов: {0}", "tr": "{0} segment"}, "Place": {"el": "Μέρος", "es": "Lugar", "pt": "Local", "fr": "Lieu", "de": "Ort", "it": "Luogo", "nl": "Plaats", "pl": "Miejsce", "ru": "Место", "tr": "Yer"}, "{0} places": {"el": "{0} μέρη", "es": "{0} lugares", "pt": "{0} locais", "fr": "{0} lieux", "de": "{0} Orte", "it": "{0} luoghi", "nl": "{0} plaatsen", "pl": "Miejsca: {0}", "ru": "Мест: {0}", "tr": "{0} yer"}, "Junction": {"el": "Κόμβος", "es": "Cruce", "pt": "Cruzamento", "fr": "Jonction", "de": "Knoten", "it": "Incrocio", "nl": "Knooppunt", "pl": "Węzeł", "ru": "Узел", "tr": "Kavşak"}, "{0} junctions": {"el": "{0} κόμβοι", "es": "{0} cruces", "pt": "{0} cruzamentos", "fr": "{0} jonctions", "de": "{0} Knoten", "it": "{0} incroci", "nl": "{0} knooppunten", "pl": "Węzły: {0}", "ru": "Узлов: {0}", "tr": "{0} kavşak"}, "Map comment": {"el": "Σχόλιο χάρτη", "es": "Comentario del mapa", "pt": "Comentário no mapa", "fr": "Commentaire de carte", "de": "Kartenkommentar", "it": "Commento sulla mappa", "nl": "Kaartopmerking", "pl": "Komentarz na mapie", "ru": "Комментарий на карте", "tr": "Harita yorumu"}, "{0} map comments": {"el": "{0} σχόλια χάρτη", "es": "{0} comentarios del mapa", "pt": "{0} comentários no mapa", "fr": "{0} commentaires de carte", "de": "{0} Kartenkommentare", "it": "{0} commenti sulla mappa", "nl": "{0} kaartopmerkingen", "pl": "Komentarze na mapie: {0}", "ru": "Комментариев на карте: {0}", "tr": "{0} harita yorumu"}, "Junction box": {"el": "Κουτί κόμβου", "es": "Caja de cruce", "pt": "Caixa de cruzamento", "fr": "Boîte de jonction", "de": "Kreuzungsbox", "it": "Junction box", "nl": "Junction box", "pl": "Junction box", "ru": "Junction box", "tr": "Kavşak kutusu"}, "{0} junction boxes": {"el": "{0} κουτιά κόμβων", "es": "{0} cajas de cruce", "pt": "{0} caixas de cruzamento", "fr": "{0} boîtes de jonction", "de": "{0} Kreuzungsboxen", "it": "{0} junction box", "nl": "{0} junction boxes", "pl": "Junction boxy: {0}", "ru": "Junction box: {0}", "tr": "{0} kavşak kutusu"}, "Selected item": {"el": "Επιλεγμένο στοιχείο", "es": "Elemento seleccionado", "pt": "Item selecionado", "fr": "Élément sélectionné", "de": "Ausgewähltes Objekt", "it": "Elemento selezionato", "nl": "Geselecteerd item", "pl": "Zaznaczony element", "ru": "Выбранный объект", "tr": "Seçili öğe"}, "{0} selected": {"el": "{0} επιλεγμένα", "es": "{0} seleccionados", "pt": "{0} selecionados", "fr": "{0} sélectionnés", "de": "{0} ausgewählt", "it": "{0} selezionati", "nl": "{0} geselecteerd", "pl": "Zaznaczono: {0}", "ru": "Выбрано: {0}", "tr": "{0} seçili"}, "Coordinates copied": {"el": "Οι συντεταγμένες αντιγράφηκαν", "es": "Coordenadas copiadas", "pt": "Coordenadas copiadas", "fr": "Coordonnées copiées", "de": "Koordinaten kopiert", "it": "Coordinate copiate", "nl": "Coördinaten gekopieerd", "pl": "Skopiowano współrzędne", "ru": "Координаты скопированы", "tr": "Koordinatlar kopyalandı"}, "Permalink copied": {"el": "Ο μόνιμος σύνδεσμος αντιγράφηκε", "es": "Enlace permanente copiado", "pt": "Ligação permanente copiada", "fr": "Permalien copié", "de": "Permalink kopiert", "it": "Permalink copiato", "nl": "Permalink gekopieerd", "pl": "Skopiowano permalink", "ru": "Ссылка скопирована", "tr": "Kalıcı bağlantı kopyalandı"}, "IDs copied": {"el": "Τα ID αντιγράφηκαν", "es": "ID copiados", "pt": "IDs copiados", "fr": "ID copiés", "de": "IDs kopiert", "it": "ID copiati", "nl": "ID’s gekopieerd", "pl": "Skopiowano ID", "ru": "ID скопированы", "tr": "ID'ler kopyalandı"}, "ID copied": {"el": "Το ID αντιγράφηκε", "es": "ID copiado", "pt": "ID copiado", "fr": "ID copié", "de": "ID kopiert", "it": "ID copiato", "nl": "ID gekopieerd", "pl": "Skopiowano ID", "ru": "ID скопирован", "tr": "ID kopyalandı"}, "Could not copy": {"el": "Η αντιγραφή απέτυχε", "es": "No se pudo copiar", "pt": "Não foi possível copiar", "fr": "Copie impossible", "de": "Kopieren fehlgeschlagen", "it": "Impossibile copiare", "nl": "Kopiëren mislukt", "pl": "Nie udało się skopiować", "ru": "Не удалось скопировать", "tr": "Kopyalanamadı"}, "Selection is not loaded": {"el": "Η επιλογή δεν έχει φορτωθεί", "es": "La selección no está cargada", "pt": "A seleção não está carregada", "fr": "La sélection n’est pas chargée", "de": "Die Auswahl ist nicht geladen", "it": "La selezione non è caricata", "nl": "De selectie is niet geladen", "pl": "Zaznaczenie nie jest wczytane", "ru": "Выделение не загружено", "tr": "Seçim yüklenmedi"}, "That did not work": {"el": "Αυτό δεν λειτούργησε", "es": "No ha funcionado", "pt": "Não funcionou", "fr": "Cela n’a pas fonctionné", "de": "Das hat nicht funktioniert", "it": "Non ha funzionato", "nl": "Dat is niet gelukt", "pl": "To nie zadziałało", "ru": "Не получилось", "tr": "Bu işe yaramadı"}, "Right-click": {"el": "Δεξί κλικ", "es": "Clic derecho", "pt": "Clique direito", "fr": "Clic droit", "de": "Rechtsklick", "it": "Clic destro", "nl": "Rechtsklik", "pl": "Prawy przycisk", "ru": "Правый клик", "tr": "Sağ tık"}, "Studio right-click menu": {"el": "Μενού δεξιού κλικ του Studio", "es": "Menú de clic derecho de Studio", "pt": "Menu de clique direito do Studio", "fr": "Menu clic droit de Studio", "de": "Studio-Rechtsklickmenü", "it": "Menu clic destro di Studio", "nl": "Studio-rechtsklikmenu", "pl": "Menu prawego przycisku Studio", "ru": "Контекстное меню Studio", "tr": "Studio sağ tık menüsü"}, "Right-click the map for coordinates, links, selection and editor actions, and Studio shortcuts. Shift + right-click opens the browser menu. While on, it is used instead of the RightClick Functions menu.": {"el": "Κάντε δεξί κλικ στον χάρτη για συντεταγμένες, συνδέσμους, ενέργειες επιλογής και επεξεργαστή, και συντομεύσεις του Studio. Το Shift + δεξί κλικ ανοίγει το μενού του προγράμματος περιήγησης. Όσο είναι ενεργό, χρησιμοποιείται αντί για το μενού του RightClick Functions.", "es": "Haz clic derecho en el mapa para coordenadas, enlaces, acciones de selección y del editor, y atajos de Studio. Mayús + clic derecho abre el menú del navegador. Mientras está activo, se usa en lugar del menú de RightClick Functions.", "pt": "Clique com o botão direito no mapa para coordenadas, ligações, ações de seleção e do editor, e atalhos do Studio. Shift + clique direito abre o menu do navegador. Enquanto ativo, é usado em vez do menu do RightClick Functions.", "fr": "Faites un clic droit sur la carte pour les coordonnées, les liens, les actions de sélection et d’édition, et les raccourcis de Studio. Maj + clic droit ouvre le menu du navigateur. Lorsqu’il est activé, il remplace le menu de RightClick Functions.", "de": "Rechtsklick auf die Karte für Koordinaten, Links, Auswahl- und Editoraktionen sowie Studio-Verknüpfungen. Umschalt + Rechtsklick öffnet das Browsermenü. Solange es aktiv ist, ersetzt es das Menü von RightClick Functions.", "it": "Fai clic destro sulla mappa per coordinate, link, azioni di selezione e dell’editor e scorciatoie di Studio. Maiusc + clic destro apre il menu del browser. Quando è attivo, sostituisce il menu di RightClick Functions.", "nl": "Klik met rechts op de kaart voor coördinaten, links, selectie- en editoracties en Studio-snelkoppelingen. Shift + rechtsklik opent het browsermenu. Zolang dit aan staat, vervangt het het menu van RightClick Functions.", "pl": "Kliknij mapę prawym przyciskiem, aby uzyskać współrzędne, linki, działania zaznaczenia i edytora oraz skróty Studio. Shift + prawy przycisk otwiera menu przeglądarki. Gdy jest włączone, zastępuje menu RightClick Functions.", "ru": "Щёлкните правой кнопкой по карте, чтобы получить координаты, ссылки, действия с выделением и редактором и быстрые команды Studio. Shift + правый клик открывает меню браузера. Пока меню включено, оно заменяет меню RightClick Functions.", "tr": "Koordinatlar, bağlantılar, seçim ve düzenleyici işlemleri ile Studio kısayolları için haritaya sağ tıklayın. Shift + sağ tık tarayıcı menüsünü açar. Açıkken RightClick Functions menüsünün yerine kullanılır."}};
+  Object.assign(contextMenuStrings, {"Something not right?": {"el": "Κάτι δεν πάει καλά;", "es": "¿Algo no va bien?", "pt": "Algo não está bem?", "fr": "Quelque chose ne va pas ?", "de": "Stimmt etwas nicht?", "it": "Qualcosa non va?", "nl": "Klopt er iets niet?", "pl": "Coś nie działa?", "ru": "Что-то не так?", "tr": "Bir sorun mu var?"}, "Copy the details instead": {"el": "Αντιγραφή των στοιχείων", "es": "Copiar los detalles", "pt": "Copiar os detalhes", "fr": "Copier les détails", "de": "Details kopieren", "it": "Copia i dettagli", "nl": "Details kopiëren", "pl": "Skopiuj szczegóły", "ru": "Скопировать детали", "tr": "Ayrıntıları kopyala"}, "Copies the same technical details as text, for a forum post or a message.": {"el": "Αντιγράφει τα ίδια τεχνικά στοιχεία ως κείμενο, για ένα μήνυμα ή μια ανάρτηση στο φόρουμ.", "es": "Copia los mismos datos técnicos como texto, para un mensaje o una publicación en el foro.", "pt": "Copia os mesmos dados técnicos como texto, para uma mensagem ou publicação no fórum.", "fr": "Copie les mêmes détails techniques en texte, pour un message ou un sujet de forum.", "de": "Kopiert dieselben technischen Details als Text, für einen Forenbeitrag oder eine Nachricht.", "it": "Copia gli stessi dettagli tecnici come testo, per un messaggio o un post sul forum.", "nl": "Kopieert dezelfde technische details als tekst, voor een forumbericht of een chat.", "pl": "Kopiuje te same dane techniczne jako tekst, do posta na forum lub wiadomości.", "ru": "Копирует те же технические данные текстом — для сообщения или поста на форуме.", "tr": "Aynı teknik ayrıntıları forum gönderisi veya mesaj için metin olarak kopyalar."}, "Before you report": {"el": "Πριν την αναφορά", "es": "Antes de informar", "pt": "Antes de comunicar", "fr": "Avant de signaler", "de": "Vor dem Melden", "it": "Prima di segnalare", "nl": "Voordat je meldt", "pl": "Zanim zgłosisz", "ru": "Перед отправкой", "tr": "Bildirmeden önce"}, "Reload the editor once.": {"el": "Ανανεώστε μία φορά τον editor.", "es": "Recarga el editor una vez.", "pt": "Recarregue o editor uma vez.", "fr": "Rechargez l’éditeur une fois.", "de": "Lade den Editor einmal neu.", "it": "Ricarica l’editor una volta.", "nl": "Herlaad de editor één keer.", "pl": "Przeładuj edytor raz.", "ru": "Перезагрузите редактор один раз.", "tr": "Editörü bir kez yeniden yükleyin."}, "Most odd layouts come from the editor and Studio starting in a different order.": {"el": "Οι περισσότερες παράξενες διατάξεις προέρχονται από διαφορετική σειρά εκκίνησης του editor και του Studio.", "es": "La mayoría de los diseños raros se deben a que el editor y Studio arrancan en distinto orden.", "pt": "A maioria das disposições estranhas vem de o editor e o Studio arrancarem por ordens diferentes.", "fr": "La plupart des mises en page étranges viennent d’un ordre de démarrage différent entre l’éditeur et Studio.", "de": "Die meisten seltsamen Layouts entstehen, wenn Editor und Studio in anderer Reihenfolge starten.", "it": "Molti layout strani dipendono dall’ordine di avvio di editor e Studio.", "nl": "De meeste vreemde lay-outs ontstaan doordat de editor en Studio in een andere volgorde starten.", "pl": "Większość dziwnych układów bierze się z innej kolejności startu edytora i Studio.", "ru": "Большинство странных раскладок возникает из-за другого порядка запуска редактора и Studio.", "tr": "Garip düzenlerin çoğu editör ile Studio’nun farklı sırada başlamasından kaynaklanır."}, "Try with other scripts paused.": {"el": "Δοκιμάστε με τα άλλα σενάρια σε παύση.", "es": "Prueba con los demás scripts en pausa.", "pt": "Experimente com os outros scripts em pausa.", "fr": "Essayez avec les autres scripts en pause.", "de": "Probiere es mit pausierten anderen Skripten.", "it": "Prova con gli altri script in pausa.", "nl": "Probeer het met andere scripts gepauzeerd.", "pl": "Spróbuj z wstrzymanymi innymi skryptami.", "ru": "Попробуйте с приостановленными другими скриптами.", "tr": "Diğer betikler duraklatılmışken deneyin."}, "If the problem goes away, say which script was on.": {"el": "Αν το πρόβλημα εξαφανιστεί, πείτε ποιο σενάριο ήταν ενεργό.", "es": "Si el problema desaparece, indica qué script estaba activo.", "pt": "Se o problema desaparecer, diga qual script estava ativo.", "fr": "Si le problème disparaît, indiquez quel script était actif.", "de": "Verschwindet das Problem, nenne das Skript, das an war.", "it": "Se il problema sparisce, indica quale script era attivo.", "nl": "Verdwijnt het probleem, noem dan welk script aan stond.", "pl": "Jeśli problem zniknie, napisz, który skrypt był włączony.", "ru": "Если проблема исчезнет, укажите, какой скрипт был включён.", "tr": "Sorun kaybolursa hangi betiğin açık olduğunu belirtin."}, "Add a screenshot.": {"el": "Προσθέστε στιγμιότυπο οθόνης.", "es": "Añade una captura de pantalla.", "pt": "Junte uma captura de ecrã.", "fr": "Ajoutez une capture d’écran.", "de": "Füge einen Screenshot hinzu.", "it": "Aggiungi uno screenshot.", "nl": "Voeg een schermafbeelding toe.", "pl": "Dodaj zrzut ekranu.", "ru": "Добавьте снимок экрана.", "tr": "Ekran görüntüsü ekleyin."}, "A picture of the problem is worth a paragraph.": {"el": "Μια εικόνα του προβλήματος αξίζει όσο μια παράγραφος.", "es": "Una imagen del problema vale por un párrafo.", "pt": "Uma imagem do problema vale por um parágrafo.", "fr": "Une image du problème vaut un paragraphe.", "de": "Ein Bild des Problems sagt mehr als ein Absatz.", "it": "Un’immagine del problema vale un paragrafo.", "nl": "Een afbeelding van het probleem zegt meer dan een alinea.", "pl": "Obraz problemu wart jest całego akapitu.", "ru": "Снимок проблемы стоит целого абзаца.", "tr": "Sorunun resmi bir paragrafa bedeldir."}, "What happened?": {"el": "Τι συνέβη;", "es": "¿Qué pasó?", "pt": "O que aconteceu?", "fr": "Que s’est-il passé ?", "de": "Was ist passiert?", "it": "Cosa è successo?", "nl": "Wat gebeurde er?", "pl": "Co się stało?", "ru": "Что произошло?", "tr": "Ne oldu?"}, "For example: after I moved the zoom buttons to the left, the + menu opens under the header.": {"el": "Για παράδειγμα: αφού μετακίνησα τα κουμπιά ζουμ αριστερά, το μενού + ανοίγει κάτω από την κεφαλίδα.", "es": "Por ejemplo: después de mover los botones de zoom a la izquierda, el menú + se abre debajo del encabezado.", "pt": "Por exemplo: depois de mover os botões de zoom para a esquerda, o menu + abre por baixo do cabeçalho.", "fr": "Par exemple : après avoir déplacé les boutons de zoom à gauche, le menu + s’ouvre sous l’en-tête.", "de": "Zum Beispiel: Nachdem ich die Zoom-Buttons nach links verschoben habe, öffnet sich das +-Menü unter der Kopfzeile.", "it": "Per esempio: dopo aver spostato i pulsanti di zoom a sinistra, il menu + si apre sotto l’intestazione.", "nl": "Bijvoorbeeld: nadat ik de zoomknoppen naar links verplaatste, opent het +-menu onder de kop.", "pl": "Na przykład: po przeniesieniu przycisków zoomu w lewo menu + otwiera się pod nagłówkiem.", "ru": "Например: после переноса кнопок зума влево меню + открывается под шапкой.", "tr": "Örneğin: yakınlaştırma düğmelerini sola taşıdıktan sonra + menüsü başlığın altında açılıyor."}, "Where": {"el": "Πού", "es": "Dónde", "pt": "Onde", "fr": "Où", "de": "Wo", "it": "Dove", "nl": "Waar", "pl": "Gdzie", "ru": "Где", "tr": "Nerede"}, "Floating mode and islands": {"el": "Αιωρούμενη λειτουργία και νησίδες", "es": "Modo flotante e islas", "pt": "Modo flutuante e ilhas", "fr": "Mode flottant et îlots", "de": "Schwebemodus und Inseln", "it": "Modalità fluttuante e isole", "nl": "Zwevende modus en eilanden", "pl": "Tryb pływający i wyspy", "ru": "Плавающий режим и острова", "tr": "Yüzen mod ve adalar"}, "Theme and colors": {"el": "Θέμα και χρώματα", "es": "Tema y colores", "pt": "Tema e cores", "fr": "Thème et couleurs", "de": "Design und Farben", "it": "Tema e colori", "nl": "Thema en kleuren", "pl": "Motyw i kolory", "ru": "Тема и цвета", "tr": "Tema ve renkler"}, "Panels and windows": {"el": "Πάνελ και παράθυρα", "es": "Paneles y ventanas", "pt": "Painéis e janelas", "fr": "Panneaux et fenêtres", "de": "Panels und Fenster", "it": "Pannelli e finestre", "nl": "Panelen en vensters", "pl": "Panele i okna", "ru": "Панели и окна", "tr": "Paneller ve pencereler"}, "Another script": {"el": "Άλλο σενάριο", "es": "Otro script", "pt": "Outro script", "fr": "Un autre script", "de": "Ein anderes Skript", "it": "Un altro script", "nl": "Een ander script", "pl": "Inny skrypt", "ru": "Другой скрипт", "tr": "Başka bir betik"}, "Speed": {"el": "Ταχύτητα", "es": "Velocidad", "pt": "Velocidade", "fr": "Vitesse", "de": "Geschwindigkeit", "it": "Velocità", "nl": "Snelheid", "pl": "Szybkość", "ru": "Скорость", "tr": "Hız"}, "Something else": {"el": "Κάτι άλλο", "es": "Otra cosa", "pt": "Outra coisa", "fr": "Autre chose", "de": "Etwas anderes", "it": "Altro", "nl": "Iets anders", "pl": "Coś innego", "ru": "Другое", "tr": "Başka bir şey"}, "(optional)": {"el": "(προαιρετικό)", "es": "(opcional)", "pt": "(opcional)", "fr": "(facultatif)", "de": "(optional)", "it": "(facoltativo)", "nl": "(optioneel)", "pl": "(opcjonalnie)", "ru": "(необязательно)", "tr": "(isteğe bağlı)"}, "Steps to see it again": {"el": "Βήματα για να εμφανιστεί ξανά", "es": "Pasos para verlo de nuevo", "pt": "Passos para o ver de novo", "fr": "Étapes pour le reproduire", "de": "Schritte, um es wieder zu sehen", "it": "Passaggi per riprodurlo", "nl": "Stappen om het opnieuw te zien", "pl": "Kroki, by zobaczyć to ponownie", "ru": "Шаги, чтобы повторить", "tr": "Tekrar görmek için adımlar"}, "Add a screenshot": {"el": "Προσθήκη στιγμιότυπου", "es": "Añadir captura", "pt": "Juntar captura", "fr": "Ajouter une capture", "de": "Screenshot hinzufügen", "it": "Aggiungi screenshot", "nl": "Schermafbeelding toevoegen", "pl": "Dodaj zrzut ekranu", "ru": "Добавить снимок", "tr": "Ekran görüntüsü ekle"}, "Optional. You can also paste or drop an image here.": {"el": "Προαιρετικό. Μπορείτε επίσης να επικολλήσετε ή να αφήσετε μια εικόνα εδώ.", "es": "Opcional. También puedes pegar o soltar una imagen aquí.", "pt": "Opcional. Também pode colar ou largar uma imagem aqui.", "fr": "Facultatif. Vous pouvez aussi coller ou déposer une image ici.", "de": "Optional. Du kannst hier auch ein Bild einfügen oder ablegen.", "it": "Facoltativo. Puoi anche incollare o trascinare qui un’immagine.", "nl": "Optioneel. Je kunt hier ook een afbeelding plakken of neerzetten.", "pl": "Opcjonalnie. Możesz też wkleić lub upuścić tu obraz.", "ru": "Необязательно. Можно также вставить или перетащить сюда картинку.", "tr": "İsteğe bağlı. Buraya bir görsel de yapıştırabilir veya bırakabilirsiniz."}, "Remove screenshot": {"el": "Αφαίρεση στιγμιότυπου", "es": "Quitar captura", "pt": "Remover captura", "fr": "Retirer la capture", "de": "Screenshot entfernen", "it": "Rimuovi screenshot", "nl": "Schermafbeelding verwijderen", "pl": "Usuń zrzut ekranu", "ru": "Убрать снимок", "tr": "Ekran görüntüsünü kaldır"}, "What else is sent": {"el": "Τι άλλο αποστέλλεται", "es": "Qué más se envía", "pt": "O que mais é enviado", "fr": "Ce qui est envoyé en plus", "de": "Was sonst noch gesendet wird", "it": "Cos’altro viene inviato", "nl": "Wat er nog meer wordt verstuurd", "pl": "Co jeszcze jest wysyłane", "ru": "Что ещё отправляется", "tr": "Başka neler gönderilir"}, "Send report": {"el": "Αποστολή αναφοράς", "es": "Enviar informe", "pt": "Enviar relatório", "fr": "Envoyer le rapport", "de": "Bericht senden", "it": "Invia il rapporto", "nl": "Rapport versturen", "pl": "Wyślij raport", "ru": "Отправить отчёт", "tr": "Raporu gönder"}, "Sending…": {"el": "Αποστολή…", "es": "Enviando…", "pt": "A enviar…", "fr": "Envoi…", "de": "Wird gesendet…", "it": "Invio…", "nl": "Versturen…", "pl": "Wysyłanie…", "ru": "Отправка…", "tr": "Gönderiliyor…"}, "Copy & open feedback page": {"el": "Αντιγραφή και άνοιγμα σελίδας σχολίων", "es": "Copiar y abrir la página de comentarios", "pt": "Copiar e abrir a página de comentários", "fr": "Copier et ouvrir la page de commentaires", "de": "Kopieren und Feedback-Seite öffnen", "it": "Copia e apri la pagina dei commenti", "nl": "Kopiëren en feedbackpagina openen", "pl": "Skopiuj i otwórz stronę opinii", "ru": "Скопировать и открыть страницу отзывов", "tr": "Kopyala ve geri bildirim sayfasını aç"}, "Sent to the author of WME Studio.": {"el": "Αποστέλλεται στον δημιουργό του WME Studio.", "es": "Se envía al autor de WME Studio.", "pt": "Enviado ao autor do WME Studio.", "fr": "Envoyé à l’auteur de WME Studio.", "de": "Geht an den Autor von WME Studio.", "it": "Inviato all’autore di WME Studio.", "nl": "Verstuurd naar de auteur van WME Studio.", "pl": "Wysyłane do autora WME Studio.", "ru": "Отправляется автору WME Studio.", "tr": "WME Studio’nun yazarına gönderilir."}, "Copied for the feedback page.": {"el": "Αντιγράφεται για τη σελίδα σχολίων.", "es": "Se copia para la página de comentarios.", "pt": "Copiado para a página de comentários.", "fr": "Copié pour la page de commentaires.", "de": "Wird für die Feedback-Seite kopiert.", "it": "Copiato per la pagina dei commenti.", "nl": "Gekopieerd voor de feedbackpagina.", "pl": "Kopiowane na stronę opinii.", "ru": "Копируется для страницы отзывов.", "tr": "Geri bildirim sayfası için kopyalanır."}, "Thank you!": {"el": "Ευχαριστούμε!", "es": "¡Gracias!", "pt": "Obrigado!", "fr": "Merci !", "de": "Danke!", "it": "Grazie!", "nl": "Bedankt!", "pl": "Dziękujemy!", "ru": "Спасибо!", "tr": "Teşekkürler!"}, "Your report #{0} was sent to the author of WME Studio.": {"el": "Η αναφορά σας #{0} στάλθηκε στον δημιουργό του WME Studio.", "es": "Tu informe #{0} se envió al autor de WME Studio.", "pt": "O seu relatório #{0} foi enviado ao autor do WME Studio.", "fr": "Votre rapport #{0} a été envoyé à l’auteur de WME Studio.", "de": "Dein Bericht #{0} wurde an den Autor von WME Studio gesendet.", "it": "Il tuo rapporto #{0} è stato inviato all’autore di WME Studio.", "nl": "Je rapport #{0} is naar de auteur van WME Studio verstuurd.", "pl": "Twój raport #{0} został wysłany do autora WME Studio.", "ru": "Ваш отчёт #{0} отправлен автору WME Studio.", "tr": "#{0} numaralı raporunuz WME Studio’nun yazarına gönderildi."}, "Your report was sent to the author of WME Studio.": {"el": "Η αναφορά σας στάλθηκε στον δημιουργό του WME Studio.", "es": "Tu informe se envió al autor de WME Studio.", "pt": "O seu relatório foi enviado ao autor do WME Studio.", "fr": "Votre rapport a été envoyé à l’auteur de WME Studio.", "de": "Dein Bericht wurde an den Autor von WME Studio gesendet.", "it": "Il tuo rapporto è stato inviato all’autore di WME Studio.", "nl": "Je rapport is naar de auteur van WME Studio verstuurd.", "pl": "Twój raport został wysłany do autora WME Studio.", "ru": "Ваш отчёт отправлен автору WME Studio.", "tr": "Raporunuz WME Studio’nun yazarına gönderildi."}, "The report is on your clipboard. Paste it into the feedback page that just opened.": {"el": "Η αναφορά είναι στο πρόχειρο. Επικολλήστε την στη σελίδα σχολίων που μόλις άνοιξε.", "es": "El informe está en el portapapeles. Pégalo en la página de comentarios que se acaba de abrir.", "pt": "O relatório está na área de transferência. Cole-o na página de comentários que acabou de abrir.", "fr": "Le rapport est dans le presse-papiers. Collez-le dans la page de commentaires qui vient de s’ouvrir.", "de": "Der Bericht ist in der Zwischenablage. Füge ihn auf der gerade geöffneten Feedback-Seite ein.", "it": "Il rapporto è negli appunti. Incollalo nella pagina dei commenti appena aperta.", "nl": "Het rapport staat op je klembord. Plak het op de zojuist geopende feedbackpagina.", "pl": "Raport jest w schowku. Wklej go na stronie opinii, która właśnie się otworzyła.", "ru": "Отчёт в буфере обмена. Вставьте его на открывшейся странице отзывов.", "tr": "Rapor panonuzda. Az önce açılan geri bildirim sayfasına yapıştırın."}, "The feedback page is open. Copy the report from \"What else is sent\" and paste it there.": {"el": "Η σελίδα σχολίων είναι ανοιχτή. Αντιγράψτε την αναφορά από το «Τι άλλο αποστέλλεται» και επικολλήστε την εκεί.", "es": "La página de comentarios está abierta. Copia el informe desde «Qué más se envía» y pégalo allí.", "pt": "A página de comentários está aberta. Copie o relatório em «O que mais é enviado» e cole-o lá.", "fr": "La page de commentaires est ouverte. Copiez le rapport depuis « Ce qui est envoyé en plus » et collez-le.", "de": "Die Feedback-Seite ist offen. Kopiere den Bericht aus „Was sonst noch gesendet wird“ und füge ihn dort ein.", "it": "La pagina dei commenti è aperta. Copia il rapporto da «Cos’altro viene inviato» e incollalo lì.", "nl": "De feedbackpagina is open. Kopieer het rapport uit ‘Wat er nog meer wordt verstuurd’ en plak het daar.", "pl": "Strona opinii jest otwarta. Skopiuj raport z „Co jeszcze jest wysyłane” i wklej go tam.", "ru": "Страница отзывов открыта. Скопируйте отчёт из «Что ещё отправляется» и вставьте туда.", "tr": "Geri bildirim sayfası açık. Raporu \"Başka neler gönderilir\" bölümünden kopyalayıp oraya yapıştırın."}, "Please say what happened first.": {"el": "Πείτε πρώτα τι συνέβη.", "es": "Primero cuenta qué pasó.", "pt": "Diga primeiro o que aconteceu.", "fr": "Dites d’abord ce qui s’est passé.", "de": "Beschreibe zuerst, was passiert ist.", "it": "Prima racconta cosa è successo.", "nl": "Vertel eerst wat er gebeurde.", "pl": "Najpierw napisz, co się stało.", "ru": "Сначала опишите, что произошло.", "tr": "Önce ne olduğunu yazın."}, "That image could not be read.": {"el": "Δεν ήταν δυνατή η ανάγνωση της εικόνας.", "es": "No se pudo leer esa imagen.", "pt": "Não foi possível ler essa imagem.", "fr": "Cette image n’a pas pu être lue.", "de": "Dieses Bild konnte nicht gelesen werden.", "it": "Impossibile leggere l’immagine.", "nl": "Die afbeelding kon niet worden gelezen.", "pl": "Nie udało się odczytać tego obrazu.", "ru": "Не удалось прочитать это изображение.", "tr": "Bu görsel okunamadı."}, "The report could not be sent": {"el": "Η αναφορά δεν μπόρεσε να σταλεί", "es": "No se pudo enviar el informe", "pt": "Não foi possível enviar o relatório", "fr": "Le rapport n’a pas pu être envoyé", "de": "Der Bericht konnte nicht gesendet werden", "it": "Impossibile inviare il rapporto", "nl": "Het rapport kon niet worden verstuurd", "pl": "Nie udało się wysłać raportu", "ru": "Не удалось отправить отчёт", "tr": "Rapor gönderilemedi"}, "Use \"Copy report\" and paste it on the feedback page instead.": {"el": "Χρησιμοποιήστε την «Αντιγραφή αναφοράς» και επικολλήστε την στη σελίδα σχολίων.", "es": "Usa «Copiar informe» y pégalo en la página de comentarios.", "pt": "Use «Copiar relatório» e cole-o na página de comentários.", "fr": "Utilisez « Copier le rapport » et collez-le sur la page de commentaires.", "de": "Nutze „Bericht kopieren“ und füge ihn auf der Feedback-Seite ein.", "it": "Usa «Copia il rapporto» e incollalo nella pagina dei commenti.", "nl": "Gebruik ‘Rapport kopiëren’ en plak het op de feedbackpagina.", "pl": "Użyj „Kopiuj raport” i wklej go na stronie opinii.", "ru": "Используйте «Скопировать отчёт» и вставьте его на странице отзывов.", "tr": "\"Raporu kopyala\"yı kullanıp geri bildirim sayfasına yapıştırın."}, "Could not reach the server": {"el": "Δεν ήταν δυνατή η σύνδεση με τον διακομιστή", "es": "No se pudo conectar con el servidor", "pt": "Não foi possível contactar o servidor", "fr": "Impossible de joindre le serveur", "de": "Der Server war nicht erreichbar", "it": "Impossibile raggiungere il server", "nl": "De server was niet bereikbaar", "pl": "Nie udało się połączyć z serwerem", "ru": "Сервер недоступен", "tr": "Sunucuya ulaşılamadı"}, "The server took too long": {"el": "Ο διακομιστής άργησε πολύ", "es": "El servidor tardó demasiado", "pt": "O servidor demorou demasiado", "fr": "Le serveur a mis trop de temps", "de": "Der Server hat zu lange gebraucht", "it": "Il server ha impiegato troppo tempo", "nl": "De server deed er te lang over", "pl": "Serwer odpowiadał zbyt długo", "ru": "Сервер слишком долго отвечал", "tr": "Sunucu çok uzun sürdü"}, "The server answered": {"el": "Ο διακομιστής απάντησε", "es": "El servidor respondió", "pt": "O servidor respondeu", "fr": "Le serveur a répondu", "de": "Der Server antwortete", "it": "Il server ha risposto", "nl": "De server antwoordde", "pl": "Serwer odpowiedział", "ru": "Сервер ответил", "tr": "Sunucu yanıt verdi"}, "No answer from the server": {"el": "Καμία απάντηση από τον διακομιστή", "es": "Sin respuesta del servidor", "pt": "Sem resposta do servidor", "fr": "Pas de réponse du serveur", "de": "Keine Antwort vom Server", "it": "Nessuna risposta dal server", "nl": "Geen antwoord van de server", "pl": "Brak odpowiedzi serwera", "ru": "Нет ответа от сервера", "tr": "Sunucudan yanıt yok"}, "Report copied.": {"el": "Η αναφορά αντιγράφηκε.", "es": "Informe copiado.", "pt": "Relatório copiado.", "fr": "Rapport copié.", "de": "Bericht kopiert.", "it": "Rapporto copiato.", "nl": "Rapport gekopieerd.", "pl": "Raport skopiowany.", "ru": "Отчёт скопирован.", "tr": "Rapor kopyalandı."}});
+  Object.assign(contextMenuStrings, {"Tell the author what went wrong. Your report includes your Studio version, settings, the last errors Studio caught and your Waze username, so you can be told when it is fixed. Never your edits.": {"el": "Πείτε στον δημιουργό τι πήγε στραβά. Η αναφορά περιλαμβάνει την έκδοση του Studio, τις ρυθμίσεις, τα τελευταία σφάλματα που κατέγραψε το Studio και το όνομα χρήστη σας στο Waze, ώστε να ειδοποιηθείτε όταν διορθωθεί. Ποτέ τις επεξεργασίες σας.", "es": "Cuéntale al autor qué salió mal. Tu informe incluye la versión de Studio, los ajustes, los últimos errores que Studio detectó y tu nombre de usuario de Waze, para avisarte cuando esté corregido. Nunca tus ediciones.", "pt": "Diga ao autor o que correu mal. O relatório inclui a versão do Studio, as definições, os últimos erros que o Studio apanhou e o seu nome de utilizador do Waze, para ser avisado quando estiver corrigido. Nunca as suas edições.", "fr": "Dites à l'auteur ce qui n'a pas marché. Votre rapport contient la version de Studio, les réglages, les dernières erreurs relevées par Studio et votre nom d'utilisateur Waze, pour vous prévenir quand c'est corrigé. Jamais vos modifications.", "de": "Sag dem Autor, was schiefgelaufen ist. Der Bericht enthält deine Studio-Version, Einstellungen, die letzten von Studio erfassten Fehler und deinen Waze-Benutzernamen, damit du erfährst, wenn es behoben ist. Nie deine Bearbeitungen.", "it": "Racconta all'autore cosa è andato storto. La segnalazione include la versione di Studio, le impostazioni, gli ultimi errori rilevati da Studio e il tuo nome utente Waze, per avvisarti quando è risolto. Mai le tue modifiche.", "nl": "Vertel de maker wat er misging. Je melding bevat je Studio-versie, instellingen, de laatste fouten die Studio zag en je Waze-gebruikersnaam, zodat je hoort wanneer het is opgelost. Nooit je bewerkingen.", "pl": "Powiedz autorowi, co poszło nie tak. Zgłoszenie zawiera wersję Studio, ustawienia, ostatnie błędy wychwycone przez Studio i Twoją nazwę użytkownika Waze, żeby dało się powiadomić Cię o naprawie. Nigdy Twoich edycji.", "ru": "Расскажите автору, что пошло не так. В отчёт входят версия Studio, настройки, последние ошибки, которые заметил Studio, и ваше имя пользователя Waze, чтобы сообщить вам, когда это исправят. Никогда — ваши правки.", "tr": "Yazara neyin ters gittiğini anlatın. Raporunuz Studio sürümünü, ayarları, Studio'nun yakaladığı son hataları ve düzeltildiğinde haber verilebilmesi için Waze kullanıcı adınızı içerir. Düzenlemelerinizi asla."}, "Fixed reports": {"el": "Διορθωμένες αναφορές", "es": "Informes corregidos", "pt": "Relatórios corrigidos", "fr": "Rapports corrigés", "de": "Behobene Berichte", "it": "Segnalazioni risolte", "nl": "Opgeloste meldingen", "pl": "Naprawione zgłoszenia", "ru": "Исправленные отчёты", "tr": "Düzeltilen raporlar"}, "When a report of yours is fixed, a note shows up here in the editor.": {"el": "Όταν διορθωθεί μια αναφορά σας, εμφανίζεται μια ειδοποίηση εδώ, μέσα στον επεξεργαστή.", "es": "Cuando se corrija un informe tuyo, aparecerá un aviso aquí, en el editor.", "pt": "Quando um relatório seu for corrigido, aparece um aviso aqui, no editor.", "fr": "Quand un de vos rapports est corrigé, une note apparaît ici, dans l'éditeur.", "de": "Wenn ein Bericht von dir behoben ist, erscheint hier im Editor ein Hinweis.", "it": "Quando una tua segnalazione viene risolta, qui nell'editor compare un avviso.", "nl": "Als een melding van jou is opgelost, verschijnt hier in de editor een bericht.", "pl": "Gdy Twoje zgłoszenie zostanie naprawione, tutaj w edytorze pojawi się powiadomienie.", "ru": "Когда ваш отчёт исправят, здесь, в редакторе, появится уведомление.", "tr": "Bir raporunuz düzeltildiğinde burada, düzenleyicide bir not görünür."}, "Check now": {"el": "Έλεγχος τώρα", "es": "Comprobar ahora", "pt": "Verificar agora", "fr": "Vérifier maintenant", "de": "Jetzt prüfen", "it": "Controlla ora", "nl": "Nu controleren", "pl": "Sprawdź teraz", "ru": "Проверить сейчас", "tr": "Şimdi kontrol et"}, "It goes straight to the author of WME Studio.": {"el": "Πηγαίνει κατευθείαν στον δημιουργό του WME Studio.", "es": "Va directo al autor de WME Studio.", "pt": "Vai diretamente para o autor do WME Studio.", "fr": "Il part directement chez l'auteur de WME Studio.", "de": "Er geht direkt an den Autor von WME Studio.", "it": "Va direttamente all'autore di WME Studio.", "nl": "Gaat rechtstreeks naar de maker van WME Studio.", "pl": "Trafia prosto do autora WME Studio.", "ru": "Отправляется напрямую автору WME Studio.", "tr": "Doğrudan WME Studio'nun yazarına gider."}, "Another way to reach you": {"el": "Άλλος τρόπος επικοινωνίας", "es": "Otra forma de contactarte", "pt": "Outra forma de o contactar", "fr": "Un autre moyen de vous joindre", "de": "Ein anderer Weg, dich zu erreichen", "it": "Un altro modo per contattarti", "nl": "Een andere manier om je te bereiken", "pl": "Inny sposób kontaktu", "ru": "Другой способ связаться с вами", "tr": "Size ulaşmanın başka bir yolu"}, "Forum name or email": {"el": "Όνομα στο φόρουμ ή email", "es": "Nombre en el foro o correo", "pt": "Nome no fórum ou e-mail", "fr": "Nom sur le forum ou e-mail", "de": "Forumname oder E-Mail", "it": "Nome sul forum o e-mail", "nl": "Forumnaam of e-mail", "pl": "Nazwa na forum lub e-mail", "ru": "Имя на форуме или e-mail", "tr": "Forum adı veya e-posta"}, "Your bug report was fixed": {"el": "Η αναφορά σφάλματος σας διορθώθηκε", "es": "Tu informe de error se ha corregido", "pt": "O seu relatório de erro foi corrigido", "fr": "Votre rapport de bug a été corrigé", "de": "Dein Fehlerbericht wurde behoben", "it": "La tua segnalazione è stata risolta", "nl": "Je bugmelding is opgelost", "pl": "Twoje zgłoszenie błędu zostało naprawione", "ru": "Ваш отчёт об ошибке исправлен", "tr": "Hata raporunuz düzeltildi"}, "Your bug reports were fixed": {"el": "Οι αναφορές σφαλμάτων σας διορθώθηκαν", "es": "Tus informes de error se han corregido", "pt": "Os seus relatórios de erro foram corrigidos", "fr": "Vos rapports de bug ont été corrigés", "de": "Deine Fehlerberichte wurden behoben", "it": "Le tue segnalazioni sono state risolte", "nl": "Je bugmeldingen zijn opgelost", "pl": "Twoje zgłoszenia błędów zostały naprawione", "ru": "Ваши отчёты об ошибках исправлены", "tr": "Hata raporlarınız düzeltildi"}, "Get the update": {"el": "Λήψη της ενημέρωσης", "es": "Obtener la actualización", "pt": "Obter a atualização", "fr": "Obtenir la mise à jour", "de": "Update holen", "it": "Scarica l'aggiornamento", "nl": "Update ophalen", "pl": "Pobierz aktualizację", "ru": "Получить обновление", "tr": "Güncellemeyi al"}, "Got it": {"el": "Εντάξει", "es": "Entendido", "pt": "Entendido", "fr": "Compris", "de": "Alles klar", "it": "Capito", "nl": "Begrepen", "pl": "Rozumiem", "ru": "Понятно", "tr": "Anladım"}, "Sent as": {"el": "Αποστολή ως", "es": "Enviado como", "pt": "Enviado como", "fr": "Envoyé en tant que", "de": "Gesendet als", "it": "Inviato come", "nl": "Verzonden als", "pl": "Wysłane jako", "ru": "Отправлено как", "tr": "Şu adla gönderilir:"}, "You'll get a note in the editor when it's fixed.": {"el": "Θα λάβετε ειδοποίηση μέσα στον επεξεργαστή όταν διορθωθεί.", "es": "Recibirás un aviso en el editor cuando esté corregido.", "pt": "Receberá um aviso no editor quando estiver corrigido.", "fr": "Vous recevrez une note dans l'éditeur quand ce sera corrigé.", "de": "Du bekommst im Editor einen Hinweis, wenn es behoben ist.", "it": "Riceverai un avviso nell'editor quando sarà risolto.", "nl": "Je krijgt een bericht in de editor zodra het is opgelost.", "pl": "Dostaniesz powiadomienie w edytorze, gdy zostanie naprawione.", "ru": "Вы получите уведомление в редакторе, когда это исправят.", "tr": "Düzeltildiğinde düzenleyicide bir not alacaksınız."}, "Not signed in, so add a way to reach you below if you would like an answer.": {"el": "Δεν έχετε συνδεθεί, οπότε προσθέστε παρακάτω έναν τρόπο επικοινωνίας αν θέλετε απάντηση.", "es": "No has iniciado sesión; añade abajo una forma de contactarte si quieres respuesta.", "pt": "Não tem sessão iniciada; adicione abaixo uma forma de o contactar se quiser resposta.", "fr": "Vous n'êtes pas connecté : ajoutez ci-dessous un moyen de vous joindre si vous souhaitez une réponse.", "de": "Nicht angemeldet – trag unten einen Kontaktweg ein, wenn du eine Antwort möchtest.", "it": "Non hai effettuato l'accesso: aggiungi sotto un modo per contattarti se vuoi una risposta.", "nl": "Niet ingelogd; vul hieronder in hoe je bereikbaar bent als je antwoord wilt.", "pl": "Nie zalogowano – podaj niżej sposób kontaktu, jeśli chcesz odpowiedzi.", "ru": "Вы не вошли в систему: укажите ниже, как с вами связаться, если хотите получить ответ.", "tr": "Oturum açılmamış; yanıt isterseniz aşağıya size ulaşmanın bir yolunu ekleyin."}, "Report": {"el": "Αναφορά", "es": "Informe", "pt": "Relatório", "fr": "Rapport", "de": "Bericht", "it": "Segnalazione", "nl": "Melding", "pl": "Zgłoszenie", "ru": "Отчёт", "tr": "Rapor"}, "fixed in WME Studio": {"el": "διορθώθηκε στο WME Studio", "es": "corregido en WME Studio", "pt": "corrigido no WME Studio", "fr": "corrigé dans WME Studio", "de": "behoben in WME Studio", "it": "risolto in WME Studio", "nl": "opgelost in WME Studio", "pl": "naprawione w WME Studio", "ru": "исправлено в WME Studio", "tr": "WME Studio'da düzeltildi:"}, "Sign in to the editor first.": {"el": "Συνδεθείτε πρώτα στον επεξεργαστή.", "es": "Inicia sesión en el editor primero.", "pt": "Inicie sessão no editor primeiro.", "fr": "Connectez-vous d'abord à l'éditeur.", "de": "Melde dich zuerst im Editor an.", "it": "Accedi prima all'editor.", "nl": "Log eerst in op de editor.", "pl": "Najpierw zaloguj się do edytora.", "ru": "Сначала войдите в редактор.", "tr": "Önce düzenleyicide oturum açın."}, "Checking…": {"el": "Έλεγχος…", "es": "Comprobando…", "pt": "A verificar…", "fr": "Vérification…", "de": "Prüfe…", "it": "Controllo…", "nl": "Controleren…", "pl": "Sprawdzanie…", "ru": "Проверка…", "tr": "Kontrol ediliyor…"}, "Could not check": {"el": "Ο έλεγχος απέτυχε", "es": "No se pudo comprobar", "pt": "Não foi possível verificar", "fr": "Vérification impossible", "de": "Prüfung nicht möglich", "it": "Controllo non riuscito", "nl": "Controleren is niet gelukt", "pl": "Nie udało się sprawdzić", "ru": "Не удалось проверить", "tr": "Kontrol edilemedi"}, "Nothing new since last time.": {"el": "Τίποτα νέο από την τελευταία φορά.", "es": "Nada nuevo desde la última vez.", "pt": "Nada de novo desde a última vez.", "fr": "Rien de nouveau depuis la dernière fois.", "de": "Nichts Neues seit dem letzten Mal.", "it": "Niente di nuovo dall'ultima volta.", "nl": "Niets nieuws sinds de vorige keer.", "pl": "Nic nowego od ostatniego razu.", "ru": "Ничего нового с прошлого раза.", "tr": "Son seferden beri yeni bir şey yok."}, "No fixed reports for {0} yet.": {"el": "Δεν υπάρχουν ακόμη διορθωμένες αναφορές για {0}.", "es": "Aún no hay informes corregidos para {0}.", "pt": "Ainda não há relatórios corrigidos para {0}.", "fr": "Pas encore de rapport corrigé pour {0}.", "de": "Noch keine behobenen Berichte für {0}.", "it": "Nessuna segnalazione risolta per {0} finora.", "nl": "Nog geen opgeloste meldingen voor {0}.", "pl": "Brak naprawionych zgłoszeń dla {0}.", "ru": "Для {0} пока нет исправленных отчётов.", "tr": "{0} için henüz düzeltilen rapor yok."}, "{0} report(s) of yours are waiting. A note shows up here in the editor when one is fixed.": {"el": "{0} αναφορά/ές σας εκκρεμούν. Μια ειδοποίηση εμφανίζεται εδώ, μέσα στον επεξεργαστή, όταν διορθωθεί κάποια.", "es": "{0} informe(s) tuyo(s) en espera. Aparecerá un aviso aquí, en el editor, cuando se corrija uno.", "pt": "{0} relatório(s) seu(s) em espera. Aparece um aviso aqui, no editor, quando um for corrigido.", "fr": "{0} rapport(s) à vous en attente. Une note apparaît ici, dans l'éditeur, quand l'un d'eux est corrigé.", "de": "{0} Bericht(e) von dir warten. Ein Hinweis erscheint hier im Editor, sobald einer behoben ist.", "it": "{0} tue segnalazioni in attesa. Un avviso compare qui nell'editor quando una viene risolta.", "nl": "{0} melding(en) van jou wachten. Hier in de editor verschijnt een bericht zodra er een is opgelost.", "pl": "{0} Twoje zgłoszenie(a) czeka. Powiadomienie pojawi się tutaj w edytorze, gdy któreś zostanie naprawione.", "ru": "Ваших отчётов в ожидании: {0}. Когда один из них исправят, здесь, в редакторе, появится уведомление.", "tr": "{0} raporunuz bekliyor. Biri düzeltildiğinde burada, düzenleyicide bir not görünür."}});
+  Object.assign(contextMenuStrings, {"Report a bug": {"el": "Αναφορά σφάλματος", "es": "Informar de un error", "pt": "Comunicar um erro", "fr": "Signaler un bug", "de": "Fehler melden", "it": "Segnala un bug", "nl": "Bug melden", "pl": "Zgłoś błąd", "ru": "Сообщить об ошибке", "tr": "Hata bildir"}, "Copy report": {"el": "Αντιγραφή αναφοράς", "es": "Copiar informe", "pt": "Copiar relatório", "fr": "Copier le rapport", "de": "Bericht kopieren", "it": "Copia il rapporto", "nl": "Rapport kopiëren", "pl": "Kopiuj raport", "ru": "Скопировать отчёт", "tr": "Raporu kopyala"}, "Could not copy the report.": {"el": "Δεν ήταν δυνατή η αντιγραφή της αναφοράς.", "es": "No se pudo copiar el informe.", "pt": "Não foi possível copiar o relatório.", "fr": "Impossible de copier le rapport.", "de": "Der Bericht konnte nicht kopiert werden.", "it": "Impossibile copiare il rapporto.", "nl": "Het rapport kon niet worden gekopieerd.", "pl": "Nie udało się skopiować raportu.", "ru": "Не удалось скопировать отчёт.", "tr": "Rapor kopyalanamadı."}});
+  Object.assign(contextMenuStrings, {"Open WME in a new tab": {"el": "Άνοιγμα του WME σε νέα καρτέλα", "es": "Abrir WME en una pestaña nueva", "pt": "Abrir o WME num novo separador", "fr": "Ouvrir WME dans un nouvel onglet", "de": "WME in neuem Tab öffnen", "it": "Apri WME in una nuova scheda", "nl": "WME openen in nieuw tabblad", "pl": "Otwórz WME w nowej karcie", "ru": "Открыть WME в новой вкладке", "tr": "WME'yi yeni sekmede aç"}, "Open WME Beta in a new tab": {"el": "Άνοιγμα του WME Beta σε νέα καρτέλα", "es": "Abrir WME Beta en una pestaña nueva", "pt": "Abrir o WME Beta num novo separador", "fr": "Ouvrir WME Beta dans un nouvel onglet", "de": "WME Beta in neuem Tab öffnen", "it": "Apri WME Beta in una nuova scheda", "nl": "WME Beta openen in nieuw tabblad", "pl": "Otwórz WME Beta w nowej karcie", "ru": "Открыть WME Beta в новой вкладке", "tr": "WME Beta'yı yeni sekmede aç"}});
+  Object.assign(contextMenuStrings, {"What's new": {"el": "Τι νέο υπάρχει", "es": "Novedades", "pt": "Novidades", "fr": "Nouveautés", "de": "Neuigkeiten", "it": "Novità", "nl": "Wat is nieuw", "pl": "Co nowego", "ru": "Что нового", "tr": "Yenilikler"}, "Pause without uninstalling": {"el": "Παύση χωρίς απεγκατάσταση", "es": "Pausar sin desinstalar", "pt": "Pausar sem desinstalar", "fr": "Mettre en pause sans désinstaller", "de": "Pausieren ohne Deinstallation", "it": "Metti in pausa senza disinstallare", "nl": "Pauzeren zonder te verwijderen", "pl": "Wstrzymaj bez odinstalowania", "ru": "Пауза без удаления", "tr": "Kaldırmadan duraklat"}, "Saved": {"el": "Αποθηκεύτηκε", "es": "Guardado", "pt": "Guardado", "fr": "Enregistré", "de": "Gespeichert", "it": "Salvato", "nl": "Opgeslagen", "pl": "Zapisano", "ru": "Сохранено", "tr": "Kaydedildi"}, "Paused": {"el": "Σε παύση", "es": "En pausa", "pt": "Em pausa", "fr": "En pause", "de": "Pausiert", "it": "In pausa", "nl": "Gepauzeerd", "pl": "Wstrzymane", "ru": "На паузе", "tr": "Duraklatıldı"}, "Reset to default": {"el": "Επαναφορά προεπιλογής", "es": "Restablecer", "pt": "Repor predefinição", "fr": "Rétablir la valeur par défaut", "de": "Auf Standard zurücksetzen", "it": "Ripristina predefinito", "nl": "Standaard herstellen", "pl": "Przywróć domyślne", "ru": "Сбросить", "tr": "Varsayılana sıfırla"}, "Type a value": {"el": "Πληκτρολογήστε μια τιμή", "es": "Escribe un valor", "pt": "Escreva um valor", "fr": "Saisir une valeur", "de": "Wert eingeben", "it": "Digita un valore", "nl": "Typ een waarde", "pl": "Wpisz wartość", "ru": "Введите значение", "tr": "Bir değer yazın"}, "Sections on this page": {"el": "Ενότητες της σελίδας", "es": "Secciones de esta página", "pt": "Secções desta página", "fr": "Sections de cette page", "de": "Abschnitte dieser Seite", "it": "Sezioni di questa pagina", "nl": "Secties op deze pagina", "pl": "Sekcje na tej stronie", "ru": "Разделы этой страницы", "tr": "Bu sayfadaki bölümler"}, "Mode, size and where the islands go.": {"el": "Λειτουργία, μέγεθος και πού πηγαίνουν οι νησίδες.", "es": "Modo, tamaño y dónde van las islas.", "pt": "Modo, tamanho e onde ficam as ilhas.", "fr": "Mode, taille et emplacement des îlots.", "de": "Modus, Größe und wo die Inseln liegen.", "it": "Modalità, dimensioni e dove vanno le isole.", "nl": "Modus, grootte en waar de eilanden staan.", "pl": "Tryb, rozmiar i gdzie są wyspy.", "ru": "Режим, размер и расположение островов.", "tr": "Mod, boyut ve adaların yeri."}, "Theme, accent and comfort.": {"el": "Θέμα, χρώμα έμφασης και άνεση.", "es": "Tema, color de acento y comodidad.", "pt": "Tema, cor de destaque e conforto.", "fr": "Thème, couleur d'accent et confort.", "de": "Design, Akzentfarbe und Komfort.", "it": "Tema, colore in evidenza e comfort.", "nl": "Thema, accentkleur en comfort.", "pl": "Motyw, kolor akcentu i wygoda.", "ru": "Тема, акцент и комфорт.", "tr": "Tema, vurgu rengi ve rahatlık."}, "Brightness, GPS points and the right-click menu.": {"el": "Φωτεινότητα, σημεία GPS και το μενού δεξιού κλικ.", "es": "Brillo, puntos GPS y el menú del clic derecho.", "pt": "Brilho, pontos GPS e o menu do clique direito.", "fr": "Luminosité, points GPS et menu du clic droit.", "de": "Helligkeit, GPS-Punkte und das Rechtsklickmenü.", "it": "Luminosità, punti GPS e menu del tasto destro.", "nl": "Helderheid, GPS-punten en het rechtsklikmenu.", "pl": "Jasność, punkty GPS i menu prawego przycisku.", "ru": "Яркость, точки GPS и меню правой кнопки.", "tr": "Parlaklık, GPS noktaları ve sağ tık menüsü."}, "Requests, size and columns.": {"el": "Αιτήματα, μέγεθος και στήλες.", "es": "Solicitudes, tamaño y columnas.", "pt": "Pedidos, tamanho e colunas.", "fr": "Demandes, taille et colonnes.", "de": "Anfragen, Größe und Spalten.", "it": "Richieste, dimensioni e colonne.", "nl": "Verzoeken, grootte en kolommen.", "pl": "Zgłoszenia, rozmiar i kolumny.", "ru": "Запросы, размер и столбцы.", "tr": "İstekler, boyut ve sütunlar."}, "Language, backups and defaults.": {"el": "Γλώσσα, αντίγραφα ασφαλείας και προεπιλογές.", "es": "Idioma, copias de seguridad y valores predeterminados.", "pt": "Idioma, cópias de segurança e predefinições.", "fr": "Langue, sauvegardes et valeurs par défaut.", "de": "Sprache, Sicherungen und Standardwerte.", "it": "Lingua, backup e impostazioni predefinite.", "nl": "Taal, back-ups en standaardwaarden.", "pl": "Język, kopie zapasowe i wartości domyślne.", "ru": "Язык, резервные копии и значения по умолчанию.", "tr": "Dil, yedekler ve varsayılanlar."}, "Tell the author what went wrong.": {"el": "Πείτε στον δημιουργό τι πήγε στραβά.", "es": "Cuéntale al autor qué salió mal.", "pt": "Diga ao autor o que correu mal.", "fr": "Dites à l'auteur ce qui n'a pas marché.", "de": "Sag dem Autor, was schiefgelaufen ist.", "it": "Racconta all'autore cosa è andato storto.", "nl": "Vertel de maker wat er misging.", "pl": "Powiedz autorowi, co poszło nie tak.", "ru": "Расскажите автору, что пошло не так.", "tr": "Yazara neyin ters gittiğini anlatın."}, "For script authors.": {"el": "Για δημιουργούς script.", "es": "Para autores de scripts.", "pt": "Para autores de scripts.", "fr": "Pour les auteurs de scripts.", "de": "Für Skriptautoren.", "it": "Per gli autori di script.", "nl": "Voor scriptauteurs.", "pl": "Dla autorów skryptów.", "ru": "Для авторов скриптов.", "tr": "Script yazarları için."}});
+  Object.assign(contextMenuStrings, {"Accent color": {"el": "Χρώμα έμφασης", "es": "Color de acento", "pt": "Cor de destaque", "fr": "Couleur d'accent", "de": "Akzentfarbe", "it": "Colore in evidenza", "nl": "Accentkleur", "pl": "Kolor akcentu", "ru": "Акцентный цвет", "tr": "Vurgu rengi"}, "Active controls, highlights and the Studio button.": {"el": "Ενεργά χειριστήρια, επισημάνσεις και το κουμπί του Studio.", "es": "Controles activos, resaltados y el botón de Studio.", "pt": "Controlos ativos, destaques e o botão do Studio.", "fr": "Commandes actives, surlignages et bouton Studio.", "de": "Aktive Steuerelemente, Hervorhebungen und der Studio-Knopf.", "it": "Controlli attivi, evidenziazioni e il pulsante Studio.", "nl": "Actieve knoppen, markeringen en de Studio-knop.", "pl": "Aktywne elementy, wyróżnienia i przycisk Studio.", "ru": "Активные элементы, выделения и кнопка Studio.", "tr": "Etkin denetimler, vurgular ve Studio düğmesi."}, "WME’s own layout, restyled. Panels dock at the left.": {"el": "Η διάταξη του WME, με νέο στυλ. Τα πάνελ αγκυρώνουν αριστερά.", "es": "La disposición propia de WME, con otro estilo. Los paneles se acoplan a la izquierda.", "pt": "A disposição do WME, com novo estilo. Os painéis encostam à esquerda.", "fr": "La disposition de WME, restylée. Les panneaux s'ancrent à gauche.", "de": "WMEs eigenes Layout, neu gestaltet. Panels docken links an.", "it": "La disposizione di WME, con un nuovo stile. I pannelli si agganciano a sinistra.", "nl": "WME's eigen indeling, opnieuw vormgegeven. Panelen staan links.", "pl": "Własny układ WME w nowym stylu. Panele dokują po lewej.", "ru": "Собственная раскладка WME в новом стиле. Панели стыкуются слева.", "tr": "WME'nin kendi düzeni, yeni stille. Paneller sola yaslanır."}, "Floating": {"el": "Αιωρούμενη", "es": "Flotante", "pt": "Flutuante", "fr": "Flottant", "de": "Schwebend", "it": "Fluttuante", "nl": "Zwevend", "pl": "Pływający", "ru": "Плавающий", "tr": "Yüzen"}, "Islands over the map. Move them, split them, hide them.": {"el": "Νησίδες πάνω στον χάρτη. Μετακινήστε τις, χωρίστε τις, κρύψτε τις.", "es": "Islas sobre el mapa. Muévelas, divídelas, ocúltalas.", "pt": "Ilhas sobre o mapa. Mova-as, divida-as, esconda-as.", "fr": "Des îlots sur la carte. Déplacez-les, divisez-les, masquez-les.", "de": "Inseln über der Karte. Verschieben, teilen, ausblenden.", "it": "Isole sulla mappa. Spostale, dividile, nascondile.", "nl": "Eilanden boven de kaart. Verplaats, splits of verberg ze.", "pl": "Wyspy nad mapą. Przesuwaj je, dziel, ukrywaj.", "ru": "Острова над картой. Перемещайте, разделяйте, скрывайте.", "tr": "Haritanın üstünde adalar. Taşıyın, bölün, gizleyin."}, "Arrange islands": {"el": "Τακτοποίηση νησίδων", "es": "Organizar islas", "pt": "Organizar ilhas", "fr": "Organiser les îlots", "de": "Inseln anordnen", "it": "Disponi le isole", "nl": "Eilanden indelen", "pl": "Rozmieść wyspy", "ru": "Расставить острова", "tr": "Adaları düzenle"}, "Drag islands and controls on the map itself. Your layout is saved as you go.": {"el": "Σύρετε νησίδες και χειριστήρια πάνω στον ίδιο τον χάρτη. Η διάταξή σας αποθηκεύεται καθώς δουλεύετε.", "es": "Arrastra islas y controles sobre el propio mapa. Tu disposición se guarda sobre la marcha.", "pt": "Arraste ilhas e controlos no próprio mapa. A sua disposição é guardada à medida que avança.", "fr": "Glissez les îlots et les commandes sur la carte elle-même. Votre disposition est enregistrée au fur et à mesure.", "de": "Zieh Inseln und Steuerelemente direkt auf der Karte. Dein Layout wird dabei gespeichert.", "it": "Trascina isole e controlli direttamente sulla mappa. La disposizione viene salvata man mano.", "nl": "Sleep eilanden en knoppen op de kaart zelf. Je indeling wordt meteen opgeslagen.", "pl": "Przeciągaj wyspy i elementy na samej mapie. Układ zapisuje się na bieżąco.", "ru": "Перетаскивайте острова и элементы прямо на карте. Раскладка сохраняется по ходу.", "tr": "Adaları ve denetimleri haritanın üstünde sürükleyin. Düzeniniz anında kaydedilir."}, "Open Arrange": {"el": "Άνοιγμα Τακτοποίησης", "es": "Abrir Organizar", "pt": "Abrir Organizar", "fr": "Ouvrir Organiser", "de": "Anordnen öffnen", "it": "Apri Disponi", "nl": "Indelen openen", "pl": "Otwórz Rozmieść", "ru": "Открыть расстановку", "tr": "Düzenle'yi aç"}, "Always, or only at night: by the sun, or between your own hours": {"el": "Πάντα, ή μόνο τη νύχτα: με τον ήλιο ή μεταξύ των δικών σας ωρών", "es": "Siempre, o solo de noche: según el sol o entre tus propias horas", "pt": "Sempre, ou só à noite: pelo sol ou entre as suas horas", "fr": "Toujours, ou seulement la nuit : selon le soleil ou entre vos propres heures", "de": "Immer, oder nur nachts: nach der Sonne oder zwischen deinen eigenen Zeiten", "it": "Sempre, o solo di notte: con il sole o tra i tuoi orari", "nl": "Altijd, of alleen 's nachts: op de zon of tussen je eigen uren", "pl": "Zawsze lub tylko nocą: według słońca albo w Twoich godzinach", "ru": "Всегда или только ночью: по солнцу или в ваши часы", "tr": "Her zaman ya da yalnızca gece: güneşe göre veya kendi saatlerinizde"}});
+  // Strings for the 2.0.0 update tour and its settings row.
+  Object.assign(contextMenuStrings, {"What's new in 2.0.0.": {"el": "Τι νέο υπάρχει στην 2.0.0.", "es": "Novedades de la 2.0.0.", "pt": "Novidades da 2.0.0.", "fr": "Nouveautés de la 2.0.0.", "de": "Neu in 2.0.0.", "it": "Novità della 2.0.0.", "nl": "Nieuw in 2.0.0.", "pl": "Co nowego w 2.0.0.", "ru": "Что нового в 2.0.0.", "tr": "2.0.0 sürümündeki yenilikler."}});
+  Object.assign(contextMenuStrings, {"The biggest Studio update yet. Here is a quick tour of what you can do now: six stops, two minutes.": {"el": "Η μεγαλύτερη ενημέρωση του Studio μέχρι σήμερα. Μια γρήγορη περιήγηση στο τι μπορείτε να κάνετε τώρα: έξι στάσεις, δύο λεπτά.", "es": "La mayor actualización de Studio hasta ahora. Un recorrido rápido por lo que puedes hacer ahora: seis paradas, dos minutos.", "pt": "A maior atualização do Studio até agora. Uma visita rápida ao que pode fazer agora: seis paragens, dois minutos.", "fr": "La plus grosse mise à jour de Studio à ce jour. Voici un tour rapide de ce que vous pouvez faire maintenant : six étapes, deux minutes.", "de": "Das bisher größte Studio-Update. Eine kurze Tour durch das, was jetzt geht: sechs Stationen, zwei Minuten.", "it": "Il più grande aggiornamento di Studio finora. Un rapido tour di ciò che puoi fare ora: sei tappe, due minuti.", "nl": "De grootste Studio-update tot nu toe. Een korte rondleiding langs wat je nu kunt doen: zes stops, twee minuten.", "pl": "Największa dotąd aktualizacja Studio. Krótka wycieczka po tym, co teraz możesz zrobić: sześć przystanków, dwie minuty.", "ru": "Самое большое обновление Studio. Короткая экскурсия по новым возможностям: шесть остановок, две минуты.", "tr": "Studio'nun şimdiye kadarki en büyük güncellemesi. Artık neler yapabileceğinize hızlı bir bakış: altı durak, iki dakika."}});
+  Object.assign(contextMenuStrings, {"Everything here lives in Settings too, so skip whenever you like.": {"el": "Όλα αυτά υπάρχουν και στις Ρυθμίσεις, οπότε παραλείψτε όποτε θέλετε.", "es": "Todo esto está también en Ajustes, así que sáltalo cuando quieras.", "pt": "Tudo isto também está nas Definições, por isso salte quando quiser.", "fr": "Tout cela se trouve aussi dans les Réglages, passez quand vous voulez.", "de": "Alles hier gibt es auch in den Einstellungen, du kannst also jederzeit überspringen.", "it": "Tutto questo è anche nelle Impostazioni, quindi salta quando vuoi.", "nl": "Alles hier staat ook in Instellingen, dus sla over wanneer je wilt.", "pl": "Wszystko to jest też w Ustawieniach, więc pomiń, kiedy chcesz.", "ru": "Всё это есть и в настройках, так что пропускайте, когда захотите.", "tr": "Buradaki her şey Ayarlar'da da var, istediğiniz zaman atlayabilirsiniz."}});
+  Object.assign(contextMenuStrings, {"Arrange your own islands.": {"el": "Διαμορφώστε τις δικές σας νησίδες.", "es": "Organiza tus propias islas.", "pt": "Organize as suas próprias ilhas.", "fr": "Composez vos propres îlots.", "de": "Stelle deine eigenen Inseln zusammen.", "it": "Disponi le tue isole.", "nl": "Stel je eigen eilanden samen.", "pl": "Ułóż własne wyspy.", "ru": "Соберите свои острова.", "tr": "Kendi adalarınızı düzenleyin."}});
+  Object.assign(contextMenuStrings, {"Click a control, then drag it into another island, or onto the map to give it an island of its own.": {"el": "Κάντε κλικ σε ένα στοιχείο ελέγχου και σύρετέ το σε άλλη νησίδα, ή στον χάρτη για να αποκτήσει δική του νησίδα.", "es": "Haz clic en un control y arrástralo a otra isla, o al mapa para darle una isla propia.", "pt": "Clique num controlo e arraste-o para outra ilha, ou para o mapa para lhe dar uma ilha própria.", "fr": "Cliquez sur une commande, puis glissez-la dans un autre îlot, ou sur la carte pour lui donner son propre îlot.", "de": "Klicke ein Bedienelement an und ziehe es in eine andere Insel oder auf die Karte, damit es eine eigene Insel bekommt.", "it": "Fai clic su un controllo, poi trascinalo in un'altra isola o sulla mappa per dargli un'isola tutta sua.", "nl": "Klik op een knop en sleep hem naar een ander eiland, of naar de kaart om hem een eigen eiland te geven.", "pl": "Kliknij element, a potem przeciągnij go na inną wyspę albo na mapę, by dostał własną wyspę.", "ru": "Нажмите на элемент и перетащите его на другой остров или на карту, чтобы у него появился свой остров.", "tr": "Bir denetime tıklayın, sonra başka bir adaya ya da kendi adası olsun diye haritaya sürükleyin."}});
+  Object.assign(contextMenuStrings, {"Shape them": {"el": "Δώστε τους μορφή", "es": "Dales forma", "pt": "Dê-lhes forma", "fr": "Façonnez-les", "de": "Forme sie", "it": "Dai loro forma", "nl": "Geef ze vorm", "pl": "Nadaj im kształt", "ru": "Придайте им форму", "tr": "Şekil verin"}});
+  Object.assign(contextMenuStrings, {"Make new islands, rename them, rotate them, split them in two, or swap one control for another.": {"el": "Φτιάξτε νέες νησίδες, μετονομάστε τις, περιστρέψτε τις, χωρίστε τις στα δύο, ή ανταλλάξτε ένα στοιχείο ελέγχου με άλλο.", "es": "Crea islas nuevas, cámbiales el nombre, gíralas, divídelas en dos o cambia un control por otro.", "pt": "Crie novas ilhas, mude-lhes o nome, rode-as, divida-as em duas ou troque um controlo por outro.", "fr": "Créez de nouveaux îlots, renommez-les, faites-les pivoter, coupez-les en deux ou échangez une commande contre une autre.", "de": "Erstelle neue Inseln, benenne sie um, drehe sie, teile sie in zwei oder tausche ein Element gegen ein anderes.", "it": "Crea nuove isole, rinominale, ruotale, dividile in due o scambia un controllo con un altro.", "nl": "Maak nieuwe eilanden, hernoem ze, draai ze, splits ze in tweeën of wissel een knop om voor een andere.", "pl": "Twórz nowe wyspy, zmieniaj ich nazwy, obracaj je, dziel na dwie albo zamieniaj jeden element na inny.", "ru": "Создавайте новые острова, переименовывайте, поворачивайте, делите надвое или меняйте один элемент на другой.", "tr": "Yeni adalar oluşturun, yeniden adlandırın, döndürün, ikiye bölün ya da bir denetimi başkasıyla değiştirin."}});
+  Object.assign(contextMenuStrings, {"Hide what you never use": {"el": "Κρύψτε ό,τι δεν χρησιμοποιείτε", "es": "Oculta lo que nunca usas", "pt": "Oculte o que nunca usa", "fr": "Masquez ce que vous n'utilisez jamais", "de": "Blende aus, was du nie brauchst", "it": "Nascondi ciò che non usi mai", "nl": "Verberg wat je nooit gebruikt", "pl": "Ukryj to, czego nie używasz", "ru": "Скройте то, чем не пользуетесь", "tr": "Hiç kullanmadıklarınızı gizleyin"}});
+  Object.assign(contextMenuStrings, {"Take controls off the islands from the Controls list, and bring them back any time.": {"el": "Αφαιρέστε στοιχεία ελέγχου από τις νησίδες μέσω της λίστας Στοιχεία ελέγχου και επαναφέρετέ τα όποτε θέλετε.", "es": "Quita controles de las islas desde la lista Controles y recupéralos cuando quieras.", "pt": "Retire controlos das ilhas a partir da lista Controlos e recupere-os quando quiser.", "fr": "Retirez des commandes des îlots depuis la liste Commandes, et remettez-les quand vous voulez.", "de": "Nimm Elemente über die Liste „Bedienelemente“ von den Inseln und hole sie jederzeit zurück.", "it": "Togli i controlli dalle isole dall'elenco Controlli e rimettili quando vuoi.", "nl": "Haal knoppen van de eilanden via de lijst Knoppen en zet ze wanneer je wilt terug.", "pl": "Usuń elementy z wysp na liście Elementy i przywróć je w każdej chwili.", "ru": "Убирайте элементы с островов через список «Элементы» и возвращайте их в любой момент.", "tr": "Denetimleri Denetimler listesinden adalardan kaldırın, istediğiniz zaman geri getirin."}});
+  Object.assign(contextMenuStrings, {"Add a button for any website. It shows the site's icon and opens it in a new tab.": {"el": "Προσθέστε ένα κουμπί για οποιονδήποτε ιστότοπο. Δείχνει το εικονίδιό του και τον ανοίγει σε νέα καρτέλα.", "es": "Añade un botón para cualquier sitio web. Muestra su icono y lo abre en una pestaña nueva.", "pt": "Adicione um botão para qualquer site. Mostra o ícone do site e abre-o num novo separador.", "fr": "Ajoutez un bouton pour n'importe quel site. Il affiche son icône et l'ouvre dans un nouvel onglet.", "de": "Füge einen Button für jede beliebige Website hinzu. Er zeigt ihr Symbol und öffnet sie in einem neuen Tab.", "it": "Aggiungi un pulsante per qualsiasi sito. Mostra l'icona del sito e lo apre in una nuova scheda.", "nl": "Voeg een knop toe voor elke website. Hij toont het icoon van de site en opent die in een nieuw tabblad.", "pl": "Dodaj przycisk do dowolnej strony. Pokazuje jej ikonę i otwiera ją w nowej karcie.", "ru": "Добавьте кнопку для любого сайта. Она показывает его значок и открывает его в новой вкладке.", "tr": "Herhangi bir web sitesi için düğme ekleyin. Sitenin simgesini gösterir ve yeni sekmede açar."}});
+  Object.assign(contextMenuStrings, {"Pick several, undo anything": {"el": "Επιλέξτε πολλές, αναιρέστε τα πάντα", "es": "Elige varias, deshaz lo que sea", "pt": "Escolha várias, anule o que quiser", "fr": "Sélectionnez-en plusieurs, annulez tout", "de": "Mehrere auswählen, alles rückgängig", "it": "Scegline diverse, annulla tutto", "nl": "Kies er meerdere, maak alles ongedaan", "pl": "Wybierz kilka, cofnij cokolwiek", "ru": "Выбирайте несколько, отменяйте что угодно", "tr": "Birkaçını seçin, her şeyi geri alın"}});
+  Object.assign(contextMenuStrings, {"Ctrl + click moves islands together. Every step can be undone and redone.": {"el": "Ctrl + κλικ μετακινεί νησίδες μαζί. Κάθε βήμα μπορεί να αναιρεθεί και να επαναληφθεί.", "es": "Ctrl + clic mueve islas a la vez. Cada paso se puede deshacer y rehacer.", "pt": "Ctrl + clique move ilhas em conjunto. Cada passo pode ser anulado e refeito.", "fr": "Ctrl + clic déplace plusieurs îlots ensemble. Chaque étape peut être annulée et rétablie.", "de": "Strg + Klick bewegt Inseln gemeinsam. Jeder Schritt lässt sich rückgängig machen und wiederholen.", "it": "Ctrl + clic sposta le isole insieme. Ogni passaggio può essere annullato e ripetuto.", "nl": "Ctrl + klik verplaatst eilanden samen. Elke stap kan ongedaan gemaakt en opnieuw gedaan worden.", "pl": "Ctrl + kliknięcie przesuwa wyspy razem. Każdy krok można cofnąć i ponowić.", "ru": "Ctrl + клик перемещает острова вместе. Любой шаг можно отменить и повторить.", "tr": "Ctrl + tık adaları birlikte taşır. Her adım geri alınabilir ve yinelenebilir."}});
+  Object.assign(contextMenuStrings, {"Open Arrange from Settings, under Layout, or from the right-click menu on the map.": {"el": "Ανοίξτε τη Διάταξη από τις Ρυθμίσεις, στη Διάταξη, ή από το μενού δεξιού κλικ στον χάρτη.", "es": "Abre Organizar desde Ajustes, en Diseño, o desde el menú del clic derecho en el mapa.", "pt": "Abra Organizar a partir das Definições, em Disposição, ou do menu do clique direito no mapa.", "fr": "Ouvrez Organiser depuis les Réglages, sous Disposition, ou depuis le menu du clic droit sur la carte.", "de": "Öffne „Anordnen“ in den Einstellungen unter Layout oder über das Rechtsklickmenü auf der Karte.", "it": "Apri Disponi dalle Impostazioni, in Layout, o dal menu del clic destro sulla mappa.", "nl": "Open Indelen vanuit Instellingen, onder Indeling, of via het rechtermuisknopmenu op de kaart.", "pl": "Otwórz Układanie z Ustawień, w sekcji Układ, albo z menu prawego przycisku na mapie.", "ru": "Откройте «Расстановку» в настройках, в разделе «Макет», или через меню правой кнопки на карте.", "tr": "Düzenle'yi Ayarlar'daki Yerleşim bölümünden ya da haritadaki sağ tık menüsünden açın."}});
+  Object.assign(contextMenuStrings, {"Right-click the map.": {"el": "Δεξί κλικ στον χάρτη.", "es": "Clic derecho en el mapa.", "pt": "Clique direito no mapa.", "fr": "Clic droit sur la carte.", "de": "Rechtsklick auf die Karte.", "it": "Clic destro sulla mappa.", "nl": "Rechtsklik op de kaart.", "pl": "Kliknij mapę prawym przyciskiem.", "ru": "Правый клик по карте.", "tr": "Haritaya sağ tıklayın."}});
+  Object.assign(contextMenuStrings, {"Studio's own menu, with the things you look up most.": {"el": "Το μενού του Studio, με όσα αναζητάτε πιο συχνά.", "es": "El menú propio de Studio, con lo que más consultas.", "pt": "O menu do próprio Studio, com o que consulta mais vezes.", "fr": "Le menu de Studio, avec ce que vous cherchez le plus souvent.", "de": "Studios eigenes Menü mit dem, was du am häufigsten nachschlägst.", "it": "Il menu di Studio, con le cose che cerchi più spesso.", "nl": "Het eigen menu van Studio, met wat je het vaakst opzoekt.", "pl": "Własne menu Studio z tym, czego szukasz najczęściej.", "ru": "Собственное меню Studio с тем, что вы ищете чаще всего.", "tr": "Studio'nun kendi menüsü, en sık baktıklarınızla."}});
+  Object.assign(contextMenuStrings, {"Coordinates and permalinks": {"el": "Συντεταγμένες και μόνιμοι σύνδεσμοι", "es": "Coordenadas y enlaces permanentes", "pt": "Coordenadas e ligações permanentes", "fr": "Coordonnées et permaliens", "de": "Koordinaten und Permalinks", "it": "Coordinate e permalink", "nl": "Coördinaten en permalinks", "pl": "Współrzędne i permalinki", "ru": "Координаты и постоянные ссылки", "tr": "Koordinatlar ve kalıcı bağlantılar"}});
+  Object.assign(contextMenuStrings, {"One click to copy, plus Google Maps at the same spot.": {"el": "Ένα κλικ για αντιγραφή, συν Google Maps στο ίδιο σημείο.", "es": "Un clic para copiar, y Google Maps en el mismo punto.", "pt": "Um clique para copiar, mais o Google Maps no mesmo ponto.", "fr": "Un clic pour copier, plus Google Maps au même endroit.", "de": "Ein Klick zum Kopieren, dazu Google Maps an derselben Stelle.", "it": "Un clic per copiare, più Google Maps nello stesso punto.", "nl": "Eén klik om te kopiëren, plus Google Maps op dezelfde plek.", "pl": "Jedno kliknięcie, by skopiować, plus Google Maps w tym samym miejscu.", "ru": "Один клик, чтобы скопировать, плюс Google Maps в той же точке.", "tr": "Kopyalamak için tek tık, ayrıca aynı noktada Google Haritalar."}});
+  Object.assign(contextMenuStrings, {"WME Beta and back": {"el": "WME Beta και πίσω", "es": "WME Beta y de vuelta", "pt": "WME Beta e de volta", "fr": "WME Beta et retour", "de": "WME Beta und zurück", "it": "WME Beta e ritorno", "nl": "WME Beta en terug", "pl": "WME Beta i z powrotem", "ru": "WME Beta и обратно", "tr": "WME Beta ve geri"}});
+  Object.assign(contextMenuStrings, {"Switch at the same place and zoom. The button beside it opens Beta in a new tab instead.": {"el": "Μετάβαση στο ίδιο σημείο και ζουμ. Το κουμπί δίπλα του ανοίγει το Beta σε νέα καρτέλα.", "es": "Cambia en el mismo lugar y zoom. El botón de al lado abre Beta en una pestaña nueva.", "pt": "Mude no mesmo local e zoom. O botão ao lado abre o Beta num novo separador.", "fr": "Basculez au même endroit et au même zoom. Le bouton à côté ouvre plutôt Beta dans un nouvel onglet.", "de": "Wechsle an derselben Stelle und im selben Zoom. Der Button daneben öffnet Beta stattdessen in einem neuen Tab.", "it": "Passa nello stesso punto e zoom. Il pulsante accanto apre invece Beta in una nuova scheda.", "nl": "Wissel op dezelfde plek en zoom. De knop ernaast opent Beta in een nieuw tabblad.", "pl": "Przełącz w tym samym miejscu i zbliżeniu. Przycisk obok otwiera Betę w nowej karcie.", "ru": "Переключайтесь в той же точке и масштабе. Кнопка рядом открывает Beta в новой вкладке.", "tr": "Aynı yerde ve yakınlaştırmada geçiş yapın. Yanındaki düğme Beta'yı yeni sekmede açar."}});
+  Object.assign(contextMenuStrings, {"Segments and selections": {"el": "Τμήματα και επιλογές", "es": "Segmentos y selecciones", "pt": "Segmentos e seleções", "fr": "Segments et sélections", "de": "Segmente und Auswahlen", "it": "Segmenti e selezioni", "nl": "Segmenten en selecties", "pl": "Segmenty i zaznaczenia", "ru": "Сегменты и выделения", "tr": "Segmentler ve seçimler"}});
+  Object.assign(contextMenuStrings, {"Right-click one to copy its ID or name, or to zoom to it.": {"el": "Δεξί κλικ σε ένα για αντιγραφή του ID ή του ονόματός του, ή για ζουμ σε αυτό.", "es": "Haz clic derecho en uno para copiar su ID o nombre, o para acercarte a él.", "pt": "Clique com o botão direito num deles para copiar o ID ou o nome, ou para ampliar até ele.", "fr": "Clic droit sur l'un d'eux pour copier son ID ou son nom, ou pour zoomer dessus.", "de": "Rechtsklick darauf kopiert ID oder Namen oder zoomt dorthin.", "it": "Fai clic destro su uno per copiarne l'ID o il nome, o per ingrandirlo.", "nl": "Rechtsklik erop om het ID of de naam te kopiëren, of om erheen te zoomen.", "pl": "Kliknij prawym przyciskiem, by skopiować ID lub nazwę albo przybliżyć.", "ru": "Правый клик по ним: скопировать ID или название либо приблизить.", "tr": "Kimliğini ya da adını kopyalamak veya ona yakınlaşmak için sağ tıklayın."}});
+  Object.assign(contextMenuStrings, {"Studio, one click away": {"el": "Studio, ένα κλικ μακριά", "es": "Studio, a un clic", "pt": "Studio, a um clique", "fr": "Studio, à un clic", "de": "Studio, einen Klick entfernt", "it": "Studio, a un clic", "nl": "Studio, één klik verder", "pl": "Studio o jedno kliknięcie", "ru": "Studio в одном клике", "tr": "Studio bir tık uzakta"}});
+  Object.assign(contextMenuStrings, {"Arrange, the theme and Settings sit at the bottom of the menu.": {"el": "Η Διάταξη, το θέμα και οι Ρυθμίσεις βρίσκονται στο κάτω μέρος του μενού.", "es": "Organizar, el tema y Ajustes están al final del menú.", "pt": "Organizar, o tema e as Definições estão no fundo do menu.", "fr": "Organiser, le thème et les Réglages sont en bas du menu.", "de": "Anordnen, das Theme und die Einstellungen stehen unten im Menü.", "it": "Disponi, il tema e le Impostazioni sono in fondo al menu.", "nl": "Indelen, het thema en Instellingen staan onderaan het menu.", "pl": "Układanie, motyw i Ustawienia są na dole menu.", "ru": "«Расстановка», тема и настройки — внизу меню.", "tr": "Düzenle, tema ve Ayarlar menünün altında."}});
+  Object.assign(contextMenuStrings, {"Move the header. Move the panel.": {"el": "Μετακινήστε την κεφαλίδα. Μετακινήστε το πλαίσιο.", "es": "Mueve la cabecera. Mueve el panel.", "pt": "Mova o cabeçalho. Mova o painel.", "fr": "Déplacez l'en-tête. Déplacez le panneau.", "de": "Verschiebe die Kopfzeile. Verschiebe das Panel.", "it": "Sposta l'intestazione. Sposta il pannello.", "nl": "Verplaats de kop. Verplaats het paneel.", "pl": "Przesuń nagłówek. Przesuń panel.", "ru": "Двигайте шапку. Двигайте панель.", "tr": "Başlığı taşıyın. Paneli taşıyın."}});
+  Object.assign(contextMenuStrings, {"Drag the header by its three-line button. It glides over panels while you hold it and settles in free space when you let go. Click the button to send it back.": {"el": "Σύρετε την κεφαλίδα από το κουμπί με τις τρεις γραμμές. Γλιστρά πάνω από τα πλαίσια όσο την κρατάτε και σταθεροποιείται σε ελεύθερο χώρο όταν την αφήσετε. Κάντε κλικ στο κουμπί για να επιστρέψει.", "es": "Arrastra la cabecera por su botón de tres líneas. Se desliza sobre los paneles mientras la sujetas y se asienta en espacio libre al soltarla. Haz clic en el botón para devolverla.", "pt": "Arraste o cabeçalho pelo botão de três linhas. Desliza sobre os painéis enquanto o segura e assenta em espaço livre quando o larga. Clique no botão para o devolver.", "fr": "Faites glisser l'en-tête par son bouton à trois lignes. Il passe au-dessus des panneaux tant que vous le tenez et se pose dans un espace libre quand vous lâchez. Cliquez sur le bouton pour le renvoyer.", "de": "Ziehe die Kopfzeile am Drei-Striche-Button. Sie gleitet über Panels, solange du sie hältst, und legt sich beim Loslassen in freien Raum. Ein Klick auf den Button schickt sie zurück.", "it": "Trascina l'intestazione dal pulsante a tre linee. Scorre sopra i pannelli finché la tieni e si posa in uno spazio libero quando la lasci. Fai clic sul pulsante per rimandarla indietro.", "nl": "Sleep de kop aan de knop met drie streepjes. Hij zweeft over panelen zolang je vasthoudt en komt in vrije ruimte terecht als je loslaat. Klik op de knop om hem terug te sturen.", "pl": "Przeciągnij nagłówek za przycisk z trzema kreskami. Sunie nad panelami, gdy go trzymasz, i osiada w wolnym miejscu, gdy puścisz. Kliknij przycisk, by go odesłać.", "ru": "Тяните шапку за кнопку с тремя полосками. Пока держите, она скользит над панелями, а когда отпустите — встаёт на свободное место. Клик по кнопке возвращает её.", "tr": "Başlığı üç çizgili düğmesinden sürükleyin. Tuttuğunuz sürece panellerin üzerinde kayar, bıraktığınızda boş alana yerleşir. Geri göndermek için düğmeye tıklayın."}});
+  Object.assign(contextMenuStrings, {"The side panel has a handle at its top. Drag it to move the panel; double-click the handle to put it back.": {"el": "Το πλαϊνό πλαίσιο έχει μια λαβή στο πάνω μέρος. Σύρετέ την για να μετακινήσετε το πλαίσιο· διπλό κλικ στη λαβή το επαναφέρει.", "es": "El panel lateral tiene un asa en la parte superior. Arrástrala para mover el panel; haz doble clic en ella para devolverlo.", "pt": "O painel lateral tem uma pega no topo. Arraste-a para mover o painel; faça duplo clique na pega para o repor.", "fr": "Le panneau latéral a une poignée en haut. Glissez-la pour déplacer le panneau ; double-cliquez dessus pour le remettre en place.", "de": "Das Seitenpanel hat oben einen Griff. Ziehe daran, um das Panel zu verschieben; ein Doppelklick auf den Griff setzt es zurück.", "it": "Il pannello laterale ha una maniglia in alto. Trascinala per spostare il pannello; doppio clic sulla maniglia per rimetterlo a posto.", "nl": "Het zijpaneel heeft bovenaan een greep. Sleep eraan om het paneel te verplaatsen; dubbelklik op de greep om het terug te zetten.", "pl": "Panel boczny ma uchwyt u góry. Przeciągnij go, by przesunąć panel; dwukrotne kliknięcie uchwytu przywraca go.", "ru": "У боковой панели есть ручка сверху. Тяните её, чтобы переместить панель; двойной клик по ручке возвращает её.", "tr": "Yan panelin üstünde bir tutamaç var. Paneli taşımak için sürükleyin; geri koymak için tutamaca çift tıklayın."}});
+  Object.assign(contextMenuStrings, {"Islands got the same rounded hover as the Studio button, and the eye saver no longer leaves a band under the navigation island.": {"el": "Οι νησίδες απέκτησαν την ίδια στρογγυλεμένη επισήμανση με το κουμπί Studio, και η προστασία ματιών δεν αφήνει πλέον λωρίδα κάτω από τη νησίδα πλοήγησης.", "es": "Las islas tienen el mismo resaltado redondeado que el botón de Studio, y el protector ocular ya no deja una franja bajo la isla de navegación.", "pt": "As ilhas ganharam o mesmo destaque arredondado do botão Studio, e o protetor ocular já não deixa uma faixa sob a ilha de navegação.", "fr": "Les îlots ont le même survol arrondi que le bouton Studio, et le protecteur d'yeux ne laisse plus de bande sous l'îlot de navigation.", "de": "Inseln haben jetzt denselben runden Hover wie der Studio-Button, und der Augenschoner hinterlässt keinen Streifen mehr unter der Navigationsinsel.", "it": "Le isole hanno lo stesso hover arrotondato del pulsante Studio e il salva-occhi non lascia più una banda sotto l'isola di navigazione.", "nl": "Eilanden hebben dezelfde ronde hover als de Studio-knop, en de oogbeschermer laat geen band meer achter onder het navigatie-eiland.", "pl": "Wyspy mają to samo zaokrąglone podświetlenie co przycisk Studio, a ochrona oczu nie zostawia już pasa pod wyspą nawigacji.", "ru": "У островов теперь такое же скруглённое выделение, как у кнопки Studio, а защита глаз больше не оставляет полосу под островом навигации.", "tr": "Adalar Studio düğmesiyle aynı yuvarlak vurguyu aldı ve göz koruması artık gezinme adasının altında şerit bırakmıyor."}});
+  Object.assign(contextMenuStrings, {"Report a bug, hear back.": {"el": "Αναφέρετε ένα σφάλμα, λάβετε απάντηση.", "es": "Informa de un error y recibe respuesta.", "pt": "Comunique um erro e receba resposta.", "fr": "Signalez un bug, recevez une réponse.", "de": "Fehler melden, Antwort bekommen.", "it": "Segnala un bug, ricevi risposta.", "nl": "Meld een bug, krijg antwoord.", "pl": "Zgłoś błąd, dostań odpowiedź.", "ru": "Сообщите об ошибке — получите ответ.", "tr": "Hata bildirin, yanıt alın."}});
+  Object.assign(contextMenuStrings, {"Report a bug from Settings. The report carries your Waze username, so the fix can find you. Never your edits or account details.": {"el": "Αναφέρετε σφάλμα από τις Ρυθμίσεις. Η αναφορά περιλαμβάνει το όνομα χρήστη σας στο Waze, ώστε η διόρθωση να σας βρει. Ποτέ τις επεξεργασίες ή τα στοιχεία του λογαριασμού σας.", "es": "Informa de un error desde Ajustes. El informe lleva tu nombre de usuario de Waze para que la corrección te encuentre. Nunca tus ediciones ni los datos de tu cuenta.", "pt": "Comunique um erro a partir das Definições. O relatório leva o seu nome de utilizador do Waze, para que a correção o encontre. Nunca as suas edições nem os dados da conta.", "fr": "Signalez un bug depuis les Réglages. Le rapport contient votre nom d'utilisateur Waze, pour que le correctif vous retrouve. Jamais vos modifications ni les détails de votre compte.", "de": "Melde Fehler aus den Einstellungen. Der Bericht enthält deinen Waze-Benutzernamen, damit die Lösung dich findet. Nie deine Bearbeitungen oder Kontodaten.", "it": "Segnala un bug dalle Impostazioni. La segnalazione contiene il tuo nome utente Waze, così la correzione può trovarti. Mai le tue modifiche o i dati dell'account.", "nl": "Meld een bug vanuit Instellingen. Het rapport bevat je Waze-gebruikersnaam, zodat de fix je kan vinden. Nooit je bewerkingen of accountgegevens.", "pl": "Zgłoś błąd z Ustawień. Zgłoszenie zawiera twoją nazwę użytkownika Waze, by poprawka mogła cię znaleźć. Nigdy twoich edycji ani danych konta.", "ru": "Сообщайте об ошибках из настроек. В отчёте есть ваше имя пользователя Waze, чтобы исправление вас нашло. Никогда — ваши правки или данные аккаунта.", "tr": "Ayarlar'dan hata bildirin. Bildirim, düzeltmenin sizi bulabilmesi için Waze kullanıcı adınızı taşır. Düzenlemeleriniz veya hesap bilgileriniz asla."}});
+  Object.assign(contextMenuStrings, {"When a report of yours is fixed, a note shows up here in the editor, with the version that fixed it.": {"el": "Όταν μια αναφορά σας διορθωθεί, εμφανίζεται εδώ στον editor μια σημείωση με την έκδοση που τη διόρθωσε.", "es": "Cuando uno de tus informes se corrige, aparece aquí en el editor una nota con la versión que lo corrigió.", "pt": "Quando um relatório seu é corrigido, aparece aqui no editor uma nota com a versão que o corrigiu.", "fr": "Quand l'un de vos rapports est corrigé, une note apparaît ici dans l'éditeur, avec la version qui l'a corrigé.", "de": "Wenn ein Bericht von dir behoben ist, erscheint hier im Editor ein Hinweis mit der Version, die ihn behoben hat.", "it": "Quando una tua segnalazione viene risolta, qui nell'editor compare una nota con la versione che l'ha risolta.", "nl": "Als een rapport van jou is opgelost, verschijnt hier in de editor een bericht met de versie die het oploste.", "pl": "Gdy twoje zgłoszenie zostanie naprawione, tutaj w edytorze pojawi się notka z wersją, która to naprawiła.", "ru": "Когда ваш отчёт исправлен, здесь, в редакторе, появится заметка с версией, в которой это исправлено.", "tr": "Bir bildiriminiz düzeltildiğinde, burada editörde düzelten sürümle birlikte bir not görünür."}});
+  Object.assign(contextMenuStrings, {"Fixed reports also show as a green count on Report a bug in Settings.": {"el": "Οι διορθωμένες αναφορές εμφανίζονται και ως πράσινος αριθμός στο Αναφορά σφάλματος στις Ρυθμίσεις.", "es": "Los informes corregidos también aparecen como un contador verde en Informar de un error, en Ajustes.", "pt": "Os relatórios corrigidos também aparecem como um contador verde em Comunicar um erro, nas Definições.", "fr": "Les rapports corrigés apparaissent aussi comme un compteur vert sur Signaler un bug dans les Réglages.", "de": "Behobene Berichte erscheinen auch als grüne Zahl bei „Fehler melden“ in den Einstellungen.", "it": "Le segnalazioni risolte compaiono anche come conteggio verde su Segnala un bug nelle Impostazioni.", "nl": "Opgeloste rapporten verschijnen ook als groen getal bij Bug melden in Instellingen.", "pl": "Naprawione zgłoszenia pokazują się też jako zielony licznik przy Zgłoś błąd w Ustawieniach.", "ru": "Исправленные отчёты также показываются зелёным счётчиком на «Сообщить об ошибке» в настройках.", "tr": "Düzeltilen bildirimler Ayarlar'daki Hata bildir üzerinde yeşil sayı olarak da görünür."}});
+  Object.assign(contextMenuStrings, {"A settings window that finds things for you.": {"el": "Ένα παράθυρο ρυθμίσεων που βρίσκει τα πράγματα για εσάς.", "es": "Una ventana de ajustes que encuentra las cosas por ti.", "pt": "Uma janela de definições que encontra as coisas por si.", "fr": "Une fenêtre de réglages qui trouve les choses pour vous.", "de": "Ein Einstellungsfenster, das die Dinge für dich findet.", "it": "Una finestra delle impostazioni che trova le cose per te.", "nl": "Een instellingenvenster dat dingen voor je vindt.", "pl": "Okno ustawień, które samo znajduje rzeczy.", "ru": "Окно настроек, которое само находит нужное.", "tr": "Sizin için arayan bir ayarlar penceresi."}});
+  Object.assign(contextMenuStrings, {"Three groups": {"el": "Τρεις ομάδες", "es": "Tres grupos", "pt": "Três grupos", "fr": "Trois groupes", "de": "Drei Gruppen", "it": "Tre gruppi", "nl": "Drie groepen", "pl": "Trzy grupy", "ru": "Три группы", "tr": "Üç grup"}});
+  Object.assign(contextMenuStrings, {"Workspace, Editor and Studio in the sidebar, so the eye lands on the right page.": {"el": "Χώρος εργασίας, Editor και Studio στην πλαϊνή μπάρα, ώστε το μάτι να πέφτει στη σωστή σελίδα.", "es": "Espacio de trabajo, Editor y Studio en la barra lateral, para que la vista caiga en la página correcta.", "pt": "Área de trabalho, Editor e Studio na barra lateral, para que o olhar caia na página certa.", "fr": "Espace de travail, Éditeur et Studio dans la barre latérale, pour que l'œil tombe sur la bonne page.", "de": "Arbeitsbereich, Editor und Studio in der Seitenleiste, damit der Blick gleich auf die richtige Seite fällt.", "it": "Area di lavoro, Editor e Studio nella barra laterale, così l'occhio cade sulla pagina giusta.", "nl": "Werkruimte, Editor en Studio in de zijbalk, zodat het oog op de juiste pagina valt.", "pl": "Obszar roboczy, Edytor i Studio na pasku bocznym, by wzrok trafiał na właściwą stronę.", "ru": "Рабочее пространство, Редактор и Studio в боковой панели, чтобы взгляд сразу попадал на нужную страницу.", "tr": "Kenar çubuğunda Çalışma alanı, Editör ve Studio; göz doğru sayfaya düşsün diye."}});
+  Object.assign(contextMenuStrings, {"Section chips": {"el": "Ετικέτες ενοτήτων", "es": "Fichas de sección", "pt": "Marcadores de secção", "fr": "Pastilles de section", "de": "Abschnitts-Chips", "it": "Chip di sezione", "nl": "Sectiechips", "pl": "Żetony sekcji", "ru": "Кнопки разделов", "tr": "Bölüm etiketleri"}});
+  Object.assign(contextMenuStrings, {"Under each title, one click jumps to Comfort instead of scrolling past Theme.": {"el": "Κάτω από κάθε τίτλο, ένα κλικ πηγαίνει στην Άνεση αντί να κάνετε κύλιση πέρα από το Θέμα.", "es": "Bajo cada título, un clic salta a Comodidad en vez de desplazarte más allá de Tema.", "pt": "Sob cada título, um clique salta para Conforto em vez de passar pelo Tema.", "fr": "Sous chaque titre, un clic saute à Confort au lieu de défiler au-delà de Thème.", "de": "Unter jedem Titel springt ein Klick zu Komfort, statt an Theme vorbeizuscrollen.", "it": "Sotto ogni titolo, un clic salta a Comfort invece di scorrere oltre Tema.", "nl": "Onder elke titel springt één klik naar Comfort in plaats van voorbij Thema te scrollen.", "pl": "Pod każdym tytułem jedno kliknięcie przenosi do Komfortu zamiast przewijania za Motyw.", "ru": "Под каждым заголовком один клик переносит к «Комфорту» вместо прокрутки мимо «Темы».", "tr": "Her başlığın altında tek tık, Tema'yı kaydırıp geçmek yerine Konfor'a atlar."}});
+  Object.assign(contextMenuStrings, {"A dot for anything you changed": {"el": "Μια κουκκίδα για ό,τι αλλάξατε", "es": "Un punto en todo lo que cambiaste", "pt": "Um ponto em tudo o que alterou", "fr": "Un point sur tout ce que vous avez changé", "de": "Ein Punkt für alles, was du geändert hast", "it": "Un punto su tutto ciò che hai cambiato", "nl": "Een stip bij alles wat je veranderde", "pl": "Kropka przy wszystkim, co zmieniono", "ru": "Точка у всего, что вы изменили", "tr": "Değiştirdiğiniz her şeye bir nokta"}});
+  Object.assign(contextMenuStrings, {"With Reset to default right next to it.": {"el": "Με Επαναφορά προεπιλογής ακριβώς δίπλα.", "es": "Con Restablecer valor predeterminado justo al lado.", "pt": "Com Repor predefinição mesmo ao lado.", "fr": "Avec Réinitialiser juste à côté.", "de": "Mit „Auf Standard zurücksetzen“ direkt daneben.", "it": "Con Ripristina predefinito subito accanto.", "nl": "Met Standaard herstellen er direct naast.", "pl": "Z Przywróć domyślne tuż obok.", "ru": "И «Сбросить» прямо рядом.", "tr": "Hemen yanında Varsayılana sıfırla ile."}});
+  Object.assign(contextMenuStrings, {"Click the number beside any slider and type it.": {"el": "Κάντε κλικ στον αριθμό δίπλα σε οποιοδήποτε ρυθμιστικό και πληκτρολογήστε τον.", "es": "Haz clic en el número junto a cualquier control deslizante y escríbelo.", "pt": "Clique no número ao lado de qualquer controlo deslizante e escreva-o.", "fr": "Cliquez sur le nombre à côté d'un curseur et tapez-le.", "de": "Klicke auf die Zahl neben einem Regler und tippe sie ein.", "it": "Fai clic sul numero accanto a un cursore e digitalo.", "nl": "Klik op het getal naast een schuifregelaar en typ het.", "pl": "Kliknij liczbę obok dowolnego suwaka i ją wpisz.", "ru": "Нажмите на число рядом с ползунком и введите его.", "tr": "Herhangi bir kaydırıcının yanındaki sayıya tıklayıp yazın."}});
+  Object.assign(contextMenuStrings, {"opens the command palette: search every setting and command from anywhere.": {"el": "ανοίγει την παλέτα εντολών: αναζήτηση σε κάθε ρύθμιση και εντολή από οπουδήποτε.", "es": "abre la paleta de comandos: busca cualquier ajuste y comando desde cualquier sitio.", "pt": "abre a paleta de comandos: procure qualquer definição e comando a partir de qualquer lugar.", "fr": "ouvre la palette de commandes : cherchez n'importe quel réglage ou commande, de partout.", "de": "öffnet die Befehlspalette: jede Einstellung und jeden Befehl von überall suchen.", "it": "apre la tavolozza dei comandi: cerca ogni impostazione e comando da ovunque.", "nl": "opent het commandopalet: zoek elke instelling en opdracht, waar je ook bent.", "pl": "otwiera paletę poleceń: szukaj każdego ustawienia i polecenia z dowolnego miejsca.", "ru": "открывает палитру команд: поиск любой настройки и команды откуда угодно.", "tr": "komut paletini açar: her ayarı ve komutu her yerden arayın."}});
+  Object.assign(contextMenuStrings, {"And the rest.": {"el": "Και τα υπόλοιπα.", "es": "Y el resto.", "pt": "E o resto.", "fr": "Et le reste.", "de": "Und der Rest.", "it": "E il resto.", "nl": "En de rest.", "pl": "I reszta.", "ru": "И остальное.", "tr": "Ve gerisi."}});
+  Object.assign(contextMenuStrings, {"Slim and rounded, in your theme colors.": {"el": "Λεπτές και στρογγυλεμένες, στα χρώματα του θέματός σας.", "es": "Finas y redondeadas, en los colores de tu tema.", "pt": "Finas e arredondadas, nas cores do seu tema.", "fr": "Fines et arrondies, aux couleurs de votre thème.", "de": "Schmal und abgerundet, in deinen Theme-Farben.", "it": "Sottili e arrotondate, nei colori del tuo tema.", "nl": "Slank en afgerond, in je themakleuren.", "pl": "Smukłe i zaokrąglone, w kolorach motywu.", "ru": "Тонкие и скруглённые, в цветах вашей темы.", "tr": "İnce ve yuvarlak, tema renklerinizde."}});
+  Object.assign(contextMenuStrings, {"Nothing hidden under the panel": {"el": "Τίποτα κρυμμένο κάτω από το πλαίσιο", "es": "Nada oculto bajo el panel", "pt": "Nada escondido sob o painel", "fr": "Rien de caché sous le panneau", "de": "Nichts mehr unter dem Panel versteckt", "it": "Niente nascosto sotto il pannello", "nl": "Niets verborgen onder het paneel", "pl": "Nic nie chowa się pod panelem", "ru": "Ничего не прячется под панелью", "tr": "Panelin altında saklı hiçbir şey yok"}});
+  Object.assign(contextMenuStrings, {"More map problems and requests move the map so their marker stays in view.": {"el": "Περισσότερα προβλήματα χάρτη και αιτήματα μετακινούν τον χάρτη ώστε ο δείκτης τους να παραμένει ορατός.", "es": "Más problemas de mapa y solicitudes mueven el mapa para que su marcador siga a la vista.", "pt": "Mais problemas de mapa e pedidos movem o mapa para que o seu marcador fique visível.", "fr": "Davantage de problèmes de carte et de demandes déplacent la carte pour que leur marqueur reste visible.", "de": "Mehr Kartenprobleme und Anfragen verschieben die Karte, damit ihre Markierung sichtbar bleibt.", "it": "Più problemi di mappa e richieste spostano la mappa così il loro marcatore resta visibile.", "nl": "Meer kaartproblemen en verzoeken verschuiven de kaart zodat hun markering in beeld blijft.", "pl": "Więcej problemów mapy i zgłoszeń przesuwa mapę, by ich znacznik pozostał widoczny.", "ru": "Больше проблем карты и запросов сдвигают карту так, чтобы их маркер оставался на виду.", "tr": "Daha fazla harita sorunu ve istek, işaretçileri görünür kalsın diye haritayı kaydırır."}});
+  Object.assign(contextMenuStrings, {"More add-ons themed": {"el": "Περισσότερα πρόσθετα με θέμα", "es": "Más complementos con tema", "pt": "Mais extras com tema", "fr": "Plus de modules thématisés", "de": "Mehr Add-ons im Theme", "it": "Più componenti aggiuntivi a tema", "nl": "Meer add-ons in thema", "pl": "Więcej dodatków w motywie", "ru": "Больше дополнений в теме", "tr": "Daha fazla eklenti temalı"}});
+  Object.assign(contextMenuStrings, {"WME Segment Shift Utility, plus many layout and dark theme fixes.": {"el": "WME Segment Shift Utility, συν πολλές διορθώσεις διάταξης και σκούρου θέματος.", "es": "WME Segment Shift Utility, además de muchas correcciones de diseño y del tema oscuro.", "pt": "WME Segment Shift Utility, mais muitas correções de disposição e do tema escuro.", "fr": "WME Segment Shift Utility, plus de nombreux correctifs de disposition et de thème sombre.", "de": "WME Segment Shift Utility, dazu viele Layout- und Dark-Theme-Korrekturen.", "it": "WME Segment Shift Utility, più molte correzioni di layout e del tema scuro.", "nl": "WME Segment Shift Utility, plus veel fixes voor indeling en donker thema.", "pl": "WME Segment Shift Utility oraz wiele poprawek układu i ciemnego motywu.", "ru": "WME Segment Shift Utility и множество исправлений макета и тёмной темы.", "tr": "WME Segment Shift Utility, ayrıca birçok yerleşim ve koyu tema düzeltmesi."}});
+  Object.assign(contextMenuStrings, {"This tour can be run again from Settings, on the General page.": {"el": "Αυτή η περιήγηση μπορεί να επαναληφθεί από τις Ρυθμίσεις, στη σελίδα Γενικά.", "es": "Este recorrido se puede repetir desde Ajustes, en la página General.", "pt": "Esta visita pode ser repetida a partir das Definições, na página Geral.", "fr": "Ce tour peut être relancé depuis les Réglages, sur la page Général.", "de": "Diese Tour lässt sich in den Einstellungen auf der Seite „Allgemein“ erneut starten.", "it": "Questo tour può essere ripetuto dalle Impostazioni, nella pagina Generale.", "nl": "Deze rondleiding kun je opnieuw starten vanuit Instellingen, op de pagina Algemeen.", "pl": "Tę wycieczkę można uruchomić ponownie z Ustawień, na stronie Ogólne.", "ru": "Эту экскурсию можно запустить снова из настроек, на странице «Общие».", "tr": "Bu tur Ayarlar'daki Genel sayfasından yeniden başlatılabilir."}});
+  Object.assign(contextMenuStrings, {"Full release notes": {"el": "Πλήρεις σημειώσεις έκδοσης", "es": "Notas completas de la versión", "pt": "Notas completas da versão", "fr": "Notes de version complètes", "de": "Vollständige Versionshinweise", "it": "Note di rilascio complete", "nl": "Volledige releasenotes", "pl": "Pełne informacje o wydaniu", "ru": "Полные примечания к выпуску", "tr": "Tüm sürüm notları"}});
+  Object.assign(contextMenuStrings, {"Skip tour": {"el": "Παράλειψη", "es": "Saltar", "pt": "Saltar", "fr": "Passer", "de": "Überspringen", "it": "Salta", "nl": "Overslaan", "pl": "Pomiń", "ru": "Пропустить", "tr": "Atla"}});
+  Object.assign(contextMenuStrings, {"Start the tour": {"el": "Έναρξη περιήγησης", "es": "Empezar el recorrido", "pt": "Começar a visita", "fr": "Commencer le tour", "de": "Tour starten", "it": "Inizia il tour", "nl": "Start de rondleiding", "pl": "Rozpocznij wycieczkę", "ru": "Начать экскурсию", "tr": "Tura başla"}});
+  Object.assign(contextMenuStrings, {"Link button jumps when clicked": {"el": "Το κουμπί συνδέσμου πηδάει στο κλικ", "es": "El botón de enlace salta al hacer clic", "pt": "O botão de ligação salta ao clicar", "fr": "Le bouton de lien saute au clic", "de": "Link-Button springt beim Klicken", "it": "Il pulsante link salta al clic", "nl": "Linkknop springt bij klikken", "pl": "Przycisk linku skacze po kliknięciu", "ru": "Кнопка ссылки прыгает при нажатии", "tr": "Bağlantı düğmesi tıklanınca zıplıyor"}});
+  Object.assign(contextMenuStrings, {"Studio": {"el": "Studio", "es": "Studio", "pt": "Studio", "fr": "Studio", "de": "Studio", "it": "Studio", "nl": "Studio", "pl": "Studio", "ru": "Studio", "tr": "Studio"}});
+  Object.assign(contextMenuStrings, {"Accent": {"el": "Έμφαση", "es": "Acento", "pt": "Destaque", "fr": "Accent", "de": "Akzent", "it": "Accento", "nl": "Accent", "pl": "Akcent", "ru": "Акцент", "tr": "Vurgu"}});
+  Object.assign(contextMenuStrings, {"Text in the header, menus and panels.": {"el": "Κείμενο στην κεφαλίδα, τα μενού και τα πλαίσια.", "es": "Texto en la cabecera, los menús y los paneles.", "pt": "Texto no cabeçalho, menus e painéis.", "fr": "Texte de l'en-tête, des menus et des panneaux.", "de": "Text in Kopfzeile, Menüs und Panels.", "it": "Testo nell'intestazione, nei menu e nei pannelli.", "nl": "Tekst in de kop, menu's en panelen.", "pl": "Tekst w nagłówku, menu i panelach.", "ru": "Текст в шапке, меню и панелях.", "tr": "Başlık, menüler ve panellerdeki metin."}});
+  Object.assign(contextMenuStrings, {"Warmer colors.": {"el": "Πιο ζεστά χρώματα.", "es": "Colores más cálidos.", "pt": "Cores mais quentes.", "fr": "Couleurs plus chaudes.", "de": "Wärmere Farben.", "it": "Colori più caldi.", "nl": "Warmere kleuren.", "pl": "Cieplejsze kolory.", "ru": "Более тёплые цвета.", "tr": "Daha sıcak renkler."}});
+  Object.assign(contextMenuStrings, {"you": {"el": "εσείς", "es": "tú", "pt": "você", "fr": "vous", "de": "du", "it": "tu", "nl": "jij", "pl": "ty", "ru": "вы", "tr": "siz"}});
+  Object.assign(contextMenuStrings, {"A short tour of what this version of Studio can do.": {"el": "Μια σύντομη περιήγηση στο τι μπορεί να κάνει αυτή η έκδοση του Studio.", "es": "Un breve recorrido por lo que puede hacer esta versión de Studio.", "pt": "Uma breve visita ao que esta versão do Studio pode fazer.", "fr": "Un court tour de ce que cette version de Studio sait faire.", "de": "Eine kurze Tour durch das, was diese Studio-Version kann.", "it": "Un breve tour di ciò che questa versione di Studio sa fare.", "nl": "Een korte rondleiding langs wat deze versie van Studio kan.", "pl": "Krótka wycieczka po tym, co potrafi ta wersja Studio.", "ru": "Короткая экскурсия по возможностям этой версии Studio.", "tr": "Studio'nun bu sürümünün neler yapabildiğine kısa bir bakış."}});
+  Object.assign(contextMenuStrings, {"Show the tour": {"el": "Εμφάνιση περιήγησης", "es": "Ver el recorrido", "pt": "Ver a visita", "fr": "Voir le tour", "de": "Tour zeigen", "it": "Mostra il tour", "nl": "Rondleiding tonen", "pl": "Pokaż wycieczkę", "ru": "Показать экскурсию", "tr": "Turu göster"}});
+  Object.assign(contextMenuStrings, {"Switch to WME Beta": {"el": "Μετάβαση στο WME Beta", "es": "Cambiar a WME Beta", "pt": "Mudar para o WME Beta", "fr": "Passer à WME Beta", "de": "Zu WME Beta wechseln", "it": "Passa a WME Beta", "nl": "Overschakelen naar WME Beta", "pl": "Przejdź do WME Beta", "ru": "Перейти в WME Beta", "tr": "WME Beta'ya geç"}, "Switch to WME": {"el": "Μετάβαση στο WME", "es": "Cambiar a WME", "pt": "Mudar para o WME", "fr": "Passer à WME", "de": "Zu WME wechseln", "it": "Passa a WME", "nl": "Overschakelen naar WME", "pl": "Przejdź do WME", "ru": "Перейти в WME", "tr": "WME'ye geç"}, "Opened in a new tab to keep your unsaved edits": {"el": "Άνοιξε σε νέα καρτέλα για να κρατηθούν οι μη αποθηκευμένες αλλαγές σας", "es": "Se abrió en una pestaña nueva para conservar tus cambios sin guardar", "pt": "Aberto num novo separador para manter as alterações por guardar", "fr": "Ouvert dans un nouvel onglet pour garder vos modifications non enregistrées", "de": "In neuem Tab geöffnet, damit deine ungespeicherten Änderungen erhalten bleiben", "it": "Aperto in una nuova scheda per conservare le modifiche non salvate", "nl": "Geopend in een nieuw tabblad zodat je niet-opgeslagen wijzigingen blijven", "pl": "Otwarto w nowej karcie, aby zachować niezapisane zmiany", "ru": "Открыто в новой вкладке, чтобы сохранить несохранённые правки", "tr": "Kaydedilmemiş değişikliklerin kalması için yeni sekmede açıldı"}});
+  for (const [key,translations] of Object.entries({ ...settingsStrings, ...setupStrings, ...shortcutStrings, ...scheduleStrings, ...arrangeStrings, ...contextMenuStrings })) {
     const position = KEYS.indexOf(key);
     if (position < 0) { KEYS.push(key); for (const [language,pack] of Object.entries(PACKS)) pack.push(translations[language] || key); }
     else for (const [language,pack] of Object.entries(PACKS)) if (pack[position] === key && translations[language]) pack[position] = translations[language];
@@ -5435,7 +5592,12 @@ html[data-wme-studio="on"] .ws-restriction-select-group { padding:7px 9px 3px; c
     accent: '#0099ff', addons: true, motion: true, compactMode: true, compactHeaderFullWidth: false, compactHeaderWidth: 100,
     compactIslandOpacity: 60, compactSnapEdges: true, compactSnapCenter: true, layerColumns: 'one',
     eyeSaver: 0, satelliteBrightness: 100, viewportBrightness: 100, hudScale: 100, panelScale: 100, fontScale: 100, gpsBelowRoads: true, gpsOpacity: 100,
-    discussionVisible: 2, compactRequests: true, language: 'auto', commandShortcut: 'Shift+KeyP'
+    discussionVisible: 2, compactRequests: true, language: 'auto', commandShortcut: 'Shift+KeyP',
+    // Time-based switching. 'off' keeps the fixed theme / eye saver; 'sun' follows sunset and sunrise where the map is; 'custom' uses the hours below.
+    // The theme schedule only runs from Light: Light by day, themeNight (Dark or Full black) at night.
+    themeSchedule: 'off', themeNight: 'dark', themeDayStart: '07:00', themeNightStart: '20:00',
+    eyeSaverSchedule: 'off', eyeSaverStart: '21:00', eyeSaverEnd: '07:00', eyeSaverFade: true,
+    customScrollbars: true, contextMenu: true
   });
   // A shortcut is stored as its modifiers plus the physical key ("Shift+KeyP"), so it is the same key on a Greek
   // or any other keyboard layout. '' means the shortcut is off. A letter, number or symbol key needs a modifier;
@@ -5462,9 +5624,11 @@ html[data-wme-studio="on"] .ws-restriction-select-group { padding:7px 9px 3px; c
     return value.split('+').map(part => names[part] || part.replace(/^(?:Key|Digit)/, '').replace(/^Numpad/, 'Num ')).join(' + ');
   }
   globalThis.WMEStudioShortcut = { normalize: normalizeShortcut, fromEvent: shortcutFromEvent, label: shortcutLabel, recording: false };
-  const choices = { theme: ['light', 'dark', 'black'], corners: ['flat', 'soft'], layerColumns: ['one', 'two'], language: ['auto','en','el','es','pt','fr','de','it','nl','pl','ru','tr'] };
+  const choices = { theme: ['light', 'dark', 'black'], themeNight: ['dark', 'black'], themeSchedule: ['off', 'sun', 'custom'], eyeSaverSchedule: ['off', 'sun', 'custom'], corners: ['flat', 'soft'], layerColumns: ['one', 'two'], language: ['auto','en','el','es','pt','fr','de','it','nl','pl','ru','tr'] };
   const ranges = { compactHeaderWidth: [0, 100], compactIslandOpacity: [20, 100], eyeSaver: [0, 100], satelliteBrightness: [0, 100], viewportBrightness: [0, 100], gpsOpacity: [0, 100], hudScale: [70, 100], panelScale: [70, 100], fontScale: [85, 120], discussionVisible: [1, 10] };
   const steps = { compactHeaderWidth: 1, discussionVisible: 1 };
+  const clockTimes = new Set(['themeDayStart', 'themeNightStart', 'eyeSaverStart', 'eyeSaverEnd']);
+  const CLOCK = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
   const prefix = 'wmeStudio.';
 
   function sanitize(input = {}) {
@@ -5477,6 +5641,7 @@ html[data-wme-studio="on"] .ws-restriction-select-group { padding:7px 9px 3px; c
         ? Math.min(ranges[key][1], Math.max(ranges[key][0], Math.round(value / (steps[key] || 5)) * (steps[key] || 5)))
         : fallback;
       else if (key === 'accent') out[key] = /^#[0-9a-f]{6}$/i.test(value || '') ? value.toLowerCase() : fallback;
+      else if (clockTimes.has(key)) out[key] = typeof value === 'string' && CLOCK.test(value) ? value : fallback;
       else if (key === 'commandShortcut') { const shortcut = normalizeShortcut(value); out[key] = shortcut === null ? fallback : shortcut; }
       else out[key] = typeof value === 'boolean' ? value : fallback;
     }
@@ -5518,6 +5683,131 @@ html[data-wme-studio="on"] .ws-restriction-select-group { padding:7px 9px 3px; c
   }
 
   globalThis.WMEStudioSettings = Object.freeze({ defaults, sanitize, read, write, changes, ink });
+})();
+
+// Day and night switching for the theme and the eye saver. Everything is worked out from the clock, so there is no
+// state to keep: any tab asks "what should be showing right now?" and gets the same answer.
+(() => {
+  'use strict';
+  if (globalThis.WMEStudioSchedule) return;
+  const pageWindow = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
+  const rad = Math.PI / 180, dayMs = 864e5, J1970 = 2440588, J2000 = 2451545, tilt = rad * 23.4397, cycle = 2 * Math.PI;
+  const FADE_MS = 30 * 60 * 1000;
+  const PLACE_KEY = 'wmeStudio.scheduleLocation';
+
+  // Sunrise and sunset (sun's upper edge at the horizon, with refraction) for the calendar day of `day` in local time.
+  function sunTimes(day, lat, lon) {
+    const noon = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12);
+    const lw = -lon * rad, phi = lat * rad;
+    const n = Math.round(noon.valueOf() / dayMs - 0.5 + J1970 - J2000 - 0.0009 - lw / cycle);
+    const ds = 0.0009 + lw / cycle + n;
+    const M = rad * (357.5291 + 0.98560028 * ds);
+    const L = M + rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)) + rad * 102.9372 + Math.PI;
+    const dec = Math.asin(Math.sin(tilt) * Math.sin(L));
+    const correction = 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+    const transit = J2000 + ds + correction;
+    const cosH = (Math.sin(-0.833 * rad) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec));
+    if (cosH <= -1) return { polar: 'day' };
+    if (cosH >= 1) return { polar: 'night' };
+    const set = J2000 + 0.0009 + (Math.acos(cosH) + lw) / cycle + n + correction;
+    const toDate = j => new Date((j + 0.5 - J1970) * dayMs);
+    return { rise: toDate(transit - (set - transit)), set: toDate(set) };
+  }
+
+  // Where the sun times are worked out: the map's centre, read at most once a minute and remembered for the next
+  // visit; before the map has loaded the first time, a rough guess from the computer's time zone.
+  let place = null, placeRead = 0;
+  function mapCenter() {
+    try {
+      const map = pageWindow.W?.map, ol = map?.getOLMap?.() || map?.olMap || null;
+      const center = ol?.getCenter?.();
+      if (center && Number.isFinite(center.lon) && Number.isFinite(center.lat) && (center.lon || center.lat)) {
+        if (Math.abs(center.lon) <= 180 && Math.abs(center.lat) <= 90 && ol.getProjection?.() === 'EPSG:4326') return { lat: center.lat, lon: center.lon };
+        const R = 6378137;   // WME's map works in Web Mercator metres.
+        return { lon: center.lon / R / rad, lat: (2 * Math.atan(Math.exp(center.lat / R)) - Math.PI / 2) / rad };
+      }
+    } catch (_) {}
+    try {
+      const params = new URLSearchParams(location.search), lat = Number(params.get('lat')), lon = Number(params.get('lon'));
+      if (params.has('lat') && params.has('lon') && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return { lat, lon };
+    } catch (_) {}
+    return null;
+  }
+  function currentPlace() {
+    const now = Date.now();
+    if (place && now - placeRead < 60000) return place;
+    placeRead = now;
+    const found = mapCenter();
+    if (found && Math.abs(found.lat) <= 85) {
+      place = { lat: Math.round(found.lat * 10) / 10, lon: Math.round(found.lon * 10) / 10, guessed: false };
+      try { localStorage.setItem(PLACE_KEY, JSON.stringify([place.lat, place.lon])); } catch (_) {}
+      return place;
+    }
+    if (place) return place;
+    try {
+      const [lat, lon] = JSON.parse(localStorage.getItem(PLACE_KEY) || 'null') || [];
+      if (Number.isFinite(lat) && Number.isFinite(lon)) return place = { lat, lon, guessed: false };
+    } catch (_) {}
+    const year = new Date().getFullYear();
+    const standard = Math.max(new Date(year, 0, 1).getTimezoneOffset(), new Date(year, 6, 1).getTimezoneOffset());
+    return place = { lat: 40, lon: Math.max(-180, Math.min(180, -standard / 4)), guessed: true };
+  }
+
+  const clock = (base, text, days) => {
+    const [h, m] = text.split(':').map(Number);
+    return new Date(base.getFullYear(), base.getMonth(), base.getDate() + days, h, m);
+  };
+  // The "night" stretch that covers `now`, or the next one: from `from` to `to` (custom hours), or sunset to sunrise.
+  function stretch(mode, from, to, now) {
+    const spans = [];
+    if (mode === 'sun') {
+      const where = currentPlace(), today = sunTimes(now, where.lat, where.lon);
+      if (today.polar) return { active: today.polar === 'night', start: null, end: null, next: null };
+      for (let k = -1; k <= 1; k++) {
+        const evening = sunTimes(new Date(now.getFullYear(), now.getMonth(), now.getDate() + k), where.lat, where.lon);
+        const morning = sunTimes(new Date(now.getFullYear(), now.getMonth(), now.getDate() + k + 1), where.lat, where.lon);
+        if (evening.set && morning.rise) spans.push([evening.set, morning.rise]);
+      }
+    } else {
+      if (from === to) return { active: false, start: null, end: null, next: null };
+      for (let k = -1; k <= 1; k++) {
+        const start = clock(now, from, k);
+        let end = clock(now, to, k);
+        if (end <= start) end = clock(now, to, k + 1);
+        spans.push([start, end]);
+      }
+    }
+    const span = spans.find(([start, end]) => now >= start && now < end);
+    const next = span ? span[1] : spans.map(([start]) => start).filter(start => start > now).sort((a, b) => a - b)[0] || null;
+    return { active: !!span, start: span?.[0] || null, end: span?.[1] || null, next };
+  }
+
+  // What should show right now for these settings. `theme` and `eyeSaver` are the values to paint; the rest is for
+  // the settings window.
+  function resolve(settings, now = new Date()) {
+    const out = { theme: settings.theme, eyeSaver: settings.eyeSaver, night: null, themeNext: null, eyeSaverActive: settings.eyeSaver > 0, eyeSaverNext: null, sun: null };
+    if ((settings.theme === 'light' && settings.themeSchedule === 'sun') || settings.eyeSaverSchedule === 'sun') {
+      const where = currentPlace();
+      out.sun = { ...sunTimes(now, where.lat, where.lon), guessed: where.guessed };
+    }
+    // Only Light switches: a dark theme chosen by hand is already the night look.
+    if (settings.theme === 'light' && settings.themeSchedule && settings.themeSchedule !== 'off') {
+      const night = stretch(settings.themeSchedule, settings.themeNightStart, settings.themeDayStart, now);
+      out.night = night.active; out.themeNext = night.next;
+      out.theme = night.active ? settings.themeNight : 'light';
+    }
+    if (settings.eyeSaverSchedule && settings.eyeSaverSchedule !== 'off') {
+      const span = stretch(settings.eyeSaverSchedule, settings.eyeSaverStart, settings.eyeSaverEnd, now);
+      let share = span.active ? 1 : 0;
+      if (span.active && settings.eyeSaverFade && span.start && span.end) share = Math.max(0, Math.min(1, (now - span.start) / FADE_MS, (span.end - now) / FADE_MS));
+      out.eyeSaver = Math.round(settings.eyeSaver * share * 10) / 10;
+      out.eyeSaverActive = span.active; out.eyeSaverNext = span.next;
+    }
+    return out;
+  }
+  const time = date => date ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+
+  globalThis.WMEStudioSchedule = Object.freeze({ resolve, sunTimes, place: currentPlace, time });
 })();
 
 
@@ -6026,6 +6316,8 @@ $root .URCE-divTabs { scrollbar-width: thin; scrollbar-color: var(--wme-studio-b
 $root .URCE-field:not(.urStyle) { border-color: var(--wme-studio-border) !important; background: transparent !important; }
 $root .URCE-legend:not(.urStyle) { color: var(--wme-studio-text) !important; }
 $root .URCE-legend.urStyle { color: var(--wme-studio-text) !important; background: var(--wme-studio-input) !important; border-top-color: var(--wme-studio-border) !important; border-bottom-color: var(--wme-studio-border) !important; }
+$root .URCE-legend.urStyle:not(#ws-urce-a):not(#ws-urce-b) { background: var(--wme-studio-input) !important; border-color: var(--wme-studio-border) !important; box-shadow: none !important; }
+$root :where(.URCE-field.urStyle, .URCE-group_body.urStyle):not(#ws-urce-a):not(#ws-urce-b) { background-color: transparent !important; border-color: var(--wme-studio-border) !important; }
 $root .URCE-legend:hover { color: var(--wme-studio-accent) !important; }
 $root .URCE-chevron { color: inherit !important; }
 $root .URCE-divDefaultSettings { background: var(--wme-studio-input) !important; color: var(--wme-studio-text-secondary) !important; border-color: var(--wme-studio-border) !important; }
@@ -6202,6 +6494,12 @@ $root.qr-emoji-pop .qr-emoji { background: transparent !important; color: var(--
 $root.qr-emoji-pop .qr-emoji:hover { background: var(--wme-studio-hover) !important; }
 ` }, true);
 
+    // WME Rapid KOI Roads: the note it adds to map suggestion windows is drawn with an inline light background.
+    registerCompatibilityAdapter({ id: 'rapid-koi-roads', selectors: ['#containerOnSegment'], css: String.raw`
+$root { background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; box-shadow: none !important; border-radius: var(--wme-studio-radius) !important; }
+$root :where(h1,h2,h3,h4,h5,h6,p,span,div,label,b,strong) { color: var(--wme-studio-text) !important; }
+$root a[href] { color: var(--wme-studio-accent) !important; }
+` }, true);
     registerCompatibilityAdapter({ id: 'wazetoastr-updates', selectors: ['#WTSU-Container'], css: String.raw`
 $root {
   position: fixed !important; inset: auto !important; left: 50% !important; top: 50% !important;
@@ -6309,6 +6607,7 @@ $root {
   })();
 
 globalThis.WMEStudioComponents = String.raw`
+@supports selector(::-webkit-scrollbar){:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *{scrollbar-width:auto!important;scrollbar-color:auto!important}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar{width:11px;height:11px;background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-track{background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-corner{background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-button{display:none;width:0;height:0}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb{min-height:36px;min-width:36px;border:3px solid transparent;border-radius:999px;background-clip:padding-box;background-color:color-mix(in srgb,var(--wme-studio-text-muted,#8b96a1) 45%,transparent)}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 75%,transparent)}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb:active{background-color:var(--wme-studio-accent,#0099ff)}}@supports not selector(::-webkit-scrollbar){:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *{scrollbar-width:thin!important;scrollbar-color:color-mix(in srgb,var(--wme-studio-text-muted,#8b96a1) 55%,transparent) transparent!important}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *:hover{scrollbar-color:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 80%,transparent) transparent!important}}
 /* Notes on the selector forms used in this sheet (0.0.4). It is adopted by every wz-* shadow root, so what
    matters here is how much work one rule costs per component. None of these forms changes what a rule
    matches or which rule wins.
@@ -6383,6 +6682,11 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
 :host-context(html[data-wme-studio="on"]) .wz-button:is(.clear-icon,.text):not(.alarming) { color: var(--wme-studio-text) !important; }
 :host-context(html[data-wme-studio="on"]) .wz-button.secondary:not(.alarming) { background: var(--ws-header-surface, color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent)) !important; border: 1px solid var(--wme-studio-border) !important; color: var(--wme-studio-text) !important; }
 :host-context(html[data-wme-studio="on"]) .wz-button.primary:not(.alarming) { background: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important; border-color: var(--wme-studio-accent) !important; box-shadow: none !important; }
+/* A button WME fills with the accent through its own tokens (the rail's + button) draws its icon in the accent's
+   ink, so a light accent gets a dark icon (see syncAccentFills). */
+:host-context(html[data-wme-studio="on"]):host([data-wme-studio-accent-fill]) :is(.wz-button,button) { color: var(--wme-studio-on-accent) !important; --always_white: var(--wme-studio-on-accent); }
+:host-context(html[data-wme-studio="on"]):host([data-wme-studio-on-accent]) { color: var(--wme-studio-on-accent) !important; --always_white: var(--wme-studio-on-accent); }
+:host-context(html[data-wme-studio="on"]):host([data-wme-studio-on-accent]) svg { color: inherit; }
 :host-context(html[data-wme-studio="on"]) .wz-button.shadowed:not(.alarming) { background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border); box-shadow: var(--wme-studio-shadow) !important; }
 }
 @media all {
@@ -6436,7 +6740,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     width: 16px; height: 16px;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#overlay-buttons):host(.overlay-button) .wz-button {
-    background: transparent !important; border: 0 !important; border-radius: 10px !important;
+    background: transparent !important; border: 0 !important; border-radius: var(--ws-island-button-radius, 13px) !important;
     box-shadow: none !important;
     position: relative; z-index: 0;
   }
@@ -6455,7 +6759,18 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     position: relative; z-index: 2;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#overlay-buttons):host(.zoom-button) .wz-button {
-    border-radius: 10px !important; border: 0 !important; background: transparent !important;
+    border-radius: var(--ws-island-button-radius, 13px) !important; border: 0 !important; background: transparent !important;
+  }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#overlay-buttons):host(:is(.overlay-button,.zoom-button)) { border-radius: var(--ws-island-button-radius, 13px) !important; }
+  /* Header buttons, in the header or moved to another island; the menus and lists the header opens keep theirs. */
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#app-head):host(wz-button),
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#app-head):host(wz-button) .wz-button {
+    border-radius: var(--ws-island-button-radius, 13px) !important;
+  }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.wz-menu):host(wz-button), :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.wz-menu):host(wz-button) .wz-button,
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.notifications-box-container):host(wz-button), :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.notifications-box-container):host(wz-button) .wz-button,
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(wz-user-box):host(wz-button), :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(wz-user-box):host(wz-button) .wz-button {
+    border-radius: var(--wme-studio-radius) !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#overlay-buttons):host(.zoom-button) .wz-button:hover:not(:disabled) {
     background: var(--wme-studio-hover) !important;
@@ -6932,6 +7247,8 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
 
 @media all {
 :host-context(html[data-wme-studio="on"]) .wz-navigation-drawer { background: var(--wme-studio-bg) !important; box-shadow: none !important; }
+/* A control hidden in Arrange stays hidden even where a component's own rules would show it. */
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host([data-wme-studio-control-hidden]) { display: none !important; }
 }
 @media (min-width: 1180px) and (min-height: 640px) {
   @media all {
@@ -6990,7 +7307,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     display: flex !important; flex-direction: row !important; gap: 0 !important;
     font-size: 0 !important; line-height: 0 !important;
   }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer):host(wz-navigation-item) {
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer):host(wz-navigation-item:not([data-wme-studio-island-control],[data-wme-studio-control-hidden])) {
     display: block !important; box-sizing: border-box !important;
     width: 100% !important;
     height: 38px !important; min-height: 38px !important; max-height: 38px !important;
@@ -7038,7 +7355,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     box-sizing: border-box !important; flex: 0 0 38px !important;
     padding: 0 !important; margin-block: 0 !important; margin-inline: calc((100% - 38px) / 2) !important;
     justify-content: center !important; align-items: center !important;
-    border-radius: 10px !important; color: var(--wme-studio-text) !important;
+    border-radius: var(--ws-island-button-radius, 13px) !important; color: var(--wme-studio-text) !important;
     position: relative; z-index: 0;
     transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease !important;
   }
@@ -7048,6 +7365,11 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) :where(.w-icon):is(i,svg,wz-icon,.w-icon):is(.navigation-button *),
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) ::slotted(:is(i,svg,wz-icon,.w-icon)) {
     color: var(--wme-studio-text) !important;
+  }
+  /* A rail button filled with the accent (the + button) draws its icon in the accent's ink instead. */
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer):host([data-wme-studio-accent-fill]) :is(.wz-button,button),
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer):host([data-wme-studio-accent-fill]) ::slotted(:is(i,svg,wz-icon,.w-icon)) {
+    color: var(--wme-studio-on-accent) !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-item:is(.active,.selected) .navigation-button,
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .navigation-button.selected,
@@ -7069,6 +7391,17 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     box-sizing: border-box !important; height: 38px !important;
     min-height: 38px !important; max-height: 38px !important;
     padding-block: 0 !important; margin-block: 0 !important;
+  }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) [class*="menuContainer--"],
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) [class*="menuContainer--"]::before,
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) [class*="menuContainer--"]::after,
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) [class*="menuContainer--"] [class*="container--"],
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) [class*="menuContainer--"] [class*="container--"]::before,
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) [class*="menuContainer--"] [class*="container--"]::after,
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-drawer::before,
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-drawer::after {
+    background: transparent !important; background-image: none !important;
+    box-shadow: none !important; border: 0 !important; filter: none !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) [class*="separation--"] {
     width: 26px !important; max-width: 26px !important;
@@ -7170,7 +7503,15 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   background: var(--wme-studio-surface-3) !important; color: var(--wme-studio-text) !important;
   border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-panel-radius) !important;
   box-shadow: var(--wme-studio-shadow) !important; padding: 4px 0 !important;
+  box-sizing: content-box !important;
   scrollbar-width: thin; scrollbar-color: var(--wme-studio-border-strong) transparent;
+}
+/* WME gives a menu a fixed height worked out for its own, smaller options. With Studio's taller options a short
+   menu (Voice: two options) then scrolls by a few pixels: the list takes the height its options need instead,
+   and only a long list scrolls. */
+:host-context(html[data-wme-studio="on"]):host(:not([data-wme-studio-task-menu])) .options-container:is(.wz-menu > *) { height: auto !important; }
+:host-context(html[data-wme-studio="on"]):host(:not([data-wme-studio-task-menu])) .options-wrapper:is(.wz-menu > .options-container > *) {
+  height: auto !important; max-height: min(60vh, 480px) !important; overflow-y: auto !important;
 }
 :host-context(html[data-wme-studio="on"]) :where(.wz-menu-item):is(.wz-menu-item,.wz-menu-sub-menu),
 :host-context(html[data-wme-studio="on"]) :where(.wz-menu-sub-menu):is(.wz-menu-item,.wz-menu-sub-menu) {
@@ -7345,6 +7686,13 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
 :host-context(html[data-wme-studio="on"]) .wz-banner.yellow { background: var(--ws-banner-yellow) !important; }
 :host-context(html[data-wme-studio="on"]) .wz-banner.orange { background: var(--ws-banner-orange) !important; }
 :host-context(html[data-wme-studio="on"]) .wz-banner.red { background: var(--ws-banner-red) !important; }
+/* Coloured alerts (sign-in errors and others) take their tint from the native palette tokens, which the sign-in page
+   sets again below the html element, so they stayed light in Dark. Use Studio's banner tints directly. */
+:host-context(html[data-wme-studio="on"]) .wz-alert.colored { color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
+:host-context(html[data-wme-studio="on"]) .wz-alert.colored.danger { background-color: var(--ws-banner-red) !important; border-color: color-mix(in srgb, var(--ws-change-alert) 45%, var(--wme-studio-border)) !important; }
+:host-context(html[data-wme-studio="on"]) .wz-alert.colored.warning { background-color: var(--ws-banner-yellow) !important; }
+:host-context(html[data-wme-studio="on"]) .wz-alert.colored.info { background-color: var(--ws-banner-blue) !important; }
+:host-context(html[data-wme-studio="on"]) .wz-alert.colored.success { background-color: var(--ws-banner-green) !important; }
 :host-context(html[data-wme-studio="on"]):host-context(wz-banner):host(wz-caption) { color: var(--wme-studio-text-secondary) !important; }
 :host-context(html[data-wme-studio="on"]):host-context(#venue-edit-photos):host(wz-body2),
 :host-context(html[data-wme-studio="on"]):host-context(#venue-edit-photos):host(wz-caption) { color: var(--wme-studio-text-secondary) !important; }
@@ -7787,7 +8135,7 @@ ${studioRangeCSS(':host-context(html[data-wme-studio="on"]) input[type="range"]'
 :host-context(html[data-wme-studio-layout-editing="on"]):host-context([data-wme-studio-layout-dragging="on"]) :where(a):is(button,.wz-button,input,a) { cursor:grabbing!important; }
 @media (min-width: 1180px) and (min-height: 640px) {
 @media all {
-:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer):host(wz-navigation-item) { position: relative; z-index: auto; margin-block: 4px !important; overflow: visible !important; }
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer):host(wz-navigation-item:not([data-wme-studio-island-control],[data-wme-studio-control-hidden])) { position: relative; z-index: auto; margin-block: 4px !important; overflow: visible !important; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-item { overflow: visible !important; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer):host(wz-navigation-item:is([selected],[active])) { z-index: 2; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-item:is(.active,.selected) { position: relative; z-index: 2; }
@@ -7838,11 +8186,13 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   @media all {
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .wz-menu[data-wme-studio-nav-menu="on"] {
     position: fixed !important;
-    left: var(--ws-nav-menu-left) !important; right: auto !important;
-    top: var(--ws-nav-menu-top) !important; bottom: auto !important;
+    /* The correction is added to left/top rather than drawn with a transform: a transformed menu would hold its
+       submenus (fixed, inside its scrolling list), and Safari clips them to the list, so they never show. */
+    left: calc(var(--ws-nav-menu-left) + var(--ws-nav-menu-offset-x, 0px)) !important; right: auto !important;
+    top: calc(var(--ws-nav-menu-top) + var(--ws-nav-menu-offset-y, 0px)) !important; bottom: auto !important;
     width: var(--ws-nav-menu-width) !important; min-width: 0 !important; max-width: calc(100vw - 24px) !important;
     height: auto !important;
-    transform: translate(var(--ws-nav-menu-offset-x, 0px), var(--ws-nav-menu-offset-y, 0px)) !important;
+    transform: none !important;
     translate: none !important; margin: 0 !important; padding: 0 !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .options-container:is(.wz-menu[data-wme-studio-nav-menu="on"] > *) {
@@ -8191,10 +8541,47 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   'use strict';
   const standaloneSignin = /^(?:\/[^/]+)?\/signin\/?$/i.test(location.pathname);
   const editorProfile = /^(?:\/[^/]+)?\/user\/editor(?:\/|$)/i.test(location.pathname);
-  if (!standaloneSignin && !/(?:^|\/)editor(?:\/|$)/i.test(location.pathname)) return;
+  if (!standaloneSignin && !/(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname)) return;
   if (globalThis.__wmeStudioRunning) return;
   globalThis.__wmeStudioRunning = true;
   const config = globalThis.WMEStudioSettings;
+  const schedule = globalThis.WMEStudioSchedule;
+
+  // Custom scrollbars: slim, rounded and in the theme's colours everywhere in the editor. Chromium draws them
+  // from ::-webkit-scrollbar only where no element asks for the standard thin scrollbar, so those requests are
+  // switched off while this is on; Firefox gets the standard thin scrollbar in the same colours.
+  const studioScrollbarStyle = document.createElement('style');
+  studioScrollbarStyle.dataset.wmeStudioScrollbars = '1';
+  studioScrollbarStyle.textContent = `
+    @supports selector(::-webkit-scrollbar) {
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]:not(#ws-scroll-a):not(#ws-scroll-b),
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]:not(#ws-scroll-a):not(#ws-scroll-b) * { scrollbar-width: auto !important; scrollbar-color: auto !important; }
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"] ::-webkit-scrollbar { width: 11px; height: 11px; background: transparent; }
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"] ::-webkit-scrollbar-track,
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"] ::-webkit-scrollbar-corner { background: transparent; }
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"] ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"] ::-webkit-scrollbar-thumb {
+        min-height: 36px; min-width: 36px; border: 3px solid transparent; border-radius: 999px; background-clip: padding-box;
+        background-color: color-mix(in srgb, var(--wme-studio-text-muted, #8b96a1) 45%, transparent);
+      }
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"] ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--wme-studio-accent, #0099ff) 75%, transparent); }
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"] ::-webkit-scrollbar-thumb:active { background-color: var(--wme-studio-accent, #0099ff); }
+    }
+    @supports not selector(::-webkit-scrollbar) {
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]:not(#ws-scroll-a):not(#ws-scroll-b),
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]:not(#ws-scroll-a):not(#ws-scroll-b) * {
+        scrollbar-width: thin !important; scrollbar-color: color-mix(in srgb, var(--wme-studio-text-muted, #8b96a1) 55%, transparent) transparent !important;
+      }
+      html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]:not(#ws-scroll-a):not(#ws-scroll-b) *:hover {
+        scrollbar-color: color-mix(in srgb, var(--wme-studio-accent, #0099ff) 80%, transparent) transparent !important;
+      }
+    }`;
+  (document.head || document.documentElement).append(studioScrollbarStyle);
+  // The theme and eye saver strength that should show now; with a schedule off they are just the saved values.
+  let liveSchedule = null, appliedScheduleTheme = null;
+  const refreshSchedule = () => (liveSchedule = schedule.resolve(settings));
+  const activeTheme = () => (liveSchedule || refreshSchedule()).theme;
+  const activeEyeSaver = () => (liveSchedule || refreshSchedule()).eyeSaver;
   const root = document.documentElement;
   const betaEditor = location.hostname === 'beta.waze.com';
   if (betaEditor) root.setAttribute('data-wme-studio-beta', 'on');
@@ -8239,7 +8626,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       studioPaletteStyle?.remove(); studioPaletteStyle = null; appliedPalette = '';
       return;
     }
-    const theme = studioPalettes[settings.theme] ? settings.theme : 'light';
+    const theme = studioPalettes[activeTheme()] ? activeTheme() : 'light';
     if (theme === appliedPalette && studioPaletteStyle?.isConnected) return;
     const declarations = Object.entries(studioPalettes[theme]).map(([name, value]) => `${name}:${value}!important`).join(';');
     const css = `html[data-wme-studio="on"]{${declarations};--wme-studio-surface-2:var(--wme-studio-input)!important;color-scheme:${theme === 'light' ? 'light' : 'dark'}!important}`;
@@ -8250,6 +8637,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     }
     studioPaletteStyle.textContent = css;
     appliedPalette = theme;
+    queueAccentFills();
   }
   const nativeTokenMap = {
     '--wme-studio-bg': ['--background_variant','--background_default'],
@@ -8345,7 +8733,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     })),
     Object.freeze({ id: 'messages', popup: true, arrange: false, label: 'Messages', selector: 'iframe[data-wme-studio-chat-panel="on"]', width: () => 360, height: () => Math.min(680, innerHeight - 120) })
   ]);
-  const compactIslandSpec = id => compactIslandSpecs.find(spec => spec.id === id);
+  const compactIslandSpecById = new Map(compactIslandSpecs.map(spec => [spec.id, spec]));
+  const compactIslandSpec = id => compactIslandSpecById.get(id);
   const COMPACT_DOCK_GAP = 16;
   let compactIslandLayout = null;
   let compactLayoutEditor = null;
@@ -8355,7 +8744,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   function syncCompactGlassAppearance(opacity = settings.compactIslandOpacity) {
     const compact = settings.enabled && settings.compactMode && !standaloneSignin && !editorProfile;
     const contrast = compact && Number(opacity) < 50;
-    attr('light-glass', contrast && settings.theme === 'light' ? 'on' : null);
+    attr('light-glass', contrast && activeTheme() === 'light' ? 'on' : null);
     attr('glass-contrast', contrast ? 'on' : null);
     root.style.removeProperty('--ws-compact-tools-border-width');
   }
@@ -8543,10 +8932,18 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     return container && container.offsetWidth > 40 && container.offsetHeight > 40 ? container : null;
   }
   function compactHeaderObstacles() {
-    const elements = new Set(compactIslandSpecs.filter(spec => spec.id !== 'header').map(queryCompactIsland));
-    for (const element of [document.getElementById('sidebar'), document.getElementById('filter-panel-region'),
-      ...headerGuardWindows.keys(), ...[...onlineEditorsPanels.values()].map(state => state.panel)]) elements.add(element);
-    return [...elements].map(compactVisibleRect).filter(Boolean);
+    return [...compactHeaderIslandObstacles(), ...compactHeaderPanelObstacles()];
+  }
+  function compactHeaderIslandObstacles() {
+    return [...new Set(compactIslandSpecs.filter(spec => spec.id !== 'header' && !spec.popup).map(queryCompactIsland))].map(compactVisibleRect).filter(Boolean);
+  }
+  // Panels and windows (the side panel, the filter panel, request windows, ...): the header can pass over them
+  // while it is dragged, but is never left on top of one.
+  function compactHeaderPanelObstacles() {
+    const islands = new Set(compactIslandSpecs.filter(spec => !spec.popup).map(queryCompactIsland));
+    return [...new Set([...compactIslandSpecs.filter(spec => spec.popup).map(queryCompactIsland), document.getElementById('sidebar'), document.getElementById('filter-panel-region'),
+      ...headerGuardWindows.keys(), ...[...onlineEditorsPanels.values()].map(state => state.panel)])]
+      .filter(element => element && !islands.has(element)).map(compactVisibleRect).filter(Boolean);
   }
   function compactDragInProgress() {
     return !!(sidePanelResizing() || compactLayoutEditor?.dragging?.() || floatingHeader.drag || requestHeaderDrag || [...mapLayerWindows.values()].some(state => state.drag));
@@ -8566,6 +8963,25 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     const style = getComputedStyle(element), rect = element.getBoundingClientRect();
     if (style.display === 'none' || style.visibility === 'hidden' || rect.width < 12 || rect.height < 12 || rect.right <= 0 || rect.bottom <= 0 || rect.left >= innerWidth || rect.top >= innerHeight) return null;
     return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+  }
+  // Beside an island Studio draws: next to an upright island, level with the button; above or below a flat one.
+  function onlinePanelBesideIsland(moved, size, obstacles = []) {
+    const own = moved.control.getBoundingClientRect(), island = moved.island, gap = 8, edge = 12;
+    const footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
+    const bottom = (footer ? Math.min(innerHeight, footer.top) : innerHeight) - edge;
+    const height = Math.min(size.height, bottom - edge);
+    let left, top;
+    if (moved.orient === 'v') {
+      left = island.left + island.width / 2 <= innerWidth / 2 ? island.left + island.width + gap : island.left - gap - size.width;
+      top = own.top + own.height / 2 <= innerHeight / 2 ? own.top : own.top + own.height - height;
+    } else {
+      left = own.left + own.width / 2 <= innerWidth / 2 ? own.left : own.left + own.width - size.width;
+      top = island.top + island.height / 2 <= innerHeight / 2 ? island.top + island.height + gap : island.top - gap - height;
+    }
+    const placed = { left: Math.max(edge, Math.min(left, innerWidth - edge - size.width)), top: Math.max(edge, Math.min(top, bottom - height)), width: size.width, height };
+    // Off the rail, the header and the other islands: the nearest clear spot when beside the island is taken.
+    if (!obstacles.length || compactRectClear(placed, obstacles, gap)) return placed;
+    return compactFreePosition(placed, obstacles, { width: innerWidth, height: bottom + edge }) || placed;
   }
   function compactOnlinePanelPlacement(anchor, size, obstacles, viewport = { width: innerWidth, height: innerHeight }) {
     const gap = COMPACT_ISLAND_GAP;
@@ -8951,14 +9367,22 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     if (filterRect) obstacles.push(filterRect);
     const footerRect = compactVisibleRect(footer);
     const bottom = footerRect ? innerHeight - footerRect.top + COMPACT_ISLAND_GAP : 36;
-    let anchor = null, tile = null;
+    let anchor = null, tile = null, movedOnline = null;
+    {
+      // The Online Editors button moved into an island: its list opens from there, not from its old corner.
+      const element = queryCompactIsland(compactIslandSpec('online'));
+      const control = element?.matches?.('[data-wme-studio-island-control]') ? element : element?.querySelector?.('[data-wme-studio-island-control]');
+      const moved = control && movedControlIsland(control);
+      if (moved) movedOnline = { control, island: moved.rect, orient: moved.orient };
+    }
     for (const id of ['online','tile']) {
       const spec = compactIslandSpec(id), element = queryCompactIsland(spec);
       if (!element?.isConnected) continue;
       observeCompactPlacement(element);
       let rect = compactVisibleRect(element);
       if (!rect) continue;
-      if ((!compactLayoutEditing && !floatingHeader.position) || forceLaunchers) {
+      // Inside an island the control is where the island put it: its own spot is not worked out (or used) then.
+      if (!islandPlaced.has(element) && ((!compactLayoutEditing && !floatingHeader.position) || forceLaunchers)) {
         const size = compactIslandSize(spec), point = compactIslandLayout?.[id];
         const preferred = point ? compactIslandPixels(spec, point, size) : { left: id === 'online' ? 12 : innerWidth - size.width - 12, top: innerHeight - size.height - bottom, ...size };
         const placed = compactFreePosition(preferred, obstacles);
@@ -8977,7 +9401,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     for (const state of onlineEditorsPanels.values()) {
       const panel = state.panel;
       if (!panel.isConnected) continue;
-      if (!anchor) continue;
+      if (!anchor && !movedOnline) continue;
       const heightLimit = Math.min(320, innerHeight - 48), capacity = `${heightLimit}px`;
       const measure = state.measureHeight || state.heightLimit !== heightLimit;
       if (measure && panel.style.getPropertyValue('--ws-online-panel-height') !== capacity) panel.style.setProperty('--ws-online-panel-height', capacity);
@@ -8985,7 +9409,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       if (measure) { state.naturalHeight = Math.ceil(bounds.height) || heightLimit; state.heightLimit = heightLimit; state.measureHeight = false; }
       const width = bounds.width || Math.min(280, innerWidth - 48);
       const height = Math.min(heightLimit, state.naturalHeight || Math.ceil(bounds.height) || heightLimit);
-      const placed = compactOnlinePanelPlacement(anchor, { width, height }, obstacles);
+      const islandRects = [...islandLayout.islands.values()].filter(island => island.kind === 'custom' && island.rect).map(island => island.rect);
+      const placed = movedOnline ? onlinePanelBesideIsland(movedOnline, { width, height }, [...obstacles, ...islandRects]) : compactOnlinePanelPlacement(anchor, { width, height }, obstacles);
       const space = placed ? 'clear' : 'blocked';
       if (panel.getAttribute('data-wme-studio-online-space') !== space) panel.setAttribute('data-wme-studio-online-space', space);
       if (!placed) continue;
@@ -8997,11 +9422,33 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       obstacles.push(placed);
     }
     if (tile) {
-      const expansion = compactTileExpansion(tile.rect, obstacles.filter(rect => rect !== tile.rect));
+      // In an island the label opens over the island's other controls: only what is outside the island limits it.
+      const own = movedControlIsland(tile.element)?.rect;
+      const inside = rect => own && rect.left >= own.left - 1 && rect.top >= own.top - 1 && rect.left + rect.width <= own.left + own.width + 1 && rect.top + rect.height <= own.top + own.height + 1;
+      const expansion = compactTileExpansion(tile.rect, obstacles.filter(rect => rect !== tile.rect && !inside(rect)));
       const direction = expansion.right ? 'right' : 'left';
       if (tile.element.getAttribute('data-wme-studio-tile-expand') !== direction) tile.element.setAttribute('data-wme-studio-tile-expand', direction);
       const width = `${expansion.width}px`;
       if (tile.element.style.getPropertyValue('--ws-tile-expand-width') !== width) tile.element.style.setProperty('--ws-tile-expand-width', width);
+      // Opened inside an island, the label starts at the island's edge and is as thick as the island, so it reads
+      // as the island growing a tab instead of a smaller pill on top of it with a band of island around it.
+      const zoom = tile.element.currentCSSZoom || 1, flat = own && own.width > own.height;
+      const edge = (value, always) => own && value > 0 && (always || value < 12) ? Math.round(value / zoom * 100) / 100 : 0;
+      const out = own ? {
+        top: edge(tile.rect.top - own.top, flat), bottom: edge(own.top + own.height - tile.rect.top - tile.rect.height, flat),
+        left: edge(tile.rect.left - own.left, !flat || direction === 'right'), right: edge(own.left + own.width - tile.rect.left - tile.rect.width, !flat || direction === 'left')
+      } : { top: 0, bottom: 0, left: 0, right: 0 };
+      // In an upright island a tab would make an L of the island; the label opens as a card beside it instead.
+      setToggle(tile.element, 'data-wme-studio-tile-detached', !!own && !flat);
+      for (const [side, value] of Object.entries(out)) {
+        const name = `--ws-tile-out-${side}`, text = `${value}px`;
+        if (tile.element.style.getPropertyValue(name) !== text) tile.element.style.setProperty(name, text);
+      }
+      // The label's words are drawn at a readable size however far the HUD (or the island) shrinks the control.
+      const labelZoom = String(Math.round((tile.element.querySelector(':scope > .tile-build-status')?.currentCSSZoom || zoom) * 1000) / 1000);
+      if (tile.element.style.getPropertyValue('--ws-label-zoom') !== labelZoom) tile.element.style.setProperty('--ws-label-zoom', labelZoom);
+      const radius = own ? `${Math.round(parseFloat(getComputedStyle(root).getPropertyValue('--ws-compact-radius')) / zoom || 26)}px` : '';
+      if (tile.element.style.getPropertyValue('--ws-tile-out-radius') !== radius) { if (radius) tile.element.style.setProperty('--ws-tile-out-radius', radius); else tile.element.style.removeProperty('--ws-tile-out-radius'); }
     }
   }
   function rootVariable(name, value) {
@@ -9034,6 +9481,22 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     try { Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY, compactIslandLayout)).catch((studioError) => { reportStudioError("storeCompactChatLayout",studioError);}); } catch (studioError) { reportStudioError("storeCompactChatLayout",studioError);}
     return true;
   }
+  // The island Studio draws that holds rail items: the one with the open item first, then the rail's own.
+  function navigationIslandRect() {
+    try {
+      const model = islandModel();
+      let best = null, bestScore = -1;
+      for (const island of islandLayout.islands.values()) {
+        if (island.kind !== 'custom' || !island.rect) continue;
+        const items = island.items.filter(key => islandRegistry.get(key)?.island === 'navigation');
+        if (!items.length) continue;
+        const open = items.some(key => islandRegistry.get(key)?.element.matches('[selected],[active],.selected,.active'));
+        const score = (open ? 4 : 0) + (model.custom.find(item => item.id === island.id)?.home === 'navigation' ? 2 : 0) + items.length / 100;
+        if (score > bestScore) { best = island; bestScore = score; }
+      }
+      return best ? { rect: best.rect, orient: best.orient } : null;
+    } catch (studioError) { return null; }   // the island engine is not ready yet
+  }
   function syncCompactDocks(sizes = null) {
     if (sidePanelResizing()) return;
     const layout = compactIslandLayout || {};
@@ -9050,12 +9513,19 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     let bar = avoidHeader ? header.header.getBoundingClientRect() : null;
     if (bar && header.position) {
       const spec = compactIslandSpec('header'), size = {width:bar.width,height:bar.height};
-      const saved = layout.header ? compactIslandPixels(spec, layout.header, size, frame) : {left:(frame.width - size.width) / 2,top:24,...size};
+      const saved = layout.header ? compactIslandPixels(spec, layout.header, size, frame) : {left:(frame.width - size.width) / 2,top:12,...size};
       bar = {...saved,right:saved.left + saved.width,bottom:saved.top + saved.height};
     }
     let panelLeft = null, panelRight = null;
-    if (layout.navigation) {
-      const rail = navigation;
+    // Rail items Studio draws in an island of its own: the panels open from that island. Beside it when it
+    // stands upright, above or below it when it lies flat.
+    const railIsland = layout.sidePanel ? null : navigationIslandRect();
+    const flatRail = railIsland?.orient === 'h' ? railIsland.rect : null;
+    if (flatRail) {
+      const width = document.getElementById('sidebar')?.getBoundingClientRect().width || 330;
+      panelLeft = Math.round(Math.max(12, Math.min(flatRail.left, frame.width - width - 12)));
+    } else if (railIsland || layout.navigation) {
+      const rail = railIsland?.rect || navigation;
       if (rail.left + rail.width / 2 > frame.width / 2) panelRight = Math.round(frame.width - rail.left + COMPACT_DOCK_GAP);
       else panelLeft = Math.round(rail.left + rail.width + COMPACT_DOCK_GAP);
     }
@@ -9072,6 +9542,10 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
         if (bar.top + bar.height / 2 <= frame.height / 2) panelTop = `${Math.round(bar.bottom + gap)}px`;
         else panelBottom = `${Math.round(frame.height - bar.top + gap)}px`;
       }
+    }
+    if (flatRail) {
+      if (flatRail.top + flatRail.height / 2 <= frame.height / 2) panelTop = `${Math.round(Math.max(flatRail.top + flatRail.height + COMPACT_DOCK_GAP, parseFloat(panelTop) || 0))}px`;
+      else panelBottom = `${Math.round(frame.height - flatRail.top + COMPACT_DOCK_GAP)}px`;
     }
     let panelHeight = null;
     const sideDrag = windowResize?.kind === 'sidePanel' ? windowResize : null;
@@ -9208,6 +9682,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   const defaultSideCenterResize = typeof ResizeObserver === 'function'
     ? new ResizeObserver(entries => {
       scheduleDefaultSideIslandCenters();
+      if (islandPlaced.size) scheduleIslandControls(60);
       for (const entry of entries) {
         if (entry.target.id !== 'overlay-buttons') continue;
         const size = entry.target.getBoundingClientRect();
@@ -9265,11 +9740,29 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       writes.push([`--ws-island-${spec.id}-top`, `${placed.top}px`]);
       placedIslands.push(spec.id);
     }
-    for (const [name, value] of writes) {
-      if (value == null) { if (root.style.getPropertyValue(name)) root.style.removeProperty(name); }
-      else rootStyle(name, value);
+    // The islands Studio draws are laid out again only when something they are placed by changed here: a WME
+    // island's variable, the layout attribute, or the room the islands have (the window, a docked Street View).
+    // Called again with nothing new (the settle passes after a resize), this writes nothing and lays nothing out.
+    let changed = false;
+    const write = (name, value) => {
+      if (value == null) { if (root.style.getPropertyValue(name)) { root.style.removeProperty(name); changed = true; } }
+      else if (root.style.getPropertyValue(name) !== value) { root.style.setProperty(name, value); changed = true; }
+    };
+    for (const [name, value] of writes) write(name, value);
+    const layoutAttr = placedIslands.length ? placedIslands.join(' ') : null;
+    if (root.getAttribute('data-wme-studio-layout') !== layoutAttr) { attr('layout', layoutAttr); changed = true; }
+    shiftHeaderControls();
+    // Online Editors and Tile Update are kept beside a docked Street View, not on top of its panorama.
+    const space = islandSpace();
+    if (space.pane) for (const id of ['online', 'tile']) {
+      const element = queryCompactIsland(compactIslandSpec(id));
+      if (!element || islandPlaced.has(element)) continue;
+      const rect = compactVisibleRect(element);
+      if (!rect || rect.left + rect.width <= space.pane.left || rect.left >= space.pane.right) continue;
+      const left = Math.round(Math.max(space.left + 12, Math.min(space.left + space.width - 12 - rect.width, space.pane.left >= space.left ? space.pane.left - 12 - rect.width : space.pane.right + 12)));
+      write(`--ws-island-${id}-left`, `${left}px`);
     }
-    attr('layout', placedIslands.length ? placedIslands.join(' ') : null);
+    if (islandBasis() !== islandRenderBasis) changed = true;
     syncBetaNavigationGlassState();
     syncCompactDocks(sizes);
     queueHeaderLocationLayout();
@@ -9283,6 +9776,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     scheduleDefaultSideIslandCenters();
     syncCompactToolTooltips();
     queueCompactAuxiliaryPlacement(); queueHeaderGuardWindows();
+    // In Arrange every edit lays the islands out again, as before.
+    if (changed || compactLayoutEditing || !islandLayout.islands.size) scheduleIslandControls();
   }
   async function storeCompactIslandLayout(value) {
     compactIslandLayout = sanitizeCompactIslandLayout(value);
@@ -9295,15 +9790,21 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   const toolTooltipVariables = ['--ws-tools-tooltip-left','--ws-tools-tooltip-top','--ws-tools-tooltip-width'];
   function toolTooltipLocation(instance) {
     const source = instance.source || instance.querySelector?.('wz-tooltip-source');
-    let anchor = null, rich = false;
+    let anchor = null, rich = false, placed = null;
     for (let node = instance.target || source || instance; node;
       node = node.assignedSlot || node.parentElement || node.getRootNode?.().host) {
+      // A tooltip from inside a menu (why an item of the + menu is disabled, say) belongs to that item: WME
+      // places it beside the item, not Studio beside the island the menu's button sits in.
+      if (node.matches?.('wz-menu,wz-menu-item,wz-menu-sub-menu,.wz-menu,.wz-menu-item,[role="menu"],[role="menuitem"],[role="listbox"]')) return null;
       if (node.localName === 'wz-rich-tooltip') rich = true;
+      if (!placed && node.hasAttribute?.('data-wme-studio-island-control')) placed = node;
       if (!anchor && node.matches?.('.overlay-button,.zoom-button,.online-editors-bubble')) anchor = node;
       if (node.id === 'overlay-buttons') return {kind:'tools',rail:node,anchor:anchor || source?.querySelector?.('.overlay-button,.zoom-button') || source,passive:!rich};
       if (node.id === 'app-head') return {kind:'header',rail:node,anchor:source?.querySelector?.('wz-button,button,a') || source || instance,passive:!rich};
       if (node.id === 'online-editors') return {kind:'online',rail:node,anchor:anchor || node.querySelector('.online-editors-bubble') || source,passive:!rich};
     }
+    // Any other control Studio has placed in an island (Tile Update, a script's button): beside that island.
+    if (placed) return {kind:'moved',rail:placed,anchor:anchor || source || placed,passive:!rich};
     return null;
   }
   function rememberToolTooltipContent(content) {
@@ -9340,6 +9841,27 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     const rail = location.rail.getBoundingClientRect(), anchor = location.anchor.getBoundingClientRect();
     if (location.passive && !state.content.querySelector('button,wz-button,a[href],input,select,textarea,[role="button"],[contenteditable="true"]')) state.content.setAttribute('data-wme-studio-tooltip-passive','on');
     const gap = 10, edge = 8;
+    // A control moved to another island shows its tooltip beside that island, not beside the rail it came from.
+    const moved = movedControlIsland(location.anchor);
+    if (moved) {
+      const variable = (name,number) => {
+        const value = `${Math.round(number)}px`; if (state.content.style.getPropertyValue(name) !== value) state.content.style.setProperty(name,value);
+      };
+      variable('--ws-tools-tooltip-width',Math.min(320,innerWidth - 24));
+      if (state.content.getAttribute('data-wme-studio-tools-tooltip') !== 'on') state.content.setAttribute('data-wme-studio-tools-tooltip','on');
+      const rect = surface.getBoundingClientRect(), island = moved.rect;
+      let left, top;
+      if (moved.orient === 'v') {
+        left = island.left + island.width / 2 <= innerWidth / 2 ? island.left + island.width + gap : island.left - gap - rect.width;
+        top = anchor.top + anchor.height / 2 - rect.height / 2;
+      } else {
+        left = anchor.left + anchor.width / 2 - rect.width / 2;
+        top = island.top + island.height / 2 <= innerHeight / 2 ? island.top + island.height + gap : island.top - gap - rect.height;
+      }
+      variable('--ws-tools-tooltip-left', Math.max(edge, Math.min(left, innerWidth - edge - rect.width)));
+      variable('--ws-tools-tooltip-top', Math.max(edge, Math.min(top, innerHeight - edge - rect.height)));
+      return;
+    }
     if (location.kind !== 'tools') {
       const variable = (name,number) => {
         const value = `${Math.round(number)}px`; if (state.content.style.getPropertyValue(name) !== value) state.content.style.setProperty(name,value);
@@ -9374,6 +9896,18 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     variable('--ws-tools-tooltip-left', right ? rail.right + gap : rail.left - gap - rect.width);
     variable('--ws-tools-tooltip-top', Math.max(edge, Math.min(anchor.top + anchor.height / 2 - rect.height / 2,
       innerHeight - edge - rect.height)));
+  }
+  function movedControlIsland(node) {
+    try {
+      for (let current = node, depth = 0; current && depth < 24; depth += 1) {
+        if (current.nodeType === 1 && current.hasAttribute('data-wme-studio-island-control')) {
+          const island = islandLayout.islands.get(islandOfControl.get(current));
+          return island?.rect ? { rect: island.rect, orient: island.orient } : null;
+        }
+        current = current.assignedSlot || current.parentElement || current.getRootNode?.().host;
+      }
+    } catch (studioError) { /* the island engine is not ready yet */ }
+    return null;
   }
   function syncCompactToolTooltips() {
     for (const state of compactToolTooltips.values()) positionToolTooltip(state);
@@ -10114,7 +10648,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     else syncChatFrame(frame);
   }
   function syncChatTheme() {
-    const paletteKey = settings.theme + ':' + settings.accent + ':' + settings.corners;
+    const paletteKey = activeTheme() + ':' + settings.accent + ':' + settings.corners;
     if (!settings.enabled) { chatPaletteKey = ''; chatPaletteText = ''; }
     if (settings.enabled && (standaloneSignin || chatFrames.size) && (!chatStyleText || paletteKey !== chatPaletteKey)) {
       chatPaletteKey = paletteKey;
@@ -10124,7 +10658,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
           const value = computed.getPropertyValue(name);
           if (value) palette.setProperty(name, value, 'important');
         }
-        palette.setProperty('color-scheme', settings.theme === 'light' ? 'light' : 'dark', 'important');
+        palette.setProperty('color-scheme', activeTheme() === 'light' ? 'light' : 'dark', 'important');
       }
       chatPaletteText = standaloneSignin ? '' : `html[data-wme-studio-chat="on"], html[data-wme-studio-chat="on"] body, html[data-wme-studio-chat="on"] #root { ${palette.cssText} }`;
       chatStyleText ||= `html[data-wme-studio-chat="on"],
@@ -10318,8 +10852,8 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     // per step. The full pass runs once, when the value is saved as the slider rests.
     quick(key, value) {
       if (!ready || !settings.enabled || !Number.isFinite(value)) return false;
-      if (key === 'hudScale') rootStyle('--ws-hud-zoom', String(value / 100));
-      else if (key === 'compactHeaderWidth') { rootStyle('--ws-header-width-extension', String(value / 100)); attr('header-width', value > 0 ? 'custom' : null); }
+      if (key === 'hudScale') { rootStyle('--ws-hud-zoom', String(value / 100)); scheduleIslandControls(); }
+      else if (key === 'compactHeaderWidth') { rootStyle('--ws-header-width-extension', String(value / 100)); attr('header-width', value > 0 ? 'custom' : null); scheduleIslandControls(); }
       else return false;
       quickPreviewUntil = performance.now() + 300;
       return true;
@@ -10345,6 +10879,10 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     for (const state of requestReplyForms.values()) state.schedule();
     if (!ready) return;
     const changed = changedKeys instanceof Set ? changedKeys : null;
+    // A schedule that now picks a different theme repaints like a theme change, whatever setting moved.
+    refreshSchedule();
+    if (changed && settings.enabled && liveSchedule.theme !== appliedScheduleTheme) changed.add('theme');
+    appliedScheduleTheme = settings.enabled ? liveSchedule.theme : null;
     const affects = (...keys) => !changed || keys.some(key => changed.has(key));
     if (windowResize && affects('enabled', 'compactMode', 'panelScale')) endWindowResize();
     attr('density', null);
@@ -10352,7 +10890,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     if (!settings.enabled) {
       syncStudioPalette();
       root.removeAttribute('data-wme-studio-sidebar-entry');
-      for (const key of ['', 'page', 'theme', 'corners', 'addons', 'motion', 'compact', 'header-width', 'layer-columns', 'light-glass', 'eye-saver', 'satellite', 'viewport-overlay', 'requests']) attr(key, null);
+      for (const key of ['', 'page', 'theme', 'corners', 'addons', 'motion', 'compact', 'header-width', 'layer-columns', 'light-glass', 'eye-saver', 'satellite', 'viewport-overlay', 'requests', 'scrollbars']) attr(key, null);
       for (const name of ['--wme-studio-accent', '--wme-studio-on-accent', '--ws-on-accent-filter', '--ws-sidebar', '--ws-compact-drawer-top', '--ws-compact-drawer-height', '--ws-compact-drawer-left', '--ws-compact-opacity', '--ws-compact-hover-opacity', '--ws-compact-tools-border-width', '--ws-header-width-extension', '--ws-eye-saver-opacity', '--ws-satellite-brightness', '--ws-gps-opacity', '--ws-viewport-overlay-opacity']) root.style.removeProperty(name);
       clearCompactLayoutVariables();
       queueCompactAuxiliaryPlacement();
@@ -10363,10 +10901,11 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       rootStyle('--wme-studio-accent', settings.accent);
       rootStyle('--wme-studio-on-accent', accentInk);
       rootStyle('--ws-on-accent-filter', accentInk === '#ffffff' ? 'brightness(0) invert(1)' : 'brightness(0)');
+      queueAccentFills();
       rootStyle('--ws-sidebar', '330px');
       rootStyle('--ws-compact-opacity', `${settings.compactIslandOpacity}%`);
       rootStyle('--ws-compact-hover-opacity', `${Math.min(100, settings.compactIslandOpacity + 48)}%`);
-      rootStyle('--ws-eye-saver-opacity', String(settings.eyeSaver * 0.65 / 100));
+      syncEyeSaver();
       rootStyle('--ws-satellite-brightness', String(settings.satelliteBrightness / 100));
       rootStyle('--ws-gps-opacity', String(settings.gpsOpacity / 100));
       rootStyle('--ws-hud-zoom', String(settings.hudScale / 100));
@@ -10375,9 +10914,8 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       rootStyle('--ws-panel-zoom', String(settings.panelScale / 100));
       rootStyle('--ws-viewport-overlay-opacity', String((100 - settings.viewportBrightness) / 100));
       attr('viewport-overlay', settings.viewportBrightness < 100 ? 'on' : null);
-      attr('eye-saver', settings.eyeSaver > 0 ? 'on' : null);
       attr('satellite', settings.satelliteBrightness !== 100 ? 'on' : null);
-      attr('theme', settings.theme);
+      attr('theme', activeTheme());
       attr('corners', settings.corners);
       attr('addons', settings.addons ? 'on' : 'off');
       attr('motion', !settings.motion || reducedMotion.matches ? 'reduced' : 'normal');
@@ -10385,6 +10923,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       attr('header-width', settings.compactHeaderFullWidth ? 'custom' : null);
       attr('layer-columns', settings.layerColumns);
       attr('requests', settings.compactRequests ? 'compact' : null);
+      attr('scrollbars', settings.customScrollbars ? 'on' : null);
       attr('page', standaloneSignin ? 'signin' : editorProfile ? 'profile' : 'editor');
       attr('', 'on');
       if (affects('enabled', 'compactMode', 'compactHeaderFullWidth', 'compactHeaderWidth', 'hudScale', 'compactIslandLayout.v1', 'layerColumns')) applyCompactLayoutVariables();
@@ -10418,6 +10957,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     if (affects('enabled', 'addons', 'compactMode', 'compactHeaderFullWidth', 'compactHeaderWidth', 'hudScale')) syncFloatingHeader(true);
     if (affects('enabled', 'compactMode')) queueProfileMenus();
     if (affects('enabled', 'compactMode')) syncTileBuildFeed();
+    if (affects('enabled', 'compactMode', 'hudScale', 'panelScale', 'theme')) scheduleIslandControls();
     const layout = settings.enabled ? (settings.compactMode ? 'compact' : 'studio') : 'native';
     if (layout !== lastLayout) {
       lastLayout = layout;
@@ -10677,6 +11217,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     background:transparent!important;
     -webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none!important;
   }
+  :host(#drawer[data-wme-studio-beta-glass="on"][data-wme-studio-menu-over]) { z-index:511!important; }
   :host(#drawer[data-wme-studio-beta-glass="on"][data-wme-studio-beta-placed="on"]) {
     top:calc(var(--ws-island-navigation-top,0px) / var(--ws-hud-zoom,1))!important;
     left:calc(var(--ws-island-navigation-left,12px) / var(--ws-hud-zoom,1))!important;transform:none!important;
@@ -10868,8 +11409,59 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     }
     return null;
   }
+  // While one of its menus is open, a panel (the rail, the side panel) is drawn over the header: menus are
+  // short-lived, and a submenu opening beside the header must not slide under it.
+  const menuOverSources = { nav: new Set(), task: new Set() };
+  function setMenusOver(kind, elements) {
+    const previous = menuOverSources[kind];
+    menuOverSources[kind] = elements;
+    for (const element of new Set([...previous, ...elements])) {
+      const on = menuOverSources.nav.has(element) || menuOverSources.task.has(element);
+      if (on !== element.hasAttribute('data-wme-studio-menu-over')) element.toggleAttribute('data-wme-studio-menu-over', on);
+    }
+  }
+  // Buttons WME fills with the accent through its own colour tokens (the rail's + button) keep WME's white icon,
+  // which disappears on a light accent such as white. Such a button is found by its fill: it and its icon (never
+  // a menu it holds) are marked to use the accent's ink, dark on a light accent and white on a dark one.
+  let accentFillFrame = 0;
+  let accentFillTimer = 0;
+  function queueAccentFills() {
+    if (!accentFillFrame) accentFillFrame = requestAnimationFrame(() => { accentFillFrame = 0; try { syncAccentFills(); } catch (studioError) { reportStudioError('syncAccentFills', studioError); } });
+    // Once more after the button's colour transition, when its fill has reached the new accent.
+    clearTimeout(accentFillTimer);
+    accentFillTimer = setTimeout(() => { try { syncAccentFills(); } catch (studioError) { reportStudioError('syncAccentFills', studioError); } }, 450);
+  }
+  function syncAccentFills() {
+    const marked = [...document.querySelectorAll('[data-wme-studio-accent-fill],[data-wme-studio-on-accent]')];
+    const accent = /^#[0-9a-f]{6}$/i.test(settings.accent || '') ? settings.accent.slice(1).match(/../g).map(value => parseInt(value, 16)) : null;
+    const drawer = document.getElementById('drawer');
+    const wanted = new Set();
+    // Only where the theme's text colour (what the icon is drawn in otherwise) is hard to read on the accent:
+    // the default blue keeps its icon as it is, a white or yellow accent gets the accent's dark ink.
+    const luminance = rgb => { const [r, g, b] = rgb.map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4); return r * .2126 + g * .7152 + b * .0722; };
+    const textHex = (studioPalettes[activeTheme()] || studioPalettes.light)['--wme-studio-text'] || '';
+    const text = /^#[0-9a-f]{6}$/i.test(textHex) ? textHex.slice(1).match(/../g).map(value => parseInt(value, 16)) : null;
+    const contrast = accent && text ? (Math.max(luminance(accent), luminance(text)) + .05) / (Math.min(luminance(accent), luminance(text)) + .05) : 99;
+    if (settings.enabled && accent && drawer && contrast < 2.5) {
+      for (const button of drawer.querySelectorAll('wz-button')) {
+        if (button.closest('wz-menu,[role="menu"]')) continue;
+        const face = button.shadowRoot?.querySelector('.wz-button,button');
+        if (!face) continue;
+        const fill = getComputedStyle(face).backgroundColor.match(/[\d.]+/g)?.map(Number);
+        if (!fill || fill.length < 3 || (fill.length > 3 && fill[3] < .5) || fill.slice(0, 3).some((value, index) => Math.abs(value - accent[index]) > 3)) continue;
+        wanted.add(button);
+        for (const icon of button.querySelectorAll('i,wz-icon,svg')) if (!icon.closest('wz-menu,[role="menu"]') && !icon.parentElement?.closest('svg')) wanted.add(icon);
+      }
+    }
+    for (const element of marked) if (!wanted.has(element)) { element.removeAttribute('data-wme-studio-accent-fill'); element.removeAttribute('data-wme-studio-on-accent'); }
+    for (const element of wanted) {
+      const name = element.localName === 'wz-button' ? 'data-wme-studio-accent-fill' : 'data-wme-studio-on-accent';
+      if (!element.hasAttribute(name)) element.setAttribute(name, '');
+    }
+  }
   function syncTaskMenus() {
     taskMenuFrame = 0;
+    const over = new Set();
     for (const [host,state] of taskMenus) {
       if (!host.isConnected) { state.observer.disconnect(); taskMenus.delete(host); continue; }
       if (!settings.enabled) continue;
@@ -10878,12 +11470,39 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       const rect = wrapper.getBoundingClientRect();
       if (!rect.width || !rect.height) continue;
       const owner = compactVisibleRect(state.owner);
-      const bottom = Math.min(innerHeight - 12, owner ? owner.top + owner.height - 8 : innerHeight - 12);
+      // A menu that is drawn outside its panel (a fixed one, or one wider than the panel) is not cut off by the
+      // panel: it may use the room down to the bottom of the window, so a short list (Voice) never scrolls.
+      const escapes = host.hasAttribute('fixed') || (owner && (rect.left < owner.left - 1 || rect.left + rect.width > owner.left + owner.width + 1 || getComputedStyle(wrapper).position === 'fixed'));
+      const bottom = Math.min(innerHeight - 12, owner && !escapes ? owner.top + owner.height - 8 : innerHeight - 12);
       const height = `${Math.max(40, Math.floor(bottom - Math.max(12, rect.top)))}px`;
       if (host.style.getPropertyValue('--ws-task-menu-height') !== height) host.style.setProperty('--ws-task-menu-height',height);
+      over.add(state.owner);
     }
+    setMenusOver('task', over);
   }
   function queueTaskMenus() { if (!taskMenuFrame) taskMenuFrame = requestAnimationFrame(syncTaskMenus); }
+  // A header WME keeps at the top of a scrolling list in a panel (Your drives) is sticky without a layer of its
+  // own, so buttons further down that do have one (the page arrows) slide over it instead of under it. The
+  // first time such a list scrolls (and now and then after), its sticky headers are lifted above the rest.
+  const stickyChecked = new WeakMap();
+  document.addEventListener('scroll', event => {
+    const target = event.target;
+    if (!settings.enabled || target?.nodeType !== 1 || performance.now() - (stickyChecked.get(target) || -1e9) < 2000) return;
+    stickyChecked.set(target, performance.now());
+    const scroller = event.composedPath?.()[0];
+    if (scroller?.nodeType !== 1) return;
+    let inPanel = false;
+    for (let node = scroller; node; node = composedParent(node)) if (node.id === 'sidebar' || node.id === 'filter-panel-region' || node.hasAttribute?.('data-wme-studio-popup-kind')) { inPanel = true; break; }
+    if (!inPanel) return;
+    const walk = (node, depth) => {
+      for (const child of [...node.children, ...(node.shadowRoot ? node.shadowRoot.children : [])]) {
+        const style = getComputedStyle(child);
+        if (style.position === 'sticky' && style.zIndex === 'auto') { child.style.setProperty('z-index', '3'); child.setAttribute('data-wme-studio-sticky-lifted', 'on'); }
+        if (depth < 5 && child.childElementCount + (child.shadowRoot?.childElementCount || 0) < 60) walk(child, depth + 1);
+      }
+    };
+    try { walk(scroller, 0); } catch (studioError) { reportStudioError('stickyHeaders', studioError); }
+  }, { capture: true, passive: true });
   function trackTaskMenu(host,shadow) {
     if (taskMenus.has(host)) return;
     const owner = taskMenuOwner(host);
@@ -10900,11 +11519,12 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
   const navigationMenus = new Map();
   let navigationMenusQueued = false;
   function navigationMenuAnchor(host) {
-    let anchor = null, depth = 0;
+    let anchor = null, control = null, depth = 0;
     for (let node = host; node; node = node.parentElement || node.getRootNode?.().host) {
       depth += 1;
       if (!anchor && node.matches?.('wz-menu-sub-menu,.wz-menu-sub-menu')) anchor = node;
-      if (node.id === 'drawer') return { rail: node, anchor: anchor || node, depth };
+      if (!control && node.hasAttribute?.('data-wme-studio-island-control')) control = node;
+      if (node.id === 'drawer') return { rail: node, anchor: anchor || node, control, depth };
     }
     return null;
   }
@@ -10917,11 +11537,24 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     }
     state.offsetX = state.offsetY = 0;
   }
-  function navigationMenuPlacement(rail, anchor, menu, firstLevel, paddingTop, viewportWidth, viewportHeight) {
+  function navigationMenuPlacement(rail, anchor, menu, firstLevel, paddingTop, viewportWidth, viewportHeight, island = null) {
     const edge = 12;
     const capacity = Math.max(1, viewportHeight - 2 * edge);
     const height = Math.min(menu.height, capacity);
     const width = Math.min(menu.width, viewportWidth - 24);
+    // A rail button moved into an island Studio draws: the menu opens from that button and that island, beside
+    // it when the island stands upright, above or below it when it lies flat.
+    if (island && firstLevel) {
+      let left, top;
+      if (island.orient === 'h') {
+        left = anchor.left;
+        top = island.rect.top + island.rect.height / 2 <= viewportHeight / 2 ? island.rect.top + island.rect.height + 8 : island.rect.top - 8 - height;
+      } else {
+        left = island.rect.left + island.rect.width / 2 > viewportWidth / 2 ? island.rect.left - width - 8 : island.rect.left + island.rect.width + 8;
+        top = anchor.top - paddingTop;
+      }
+      return { left: Math.max(12, Math.min(left, viewportWidth - width - 12)), top: Math.max(edge, Math.min(top, viewportHeight - edge - height)), width, capacity };
+    }
     const opensLeft = rail.left + rail.width / 2 > viewportWidth / 2;
     const left = opensLeft ? anchor.left - width - (firstLevel ? 8 : 0) : anchor.right + (firstLevel ? 8 : 0);
     return {
@@ -10944,7 +11577,8 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
         clearNavigationMenuPosition(state); state.container = container; state.positioner = positioner;
       }
       if (!container || !positioner?.matches('.wz-menu')) continue;
-      const rail = location.rail.getBoundingClientRect();
+      const moved = location.control ? movedControlIsland(location.control) : null;
+      const rail = moved ? { ...moved.rect, right: moved.rect.left + moved.rect.width, bottom: moved.rect.top + moved.rect.height } : location.rail.getBoundingClientRect();
       if (!compactLayoutActive() || compactLayoutEditing || !rail.width || !rail.height) {
         clearNavigationMenuPosition(state); continue;
       }
@@ -10957,13 +11591,13 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       if (style.display === 'none' || style.visibility === 'hidden' || menu.width < 1 || menu.height < 1) {
         clearNavigationMenuPosition(state); continue;
       }
-      const anchor = location.anchor === location.rail ? rail : location.anchor.getBoundingClientRect();
+      const anchor = location.anchor === location.rail ? (moved ? location.control.getBoundingClientRect() : rail) : location.anchor.getBoundingClientRect();
       const borderTop = Number.parseFloat(style.borderTopWidth) || 0;
       const zoom = positioner.currentCSSZoom || 1;
       const naturalHeight = Math.max(menu.height, (wrapper.scrollHeight + borderTop + (Number.parseFloat(style.borderBottomWidth) || 0)) * zoom);
       const naturalWidth = Math.max(menu.width, (wrapper.scrollWidth + wrapper.offsetWidth - wrapper.clientWidth) * zoom);
       const placed = navigationMenuPlacement(rail, anchor, { width: naturalWidth, height: naturalHeight },
-        location.anchor === location.rail, ((Number.parseFloat(style.paddingTop) || 0) + borderTop) * zoom, innerWidth, innerHeight);
+        location.anchor === location.rail, ((Number.parseFloat(style.paddingTop) || 0) + borderTop) * zoom, innerWidth, innerHeight, moved);
       for (const [name, value] of [['--ws-nav-menu-left',placed.left],['--ws-nav-menu-top',placed.top],['--ws-nav-menu-width',placed.width],['--ws-nav-menu-height',placed.capacity]]) {
         const pixels = `${Math.round(value / zoom * 100) / 100}px`, existing = parseFloat(positioner.style.getPropertyValue(name));
         if (!(Math.abs(existing - value / zoom) < .5)) positioner.style.setProperty(name, pixels);
@@ -10978,6 +11612,9 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
         if (state[key] !== offset) { state[key] = offset; positioner.style.setProperty(name, `${offset}px`); }
       }
     }
+    const over = new Set();
+    for (const { state, location } of ordered) if (location && state.positioner?.hasAttribute('data-wme-studio-nav-menu')) over.add(location.rail);
+    setMenusOver('nav', over);
     queueHeaderGuardWindows(); queueCompactAuxiliaryPlacement();
   }
   function queueNavigationMenus() {
@@ -11677,7 +12314,7 @@ ${studioRangeCSS('.picker-hue')}
       connectZoom();
       try { trackStreetViewSDK(sdk); } catch (studioError) { reportStudioError("connect",studioError); }
       // connect() can run before requestReveal has been initialized further down this script.
-      queueMicrotask(() => { try { requestReveal.connectPlaceUpdates(sdk); } catch (studioError) { reportStudioError("connect",studioError); } });
+      queueMicrotask(() => { try { requestReveal.connectPlaceUpdates(sdk); requestReveal.hookMoves(); } catch (studioError) { reportStudioError("connect",studioError); } });
       const app=pageWindow.W?.app;
       if (!app?.on) return;
       if (connectedApp===app) return;
@@ -11885,8 +12522,109 @@ ${studioRangeCSS('.picker-hue')}
       if (!free) return 'no free area';
       const dx = Math.round(point.x - (free.left + free.width / 2)), dy = Math.round(point.y - (free.top + free.height / 2));
       if (Math.hypot(dx, dy) < 40) return 'visible';
+      ownPanUntil = performance.now() + 600;
       map.pan(dx, dy, { animate: false });
       return `moved ${dx},${dy}`;
+    }
+    // Map problems (and anything else the editor opens without announcing it) are found from their panel: the
+    // editor centres the map on the request as it opens it, so that centre is where the request is. When the
+    // map did not move around the opening, nothing is known about the spot and the map is left alone.
+    // Moves the map so a screen point (a request's marker) is in the clearest area no panel covers.
+    function revealScreen(point) {
+      if (!ready || !settings.enabled || !compactLayoutActive() || compactLayoutEditing) return 'not in the Floating layout';
+      const map = olMap();
+      if (!map || typeof map.pan !== 'function') return 'no map';
+      const view = (map.viewPortDiv || map.div || document.getElementById('WazeMap'))?.getBoundingClientRect?.();
+      if (!view || view.width < 200 || view.height < 200) return 'no map view';
+      const obstacles = compactPanelObstacles(null, 16);
+      if (!obstacles.some(rect => point.x >= rect.left && point.x <= rect.left + rect.width && point.y >= rect.top && point.y <= rect.top + rect.height)) return 'visible';
+      const free = largestFree({ left: Math.max(0, view.left), top: Math.max(0, view.top), right: Math.min(innerWidth, view.right), bottom: Math.min(innerHeight, view.bottom) }, obstacles);
+      if (!free) return 'no free area';
+      const dx = Math.round(point.x - (free.left + free.width / 2)), dy = Math.round(point.y - (free.top + free.height / 2));
+      if (Math.hypot(dx, dy) < 40) return 'visible';
+      ownPanUntil = performance.now() + 600;
+      map.pan(dx, dy, { animate: false });
+      return `moved ${dx},${dy}`;
+    }
+    // The marker of the request a panel shows: the editor draws the open request's marker enlarged (or marks it
+    // as selected). Only a marker that clearly stands out next to the panel is used; anything less certain is
+    // written to the log (WMEStudioRequestReveal()) and the map is left alone.
+    const MARKER_HINT = /update|request|problem|issue|venue|place|suggest|marker|feature|pin/i;
+    const MARKER_ACTIVE = /select|active|highlight|current|focus|open/i;
+    function requestMarker(panel) {
+      const map = document.getElementById('WazeMap') || document.querySelector('.olMapViewport');
+      const box = compactVisibleRect(panel.closest?.(REQUEST_WINDOW_SELECTOR) || panel);
+      if (!map || !box) return { marker: null, why: 'no panel' };
+      const near = { left: box.left - 48, top: box.top - 48, right: box.left + box.width + 48, bottom: box.top + box.height + 48 };
+      const found = [];
+      for (const element of map.querySelectorAll('div,img,image,span,svg')) {
+        const rect = element.getBoundingClientRect();
+        if (rect.width < 20 || rect.height < 20 || rect.width > 120 || rect.height > 120) continue;
+        if (rect.right < near.left || rect.left > near.right || rect.bottom < near.top || rect.top > near.bottom) continue;
+        const text = `${element.getAttribute('class') || ''} ${element.id || ''} ${element.getAttribute('href') || element.getAttribute('xlink:href') || element.getAttribute('src') || ''} ${element.style?.backgroundImage || ''}`;
+        if (!MARKER_HINT.test(text)) continue;
+        if (found.some(item => item.element.contains(element) || element.contains(item.element))) {
+          // keep the larger of a marker and its parts
+          const index = found.findIndex(item => item.element.contains(element) || element.contains(item.element));
+          if (rect.width * rect.height > found[index].rect.width * found[index].rect.height) found[index] = { element, rect, text, active: MARKER_ACTIVE.test(text) };
+          continue;
+        }
+        found.push({ element, rect, text, active: MARKER_ACTIVE.test(text) });
+      }
+      const describe = list => list.slice(0, 6).map(item => `${item.element.localName}.${item.text.trim().slice(0, 50)} ${Math.round(item.rect.width)}px`).join(' | ');
+      if (!found.length) return { marker: null, why: 'no marker next to the panel' };
+      const active = found.filter(item => item.active);
+      if (active.length === 1) return { marker: active[0], why: 'selected marker' };
+      const sorted = found.sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height);
+      const [first, second] = sorted, area = item => item.rect.width * item.rect.height;
+      if (first.rect.width >= 40 && (!second || area(first) >= 1.3 * area(second))) return { marker: first, why: 'enlarged marker' };
+      return { marker: null, why: `no marker stands out: ${describe(sorted)}` };
+    }
+    let lastShown = -Infinity, ownPanUntil = 0, movesHooked = null;
+    const moves = [], seenPanels = new WeakSet();
+    function hookMoves() {
+      const map = olMap();
+      if (!map || movesHooked === map || typeof map.events?.register !== 'function') return;
+      movesHooked = map;
+      try {
+        map.events.register('moveend', null, () => {
+          if (performance.now() < ownPanUntil) return;
+          try {
+            const center = map.getCenter?.();
+            if (Number.isFinite(center?.lon) && Number.isFinite(center?.lat)) { moves.push({ time: performance.now(), lon: center.lon, lat: center.lat }); if (moves.length > 8) moves.shift(); }
+          } catch (_) { /* the map is still loading */ }
+        });
+      } catch (error) { reportStudioError('requestReveal', error); }
+    }
+    function openProblem(panel) {
+      if (!panel || seenPanels.has(panel) || panel.matches?.(AI_HELPER_WINDOW_SELECTOR)) return;
+      seenPanels.add(panel);
+      hookMoves();
+      const opened = performance.now();
+      let handled = false;
+      for (const delay of [900, 1700]) setTimeout(() => {
+        if (handled || !panel.isConnected || lastShown >= opened - 2000) return;   // announced by the editor: schedule() has it
+        if (pressed || requestHeaderDrag) return;
+        // Where the editor centred the map as the panel opened is the surest place; the marker comes next.
+        const move = [...moves].reverse().find(item => item.time >= opened - 1500);
+        if (move) {
+          const id = `panel:${move.lon.toFixed(1)},${move.lat.toFixed(1)}`;
+          if (done.id === id && performance.now() - done.time < 30000) { handled = true; return; }
+          let result;
+          try { result = reveal({ id, getOLGeometry: () => ({ x: move.lon, y: move.lat }) }); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
+          note(id, `centred by the editor: ${result}`);
+          if (result.startsWith('moved')) { done = { id, time: performance.now() }; handled = true; }
+          return;
+        }
+        const found = requestMarker(panel);
+        if (!found.marker) { note('panel', `${found.why}; no centring seen: left alone`); return; }
+        const rect = found.marker.rect, point = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        const id = `marker:${Math.round(point.x)},${Math.round(point.y)}`;
+        let result;
+        try { result = revealScreen(point); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
+        note(id, `${found.why}: ${result}`);
+        if (result.startsWith('moved')) { done = { id, time: performance.now() }; handled = true; }
+      }, delay);
     }
     // The map is moved once for a request and then left alone: the editor announces the same request again when its
     // panel is moved or resized, and answering each of those made the map jump back and forth.
@@ -11967,6 +12705,8 @@ ${studioRangeCSS('.picker-hue')}
     function schedule(model, isCurrent = null) {
         let id = '';
         try { id = String(model?.getID?.() ?? model?.id ?? model?.attributes?.id ?? ''); } catch (_) { id = ''; }
+        if (!id.startsWith('placeUpdateRequest:')) lastShown = performance.now();
+        hookMoves();
         for (const timer of timers) clearTimeout(timer);
         timers = [];
         if (id && done.id === id && performance.now() - done.time < 30000) { note(id, 'announced again: left alone'); return; }
@@ -11982,7 +12722,7 @@ ${studioRangeCSS('.picker-hue')}
         }, delay));
         timers.kind = id.startsWith('placeUpdateRequest:') ? 'placeUpdateRequest' : 'updateRequest';
     }
-    return Object.freeze({largestFree,reveal,schedule,openPlaceUpdate,closePlaceUpdate,connectPlaceUpdates});
+    return Object.freeze({largestFree,reveal,schedule,openPlaceUpdate,closePlaceUpdate,connectPlaceUpdates,openProblem,hookMoves});
   })();
   function writeFlowPosition(state, left, top) {
     const element = state.element;
@@ -12182,6 +12922,11 @@ ${studioRangeCSS('.picker-hue')}
       const rect = element.getBoundingClientRect();
       if (!rect.width || !rect.height) { resetHeaderGuard(state); continue; }
       if (isRequestPopup(element) && !state.popupVisible) queueRequestPopupOpen(state);
+      // Notifications open beside the bell when the bell has moved to another island.
+      if (compact && element.matches('.notifications-box-container')) {
+        const spot = notificationsBesideBell(rect);
+        if (spot) { clearHeaderGuardCap(state); writeRequestPosition(state, rect, spot.left, spot.top); continue; }
+      }
       const popupKind = requestPopupKind(element) || (element.matches('.layer-switcher .menu') ? 'layers' : isFlowPanel(element) ? 'panel' : null);
       if (popupKind && element.getAttribute('data-wme-studio-popup-kind') !== popupKind) element.setAttribute('data-wme-studio-popup-kind',popupKind);
       if (popupKind && panelSizes[popupKind] && resizableWindow(element)) applyWindowSize(element);
@@ -12265,6 +13010,31 @@ ${studioRangeCSS('.picker-hue')}
       if (Math.abs(left - rect.left) > .01 || Math.abs(top - rawTop) > .01 || state.shiftX || state.shift) writeRequestPosition(state,rect,left,top);
       else restoreHeaderGuardProperty(state, 'translate');
     }
+  }
+  function notificationsBesideBell(rect) {
+    try {
+      const bell = document.getElementById('notification-button');
+      if (!bell?.hasAttribute('data-wme-studio-island-away')) return null;
+      const own = bell.getBoundingClientRect();
+      if (!own.width || !own.height) return null;
+      const entry = [...islandRegistry.values()].find(item => item.element === bell);
+      const at = entry && islandLayout.controls.get(entry.key);
+      const island = (at && islandLayout.islands.get(at.island)?.rect) || own;
+      const head = compactVisibleRect(document.getElementById('app-head')), footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
+      const minTop = head && head.top < innerHeight / 2 ? head.top + head.height + 12 : 12;
+      const maxBottom = (footer ? Math.min(innerHeight, footer.top) : innerHeight) - 12;
+      const gap = 12, middle = own.left + own.width / 2;
+      let left, top;
+      if (middle < innerWidth / 3) { left = island.left + island.width + gap; top = own.top - 8; }
+      else if (middle > innerWidth * 2 / 3) { left = island.left - gap - rect.width; top = own.top - 8; }
+      else {
+        left = middle - rect.width / 2;
+        top = own.top + own.height / 2 < innerHeight / 2 ? island.top + island.height + gap : island.top - gap - rect.height;
+      }
+      left = Math.max(12, Math.min(left, innerWidth - 12 - rect.width));
+      top = Math.max(minTop, Math.min(top, maxBottom - rect.height));
+      return { left, top };
+    } catch (studioError) { return null; }
   }
   function queueHeaderGuardWindows() {
     if (headerGuardQueued || sidePanelResizing()) return;
@@ -12436,10 +13206,13 @@ ${studioRangeCSS('.picker-hue')}
     for (const element of [...headerGuardWindows.keys(),document.getElementById('sidebar')].filter(Boolean)) {
       if (!resizableWindow(element) || !element.isConnected) continue;
       const rect = element.getBoundingClientRect();
-      if (rect.width < 80 || rect.height < 80 || x < rect.left - 7 || x > rect.right + 7 || y < rect.top || y > rect.bottom + 7) continue;
+      const floatingSide = element.id === 'sidebar' && compactLayoutActive();
+      if (rect.width < 80 || rect.height < 80 || x < rect.left - 7 || x > rect.right + 7 || y < rect.top - (floatingSide ? 6 : 0) || y > rect.bottom + 7) continue;
       if (element.checkVisibility && !element.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true })) continue;
       const inSpan = x >= rect.left + 12 && x <= rect.right - 12, inColumn = y >= rect.top + 14 && y <= rect.bottom - 12;
       const dockedSide = element.id==='sidebar' && !compactLayoutActive();
+      // A floating side panel moves by its top edge.
+      if (floatingSide && inSpan && y >= rect.top - 6 && y <= rect.top + 9) return { element, edge: 'move', rect };
       if (!dockedSide && inSpan && y >= rect.bottom - 6 && y <= rect.bottom + 7) return { element, edge: 'bottom', rect };
       if (inColumn && x >= rect.right - 4 && x <= rect.right + 7) return { element, edge: 'right', rect };
       if (!dockedSide && inColumn && x <= rect.left + 4 && x >= rect.left - 7) return { element, edge: 'left', rect };
@@ -12469,9 +13242,11 @@ ${studioRangeCSS('.picker-hue')}
     if (resizeGrip.target && resizeGrip.target !== element) resizeGrip.target.removeAttribute('data-wme-studio-resize-edge');
     resizeGrip.target = element; resizeGrip.edge = edge; resizeGrip.hidden = false;
     if (element.getAttribute('data-wme-studio-resize-edge') !== edge) element.setAttribute('data-wme-studio-resize-edge', edge);
-    const box = edge === 'bottom' ? [rect.left + 12, rect.bottom - 6, rect.width - 24, 13]
+    const box = edge === 'move' ? [rect.left + 12, rect.top - 6, rect.width - 24, 15]
+      : edge === 'bottom' ? [rect.left + 12, rect.bottom - 6, rect.width - 24, 13]
       : edge === 'right' ? [rect.right - 4, rect.top + 14, 11, rect.height - 26] : [rect.left - 7, rect.top + 14, 11, rect.height - 26];
-    Object.assign(resizeGrip.style, { left: `${box[0]}px`, top: `${box[1]}px`, width: `${box[2]}px`, height: `${box[3]}px`, cursor: edge === 'bottom' ? 'ns-resize' : 'ew-resize' });
+    const cursor = edge === 'move' ? (windowResize ? 'grabbing' : 'grab') : edge === 'bottom' ? 'ns-resize' : 'ew-resize';
+    Object.assign(resizeGrip.style, { left: `${box[0]}px`, top: `${box[1]}px`, width: `${box[2]}px`, height: `${box[3]}px`, cursor });
   }
   document.addEventListener('pointermove', queueResizeHover, { capture: true, passive: true });
   function startWindowResize(event) {
@@ -12485,6 +13260,7 @@ ${studioRangeCSS('.picker-hue')}
     if (kind === 'sidePanel') {
       const drag = windowResize, footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
       drag.floating = compactLayoutActive();
+      if (edge === 'move') { element.setAttribute('data-wme-studio-panel-moving', 'on'); resizeGrip.style.cursor = 'grabbing'; }
       drag.size = { ...(panelSizes.sidePanel || {}) };
       drag.bottom = footer ? footer.top - COMPACT_ISLAND_GAP : innerHeight - 12;
       drag.viewportWidth = innerWidth;
@@ -12513,6 +13289,16 @@ ${studioRangeCSS('.picker-hue')}
     });
   }
   function applyWindowResize(drag) {
+    if (drag.kind === 'sidePanel' && drag.edge === 'move') {
+      // Free over the map and the islands while it moves; on release the dock puts it on a clear spot.
+      const start = drag.rect, width = start.width, height = start.height;
+      const left = Math.round(Math.max(12, Math.min(drag.viewportWidth - width - 12, start.left + drag.x - drag.startX)));
+      const top = Math.round(Math.max(12, Math.min(Math.max(12, drag.bottom - height), start.top + drag.y - drag.startY)));
+      for (const [name,value] of [['--ws-dock-panel-left',`${left}px`],['--ws-dock-panel-right','auto'],['--ws-dock-panel-top',`${top}px`],['--ws-dock-panel-bottom','auto'],['--ws-dock-panel-css-height',`${height / drag.zoom}px`]]) setElementVariable(drag.element,name,value);
+      drag.previewRect = {left,top,width,height,right:left + width,bottom:top + height};
+      showResizeGrip({element:drag.element,edge:'move',rect:drag.previewRect});
+      return;
+    }
     if (drag.kind === 'sidePanel') {
       const size = drag.size, zoom = drag.zoom, start = drag.rect;
       let width = drag.width, height = drag.height;
@@ -12568,6 +13354,9 @@ ${studioRangeCSS('.picker-hue')}
     }
     windowResize = null;
     if (drag.kind === 'sidePanel') {
+      drag.element.removeAttribute('data-wme-studio-panel-moving');
+      // A moved panel keeps the height it had (a panel that never had one set would take the default size).
+      if (drag.edge === 'move' && drag.floating && !Number(drag.size.height)) drag.size.height = Math.round(drag.rect.height / drag.zoom);
       panelSizes.sidePanel = drag.size;
       if (drag.floating && drag.element.isConnected && drag.element.closest('.app.show-sidebar:not(.sidebar-fullscreen)')) {
         const rect = drag.previewRect;
@@ -12587,6 +13376,12 @@ ${studioRangeCSS('.picker-hue')}
   }
   function resetWindowSize(event) {
     const element = resizeGrip?.target, kind = element && resizableWindow(element);
+    // Double-click the top edge: the side panel goes back to where panels open by default.
+    if (kind === 'sidePanel' && resizeGrip.edge === 'move') {
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (compactIslandLayout?.sidePanel) { const { sidePanel, ...rest } = compactIslandLayout; void storeCompactIslandLayout(rest).then(() => syncCompactDocks()).catch(studioError => reportStudioError('resetWindowSize', studioError)); }
+      hideResizeGrip(); return;
+    }
     if (!kind || !panelSizes[kind]) return;
     event.preventDefault(); event.stopImmediatePropagation();
     delete panelSizes[kind]; applyWindowSize(element); storePanelSizes(); queueHeaderGuardWindows(); hideResizeGrip();
@@ -12703,6 +13498,9 @@ ${studioRangeCSS('.picker-hue')}
     if (nativeWindow) trackHeaderGuardWindow(nativeWindow);
     else if (panel.previousElementSibling?.matches('[aria-roledescription="draggable"]')) trackHeaderGuardWindow(panel.parentElement);
     if (panel.matches('.place-update-edit')) requestReveal.openPlaceUpdate(nativeWindow || panel.parentElement);
+    // Every request panel also gets the fallback: the place of a place request is found from its selected
+    // place when the editor selects one, and from where the editor centred the map when it does not.
+    requestReveal.openProblem(panel);
   }
   window.addEventListener('resize', queueHeaderGuardWindows, { passive: true });
   let requestHeaderDrag = null;
@@ -12869,7 +13667,7 @@ ${studioRangeCSS('.picker-hue')}
     if (drag?.compositor && floatingHeader.header) {
       const style = floatingHeader.header.style;
       if (drag.translated && floatingHeader.position) writeHeaderPosition(drag.width);
-      style.removeProperty('translate');
+      style.removeProperty('translate'); shiftHeaderControls();
       const [value, priority] = drag.originalTransition;
       if (value) style.setProperty('transition', value, priority); else style.removeProperty('transition');
     }
@@ -12888,6 +13686,7 @@ ${studioRangeCSS('.picker-hue')}
     floatingHeader.position = null;
     floatingHeader.header?.style.removeProperty('--ws-header-center');
     floatingHeader.header?.style.removeProperty('--ws-header-top');
+    shiftHeaderControls();
     queueHeaderLocationLayout();
     if (moved && compactLayoutActive()) syncCompactDocks();
   }
@@ -12895,6 +13694,7 @@ ${studioRangeCSS('.picker-hue')}
     const { header, position } = floatingHeader;
     header.style.setProperty('--ws-header-center', `${position.x + width / 2}px`);
     header.style.setProperty('--ws-header-top', `${position.y}px`);
+    shiftHeaderControls();
   }
   function positionHeader(x, y, bounds) {
     const gap = 12;
@@ -12904,15 +13704,23 @@ ${studioRangeCSS('.picker-hue')}
     const bottom = Math.min(geometry.height - gap, geometry.footer ? geometry.footer.top - COMPACT_ISLAND_GAP : geometry.height - gap);
     const top = Math.round(Math.max(gap, Math.min(y, bottom - bounds.height)));
     const previous = floatingHeader.position ? {left:floatingHeader.position.x,top:floatingHeader.position.y} : {left:bounds.left ?? left,top:bounds.top ?? top};
-    const placed = compactHeaderPlacement({left,top,width:bounds.width,height:bounds.height}, previous, bounds.obstacles || compactHeaderObstacles(), {width:geometry.width,height:bottom + gap});
+    const view = {width:geometry.width,height:bottom + gap};
+    let placed = compactHeaderPlacement({left,top,width:bounds.width,height:bounds.height}, previous, bounds.obstacles || compactHeaderObstacles(), view);
     if (!placed) return;
+    // Let go over a panel: the nearest spot clear of the panels and the islands, else back where the drag began.
+    if (bounds.settle && bounds.panels?.length && !compactRectClear(placed, bounds.panels)) {
+      const all = [...(bounds.obstacles || []), ...bounds.panels];
+      const free = compactHeaderSpansViewport(bounds.width) ? compactHeaderPlacement(placed, {left:placed.left,top:placed.top}, all, view)
+        : compactFreePosition(placed, all, view, () => true, horizontalInset);
+      placed = free || {...placed,left:bounds.left,top:bounds.top};
+    }
     floatingHeader.position = { x: placed.left, y: placed.top };
     const drag = floatingHeader.drag;
     if (drag && bounds === drag && drag.compositor) {
       const hudZoom = (settings.hudScale || 100) / 100;
       const translate = `${(placed.left - drag.left) / hudZoom}px ${(placed.top - drag.top) / hudZoom}px`;
       if (floatingHeader.header.style.getPropertyValue('translate') !== translate) floatingHeader.header.style.setProperty('translate', translate, 'important');
-      drag.translated = true;
+      drag.translated = true; shiftHeaderControls();
     } else writeHeaderPosition(bounds.width);
     placeHeaderLocationPill(placed, bottom);
     placeHeaderAddonPill(placed, bottom);
@@ -13436,12 +14244,42 @@ ${studioRangeCSS('.picker-hue')}
     const drag = floatingHeader.drag;
     if (!drag || event.pointerId !== drag.pointerId) return;
     event.preventDefault(); event.stopImmediatePropagation();
-    if (drag.moved && event.type === 'pointerup') positionHeader(drag.left + event.clientX - drag.startX,drag.top + event.clientY - drag.startY,drag);
+    if (drag.moved && event.type === 'pointerup') { drag.settle = true; positionHeader(drag.left + event.clientX - drag.startX,drag.top + event.clientY - drag.startY,drag); }
+    else if (drag.moved && floatingHeader.position && drag.panels?.length && !compactRectClear({left:floatingHeader.position.x,top:floatingHeader.position.y,width:drag.width,height:drag.height}, drag.panels)) {
+      drag.settle = true; positionHeader(floatingHeader.position.x, floatingHeader.position.y, drag);   // cancelled over a panel
+    }
     const reset = event.type === 'pointerup' && !drag.moved;
     floatingHeader.suppressUntil = performance.now() + 500;
     finishHeaderDrag();
-    if (reset) resetHeaderPosition();
-    else if (compactLayoutActive()) syncCompactDocks();
+    if (reset) { resetHeaderPosition(); forgetDraggedHeader(); }
+    else {
+      if (drag.moved) saveDraggedHeader();
+      if (compactLayoutActive()) syncCompactDocks();
+    }
+  }
+  // A header dragged into place stays there after a reload: the spot is kept with the layout, the way Arrange
+  // keeps it (and workspaces save it with the layout too). Clicking the handle puts it back to the default.
+  function saveDraggedHeader() {
+    const position = floatingHeader.position;
+    if (!position || !compactLayoutActive() || compactLayoutEditing) return;
+    const spec = compactIslandSpec('header'), size = compactIslandSize(spec), frame = compactViewportFrame();
+    const inset = compactHeaderHorizontalInset(size.width, frame.width);
+    const unit = value => Math.round(Math.min(1, Math.max(0, value)) * 10000) / 10000;
+    const point = {
+      x: compactHeaderSpansViewport(size.width, frame.width) ? (compactIslandLayout?.header?.x ?? .5) : unit((position.x - inset) / Math.max(1, frame.width - 2 * inset - size.width)),
+      y: unit((position.y - 12) / Math.max(1, frame.height - 24 - size.height))
+    };
+    compactIslandLayout = sanitizeCompactIslandLayout({ ...(compactIslandLayout || {}), header: point });
+    applyCompactLayoutVariables();
+    resetHeaderPosition();
+    Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY, compactIslandLayout || {})).catch(studioError => reportStudioError('saveDraggedHeader', studioError));
+  }
+  function forgetDraggedHeader() {
+    if (!compactIslandLayout?.header || !compactLayoutActive() || compactLayoutEditing) return;
+    const { header, ...rest } = compactIslandLayout;
+    compactIslandLayout = sanitizeCompactIslandLayout(rest);
+    applyCompactLayoutVariables();
+    Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY, compactIslandLayout || {})).catch(studioError => reportStudioError('forgetDraggedHeader', studioError));
   }
   window.addEventListener('pointerdown', event => {
     if (!isHeaderHandle(event) || event.button !== 0 || event.isPrimary === false || floatingHeader.drag) return;
@@ -13449,7 +14287,7 @@ ${studioRangeCSS('.picker-hue')}
     const headerStyle = floatingHeader.header.style;
     floatingHeader.drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
       left: rect.left, top: rect.top, width: rect.width, height: rect.height, moved: false,
-      geometry: workspacePanelBounds(), obstacles: compactHeaderObstacles(),
+      geometry: workspacePanelBounds(), obstacles: compactHeaderIslandObstacles(), panels: compactHeaderPanelObstacles(), settle: false,
       compositor: getComputedStyle(floatingHeader.header).translate === 'none', translated: false,
       originalTransition: [headerStyle.getPropertyValue('transition'), headerStyle.getPropertyPriority('transition')] };
     if (floatingHeader.drag.compositor) headerStyle.setProperty('transition', 'none', 'important');
@@ -13463,7 +14301,7 @@ ${studioRangeCSS('.picker-hue')}
   window.addEventListener('click', event => {
     if (!isHeaderHandle(event)) return;
     event.preventDefault(); event.stopImmediatePropagation();
-    if (event.detail === 0 || performance.now() > floatingHeader.suppressUntil) resetHeaderPosition();
+    if (event.detail === 0 || performance.now() > floatingHeader.suppressUntil) { resetHeaderPosition(); forgetDraggedHeader(); }
   }, true);
   window.addEventListener('lostpointercapture', event => {
     if (floatingHeader.drag?.pointerId === event.pointerId) {
@@ -13706,6 +14544,1168 @@ ${studioRangeCSS('.picker-hue')}
   });
   window.addEventListener('blur', () => { for (const state of mapLayerWindows.values()) finishMapLayerDrag(state); });
 
+  // ---- Custom islands ------------------------------------------------------------------------------------------
+  // In Floating mode a control can leave its island: it can be hidden, moved into another island or given an
+  // island of its own. WME keeps owning its controls, so they never leave their place in WME's page. A moved
+  // control is only drawn somewhere else (fixed in place over the map), and a new island is a glass backdrop
+  // that Studio draws behind the controls it holds. Taking the layout away puts every control back as it was.
+  const ISLAND_CONTROLS_KEY = 'wmeStudio.islandControls.v1';
+  const ISLAND_HOME_LABELS = Object.freeze({ header: 'Header', navigation: 'Navigation', tools: 'Map tools', online: 'Online Editors', tile: 'Tile Update', links: 'Custom links' });
+  // Islands whose own controls Studio may lay out (reorder, rotate, receive controls from other islands). The
+  // header also holds the logo, the address and add-on pills, so it only lends controls and takes its own back.
+  const ISLAND_MANAGEABLE = Object.freeze(['navigation', 'tools']);
+  const ISLAND_PAD = 6, ISLAND_GAP = 4, ISLAND_EMPTY = Object.freeze({ width: 168, height: 52 });
+  const islandControlSources = Object.freeze({
+    header: () => {
+      const head = document.getElementById('app-head');
+      if (!head) return [];
+      return [head.querySelector('#search-autocomplete'),
+        ...head.querySelectorAll('#toolbar .toolbar > *'),
+        ...head.querySelectorAll('#toolbar .secondary-toolbar-actions > *'),
+        ...head.querySelectorAll('#toolbar .secondary-toolbar > :not(.secondary-toolbar-actions):not(.secondary-toolbar-spacer)'),
+        head.querySelector('#notification-button'), head.querySelector('wz-user-box')];
+    },
+    navigation: () => [...(document.getElementById('drawer')?.querySelectorAll('wz-navigation-item') || [])],
+    tools: () => {
+      const rail = document.getElementById('overlay-buttons');
+      return rail ? [...rail.querySelectorAll('.overlay-buttons-container > *, .zoom-bar-container')] : [];
+    },
+    online: () => [queryCompactIsland(compactIslandSpec('online'))],
+    links: () => { syncLinkElements(); return [...linkElements.values()]; },
+    tile: () => [queryCompactIsland(compactIslandSpec('tile'))]
+  });
+  const ISLAND_NAMED_CONTROLS = Object.freeze({ 'search-autocomplete': 'Search', 'notification-button': 'Notifications', 'save-button': 'Save' });
+  const VOLATILE_CLASS = /(?:^|[-_])(?:active|selected|open|opened|closed|hover|hovered|focus|focused|disabled|hidden|visible|show|shown|expanded|collapsed|loading|pressed|checked|unread|new|badge)(?:$|[-_])|^ws-|wme-studio|^ng-|^jsx-|^css-|^sc-/i;
+  function emptyIslandControls() { return { custom: [], managed: {}, hidden: [], links: [], next: 1 }; }
+  function islandControlsEmpty(model) { return !model || (!model.custom.length && !Object.keys(model.managed).length && !model.hidden.length && !model.links?.length); }
+  // A web address for a custom link: http or https only, "https://" added when it is left out.
+  function safeLinkUrl(text) {
+    let value = typeof text === 'string' ? text.trim() : '';
+    if (!value || value.length > 2000) return null;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) value = `https://${value.replace(/^\/+/, '')}`;
+    try {
+      const url = new URL(value);
+      // A real host name: letters, digits, dots and dashes, with a dot in it (or localhost, or an IPv6 address).
+      const host = url.hostname;
+      const valid = /^\[[0-9a-f:.]+\]$/i.test(host) || host === 'localhost' || (/^[a-z0-9.-]+$/i.test(host) && /[a-z0-9]\.[a-z0-9]/i.test(host));
+      return /^https?:$/.test(url.protocol) && valid ? url.href : null;
+    } catch (_) { return null; }
+  }
+  function sanitizeIslandControls(value) {
+    if (typeof value === 'string') { try { value = JSON.parse(value); } catch (_) { value = null; } }
+    const out = emptyIslandControls();
+    if (!value || typeof value !== 'object') return out;
+    const used = new Set();
+    const keys = list => Array.isArray(list) ? list.filter(key => typeof key === 'string' && key.length > 0 && key.length <= 300 && !used.has(key) && used.add(key)) : [];
+    const unit = (number, fallback) => Number.isFinite(Number(number)) ? Math.min(1, Math.max(0, Number(number))) : fallback;
+    if (Array.isArray(value.custom)) for (const island of value.custom.slice(0, 24)) {
+      if (!island || typeof island !== 'object' || !/^c\d{1,4}$/.test(island.id) || out.custom.some(other => other.id === island.id)) continue;
+      out.custom.push({
+        id: island.id, name: typeof island.name === 'string' && island.name.trim() ? island.name.trim().slice(0, 40) : 'Island',
+        orient: island.orient === 'h' ? 'h' : 'v', items: keys(island.items).slice(0, 60),
+        x: unit(island.x, .5), y: unit(island.y, .5), ...(island.fresh === true ? { fresh: true } : {}),
+        ...(ISLAND_MANAGEABLE.includes(island.home) && !out.custom.some(other => other.home === island.home) ? { home: island.home } : {})
+      });
+    }
+    // Layouts from the first 2.0 builds laid WME's own rail out in place; that island is now drawn by Studio.
+    for (const id of ISLAND_MANAGEABLE) {
+      const managed = value.managed?.[id];
+      if (!managed || typeof managed !== 'object' || out.custom.some(island => island.home === id)) continue;
+      const number = out.custom.reduce((top, island) => Math.max(top, Number(island.id.slice(1))), 0) + 1;
+      out.custom.push({ id: `c${number}`, name: ISLAND_HOME_LABELS[id], orient: managed.orient === 'h' ? 'h' : 'v', items: keys(managed.items).slice(0, 60), x: id === 'tools' ? 1 : 0, y: .5, home: id });
+    }
+    out.hidden = keys(value.hidden).slice(0, 160);
+    if (Array.isArray(value.links)) for (const link of value.links.slice(0, 30)) {
+      if (!link || typeof link !== 'object' || !/^l\d{1,4}$/.test(link.id) || out.links.some(other => other.id === link.id)) continue;
+      const url = safeLinkUrl(link.url);
+      if (!url) continue;
+      const name = typeof link.name === 'string' && link.name.trim() ? link.name.trim().slice(0, 40) : new URL(url).hostname.slice(0, 40);
+      out.links.push({ id: link.id, name, url });
+    }
+    const highest = out.custom.reduce((top, island) => Math.max(top, Number(island.id.slice(1))), 0);
+    out.next = Math.max(highest + 1, Number.isInteger(value.next) && value.next > 0 && value.next < 10000 ? value.next : 1);
+    return out;
+  }
+  function storedIslandControls(model) {
+    const clean = sanitizeIslandControls(model);
+    clean.custom = clean.custom.filter(island => island.items.length).map(({ fresh, ...island }) => island);
+    return islandControlsEmpty(clean) ? {} : clean;
+  }
+  let islandControls = emptyIslandControls(), islandControlsDraft = null;
+  const islandModel = () => islandControlsDraft || islandControls;
+
+  // A popup a control opens (WME's share popup with its copy buttons): never part of the control's name or size.
+  // Menus are left out on purpose: many header buttons are a menu wrapped around their button.
+  const CONTROL_ICON_SKIP = '[role="dialog"],[role="tooltip"],wz-tooltip-content,.tippy-box,[class*="pop-up"],[class*="popup"],[class*="Popup"],[class*="popover"]';
+  function controlIconName(element) {
+    const icon = element.matches?.('wz-icon,i[class*="w-icon-"]') ? element
+      : [...(element.querySelectorAll?.('wz-icon[name],i[class*="w-icon-"]') || [])].find(node => { const box = node.parentElement?.closest(CONTROL_ICON_SKIP); return !box || box === element || !element.contains(box); });
+    if (!icon) return '';
+    return icon.getAttribute('name') || [...icon.classList].find(name => /^w-icon-./.test(name)) || '';
+  }
+  function controlKeyBase(island, element) {
+    if (element.dataset?.wsLink) return `links@${element.dataset.wsLink}`;
+    if (element.id && (element.id === 'wme-studio-launcher-host' || !/^(?:ws-|wme-studio)/.test(element.id))) return `${island}#${element.id}`;
+    const named = element.getAttribute('data-testid') || element.getAttribute('data-test-id') || element.getAttribute('data-for') || element.getAttribute('name');
+    if (named) return `${island}@${named}`;
+    const classes = [...element.classList].filter(name => !VOLATILE_CLASS.test(name) && !/--[a-z0-9_-]{4,}$/i.test(name)).sort().join('.');
+    const icon = controlIconName(element);
+    return `${island}:${element.localName}${classes ? '.' + classes : ''}${icon ? '~' + icon : ''}`;
+  }
+  function controlLabel(element, island) {
+    if (element.dataset?.wsLink) return islandModel().links?.find(link => link.id === element.dataset.wsLink)?.name || 'Link';
+    if (island === 'online' || island === 'tile') return ISLAND_HOME_LABELS[island];
+    if (element.id === 'wme-studio-launcher-host') return 'WME Studio';
+    if (ISLAND_NAMED_CONTROLS[element.id]) return ISLAND_NAMED_CONTROLS[element.id];
+    if (element.querySelector?.('#save-button')) return 'Save';
+    if (element.localName === 'wz-user-box') return 'Profile';
+    if (element.classList.contains('zoom-bar-container')) return 'Zoom';
+    const read = node => node && ['aria-label', 'title', 'data-tooltip', 'tooltip', 'label', 'data-original-title'].map(name => node.getAttribute(name)).find(text => text && text.trim());
+    let text = read(element) || read(element.querySelector?.('[aria-label],[title],[tooltip],[data-tooltip],[label]'));
+    if (!text) text = (element.querySelector?.('[slot="label"],[slot="text"],[data-wme-studio-nav-label]')?.textContent || element.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length > 40) {
+      const icon = controlIconName(element).replace(/^w-icon-/, '').replace(/[-_]+/g, ' ').trim();
+      if (icon) text = icon[0].toUpperCase() + icon.slice(1);
+    }
+    return (text || 'Control').replace(/\s+/g, ' ').trim().slice(0, 40);
+  }
+  // Pieces of a rail no known selector claims: a button a script added to the rail, or a control WME draws apart
+  // from the others (Street View's figure). Left behind they would float where the rail used to be, so they are
+  // found as controls of their own. Only control-sized pieces with something to show count, never menus or panels.
+  const ISLAND_ORPHAN_SKIP = 'style,script,template,link,slot,meta,[class*="separation--"],[data-wme-studio-header-gap],.ws-custom-island,[role="menu"],[role="dialog"],[role="tooltip"],[role="listbox"],wz-menu,.menu,.tippy-box,[data-tippy-root],.layer-switcher-menu,[class*="pop-up"],[class*="popup"],[class*="Popup"],[class*="popover"]';
+  function islandOrphans(root, known) {
+    const out = [];
+    if (!root) return out;
+    const owned = new Set(known);
+    const visit = (parent, depth) => {
+      if (depth > 6) return;
+      for (const child of parent.children) {
+        if (owned.has(child)) continue;
+        if (child.matches(ISLAND_ORPHAN_SKIP) || (/^(?:ws-|wme-studio)/.test(child.id || '') && child.id !== 'wme-studio-launcher-host')) continue;
+        if (islandPlaced.has(child) || child.hasAttribute('data-wme-studio-control-hidden')) { out.push(child); continue; }
+        if (known.some(element => child.contains(element))) { visit(child, depth + 1); continue; }
+        const style = getComputedStyle(child);
+        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        const rect = child.getBoundingClientRect();
+        const sized = rect.width >= 12 && rect.height >= 12 && rect.width <= 120 && rect.height <= 120 && parseFloat(style.opacity) > 0;
+        const shows = child.shadowRoot || child.matches('button,wz-button,a[href],[role="button"],img,svg,wz-icon') || style.backgroundImage !== 'none' ||
+          child.querySelector('svg,img,i,wz-icon,button,wz-button,[role="button"],[class*="icon"]');
+        // A wrapper with no size of its own (the figure inside is positioned) is looked into instead.
+        if (sized && shows) out.push(child); else visit(child, depth + 1);
+      }
+    };
+    visit(root, 0);
+    return out;
+  }
+  const ISLAND_ORPHAN_ROOTS = Object.freeze({ navigation: () => document.getElementById('drawer'), tools: () => document.getElementById('overlay-buttons') });
+  // Typing in an Arrange field (an island name, a custom link) never reaches WME's keyboard shortcuts, which would
+  // otherwise take the letters for themselves. Registered as early as the script runs, so it comes first.
+  for (const type of ['keydown', 'keypress', 'keyup']) window.addEventListener(type, event => {
+    if (event.key === 'Escape' || event.key === 'Enter' || event.key === 'Tab') return;   // Arrange handles these
+    const field = event.composedPath()[0];
+    if (!field?.matches?.('input:not([type="checkbox"],[type="radio"],[type="range"],[type="button"],[type="submit"]),textarea')) return;
+    if (field.getRootNode()?.host?.id !== 'wme-studio-compact-layout-editor') return;
+    event.stopImmediatePropagation();
+  }, true);
+  // Custom links: buttons Studio makes for addresses the user saved. They wait out of sight until an island holds
+  // them, and open their address in a new tab.
+  const linkElements = new Map();   // link id -> element
+  const LINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.1 1.1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.1-1.1"/></svg>';
+  function linkIconSources(url) {
+    try {
+      const { hostname, origin } = new URL(url);
+      return [`https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(hostname)}`, `${origin}/favicon.ico`];
+    } catch (_) { return []; }
+  }
+  function syncLinkElements(model = islandModel()) {
+    const links = model?.links || [];
+    const wanted = new Set(links.map(link => link.id));
+    for (const [id, element] of linkElements) if (!wanted.has(id)) { releaseControl(element); element.remove(); linkElements.delete(id); }
+    if (!links.length) return;
+    // Beside the islands Studio draws, so a placed link shares their layer and shows above its island.
+    let dock = document.getElementById('ws-link-dock');
+    if (!dock) { dock = document.createElement('div'); dock.id = 'ws-link-dock'; }
+    const host = document.querySelector('.app:not(.sidebar-fullscreen) .edit-area-main') || document.querySelector('.app') || document.body || document.documentElement;
+    if (dock.parentElement !== host) host.append(dock);
+    for (const link of links) {
+      let element = linkElements.get(link.id);
+      if (!element) {
+        element = document.createElement('a');
+        element.className = 'ws-link-control'; element.dataset.wsLink = link.id;
+        element.target = '_blank'; element.rel = 'noopener noreferrer';
+        linkElements.set(link.id, element);
+      }
+      if (element.getAttribute('href') !== link.url) {
+        element.setAttribute('href', link.url);
+        const icon = new Image();
+        icon.alt = ''; icon.referrerPolicy = 'no-referrer'; icon.decoding = 'async';
+        // The site's own icon: from Google's favicon service first (sharp, and it knows sites whose icon is not at
+        // /favicon.ico), then from the site itself. The link glyph shows until one loads, and when none does.
+        const sources = linkIconSources(link.url);
+        const next = () => { const source = sources.shift(); if (source) icon.src = source; };
+        icon.addEventListener('load', () => {
+          if (icon.naturalWidth > 1) { icon.setAttribute('data-loaded', ''); scheduleIslandControls(); }
+          else next();
+        });
+        icon.addEventListener('error', next);
+        next();
+        element.replaceChildren(icon);
+        element.insertAdjacentHTML('beforeend', LINK_ICON);
+      }
+      if (element.title !== link.name) { element.title = link.name; element.setAttribute('aria-label', link.name); }
+      if (element.parentElement !== dock) dock.append(element);
+    }
+  }
+  // Every control Studio can move, found again on each pass, so a control WME redraws is picked up by its key.
+  let islandRegistry = new Map();
+  const islandKnownElements = new WeakSet();   // every control element found so far
+  const islandPlaced = new Map();   // element -> {props: Map(name -> [value, priority]), left, top, scale}
+  function discoverIslandControls() {
+    const registry = new Map(), seen = new Set();
+    for (const [island, source] of Object.entries(islandControlSources)) {
+      let list = [];
+      try { list = source().filter(Boolean); } catch (studioError) { reportStudioError('discoverIslandControls', studioError); }
+      if (ISLAND_ORPHAN_ROOTS[island]) {
+        try {
+          const orphans = islandOrphans(ISLAND_ORPHAN_ROOTS[island](), list);
+          // After the known controls, so the keys of those (and every saved layout) stay the same.
+          if (orphans.length) list = [...list, ...orphans];
+        } catch (studioError) { reportStudioError('discoverIslandControls', studioError); }
+      }
+      // A popup a button opens (WME's share popup) is not a control of its own, wherever WME puts it.
+      list = [...new Set(list)].filter(element => element.isConnected && !seen.has(element) && !element.closest('.ws-custom-island') && !element.matches?.(CONTROL_ICON_SKIP) &&
+        (element.id === 'wme-studio-launcher-host' || (!String(element.className || '').includes('wme-studio') && !/^wme-studio/.test(element.id || ''))));
+      list = list.filter(element => !list.some(other => other !== element && element.contains(other)));
+      // WME opens the share popup by putting a new share button inside an empty <div> of its own. That wrapper
+      // has no size; the button inside it is the control (and has the same key as the button it replaces).
+      list = list.map(element => {
+        // A bare wrapper (no id, no class) around a single map button: the button is the control. WME's share
+        // button sits in one while its popup is open, and must keep its own key (and so its place).
+        if (!element.id && !String(element.className || '').trim() && element.localName === 'div') {
+          const buttons = [...element.children].filter(child => child.matches('.overlay-button,wz-button,button') && !child.matches(CONTROL_ICON_SKIP));
+          if (buttons.length === 1) {
+            if (islandPlaced.has(element)) releaseControl(element);
+            return buttons[0];
+          }
+        }
+        if (islandPlaced.has(element) || element.hasAttribute('data-wme-studio-control-hidden')) return element;
+        const own = element.getBoundingClientRect();
+        if (own.width >= 6 && own.height >= 6) return element;
+        const inner = [...element.querySelectorAll('.overlay-button,wz-button,button')].find(node => {
+          if (node.parentElement?.closest(CONTROL_ICON_SKIP) && !node.parentElement.closest(CONTROL_ICON_SKIP).contains(element)) return false;
+          const box = node.getBoundingClientRect(); return islandPlaced.has(node) || (box.width >= 6 && box.height >= 6);
+        });
+        return inner || element;
+      });
+      const counts = new Map();
+      for (const element of list) {
+        // A control WME has hidden (the share button while its popup is open) gives its key up to the one showing
+        // now; a control hidden in Arrange keeps its own.
+        if (!element.hasAttribute('data-wme-studio-control-hidden')) {
+          const rect = element.getBoundingClientRect();
+          if (rect.width < 6 || rect.height < 6) continue;
+        }
+        seen.add(element);
+        const base = controlKeyBase(island, element);
+        let count = counts.get(base) || 0, key;
+        do { count += 1; key = count > 1 ? `${base}#${count}` : base; } while (registry.has(key));
+        counts.set(base, count);
+        registry.set(key, { key, island, element, label: controlLabel(element, island),
+          required: element.id === 'save-button' || !!element.querySelector?.('#save-button') });
+      }
+    }
+    adoptSwappedControls(registry);
+    for (const entry of registry.values()) islandKnownElements.add(entry.element);
+    islandRegistry = registry;
+    return registry;
+  }
+  // WME sometimes shows a button as another element for a while: the share button, while its popup is open, is
+  // hidden and an active copy is shown elsewhere in the rail. That copy has a key of its own, so it would land at
+  // the end of the island it came from. A control that was laid out at the last pass and is gone now, while a
+  // control nobody placed has just appeared in the same rail, is taken to be that control and keeps its place.
+  let islandLastKeys = new Set();       // keys laid out at the last pass
+  let islandLastSeen = new Set();       // every key found at the last pass
+  const islandSwaps = new Map();        // key of the copy WME shows -> key of the control it stands in for
+  function adoptSwappedControls(registry) {
+    const model = islandModel();
+    const placedKeys = new Set([...model.custom.flatMap(island => island.items), ...Object.values(model.managed).flatMap(managed => managed.items)]);
+    const known = new Set([...placedKeys, ...model.hidden]);
+    const iconOf = key => (key.match(/~([^#]+)/) || [])[1] || '';
+    // A swap lasts while the copy is there and the control it stands in for is not.
+    for (const [copy, lost] of islandSwaps) if (!registry.has(copy) || registry.has(lost) || !placedKeys.has(lost)) islandSwaps.delete(copy);
+    for (const island of ['header', 'navigation', 'tools']) {
+      const standing = new Set(islandSwaps.values());
+      const gone = [...islandLastKeys].filter(key => key.startsWith(island) && placedKeys.has(key) && !registry.has(key) && !standing.has(key));
+      if (!gone.length) continue;
+      const fresh = [...registry.keys()].filter(key => registry.get(key).island === island && !known.has(key) && !islandLastSeen.has(key) && !islandSwaps.has(key));
+      if (!fresh.length) continue;
+      for (const lost of gone) {
+        const label = key => registry.get(key)?.label;
+        const free = fresh.filter(key => !islandSwaps.has(key));
+        const match = free.find(key => iconOf(key) && iconOf(key) === iconOf(lost))
+          || free.find(key => islandLabels.get(lost) && label(key) === islandLabels.get(lost))
+          || (gone.length === 1 && free.length === 1 ? free[0] : null);
+        if (match) islandSwaps.set(match, lost);
+      }
+    }
+    for (const [copy, lost] of islandSwaps) {
+      const entry = registry.get(copy);
+      registry.delete(copy);
+      registry.set(lost, { ...entry, key: lost, swappedFrom: copy });
+    }
+    islandLastSeen = new Set([...registry.values()].map(entry => entry.swappedFrom || entry.key));
+  }
+  const islandLabels = new Map();       // key -> label at the last pass
+  // Where each known control should show: {kind:'custom'|'managed'|'hidden'|'native', island}.
+  function islandAssignments(model, registry) {
+    const assigned = new Map();
+    for (const key of model.hidden) assigned.set(key, { kind: 'hidden' });
+    for (const island of model.custom) for (const key of island.items) if (!assigned.has(key)) assigned.set(key, { kind: 'custom', island: island.id });
+    for (const [id, managed] of Object.entries(model.managed)) for (const key of managed.items) if (!assigned.has(key)) assigned.set(key, { kind: 'managed', island: id });
+    const taken = new Map(model.custom.filter(island => island.home).map(island => [island.home, island.id]));
+    for (const [key, entry] of registry) {
+      if (assigned.has(key)) continue;
+      // A control of a taken-over island that its saved order does not know yet (a script added it) joins at the end.
+      if (taken.has(entry.island)) assigned.set(key, { kind: 'custom', island: taken.get(entry.island), appended: true });
+      else assigned.set(key, model.managed[entry.island] ? { kind: 'managed', island: entry.island, appended: true } : { kind: 'native', island: entry.island });
+    }
+    return assigned;
+  }
+  function islandItems(model, registry, assigned, kind, id) {
+    const order = kind === 'custom' ? model.custom.find(island => island.id === id)?.items || [] : model.managed[id]?.items || [];
+    const items = order.filter(key => registry.has(key) && assigned.get(key)?.kind === kind && assigned.get(key)?.island === id);
+    for (const [key, place] of assigned) if (place.appended && place.kind === kind && place.island === id && registry.has(key)) items.push(key);
+    return items;
+  }
+
+  const islandControlStyle = document.createElement('style');
+  islandControlStyle.dataset.wmeStudioIslandControls = '1';
+  islandControlStyle.textContent = `
+    /* A fixed box is a layer of its own: the links' layer sits just above the islands' backgrounds (506). */
+    #ws-link-dock { position: fixed; left: -10000px; top: 0; z-index: 507; display: flex; gap: 4px; zoom: var(--ws-hud-zoom, 1); }
+    .ws-link-control {
+      display: inline-grid; place-items: center; box-sizing: border-box; width: 38px; height: 38px; padding: 0; border-radius: var(--ws-island-button-radius, 13px);
+      cursor: pointer; transition: background-color 160ms ease;
+    }
+    /* Stronger than Studio's own colour for page links: this is a button, drawn in the text colour. */
+    html[data-wme-studio] a.ws-link-control[href][data-ws-link] { color: var(--wme-studio-text, #e8eaed) !important; text-decoration: none !important; }
+    .ws-link-control:hover, .ws-link-control:focus-visible { background: var(--wme-studio-hover, #363c42); outline: none; }
+    .ws-link-control > * { grid-area: 1 / 1; }
+    .ws-link-control img { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; visibility: hidden; }
+    .ws-link-control svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+    .ws-link-control img[data-loaded] { visibility: visible; }
+    .ws-link-control img[data-loaded] + svg { visibility: hidden; }
+    /* A link on its own is just its site's icon on the map, a little larger, with a soft shadow to stand out. */
+    .ws-link-control[data-wme-studio-alone] img { width: 28px; height: 28px; border-radius: 7px; filter: drop-shadow(0 2px 6px #00000059); transition: transform 160ms ease; }
+    .ws-link-control[data-wme-studio-alone]:is(:hover, :focus-visible) { background: transparent; }
+    .ws-link-control[data-wme-studio-alone]:is(:hover, :focus-visible) img { transform: scale(1.08); }
+    html:not([data-wme-studio="on"]) .ws-link-control, html:not([data-wme-studio-compact="on"]) .ws-link-control { display: none !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] [data-wme-studio-control-hidden] { display: none !important; }
+    /* Hidden by opacity as well: a rail button's own rules make its icon visible again, but never opaque again. */
+    html[data-wme-studio="on"][data-wme-studio-loading="on"] :is(#app-head, #drawer, #overlay-buttons, #tile-build-status, #online-editors, .online-editors-bubble, .ws-custom-island, [data-wme-studio-island-control], #wme-studio-launcher-host) {
+      visibility: hidden !important; opacity: 0 !important; pointer-events: none !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #app-head[data-wme-studio-island-source] {
+      transform: none !important; translate: none !important;
+      margin-left: calc(var(--ws-island-source-half, 0px) * -1) !important;
+    }
+    /* WME's share button, redrawn inside a bare wrapper while its popup is open, waits unseen for its place in an
+       island instead of showing for a moment where WME keeps it. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons[data-wme-studio-island-source] .overlay-buttons-container > div:not([class]):not([id]) > .overlay-button:not([data-wme-studio-island-control]) { visibility: hidden !important; }
+    /* With WME's map tools taken over by an island, every one of its buttons has a place in an island: one WME has
+       just drawn again stays unseen for the moment until it is in that place, instead of showing where WME keeps it. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons[data-wme-studio-island-absorbed] .overlay-buttons-container > :is(.overlay-button,wz-basic-tooltip,wz-tooltip,.zoom-bar-container):not([data-wme-studio-island-control],[data-wme-studio-control-hidden]) { visibility: hidden !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons[data-wme-studio-island-managed] :is(.overlay-buttons-container,.zoom-bar-container) {
+      border: 0 !important; padding: 0 !important; margin: 0 !important; min-height: 0 !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer[data-wme-studio-island-managed] [class*="separation--"] { display: none !important; }
+    /* The dividers of WME's map tools stay behind when their buttons move: an emptied group, or every group of a
+       rail Studio has taken over, draws no line. A moved zoom bar keeps its spacing but drops its divider. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons[data-wme-studio-island-absorbed] .overlay-buttons-container,
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .overlay-buttons-container:not(:has(> :not([data-wme-studio-island-away],[data-wme-studio-control-hidden],[data-wme-studio-header-gap]))) {
+      border-color: transparent !important; background: transparent !important; box-shadow: none !important; outline: 0 !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .zoom-bar-container[data-wme-studio-island-control] { border-top-color: transparent !important; }
+    /* A WME island Studio has taken over keeps its place in the page but draws nothing: Studio draws it now. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] :is(#overlay-buttons,.app:not(.sidebar-fullscreen) #drawer)[data-wme-studio-island-absorbed] {
+      background: transparent !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] :is(#overlay-buttons,.app:not(.sidebar-fullscreen) #drawer)[data-wme-studio-island-absorbed]::before { display: none !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer[data-wme-studio-island-absorbed] [class*="separation--"] { display: none !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .zoom-bar-container[data-wme-studio-island-orient="h"],
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .zoom-bar-container[data-wme-studio-island-orient="h"] > :not(.zoom-button):not(wz-button):has(.zoom-button,wz-button) {
+      display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: center !important; gap: 4px !important;
+      width: auto !important; height: auto !important; margin: 0 !important; padding: 0 !important; border: 0 !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .zoom-bar-container[data-wme-studio-island-orient="h"] :is(.zoom-button,wz-button) { margin: 0 !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] [data-wme-studio-island-control] { transition: none !important; animation: none !important; }
+    /* Online Editors and Tile Update float above everything on their own; inside an island they take the island's
+       layer, so a floating window (Street View, a request) covers them like the rest of the island. */
+    /* A panel with a menu open is drawn over the header until the menu closes (see setMenusOver). */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] :is(#drawer,#sidebar,#filter-panel-region)[data-wme-studio-menu-over]:not(#ws-menu-over) { z-index: 511 !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] :is(#tile-build-status,[data-wme-studio-online-editors-status="on"])[data-wme-studio-island-control] { z-index: 507 !important; }
+    /* While pointed at (or its card is open) its label opens over the header and the other islands. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] :is(#tile-build-status,[data-wme-studio-online-editors-status="on"])[data-wme-studio-island-control]:is(:hover,:focus-within,:has(.tile-build-status-card)) { z-index: 512 !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-island-fit]:not(#ws-fit-a) {
+      background: transparent !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important; text-shadow: none !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-island-fit]:not(#ws-fit-a):is(:hover,:focus-visible) { background: var(--wme-studio-hover) !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #online-editors:has(.online-editors-list-wrapper) wz-button.online-editors-bubble[data-wme-studio-island-fit]:not(#ws-fit-a) { background: var(--wme-studio-active) !important; box-shadow: inset 0 0 0 2px var(--wme-studio-accent) !important; }
+    /* Pointed at, in an island: "N online editors" opens as a tab of the island, like Tile Update's label (the
+       --ws-online-out-* distances to the island's edges come from the pointerover handler). */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-island-fit]:not(#ws-fit-a):not([data-wme-studio-label-side="above"],[data-wme-studio-label-side="below"]) { isolation: isolate; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-island-fit]:not(#ws-fit-a):not([data-wme-studio-label-side="above"],[data-wme-studio-label-side="below"]) > .text {
+      z-index: -1; translate: none !important;
+      top: calc(-1 * var(--ws-online-out-top, 0px)) !important; bottom: auto !important;
+      height: calc(100% + var(--ws-online-out-top, 0px) + var(--ws-online-out-bottom, 0px)) !important;
+      padding-top: max(0px, calc(var(--ws-online-out-top, 0px) - var(--ws-online-out-bottom, 0px))) !important;
+      padding-bottom: max(0px, calc(var(--ws-online-out-bottom, 0px) - var(--ws-online-out-top, 0px))) !important;
+      left: calc(-1 * var(--ws-online-out-left, 0px)) !important; right: auto !important;
+      padding-left: calc(100% + var(--ws-online-out-left, 0px) + 10px) !important; padding-right: 20px !important;
+      max-width: none !important; border: 0 !important; border-radius: var(--ws-online-out-radius, 999px) !important;
+      background: var(--wme-studio-surface) !important; box-shadow: var(--wme-studio-shadow) !important;
+      font: 600 13px/1.25 var(--ws-font) !important; font-size: max(13px, calc(12.5px / var(--ws-label-zoom, 1))) !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-island-fit][data-wme-studio-label-side="left"]:not(#ws-fit-a) > .text {
+      left: auto !important; right: calc(-1 * var(--ws-online-out-right, 0px)) !important;
+      padding-left: 20px !important; padding-right: calc(100% + var(--ws-online-out-right, 0px) + 10px) !important;
+    }
+    /* In an upright island the label is a card of its own beside the island, level with the control. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-island-fit][data-wme-studio-label-detached]:not(#ws-fit-a):not(#ws-fit-b):not([data-wme-studio-label-side="above"],[data-wme-studio-label-side="below"]) > .text {
+      top: 0 !important; height: 100% !important; padding: 0 18px !important;
+      left: calc(100% + var(--ws-online-out-right, 0px) + 8px) !important; right: auto !important;
+      box-shadow: 0 8px 28px #00000026 !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-island-fit][data-wme-studio-label-detached][data-wme-studio-label-side="left"]:not(#ws-fit-a):not(#ws-fit-b) > .text {
+      left: auto !important; right: calc(100% + var(--ws-online-out-left, 0px) + 8px) !important;
+    }
+    /* Tile Update's label is the control itself growing, so its round icon stays in the island: a transparent
+       border spans the island and the gap, and only the card past it is painted. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-detached]:not(#ws-tile-b) > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) {
+      --ws-tile-skip: calc(52px + var(--ws-tile-out-left, 0px) + 8px);
+      --ws-tile-shift-y: 0px; --ws-tile-shift-x: calc(-1 * var(--ws-tile-skip));
+      top: 0 !important; height: 52px !important; padding: 0 6px 0 4px !important;
+      right: 0 !important; left: auto !important;
+      border: 0 solid transparent !important; border-right-width: var(--ws-tile-skip) !important;
+      border-radius: 26px calc(var(--ws-tile-skip) + 26px) calc(var(--ws-tile-skip) + 26px) 26px / 26px !important;
+      background-clip: padding-box !important; box-shadow: none !important;
+      -webkit-backdrop-filter: none !important; backdrop-filter: none !important; overflow: visible !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-detached][data-wme-studio-tile-expand="right"]:not(#ws-tile-b) > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) {
+      --ws-tile-skip: calc(52px + var(--ws-tile-out-right, 0px) + 8px);
+      left: 0 !important; right: auto !important; padding: 0 6px 0 4px !important;
+      border-right-width: 0 !important; border-left-width: var(--ws-tile-skip) !important;
+      border-radius: calc(var(--ws-tile-skip) + 26px) 26px 26px calc(var(--ws-tile-skip) + 26px) / 26px !important;
+    }
+    /* Open, in an island: the label covers the island's padding on its sides (see syncCompactAuxiliaryPlacement). */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) {
+      --ws-tile-shift-y: var(--ws-tile-out-top, 0px);
+      top: calc(-1 * var(--ws-tile-out-top, 0px)) !important;
+      height: calc(52px + var(--ws-tile-out-top, 0px) + var(--ws-tile-out-bottom, 0px)) !important;
+      border-radius: var(--ws-tile-out-radius, 26px) !important;
+      /* Keep the text level with the round icon when the tab reaches further up than down (or the other way). */
+      padding-top: max(0px, calc(var(--ws-tile-out-top, 0px) - var(--ws-tile-out-bottom, 0px))) !important;
+      padding-bottom: max(0px, calc(var(--ws-tile-out-bottom, 0px) - var(--ws-tile-out-top, 0px))) !important;
+      right: calc(-1 * var(--ws-tile-out-right, 0px)) !important; padding-right: calc(52px + var(--ws-tile-out-right, 0px)) !important;
+      --ws-tile-shift-x: var(--ws-tile-out-right, 0px);
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) {
+      right: auto !important; padding-right: 0 !important;
+      left: calc(-1 * var(--ws-tile-out-left, 0px)) !important; padding-left: calc(52px + var(--ws-tile-out-left, 0px)) !important;
+      --ws-tile-shift-x: var(--ws-tile-out-left, 0px);
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card))::before,
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card))::after {
+      top: calc(6px + var(--ws-tile-shift-y)) !important; right: calc(6px + var(--ws-tile-shift-x)) !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card))::before,
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card))::after {
+      right: auto !important; left: calc(6px + var(--ws-tile-shift-x)) !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) > .tile-build-status-icon:not(.phone-icon,.open-icon) {
+      top: calc(15px + var(--ws-tile-shift-y)) !important; right: calc(15px + var(--ws-tile-shift-x)) !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) > .tile-build-status-icon:not(.phone-icon,.open-icon) {
+      right: auto !important; left: calc(15px + var(--ws-tile-shift-x)) !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:not(:hover,:focus-within):not(:has(.tile-build-status-card)) {
+      background: transparent !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important;
+    }
+    .ws-custom-island {
+      position: fixed; z-index: 506; box-sizing: border-box; margin: 0; padding: 0;
+      border-radius: var(--ws-compact-radius, 18px); box-shadow: 0 8px 28px #00000026; pointer-events: auto;
+      display: grid; place-items: center; color: var(--wme-studio-text-muted, #99a4ae); font: 600 11px/1.2 var(--ws-font, system-ui, sans-serif);
+    }
+    .ws-custom-island::before {
+      content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+      background: color-mix(in srgb, var(--wme-studio-surface, #292d31) var(--ws-compact-opacity, 60%), transparent);
+      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    }
+    .ws-custom-island[data-single] { box-shadow: 0 4px 16px #00000024; pointer-events: none; }
+    .ws-custom-island[data-bare] { box-shadow: none; }
+    .ws-custom-island[data-bare]::before { display: none; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app.show-sidebar:not(.sidebar-fullscreen) .ws-custom-island[data-rail]::before { background: var(--wme-studio-bg, #202124) !important; }
+    .ws-custom-island:is(:hover,[data-wme-studio-island-hover])::before { background: color-mix(in srgb, var(--wme-studio-surface, #292d31) var(--ws-compact-hover-opacity, 100%), transparent); }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons[data-wme-studio-island-hover]::before {
+      background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-hover-opacity, 100%), transparent) !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #drawer[data-wme-studio-island-hover]::before {
+      background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-hover-opacity, 100%), transparent) !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons:has([data-wme-studio-island-away]:hover):not([data-wme-studio-island-hover])::before {
+      background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent) !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #drawer:has([data-wme-studio-island-away]:hover):not([data-wme-studio-island-hover])::before {
+      background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-opacity, 60%), transparent) !important;
+    }
+    /* The header lights up for its own controls only. A control moved to another island (and, for the bell, the
+       notifications it opens) is hovered or focused without lighting the header it still belongs to in the page. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #app-head:is(:hover,:focus-within):not(:has(:focus:not([data-wme-studio-island-away],[data-wme-studio-island-away] *))):not(:hover:not(:has([data-wme-studio-island-away]:hover))),
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #app-head:has(#notification-button[data-wme-studio-island-away]):is(:hover,:focus-within):not(:has(:focus:not([data-wme-studio-island-away],[data-wme-studio-island-away] *,.notifications-box-container,.notifications-box-container *))):not(:hover:not(:has([data-wme-studio-island-away]:hover,.notifications-box-container:hover))) {
+      --ws-header-surface: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent) !important;
+      --ws-header-search-bg: color-mix(in srgb, var(--wme-studio-input) 20%, transparent) !important;
+      --ws-header-search-border: transparent !important;
+    }
+    /* A search box moved out of the header lights up for its own hover and focus only, not the header's. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #search-autocomplete[data-wme-studio-island-away]:not(:hover):not(:focus-within) {
+      --ws-header-search-bg: color-mix(in srgb, var(--wme-studio-input) 20%, transparent) !important;
+      --ws-header-search-border: transparent !important;
+    }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #search-autocomplete[data-wme-studio-island-away]:is(:hover,:focus-within) {
+      --ws-header-search-bg: color-mix(in srgb, var(--wme-studio-input) 94%, transparent) !important;
+      --ws-header-search-border: var(--wme-studio-border) !important;
+    }
+    .ws-custom-island[data-empty]::after { content: attr(data-empty); padding: 0 12px; text-align: center; }
+    .ws-custom-island[data-empty] { outline: 1.5px dashed color-mix(in srgb, var(--wme-studio-accent, #0099ff) 70%, transparent); outline-offset: -7px; }
+    html:not([data-wme-studio="on"]) .ws-custom-island, html:not([data-wme-studio-compact="on"]) .ws-custom-island { display: none !important; }`;
+  (document.head || root).append(islandControlStyle);
+
+  // Hovering a control lights up the island it is shown in. Moved controls still sit inside their own island in
+  // WME's page, so that island is told not to light up for them.
+  const islandHoverHost = new WeakMap(), islandOfControl = new WeakMap();
+  function hoverHostFor(element) {
+    const id = islandOfControl.get(element);
+    if (!id || !islandPlaced.has(element)) return null;
+    return id.startsWith('custom:') ? islandGlass.get(id.slice(7)) : queryCompactIsland(compactIslandSpec(id));
+  }
+  function bindIslandHover(element) {
+    if (islandHoverHost.has(element)) return;
+    islandHoverHost.set(element, null);
+    element.addEventListener('pointerenter', () => {
+      const host = hoverHostFor(element);
+      if (host) { host.setAttribute('data-wme-studio-island-hover', ''); islandHoverHost.set(element, host); }
+    });
+    element.addEventListener('pointerleave', () => {
+      islandHoverHost.get(element)?.removeAttribute('data-wme-studio-island-hover');
+      islandHoverHost.set(element, null);
+    });
+  }
+  const PLACED_PROPS = ['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height', 'margin', 'transform', 'translate', 'flex', 'box-sizing', 'inset', 'zoom'];
+  function writePlacedValues(element, values) {
+    for (const [name, value] of Object.entries(values)) if (element.style.getPropertyValue(name) !== value || element.style.getPropertyPriority(name) !== 'important') element.style.setProperty(name, value, 'important');
+    if (element.getAttribute('data-wme-studio-island-control') !== 'on') element.setAttribute('data-wme-studio-island-control', 'on');
+  }
+  // WME sets a button's whole style attribute again when it redraws it (the share button when it is clicked, say),
+  // which wipes the place Studio gave it: for a moment it shows where WME keeps it. The place goes straight back,
+  // before the browser draws anything.
+  const islandStyleWatch = new MutationObserver(records => {
+    for (const record of records) {
+      const element = record.target, state = islandPlaced.get(element);
+      if (!state?.values) continue;
+      // Only a wiped place is put back (Studio's own writes, moving a control, always keep it fixed).
+      const wiped = element.style.getPropertyValue('position') !== 'fixed' || element.style.getPropertyPriority('position') !== 'important';
+      if (!wiped) { if (element.getAttribute('data-wme-studio-island-control') !== 'on') element.setAttribute('data-wme-studio-island-control', 'on'); continue; }
+      writePlacedValues(element, state.values);
+      for (const [name, value] of Object.entries(state.sized || {})) if (value) element.style.setProperty(name, value, 'important');
+      element.style.setProperty('left', `${state.left}px`, 'important');
+      element.style.setProperty('top', `${state.top}px`, 'important');
+    }
+  });
+  function placeControl(element, values) {
+    let state = islandPlaced.get(element);
+    if (!state) {
+      state = { props: new Map(), left: 0, top: 0, scale: 1, values: null };
+      for (const name of PLACED_PROPS) state.props.set(name, [element.style.getPropertyValue(name), element.style.getPropertyPriority(name)]);
+      islandPlaced.set(element, state);
+      element.setAttribute('data-wme-studio-island-control', 'on');
+      bindIslandHover(element);
+      islandStyleWatch.observe(element, { attributes: true, attributeFilter: ['style', 'data-wme-studio-island-control'] });
+    }
+    state.values = { ...values };
+    writePlacedValues(element, values);
+    return state;
+  }
+  function releaseControl(element) {
+    const state = islandPlaced.get(element);
+    if (!state) return;
+    state.values = null;
+    for (const [name, [value, priority]] of state.props) {
+      if (value) element.style.setProperty(name, value, priority);
+      else element.style.removeProperty(name);
+    }
+    element.removeAttribute('data-wme-studio-island-control');
+    islandHoverHost.get(element)?.removeAttribute('data-wme-studio-island-hover');
+    islandPlaced.delete(element);
+  }
+  const managedSizes = new Map();   // native island element -> previous inline width/height
+  function sizeNativeIsland(element, width, height) {
+    if (!managedSizes.has(element)) managedSizes.set(element, ['width', 'height', 'min-height', 'max-height'].map(name => [name, element.style.getPropertyValue(name), element.style.getPropertyPriority(name)]));
+    const zoom = element.currentCSSZoom || 1;
+    for (const [name, value] of [['width', `${width / zoom}px`], ['height', `${height / zoom}px`], ['min-height', '0px'], ['max-height', 'none']]) {
+      if (element.style.getPropertyValue(name) !== value) element.style.setProperty(name, value, 'important');
+    }
+  }
+  function releaseNativeIsland(element) {
+    const previous = managedSizes.get(element);
+    if (!previous) return;
+    for (const [name, value, priority] of previous) { if (value) element.style.setProperty(name, value, priority); else element.style.removeProperty(name); }
+    managedSizes.delete(element);
+  }
+  const islandGlass = new Map();   // custom island id -> element
+  // A control moved out of the header that stretched to fill it leaves a stretch of its own (see renderIslandControls).
+  const headerGaps = new Map();    // control element -> spacer
+  // A control moved out of the header leaves no hole: its neighbours close up. The header keeps the width it had
+  // with every control in it, so it does not shrink and shift everything else.
+  let headerKeptWidth = null;   // [element, previous inline min-width, priority]
+  function clearHeaderGaps() {
+    for (const gap of headerGaps.values()) gap.remove(); headerGaps.clear();
+    if (headerKeptWidth) {
+      const [element, value, priority] = headerKeptWidth;
+      if (value) element.style.setProperty('min-width', value, priority); else element.style.removeProperty('min-width');
+      headerKeptWidth = null;
+    }
+  }
+  function customIslandElement(id) {
+    let element = islandGlass.get(id);
+    const host = document.querySelector('.app:not(.sidebar-fullscreen) .edit-area-main') || document.querySelector('.app') || document.body;
+    if (!element) {
+      element = document.createElement('div');
+      element.className = 'ws-custom-island';
+      element.setAttribute('aria-hidden', 'true');
+      element.dataset.island = id;
+      islandGlass.set(id, element);
+    }
+    if (host && element.parentElement !== host) host.append(element);
+    return element;
+  }
+  function setToggle(element, name, on) {
+    if (!element) return;
+    if (on) { if (!element.hasAttribute(name)) element.setAttribute(name, 'on'); }
+    else if (element.hasAttribute(name)) element.removeAttribute(name);
+  }
+  function releaseIslandControls() {
+    clearHeaderGaps();
+    for (const element of [...islandPlaced.keys()]) releaseControl(element);
+    for (const element of [...managedSizes.keys()]) releaseNativeIsland(element);
+    for (const element of islandGlass.values()) element.remove();
+    islandGlass.clear();
+    for (const element of document.querySelectorAll('[data-wme-studio-control-hidden],[data-wme-studio-island-source],[data-wme-studio-island-managed],[data-wme-studio-island-orient],[data-wme-studio-island-away],[data-wme-studio-island-hover],[data-wme-studio-island-absorbed]')) {
+      for (const name of ['data-wme-studio-control-hidden', 'data-wme-studio-island-source', 'data-wme-studio-island-managed', 'data-wme-studio-island-orient', 'data-wme-studio-island-away', 'data-wme-studio-island-hover', 'data-wme-studio-island-absorbed']) element.removeAttribute(name);
+    }
+    islandLayout = { islands: new Map(), controls: new Map() };
+  }
+  // The last layout drawn, for Arrange: island rectangles and where each control sits.
+  let islandLayout = { islands: new Map(), controls: new Map() };
+  // The HUD size as it is drawn right now: while its slider moves, the live value is ahead of the saved one.
+  function islandScale() {
+    const live = parseFloat(root.style.getPropertyValue('--ws-hud-zoom'));
+    return Number.isFinite(live) && live > 0 ? live : (settings.hudScale || 100) / 100;
+  }
+  // bare: a control standing on its own has no island around it, so no padding and no minimum size either.
+  function islandSlots(items, orient, natural, bare = false) {
+    const zoom = islandScale(), pad = bare ? 0 : ISLAND_PAD * zoom, gap = ISLAND_GAP * zoom;
+    if (!items.length) return { width: ISLAND_EMPTY.width * zoom, height: ISLAND_EMPTY.height * zoom, slots: [] };
+    // Every control gets at least a button-sized cell and sits in its middle, so a small control (the profile
+    // picture) makes an island as thick as the others instead of a smaller, rounder one.
+    const cell = bare ? 0 : 38 * zoom;
+    const sizes = items.map(key => natural.get(key) || { width: cell, height: cell });
+    const cross = Math.max(cell, ...sizes.map(size => orient === 'h' ? size.height : size.width));
+    let along = pad;
+    const slots = items.map((key, index) => {
+      const size = sizes[index], length = Math.max(cell, orient === 'h' ? size.width : size.height);
+      const slot = orient === 'h'
+        ? { key, x: along + (length - size.width) / 2, y: pad + (cross - size.height) / 2, width: size.width, height: size.height }
+        : { key, x: pad + (cross - size.width) / 2, y: along + (length - size.height) / 2, width: size.width, height: size.height };
+      along += length + gap;
+      return slot;
+    });
+    along += pad - gap;
+    return orient === 'h' ? { width: along, height: cross + 2 * pad, slots } : { width: cross + 2 * pad, height: along, slots };
+  }
+  // The width Studio's islands are spread over: the whole window, or only the map's half while Street View is docked
+  // beside it, so islands on the right move next to the split instead of covering the panorama.
+  let islandSpaceDocked = '';
+  // The part of the window beside a docked Street View pane, whichever side the pane is on.
+  function islandSpace() {
+    const pane = dockedStreetView(), rect = pane?.getBoundingClientRect();
+    if (!rect || rect.width < 40 || rect.width > innerWidth - 200) return { left: 0, width: innerWidth, pane: null };
+    return rect.left + rect.width / 2 >= innerWidth / 2
+      ? { left: 0, width: Math.max(200, rect.left), pane: rect }
+      : { left: Math.min(innerWidth - 200, rect.right), width: Math.max(200, innerWidth - rect.right), pane: rect };
+  }
+  function islandSpaceWidth() { return islandSpace().width; }
+  function customIslandPixels(island, size) {
+    const footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
+    const height = footer ? Math.min(innerHeight, footer.top) : innerHeight, inset = 12, space = islandSpace();
+    return {
+      left: Math.round(space.left + inset + island.x * Math.max(0, space.width - 2 * inset - size.width)),
+      top: Math.round(inset + island.y * Math.max(0, height - 2 * inset - size.height))
+    };
+  }
+  function customIslandPoint(left, top, size) {
+    const footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
+    const height = footer ? Math.min(innerHeight, footer.top) : innerHeight, inset = 12;
+    const space = islandSpace(), spanX = Math.max(1, space.width - 2 * inset - size.width), spanY = Math.max(1, height - 2 * inset - size.height);
+    return { x: Math.min(1, Math.max(0, (left - space.left - inset) / spanX)), y: Math.min(1, Math.max(0, (top - inset) / spanY)) };
+  }
+  // WME redraws some controls now and then (saving redraws the map tools): for a moment a control is gone, and its
+  // island would shrink and its other controls jump up, then everything would jump back. A control that was there
+  // a moment ago keeps its place for a few seconds, so the island stays as it is while WME draws it again.
+  const ISLAND_HOLD_MS = 3000;
+  const islandSlotMemory = new Map();   // key -> {size, at, lostAt}
+  let islandHeldFrames = 0;
+  // While WME rebuilds its controls (saving does), the same key can briefly point at another button. The islands
+  // are only laid out again once the controls have stayed the same for a moment, so nothing swaps places.
+  const islandElementIds = new WeakMap();
+  let islandElementNext = 1, islandSettledSignature = '', islandPendingSignature = '', islandSettleTries = 0, islandLaidOutAt = 0;
+  function islandSignature(model, registry) {
+    const assigned = islandAssignments(model, registry), parts = [];
+    for (const [key, entry] of registry) {
+      if (!['custom', 'managed'].includes(assigned.get(key)?.kind)) continue;
+      let id = islandElementIds.get(entry.element);
+      if (!id) { id = islandElementNext++; islandElementIds.set(entry.element, id); }
+      parts.push(`${key}=${id}`);
+    }
+    return parts.sort().join('|');
+  }
+  function renderIslandControls() {
+    islandRenderFrame = 0;
+    // Nothing of this shows while WME is loading, and measuring the page then only slows its loading down: the
+    // islands are laid out once, when loading ends.
+    if (document.documentElement.getAttribute('data-wme-studio-loading') === 'on') return islandLayout;
+    const model = islandModel();
+    if (!compactLayoutActive() || document.querySelector('.app.sidebar-fullscreen') || (islandControlsEmpty(model) && !compactLayoutEditing)) {
+      if (islandPlaced.size || managedSizes.size || islandGlass.size || document.querySelector('[data-wme-studio-control-hidden],[data-wme-studio-island-source]')) releaseIslandControls();
+      islandLayout = { islands: new Map(), controls: new Map() };
+      return islandLayout;
+    }
+    if (!compactLayoutEditing && islandLayout.controls.size) {
+      const signature = islandSignature(model, discoverIslandControls());
+      // The same controls, one of them drawn again by WME (a button that turns active when clicked): nothing is
+      // still arriving, so it is placed at once rather than after the wait meant for the editor's loading.
+      const redrawn = signature.replace(/=\d+/g, '') === islandSettledSignature.replace(/=\d+/g, '');
+      // Waiting for the set of controls to settle is for the editor starting up (scripts adding their buttons one
+      // by one). Later, a change is WME swapping a button (the share button while its popup is open): no waiting.
+      const starting = !islandLaidOutAt || performance.now() - islandLaidOutAt < 20000;
+      if (signature !== islandSettledSignature && !redrawn && starting && islandSettleTries < 8) {
+        if (signature !== islandPendingSignature) { islandPendingSignature = signature; islandSettleTries += 1; scheduleIslandControls(250); return islandLayout; }
+      }
+      islandPendingSignature = ''; islandSettleTries = 0;
+    }
+    // 1. Every control back in its own island, to read its natural size.
+    clearHeaderGaps();
+    for (const element of [...islandPlaced.keys()]) releaseControl(element);
+    for (const element of [...managedSizes.keys()]) releaseNativeIsland(element);
+    const registry = discoverIslandControls(), assigned = islandAssignments(model, registry);
+    const sources = new Set(), managedHomes = new Set(Object.keys(model.managed));
+    for (const [key, entry] of registry) {
+      const place = assigned.get(key);
+      setToggle(entry.element, 'data-wme-studio-control-hidden', place.kind === 'hidden' && !entry.required);
+      if (place.kind === 'custom' || (place.kind === 'managed' && place.island !== entry.island)) sources.add(entry.island);
+    }
+    const head = document.getElementById('app-head');
+    if (sources.has('header') && head) head.style.setProperty('--ws-island-source-half', `${parseFloat(getComputedStyle(head).width) / 2 || 0}px`);
+    for (const id of ['header', 'navigation', 'tools']) {
+      const element = queryCompactIsland(compactIslandSpec(id));
+      setToggle(element, 'data-wme-studio-island-source', sources.has(id));
+      setToggle(element, 'data-wme-studio-island-managed', managedHomes.has(id));
+    }
+    const placed = [...registry.values()].filter(entry => ['custom', 'managed'].includes(assigned.get(entry.key).kind));
+    for (const entry of registry.values()) {
+      const place = assigned.get(entry.key);
+      const orient = place.kind === 'custom' ? model.custom.find(island => island.id === place.island)?.orient : place.kind === 'managed' ? model.managed[place.island]?.orient : null;
+      if (orient === 'h') { if (entry.element.getAttribute('data-wme-studio-island-orient') !== 'h') entry.element.setAttribute('data-wme-studio-island-orient', 'h'); }
+      else if (entry.element.hasAttribute('data-wme-studio-island-orient')) entry.element.removeAttribute('data-wme-studio-island-orient');
+      const away = place.kind === 'custom' || (place.kind === 'managed' && place.island !== entry.island);
+      setToggle(entry.element, 'data-wme-studio-island-away', away);
+      if (place.kind === 'custom' || place.kind === 'managed') islandOfControl.set(entry.element, place.kind === 'custom' ? `custom:${place.island}` : place.island);
+      else islandOfControl.delete(entry.element);
+    }
+    // A map tool sits in a tooltip box that can be taller than its button. The button is what is laid out, so
+    // the gaps around it match those of the other islands.
+    const natural = new Map();
+    let unsized = 0;
+    for (const entry of placed) {
+      const rect = entry.element.getBoundingClientRect();
+      if (rect.width <= 1 || rect.height <= 1) { unsized += 1; continue; }
+      let visible = rect;
+      // The profile is laid out by its picture: the rest of its box (name, score) only shows in its menu.
+      const avatar = entry.element.localName === 'wz-user-box' ? entry.element.querySelector(':scope > [slot="avatar"], wz-user-box-avatar') : null;
+      const avatarRect = avatar?.getBoundingClientRect();
+      // A control inside a wrapper (a tooltip box, a toolbar group, a script's menu) is laid out by its button(s):
+      // the wrapper's padding and margins would only make the island wider.
+      let partNodes = [];
+      if (!(avatarRect?.width > 4 && avatarRect.height > 4) && entry.element.id !== 'search-autocomplete') {
+        // Buttons of a popup the control has open (the copy buttons of WME's share popup) are not the control.
+        const ownPart = node => { const box = node.parentElement?.closest(CONTROL_ICON_SKIP); return !box || box === entry.element || !entry.element.contains(box); };
+        partNodes = [...entry.element.querySelectorAll('.overlay-button,.zoom-button,wz-button,button,[role="button"]')].filter(node => { const part = node.getBoundingClientRect(); return part.width > 4 && part.height > 4 && ownPart(node); });
+        partNodes = partNodes.filter(node => !partNodes.some(other => other !== node && other.contains(node)));
+      }
+      if (avatarRect?.width > 4 && avatarRect.height > 4) visible = avatarRect;
+      else if (partNodes.length) {
+        const parts = partNodes.map(node => node.getBoundingClientRect());
+        {
+          const left = Math.min(...parts.map(part => part.left)), top = Math.min(...parts.map(part => part.top));
+          visible = { left, top, width: Math.max(...parts.map(part => part.right)) - left, height: Math.max(...parts.map(part => part.bottom)) - top };
+        }
+      }
+      // The shape of the visible part, for the backdrop of a control that stands on its own.
+      // A rail row stretches across the whole rail with its icon in the middle. Its own square is what is laid
+      // out, so an island of rail items is as narrow as the rail and the row is sized to that square.
+      let outerWidth = rect.width, outerHeight = rect.height;
+      if (entry.island === 'navigation' && visible === rect && rect.width > rect.height + 4) {
+        visible = { left: rect.left + (rect.width - rect.height) / 2, top: rect.top, width: rect.height, height: rect.height };
+        outerWidth = rect.height;
+      }
+      const shapeNode = avatarRect?.width > 4 ? avatar : partNodes.length ? partNodes[0] : entry.element.querySelector(':scope > input, :scope > div') && entry.element.id === 'search-autocomplete' ? entry.element.querySelector(':scope > input, :scope > div') : entry.element;
+      const corner = parseFloat(getComputedStyle(shapeNode).borderTopLeftRadius) * (shapeNode.currentCSSZoom || 1);
+      const radius = corner > 1 ? Math.min(corner, visible.height / 2) : Math.min(visible.height / 2, 19 * islandScale());
+      const offX = outerWidth === rect.width ? visible.left - rect.left : 0;
+      natural.set(entry.key, { width: visible.width, height: visible.height, offX, offY: visible.top - rect.top, outerWidth, outerHeight, zoom: entry.element.currentCSSZoom || 1, radius, parts: partNodes.length });
+    }
+    if (head && placed.some(entry => {
+      if (entry.island !== 'header' || !natural.has(entry.key)) return false;
+      const place = assigned.get(entry.key);
+      return place.kind === 'custom' || (place.kind === 'managed' && place.island !== 'header');
+    })) {
+      const zoom = head.currentCSSZoom || 1;
+      headerKeptWidth = [head, head.style.getPropertyValue('min-width'), head.style.getPropertyPriority('min-width')];
+      head.style.setProperty('min-width', `${head.getBoundingClientRect().width / zoom}px`, 'important');
+      // A control that stretched to fill the header (the search box) held the controls after it in place. Taken out,
+      // an empty space of its size takes its place, so they stay where they were instead of sliding left.
+      for (const entry of placed) {
+        if (entry.island !== 'header' || !natural.has(entry.key) || !head.contains(entry.element)) continue;
+        const place = assigned.get(entry.key);
+        if (!(place.kind === 'custom' || (place.kind === 'managed' && place.island !== 'header'))) continue;
+        const look = getComputedStyle(entry.element);
+        if (!(parseFloat(look.flexGrow) > 0) || !entry.element.parentElement) continue;
+        // Exactly the room it took, so nothing else in the header moves at all.
+        const width = entry.element.getBoundingClientRect().width / (entry.element.parentElement.currentCSSZoom || 1);
+        const gap = document.createElement('div');
+        gap.setAttribute('data-wme-studio-header-gap', '');
+        gap.setAttribute('aria-hidden', 'true');
+        gap.style.cssText = `flex:0 0 ${Math.round(width * 100) / 100}px;margin:0 ${look.marginRight} 0 ${look.marginLeft};min-width:0;height:1px;padding:0;pointer-events:none;visibility:hidden`;
+        entry.element.before(gap);
+        headerGaps.set(entry.element, gap);
+      }
+    }
+    // 2. Lay out every island Studio draws.
+    // The Online Editors and Tile Update bubbles are bigger than a button. Among other controls they shrink to a
+    // button's size, so they do not make their island wider than a rail; on their own they keep their size.
+    const fitScale = new Map(), held = new Set(), customItems = new Map(), now = performance.now();
+    for (const island of model.custom) {
+      const present = islandItems(model, registry, assigned, 'custom', island.id).filter(key => natural.has(key));
+      let items = present;
+      if (!compactLayoutEditing) {
+        const shown = new Set(present);
+        items = [];
+        for (const key of island.items) {
+          if (shown.has(key)) { items.push(key); continue; }
+          const memory = islandSlotMemory.get(key), place = assigned.get(key);
+          if (memory && !memory.lostAt) memory.lostAt = now;
+          if (memory && now - memory.lostAt < ISLAND_HOLD_MS && place?.kind === 'custom' && place.island === island.id) { items.push(key); held.add(key); natural.set(key, memory.size); }
+        }
+        for (const key of present) if (!island.items.includes(key)) items.push(key);
+      }
+      customItems.set(island.id, items);
+    }
+    const inBar = new Set();
+    for (const island of model.custom) {
+      const items = customItems.get(island.id).filter(key => !held.has(key));
+      if (items.length < 2) continue;
+      const target = 38 * islandScale();
+      for (const key of items) {
+        if (!['online', 'tile'].includes(registry.get(key)?.island)) continue;
+        inBar.add(key);
+        const size = natural.get(key), largest = Math.max(size.width, size.height);
+        if (largest <= target * 1.05) continue;
+        const scale = target / largest;
+        fitScale.set(key, scale);
+        natural.set(key, { ...size, width: size.width * scale, height: size.height * scale, offX: size.offX * scale, offY: size.offY * scale,
+          outerWidth: size.outerWidth * scale, outerHeight: size.outerHeight * scale, radius: size.radius * scale, zoom: (size.zoom || 1) * scale });
+      }
+    }
+    // Among other controls these two lose their own round backdrop: the island is their backdrop then.
+    for (const [key, entry] of registry) if (['online', 'tile'].includes(entry.island)) setToggle(entry.element, 'data-wme-studio-island-fit', inBar.has(key));
+    const layout = { islands: new Map(), controls: new Map() }, writes = [];
+    const visibleCustom = new Set();
+    // Saved spots are relative to the room left around each island, so islands placed edge to edge (a split) can
+    // end up on top of each other once their sizes change: a reload before every control is drawn, a new HUD size.
+    // Drawn on top of another one, an island takes the nearest free spot instead (it is not saved there).
+    const drawnCustom = [], customSpace = islandSpace(), dragging = !!compactLayoutEditor?.dragging?.();
+    for (const island of model.custom) {
+      const items = customItems.get(island.id);
+      if (!items.length && !island.fresh) continue;
+      // One button on its own is drawn bare, on its own backdrop. One control made of several buttons (the zoom
+      // bar's + and −) is an island like any other, as wide as the island it came from.
+      const single = items.length === 1 && !(natural.get(items[0])?.parts > 1);
+      const size = islandSlots(items, island.orient, natural, single);
+      let position = customIslandPixels(island, size);
+      const box = { left: position.left, top: position.top, width: size.width, height: size.height };
+      if (!dragging && drawnCustom.length && !compactRectClear(box, drawnCustom)) {
+        const footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
+        const free = compactFreePosition(box, drawnCustom, { width: customSpace.left + customSpace.width, height: footer ? Math.min(innerHeight, footer.top) : innerHeight },
+          candidate => candidate.left >= customSpace.left + 11.5);
+        if (free) position = { left: free.left, top: free.top };
+      }
+      drawnCustom.push({ left: position.left, top: position.top, width: size.width, height: size.height });
+      const element = customIslandElement(island.id);
+      setToggle(element, 'data-single', single);
+      // The profile picture is its own round image: alone, it needs no backdrop at all.
+      // The profile picture, and a link with its site's icon, need no backdrop when they stand alone.
+      const lone = single ? registry.get(items[0])?.element : null;
+      const bare = !!lone && (lone.localName === 'wz-user-box' || (lone.dataset.wsLink && !!lone.querySelector('img[data-loaded]')));
+      setToggle(element, 'data-bare', bare);
+      for (const key of items) { const control = registry.get(key)?.element; if (control?.dataset.wsLink) setToggle(control, 'data-wme-studio-alone', bare); }
+      // An island holding rail items turns solid while their panel is open, as the rail itself does.
+      setToggle(element, 'data-rail', items.some(key => registry.get(key)?.island === 'navigation'));
+      const radius = single ? `${Math.round(natural.get(items[0])?.radius || 0)}px` : '';
+      if (element.style.borderRadius !== radius) element.style.borderRadius = radius;
+      visibleCustom.add(island.id);
+      const style = { left: `${position.left}px`, top: `${position.top}px`, width: `${Math.round(size.width)}px`, height: `${Math.round(size.height)}px` };
+      for (const [name, value] of Object.entries(style)) if (element.style[name] !== value) element.style[name] = value;
+      if (items.length) element.removeAttribute('data-empty');
+      else element.setAttribute('data-empty', globalThis.WMEStudioI18n?.translate?.('Drop controls here') || 'Drop controls here');
+      const rect = { left: position.left, top: position.top, width: size.width, height: size.height };
+      layout.islands.set(`custom:${island.id}`, { kind: 'custom', id: island.id, name: island.name, orient: island.orient, rect, element, items, slots: size.slots });
+      for (const slot of size.slots) {
+        if (held.has(slot.key)) continue;
+        islandSlotMemory.set(slot.key, { size: natural.get(slot.key), at: now });
+        writes.push({ key: slot.key, x: rect.left + slot.x, y: rect.top + slot.y, width: slot.width, height: slot.height, island: `custom:${island.id}` });
+      }
+    }
+    // Look again once the held places run out: a control that did not come back gives its place up then.
+    if (held.size) {
+      // When the first held place runs out (counted from when its control went missing).
+      const ends = [...held].map(key => (islandSlotMemory.get(key)?.lostAt ?? now) + ISLAND_HOLD_MS - now);
+      scheduleIslandControls(Math.max(16, Math.min(...ends) + 50));
+      if (islandHeldFrames++ < 40) requestAnimationFrame(() => scheduleIslandControls());
+    } else islandHeldFrames = 0;
+    for (const [id, element] of [...islandGlass]) if (!visibleCustom.has(id)) { element.remove(); islandGlass.delete(id); }
+    // WME's own rail draws itself until Studio's island for it is actually there: while WME is still filling the
+    // rail in, the rail shows as usual instead of leaving its buttons bare on the map.
+    for (const id of ['header', 'navigation', 'tools']) {
+      const taken = model.custom.find(island => island.home === id);
+      setToggle(queryCompactIsland(compactIslandSpec(id)), 'data-wme-studio-island-absorbed', !!taken && visibleCustom.has(taken.id));
+    }
+    for (const id of ISLAND_MANAGEABLE) {
+      if (!model.managed[id]) continue;
+      const element = queryCompactIsland(compactIslandSpec(id));
+      if (!element?.isConnected) continue;
+      const items = islandItems(model, registry, assigned, 'managed', id).filter(key => natural.has(key));
+      const size = islandSlots(items, model.managed[id].orient, natural);
+      sizeNativeIsland(element, size.width, size.height);
+      layout.islands.set(id, { kind: 'managed', id, name: ISLAND_HOME_LABELS[id], orient: model.managed[id].orient, element, items, slots: size.slots, rect: null });
+    }
+    // 3. Lift the controls out of the flow, then read where each landed to aim it at its slot. A control's
+    // island may scale it (HUD size) or offset fixed children (a moved header), so both are measured.
+    const outer = key => { const size = natural.get(key); return { width: size?.outerWidth, height: size?.outerHeight }; };
+    for (const write of writes) placeIslandWrite(registry.get(write.key).element, outer(write.key), fitScale.get(write.key));
+    const managedWrites = [];
+    for (const island of layout.islands.values()) {
+      if (island.kind !== 'managed') continue;
+      for (const slot of island.slots) managedWrites.push({ key: slot.key, slot, island });
+      for (const slot of island.slots) placeIslandWrite(registry.get(slot.key).element, outer(slot.key));
+    }
+    for (const island of layout.islands.values()) if (island.kind === 'managed') {
+      const rect = island.element.getBoundingClientRect();
+      island.rect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    }
+    for (const item of managedWrites) writes.push({ key: item.key, x: item.island.rect.left + item.slot.x, y: item.island.rect.top + item.slot.y, width: item.slot.width, height: item.slot.height, island: item.island.id });
+    const origins = writes.map(write => { const element = registry.get(write.key).element; return [element, element.getBoundingClientRect()]; });
+    writes.forEach((write, index) => {
+      const [element, rect] = origins[index], state = islandPlaced.get(element);
+      if (!state) return;
+      const scale = element.currentCSSZoom || natural.get(write.key)?.zoom || 1, size = natural.get(write.key);
+      const originX = rect.left - state.left * scale, originY = rect.top - state.top * scale;
+      // The slot is for the visible button; its box is put where that leaves the button in the slot.
+      const boxX = write.x - (size?.offX || 0), boxY = write.y - (size?.offY || 0);
+      state.scale = scale;
+      state.left = (boxX - originX) / scale; state.top = (boxY - originY) / scale;
+      element.style.setProperty('left', `${state.left}px`, 'important');
+      element.style.setProperty('top', `${state.top}px`, 'important');
+      layout.controls.set(write.key, { rect: { left: write.x, top: write.y, width: write.width, height: write.height }, box: { left: boxX, top: boxY }, island: write.island });
+    });
+    islandLayout = layout;
+    islandLastKeys = new Set(layout.controls.keys());
+    for (const [key, entry] of registry) islandLabels.set(key, entry.label);
+    islandRenderBasis = islandBasis();
+    islandHeaderOrigin = null; shiftHeaderControls();
+    // A control WME has not drawn yet (the rail while the editor loads) is looked at again shortly, so its island
+    // fills in as soon as it can instead of waiting for the next check.
+    if (unsized && islandRetries < 16) { islandRetries += 1; scheduleIslandControls(250); }
+    else if (!unsized) islandRetries = 0;
+    // Read the same way the next pass reads it: with the controls in their islands.
+    if (!compactLayoutEditing) islandSettledSignature = islandSignature(model, discoverIslandControls());
+    if (!islandLaidOutAt && layout.controls.size) islandLaidOutAt = performance.now();
+    // Panels open from the island that now holds the rail items.
+    if (layout.islands.size) { try { syncCompactDocks(); } catch (studioError) { reportStudioError('renderIslandControls', studioError); } }
+    queueCompactAuxiliaryPlacement();
+    return layout;
+  }
+  // Controls taken out of the header still live inside it in WME's page, and the header is what places them
+  // (it is moved with a transform). When the header moves (dragged, in Arrange, a preset), they are moved back
+  // by as much, so they stay in their islands instead of travelling with the header.
+  // Where each control taken out of the header was put on screen at the last layout; when it is found anywhere
+  // else (the header moved, or started placing it) it is put back.
+  let islandHeaderOrigin = null;
+  function shiftHeaderControls() {
+    const head = document.getElementById('app-head');
+    if (!head || !islandPlaced.size) { islandHeaderOrigin = null; return; }
+    const inHeader = node => { for (let depth = 0; node && depth < 40; depth += 1) { if (node === head) return true; node = node.assignedSlot || node.parentElement || node.getRootNode?.().host; } return false; };
+    if (!islandHeaderOrigin) {
+      islandHeaderOrigin = new Map();
+      for (const element of islandPlaced.keys()) if (inHeader(element)) { const rect = element.getBoundingClientRect(); if (rect.width || rect.height) islandHeaderOrigin.set(element, { left: rect.left, top: rect.top }); }
+      return;
+    }
+    for (const [element, expected] of islandHeaderOrigin) {
+      const state = islandPlaced.get(element);
+      if (!state || !element.isConnected) { islandHeaderOrigin.delete(element); continue; }
+      const rect = element.getBoundingClientRect();
+      const dx = rect.left - expected.left, dy = rect.top - expected.top;
+      if (Math.abs(dx) < .25 && Math.abs(dy) < .25) continue;
+      const scale = state.scale || 1;
+      state.left -= dx / scale; state.top -= dy / scale;
+      element.style.setProperty('left', `${state.left}px`, 'important');
+      element.style.setProperty('top', `${state.top}px`, 'important');
+    }
+  }
+  function placeIslandWrite(element, write, fit = null) {
+    const state = placeControl(element, {
+      position: 'fixed', inset: 'auto', right: 'auto', bottom: 'auto', margin: '0px', transform: 'none', translate: 'none', flex: 'none', 'box-sizing': 'border-box',
+      'min-width': '0px', 'min-height': '0px', 'max-width': 'none', 'max-height': 'none'
+    });
+    if (fit) element.style.setProperty('zoom', String(Math.round(fit * 1000) / 1000), 'important');
+    else if (element.style.getPropertyValue('zoom') && state.props.get('zoom')?.[0] !== element.style.getPropertyValue('zoom')) {
+      const [value, priority] = state.props.get('zoom') || ['', ''];
+      if (value) element.style.setProperty('zoom', value, priority); else element.style.removeProperty('zoom');
+    }
+    const zoom = element.currentCSSZoom || 1;
+    if (write.width) element.style.setProperty('width', `${write.width / zoom}px`, 'important');
+    if (write.height) element.style.setProperty('height', `${write.height / zoom}px`, 'important');
+    state.sized = { zoom: fit ? String(Math.round(fit * 1000) / 1000) : '', width: write.width ? `${write.width / zoom}px` : '', height: write.height ? `${write.height / zoom}px` : '' };
+    element.style.setProperty('left', `${state.left}px`, 'important');
+    element.style.setProperty('top', `${state.top}px`, 'important');
+  }
+  // Moves a drawn island and its controls without laying anything out again (Arrange drags). A custom island
+  // moves its glass too; one of WME's own islands moves itself.
+  function shiftIsland(layoutId, left, top) {
+    const island = islandLayout.islands.get(layoutId);
+    if (!island?.rect) return;
+    const dx = left - island.rect.left, dy = top - island.rect.top;
+    if (!dx && !dy) return;
+    island.rect = { ...island.rect, left, top };
+    if (island.kind === 'custom') { island.element.style.left = `${left}px`; island.element.style.top = `${top}px`; }
+    for (const key of island.items) {
+      const entry = islandRegistry.get(key), state = entry && islandPlaced.get(entry.element), control = islandLayout.controls.get(key);
+      if (!state) continue;
+      state.left += dx / state.scale; state.top += dy / state.scale;
+      entry.element.style.setProperty('left', `${state.left}px`, 'important');
+      entry.element.style.setProperty('top', `${state.top}px`, 'important');
+      if (control) {
+        control.rect = { ...control.rect, left: control.rect.left + dx, top: control.rect.top + dy };
+        if (control.box) control.box = { left: control.box.left + dx, top: control.box.top + dy };
+      }
+    }
+  }
+  let islandRenderFrame = 0, islandRenderTimer = 0, islandRetries = 0;
+  // The room the last island layout was made for (see applyCompactLayoutVariables): the window, the part of it
+  // beside a docked Street View, the map's footer and the HUD size.
+  let islandRenderBasis = '';
+  function islandBasis() {
+    const space = islandSpace(), footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
+    return `${innerWidth}x${innerHeight}|${Math.round(space.left)}:${Math.round(space.width)}|${footer ? Math.round(footer.top) : '-'}|${islandScale()}`;
+  }
+  function scheduleIslandControls(delay = 0) {
+    if (delay) { clearTimeout(islandRenderTimer); islandRenderTimer = setTimeout(() => { islandRenderTimer = 0; scheduleIslandControls(); }, delay); return; }
+    if (!islandRenderFrame) islandRenderFrame = requestAnimationFrame(() => {
+      try { renderIslandControls(); } catch (studioError) { reportStudioError('renderIslandControls', studioError); }
+      compactLayoutEditor?.refreshIslands?.();
+    });
+  }
+  // WME redraws parts of its islands now and then; a redrawn control is found again by its key.
+  // Churn inside a control (typing in Search, its suggestions, a menu, a tooltip or a notification list opening)
+  // never adds or removes a control, so it is not a reason to lay the islands out again.
+  const ISLAND_WATCH_INSIDE = '#search-autocomplete,wz-menu,.menu,[role="menu"],[role="listbox"],[role="dialog"],[role="tooltip"],wz-tooltip-content,.tippy-box,[data-tippy-root],.notifications-box-container,wz-user-box,.online-editors-list-wrapper,.tile-build-status-card';
+  const islandWatch = new MutationObserver(records => {
+    if (islandControlsEmpty(islandModel()) && !compactLayoutEditing) return;
+    let changed = false, added = false;
+    const counts = node => node.nodeType === 1 && !node.classList?.contains('ws-custom-island') && !node.hasAttribute?.('data-wme-studio-header-gap') &&
+      !node.matches?.('wz-tooltip-content,[role="tooltip"],.tippy-box,[data-tippy-root]');
+    const iconName = value => (String(value || '').match(/(?:^|\s)(w-icon-[\w-]+)/) || [])[1] || '';
+    for (const record of records) {
+      if (record.target.closest?.(ISLAND_WATCH_INSIDE)) continue;
+      if (record.type === 'attributes') {
+        // WME can show another button in the same element by changing its icon: the control is a different one now.
+        // And it hides and shows buttons by their style (the share button while its popup is open).
+        const target = record.target, name = record.attributeName;
+        if (name === 'name' ? target.localName === 'wz-icon' && target.getAttribute('name') !== record.oldValue
+          : name === 'class' ? (target.localName === 'i' && iconName(target.getAttribute('class')) !== iconName(record.oldValue))
+            // A map button WME has just added gets its size when its component finishes drawing (it marks itself then).
+            || (!islandPlaced.has(target) && !islandKnownElements.has(target) && target.matches?.('.overlay-buttons-container > *, .overlay-buttons-container > div:not([class]) > *'))
+          : name === 'style' && !islandPlaced.has(target) && /display|visibility/.test(`${record.oldValue || ''} ${target.getAttribute('style') || ''}`)
+            && /none|hidden/.test(`${record.oldValue || ''} ${target.getAttribute('style') || ''}`)) changed = added = true;
+        continue;
+      }
+      for (const node of record.addedNodes) if (counts(node)) { changed = added = true; break; }
+      if (!changed) for (const node of record.removedNodes) if (counts(node)) { changed = true; break; }
+    }
+    // A control WME has just drawn again is put in its island before the next picture (a frame late it shows
+    // for a moment where WME keeps it, in the island it came from); a removal alone can wait for the burst.
+    if (!changed) return;
+    if ((added || islandSwaps.size || islandPlaced.size) && islandPlaced.size && !compactLayoutEditing) {
+      try { renderIslandControls(); } catch (studioError) { reportStudioError('renderIslandControls', studioError); }
+    } else scheduleIslandControls(120);
+  });
+  const islandWatched = new WeakSet();
+  // Any change of size (HUD size, header width, WME redrawing a rail) lays the moved controls out again.
+  const islandResize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (islandPlaced.size || islandGlass.size) scheduleIslandControls(); }) : null;
+  function watchIslandSources() {
+    for (const id of ['header', 'navigation', 'tools']) {
+      const element = queryCompactIsland(compactIslandSpec(id));
+      if (element && !islandWatched.has(element)) { islandWatched.add(element); islandWatch.observe(element, { childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['name', 'class', 'style'] }); islandResize?.observe(element); }
+    }
+  }
+  setInterval(() => {
+    if (document.hidden || document.documentElement.getAttribute('data-wme-studio-loading') === 'on' || (islandControlsEmpty(islandModel()) && !islandPlaced.size)) return;
+    if (!compactLayoutActive() || document.querySelector('.app.sidebar-fullscreen')) { if (islandPlaced.size || islandGlass.size) scheduleIslandControls(); return; }
+    watchIslandSources();
+    // A control that drifted (its island moved or WME redrew it) is put back on its slot.
+    for (const [key, control] of islandLayout.controls) {
+      const element = islandRegistry.get(key)?.element;
+      if (!element?.isConnected) { scheduleIslandControls(); return; }
+      const rect = element.getBoundingClientRect(), expected = control.box || control.rect;
+      if (Math.abs(rect.left - expected.left) > 1 || Math.abs(rect.top - expected.top) > 1) { scheduleIslandControls(); return; }
+    }
+  }, 1500);
+  // Studio's own "the map changed size" notices (a side panel opening) leave the window as it was: the islands
+  // are laid out for the window, so only a real resize lays them out again.
+  window.addEventListener('resize', () => { if (!notifyingMapResize) scheduleIslandControls(80); });
+  function setIslandControls(value) {
+    islandControls = sanitizeIslandControls(value);
+    watchIslandSources();
+    scheduleIslandControls();
+  }
+  Promise.resolve(studioKeep.get(ISLAND_CONTROLS_KEY, {})).then(value => setIslandControls(value))
+    .catch(studioError => reportStudioError('Studio initialization', studioError));
+  globalThis.WMEStudioIslands = Object.freeze({
+    key: ISLAND_CONTROLS_KEY,
+    sanitize: sanitizeIslandControls,
+    snapshot: () => storedIslandControls(islandControls),
+    controls: () => [...discoverIslandControls().values()].map(({ key, island, label, required }) => ({ key, island, label, required })),
+    async reset() { await studioKeep.set(ISLAND_CONTROLS_KEY, {}); setIslandControls({}); }
+  });
+
   function buildCompactLayoutEditor() {
     if (compactLayoutEditor?.host?.isConnected) return compactLayoutEditor;
     const host = document.createElement('div');
@@ -13723,7 +15723,7 @@ ${studioControlsCSS()}
       .toolbar{cursor:grab;touch-action:none;user-select:none}.dock[data-dragging="on"] .toolbar{cursor:grabbing}.toolbar .control{cursor:default}
       .title{min-width:150px;max-width:250px;margin-right:6px}.title span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.title strong{display:block;font-size:13px}.title strong::before{content:"⠿";margin-right:7px;color:var(--wme-studio-text-muted,#99a4ae)}.title span{display:block;margin-top:2px;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px;line-height:1.35}
       .control{display:flex;align-items:center;gap:6px;padding:0 3px;color:var(--wme-studio-text-secondary,#c0c8d0);font-size:11px;white-space:nowrap}.control output{min-width:34px;text-align:right;font-variant-numeric:tabular-nums;color:var(--wme-studio-text,#fff)}
-      .switch{position:relative;flex:none;width:34px;height:20px}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}.switch i{position:absolute;inset:0;border-radius:999px;background:var(--wme-studio-border-strong,#65707c);pointer-events:none}.switch i::after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform 120ms ease}.switch input:checked+i{background:var(--wme-studio-accent,#0099ff)}.switch input:checked+i::after{transform:translateX(14px)}.switch:has(input:focus-visible){outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:3px;border-radius:999px}
+      .switch{position:relative;flex:none;width:34px;height:20px}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}.switch i{position:absolute;inset:0;border-radius:999px;background-color:var(--wme-studio-border-strong,#65707c);background-image:radial-gradient(circle,#fff 6.6px,rgba(255,255,255,0) 7.4px);background-size:20px 20px;background-repeat:no-repeat;background-position:0 50%;transition:background-color 120ms ease,background-position 120ms ease;pointer-events:none}.switch i::after{content:none;display:none;background:#fff;transition:transform 120ms ease}.switch input:checked+i{background-color:var(--wme-studio-accent,#0099ff);background-position:100% 50%}.switch:has(input:focus-visible){outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:3px;border-radius:999px}
       ${studioRangeCSS('input[type="range"]')}
       input[type="range"]{width:100px;margin:0}
       button{font:inherit}.action{min-height:34px;padding:0 13px;text-box:trim-both cap alphabetic;border:1px solid var(--wme-studio-border,#4b5560);border-radius:10px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff);font-size:11px;font-weight:650;cursor:pointer}.action:hover{background:var(--wme-studio-hover,#363c42)}.action.primary{border-color:var(--wme-studio-accent,#0099ff);background:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-on-accent,#fff)}.action:disabled{opacity:.55}.action:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:3px}
@@ -13738,7 +15738,7 @@ ${studioControlsCSS()}
       .panel-row .choice:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:-2px}
       .panel-row strong{display:block;grid-column:2;font-size:12px;line-height:16px}.panel-row small{display:block;grid-column:2;font-size:10px;line-height:13px;color:var(--wme-studio-text-muted,#99a4ae)}
       .panel-actions{flex:none;display:flex;padding-right:6px}.panel-row .action{min-height:26px;padding:0 8px;font-size:10px}.panel-row .action[hidden]{display:none}.toolbar [aria-expanded="true"]{border-color:var(--wme-studio-accent,#0099ff)}
-      .target-label{position:fixed;z-index:12;padding:5px 9px;border:1px solid color-mix(in srgb,var(--wme-studio-accent,#0099ff) 55%,transparent);border-radius:999px;background:color-mix(in srgb,var(--wme-studio-bg,#202326) 94%,transparent);box-shadow:0 5px 18px #0007;color:var(--wme-studio-text,#fff);font-size:10px;font-weight:700;white-space:nowrap;pointer-events:none}
+      .target-label{position:fixed;z-index:12;padding:5px 9px;border:1px solid color-mix(in srgb,var(--wme-studio-accent,#0099ff) 55%,transparent);border-radius:999px;background:color-mix(in srgb,var(--wme-studio-bg,#202326) 94%,transparent);box-shadow:0 5px 18px #0007;color:var(--wme-studio-text,#fff);font-size:10px;font-weight:700;white-space:nowrap;pointer-events:auto;cursor:grab;touch-action:none;user-select:none}
       .target-label::before{content:"⠿";margin-right:5px;color:var(--wme-studio-accent,#0099ff);letter-spacing:-2px}
       .shields{position:fixed;inset:0;z-index:6;pointer-events:none}
       .drag-shield{position:fixed;z-index:1;background:transparent;border:2px solid var(--wme-studio-accent,#0099ff);pointer-events:auto;cursor:grab;touch-action:none;user-select:none}
@@ -13747,6 +15747,60 @@ ${studioControlsCSS()}
       .drag-shield[data-dragging="on"]{z-index:5;border-width:3px;cursor:grabbing}
       .drag-shield:focus{outline:none}.drag-shield:focus-visible,.drag-shield[data-active="on"]{outline:2px solid var(--wme-studio-text,#fff);outline-offset:3px}
       .guide{position:fixed;z-index:8;display:none;background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 78%,transparent);box-shadow:0 0 12px color-mix(in srgb,var(--wme-studio-accent,#0099ff) 40%,transparent);pointer-events:none}.guide.vertical{top:0;bottom:0;left:50%;width:1px}.guide.horizontal{left:0;right:0;top:50%;height:1px}.guide.show{display:block}
+      .tools{display:flex;gap:2px}.sep{width:1px;height:26px;margin:0 2px;background:var(--wme-studio-border,#4b5560)}
+      .icon-action{display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--wme-studio-text,#fff);cursor:pointer}
+      .icon-action:hover:not(:disabled){background:var(--wme-studio-hover,#363c42)}.icon-action:disabled{opacity:.35;cursor:default}
+      .icon-action svg,.action svg,.ctx-action svg,.eye svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+      .action{display:inline-flex;align-items:center;gap:6px}
+      .action[aria-pressed="true"]{border-color:var(--wme-studio-accent,#0099ff);background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 18%,var(--wme-studio-input,#23272b));color:var(--wme-studio-text,#fff)}
+      .drag-shield[data-selected]{outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:4px;border-width:2px}
+      .library{position:fixed;right:84px;top:84px;z-index:22;width:300px;max-height:calc(100vh - 210px);display:flex;flex-direction:column;border:1px solid var(--wme-studio-border,#4b5560);border-radius:18px;background:var(--wme-studio-surface,#292d31);box-shadow:0 16px 40px #0007;overflow:hidden;pointer-events:auto}
+      .library[hidden]{display:none}.library[data-drop]{box-shadow:0 0 0 3px var(--wme-studio-accent,#0099ff),0 16px 40px #0007}
+      .lib-head{display:flex;align-items:flex-start;gap:8px;padding:14px 10px 8px 16px}.lib-head>div{flex:1;min-width:0}
+      .lib-head strong{display:block;font-size:13px}.lib-head span{display:block;margin-top:3px;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px;line-height:1.4}
+      .lib-body{flex:1;min-height:0;overflow:auto;padding:0 8px 8px;scrollbar-width:thin}
+      .lib-group{padding:12px 8px 5px;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px;font-weight:700;letter-spacing:.02em}
+      .lib-row{display:flex;align-items:center;gap:9px;min-height:38px;padding:0 4px 0 6px;border-radius:10px;cursor:grab;touch-action:none;user-select:none}
+      .lib-row:hover{background:var(--wme-studio-hover,#363c42)}.lib-row[data-on]{background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 16%,transparent)}
+      .lib-ic{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff);font-size:12px;font-weight:700;overflow:hidden}
+      .lib-ic svg,.lib-ic wz-icon,.lib-ic i{max-width:17px;max-height:17px;font-size:16px;line-height:1;pointer-events:none}
+      .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+      .where{flex:none;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px}
+      .lib-row[data-off] .lbl,.lib-row[data-off] .lib-ic{opacity:.45}.lib-row[data-off] .where{color:var(--ws-change-alert,#ff8f8f)}
+      .eye{flex:none;display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--wme-studio-text-muted,#99a4ae);cursor:pointer}
+      .eye:hover:not(:disabled){background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff)}.eye:disabled{opacity:.3;cursor:default}
+      .lib-drop{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 10px 10px;min-height:42px;border:1.5px dashed var(--wme-studio-border-strong,#5b6671);border-radius:12px;color:var(--wme-studio-text-muted,#99a4ae);font-size:11px}
+      .library[data-drop] .lib-drop{border-color:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-accent,#0099ff);background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 10%,transparent)}
+      .lib-add{display:flex;align-items:center;gap:8px;width:calc(100% - 8px);margin:10px 4px 4px;padding:9px 10px;border:1.5px dashed var(--wme-studio-border,#4b5560);border-radius:11px;background:transparent;color:var(--wme-studio-text,#e8eaed);font:inherit;font-weight:650;cursor:pointer}
+      .lib-add:hover{border-color:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-accent,#0099ff)}
+      .lib-add svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+      .lib-link-form{display:grid;gap:9px;margin:10px 4px 4px;padding:12px;border:1px solid var(--wme-studio-border,#4b5560);border-radius:12px;background:var(--wme-studio-surface-2,#30363c)}
+      .lib-link-form strong{font-size:12.5px}
+      .lib-link-form label{display:grid;gap:4px;color:var(--wme-studio-text-muted,#99a4ae);font-size:11px;font-weight:650}
+      .lib-link-form input{box-sizing:border-box;width:100%;height:32px;padding:0 10px;border:1px solid var(--wme-studio-border,#4b5560);border-radius:9px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff);font:inherit;font-size:12.5px;outline:none}
+      .lib-link-form input:focus{border-color:var(--wme-studio-accent,#0099ff)}
+      .lib-link-error{margin:0;color:var(--ws-change-alert,#ff8f8f);font-size:11px;line-height:1.4}
+      .lib-link-actions{display:flex;justify-content:flex-end;gap:6px}
+      .lib-link-actions button{height:30px;padding:0 12px;border:0;border-radius:9px;background:var(--wme-studio-hover,#363c42);color:var(--wme-studio-text,#e8eaed);font:inherit;font-size:12px;font-weight:650;cursor:pointer}
+      .lib-link-actions .primary{background:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-on-accent,#fff)}
+      .lib-link-actions .danger{margin-right:auto;background:transparent;color:var(--ws-change-alert,#ff8f8f)}
+      .lib-empty{margin:12px 8px;color:var(--wme-studio-text-muted,#99a4ae);font-size:11px;line-height:1.5}
+      .ctx{position:fixed;z-index:26;display:flex;align-items:center;gap:2px;padding:5px;border:1px solid var(--wme-studio-border,#4b5560);border-radius:13px;background:var(--wme-studio-surface,#292d31);box-shadow:0 10px 28px #0007;font-size:11.5px;white-space:nowrap;pointer-events:auto}
+      .ctx[hidden]{display:none}.ctx-name{padding:0 9px 0 7px;font-weight:700}
+      .ctx-rename{width:150px;height:30px;margin:0 4px 0 2px;padding:0 9px;border:1px solid var(--wme-studio-accent,#0099ff);border-radius:9px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff);font:inherit;font-weight:700;outline:none}.ctx-hint{padding:0 9px;color:var(--wme-studio-text-muted,#99a4ae)}
+      .ctx-sep{width:1px;height:22px;margin:0 3px;background:var(--wme-studio-border,#4b5560)}
+      .ctx-action{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 9px;border:0;border-radius:9px;background:transparent;color:var(--wme-studio-text,#fff);font:inherit;cursor:pointer}
+      .ctx-action.ctx-icon{padding:0;width:30px;justify-content:center}.ctx-action:hover:not(:disabled){background:var(--wme-studio-hover,#363c42)}.ctx-action:disabled{opacity:.38;cursor:default}.ctx-action.danger{color:var(--ws-change-alert,#ff8f8f)}
+      .replace-menu{position:fixed;z-index:27;width:280px;max-height:min(420px,calc(100vh - 40px));overflow:auto;padding:6px;border:1px solid var(--wme-studio-border,#4b5560);border-radius:14px;background:var(--wme-studio-surface,#292d31);box-shadow:0 14px 34px #0008;pointer-events:auto}
+      .replace-menu[hidden]{display:none}.replace-title{padding:6px 8px 8px;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px;font-weight:700}
+      .replace-row{display:flex;align-items:center;gap:9px;width:100%;min-height:36px;padding:0 8px 0 6px;border:0;border-radius:9px;background:transparent;color:var(--wme-studio-text,#fff);font:inherit;font-size:12px;text-align:left;cursor:pointer}
+      .replace-row:hover,.replace-row:focus-visible{background:var(--wme-studio-hover,#363c42);outline:none}.replace-row .where{margin-left:auto}
+      .ghost{position:fixed;z-index:30;padding:6px 10px;border:1.5px solid var(--wme-studio-accent,#0099ff);border-radius:10px;background:var(--wme-studio-surface,#292d31);box-shadow:0 14px 30px #0008;color:var(--wme-studio-text,#fff);font-size:11px;font-weight:700;pointer-events:none;white-space:nowrap}
+      .marker{position:fixed;z-index:25;border-radius:3px;background:var(--wme-studio-accent,#0099ff);box-shadow:0 0 0 3px color-mix(in srgb,var(--wme-studio-accent,#0099ff) 30%,transparent);pointer-events:none}
+      .drop-ring{position:fixed;z-index:24;border:2px solid var(--wme-studio-accent,#0099ff);border-radius:20px;background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 10%,transparent);pointer-events:none}
+      .control-ring{position:fixed;z-index:23;border:2px solid var(--wme-studio-accent,#0099ff);border-radius:12px;box-shadow:0 0 0 4px color-mix(in srgb,var(--wme-studio-accent,#0099ff) 22%,transparent);pointer-events:none}
+      .newspot{position:fixed;z-index:24;border:2px dashed #fff;border-radius:16px;background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 30%,transparent);pointer-events:none}
+      .ghost[hidden],.marker[hidden],.drop-ring[hidden],.control-ring[hidden],.newspot[hidden]{display:none}
       @media(max-width:1050px){.toolbar{align-items:flex-start;flex-wrap:wrap}.title{flex:1 1 100%}.control{padding-left:0}.hint{display:none}}
       ${studioButtonMotionCSS('.action')}
       @media(prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -13761,17 +15815,34 @@ ${studioControlsCSS()}
     </style>
     <div class="guide vertical"></div><div class="guide horizontal"></div><div class="shields"></div><div class="labels"></div>
     <aside class="panel-picker" id="wme-studio-arrange-panels" aria-label="Panels to arrange" hidden><header class="panel-picker-head" data-id="panel-picker-handle"><h3>Panels</h3><span>Drag to move</span><button class="action" data-id="panel-picker-close" type="button" aria-label="Close panel list"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6L18 18M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><p>Show a panel, drag it, then Save layout to set where it opens.</p><div data-id="panel-list"></div></aside>
+    <div class="rings"><div class="control-ring" hidden></div><div class="drop-ring" hidden></div><div class="marker" hidden></div><div class="newspot" hidden></div></div>
+    <div class="ctx" data-id="ctx" role="toolbar" aria-label="Island" hidden></div>
+    <div class="replace-menu" data-id="replace-menu" role="menu" aria-label="Replace with" hidden></div>
+    <aside class="library" id="wme-studio-arrange-library" aria-label="Controls" hidden>
+      <div class="lib-head"><div><strong>Controls</strong><span data-id="lib-summary"></span><span>Drag a control onto an island, or onto the map for an island of its own.</span></div>
+        <button class="icon-action" data-id="library-close" type="button" aria-label="Close the controls list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <div class="lib-body" data-id="lib-body"></div>
+      <div class="lib-drop"><svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16" style="fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.2A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3 4.1M6.1 6.2A13 13 0 0 0 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.3-1"/></svg><span>Drop a control here to hide it</span></div>
+    </aside>
+    <div class="ghost" hidden></div>
     <div class="dock">
-    <div class="hint">Drag an island · Arrow keys nudge it · Double-click resets it · Hold Alt to skip snapping · Esc cancels</div>
+    <div class="hint">Drag an island to move it · Ctrl + click to pick several · Click a control, then drag it to move it · Arrow keys nudge · Esc cancels</div>
     <header class="toolbar">
       <div class="title" title="Drag here to move this bar"><strong>Arrange layout</strong><span data-id="status" role="status" aria-live="polite"></span></div>
-      <label class="control">Snap to edges <span class="switch"><input data-id="snap-edges" type="checkbox" aria-label="Snap to viewport edges"><i></i></span></label>
-      <label class="control">Snap to center <span class="switch"><input data-id="snap-center" type="checkbox" aria-label="Snap to viewport center"><i></i></span></label>
-      <label class="control">Transparency <input data-id="opacity" type="range" min="20" max="100" step="5"><output data-id="opacity-value"></output></label>
+      <span class="tools">
+        <button class="icon-action" data-id="undo" type="button" aria-label="Undo" title="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+        <button class="icon-action" data-id="redo" type="button" aria-label="Redo" title="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+      </span>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="action" data-id="new-island" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New island</span></button>
+      <button class="action" data-id="library-toggle" type="button" aria-pressed="false" aria-controls="wme-studio-arrange-library">Controls</button>
       <button class="action" data-id="panel-picker-toggle" type="button" aria-expanded="false" aria-controls="wme-studio-arrange-panels">Panels</button>
-      <button class="action" data-id="reset" type="button">Reset</button>
+      <button class="action" data-id="snap" type="button" aria-pressed="true">Snap</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="action" data-id="reset" type="button">Reset all</button>
       <button class="action" data-id="cancel" type="button">Cancel</button>
       <button class="action primary" data-id="save" type="button">Save layout</button>
+      <span hidden><input data-id="snap-edges" type="checkbox" tabindex="-1"><input data-id="snap-center" type="checkbox" tabindex="-1"><input data-id="opacity" type="range" min="20" max="100" step="5" tabindex="-1"><output data-id="opacity-value"></output></span>
     </header>
     </div>`;
     (document.documentElement || document).append(host);
@@ -13802,7 +15873,10 @@ ${studioControlsCSS()}
       }
       html[data-wme-studio-layout-editing="on"] [data-wme-studio-layout-dragging="on"]{
         cursor:grabbing!important;user-select:none!important;z-index:2147483500!important;
-      }`;
+      }
+      /* A Studio island is only the glass behind its controls, which stay in WME's own layers: lifted above
+         everything while it is dragged, the glass would cover them and the island would look empty. */
+      html[data-wme-studio-layout-editing="on"] .ws-custom-island[data-wme-studio-layout-dragging="on"]{z-index:506!important}`;
     (document.head || root).append(highlightStyle);
     const q = selector => shadow.querySelector(selector);
     const labels = q('.labels'), shields = q('.shields'), toolbar = q('.toolbar'), dock = q('.dock');
@@ -13823,6 +15897,778 @@ ${studioControlsCSS()}
     const chatAppearance = new Map();
     const selectedPanels = new Set(), panelPreviews = new Map(), previewRestores = new Map();
     const panelRows = new Map();
+    // ---- Arrange: controls, custom islands, undo ----------------------------------------------------------------
+    const library = q('.library'), libraryBody = q('[data-id="lib-body"]'), ctxBar = q('[data-id="ctx"]');
+    const replaceMenu = q('[data-id="replace-menu"]');
+    const ghost = q('.ghost'), dropMarker = q('.marker'), dropRing = q('.drop-ring'), controlRing = q('.control-ring'), newSpot = q('.newspot');
+    const undoStack = [], redoStack = [];
+    let selection = { target: null, control: null }, controlDrag = null, controlFrame = 0, libraryOpen = false;
+    // Islands picked together with Ctrl (or Cmd) + click: they move as one and can be lined up with each other.
+    const group = new Set();
+    const customSpecs = new Map();
+    const tr = text => globalThis.WMEStudioI18n?.translate?.(text) || text;
+    function customSpec(island) {
+      let spec = customSpecs.get(island.id);
+      if (!spec || spec.label !== island.name) customSpecs.set(island.id, spec = Object.freeze({ id: `custom:${island.id}`, customId: island.id, custom: true, label: island.name, width: () => island.rect?.width || 52, height: () => island.rect?.height || 52 }));
+      return spec;
+    }
+    function customTargets() {
+      return [...islandLayout.islands.values()].filter(island => island.kind === 'custom' && island.element?.isConnected)
+        .map(island => ({ spec: customSpec(island), element: island.element, radius: getComputedStyle(island.element).borderRadius }));
+    }
+    function arrangeSnapshot() { return { draft: structuredClone(draft), islands: structuredClone(islandControlsDraft || emptyIslandControls()) }; }
+    function syncHistory() {
+      q('[data-id="undo"]').disabled = !undoStack.length;
+      q('[data-id="redo"]').disabled = !redoStack.length;
+    }
+    function pushUndo(before) {
+      undoStack.push(before);
+      if (undoStack.length > 80) undoStack.shift();
+      redoStack.length = 0; syncHistory();
+    }
+    function restoreArrangeSnapshot(snapshot) {
+      finishDrag(); clearPreviewVariables();
+      draft = structuredClone(snapshot.draft); compactIslandLayout = draft;
+      islandControlsDraft = structuredClone(snapshot.islands);
+      arrangeBaseline.clear(); resetHeaderPosition();
+      scheduleDefaultSideIslandCenters(true);
+      applyCompactLayoutVariables();
+      syncCompactAuxiliaryPlacement(true);
+      for (const [id, element] of panelPreviews) placePanelPreview(compactIslandSpec(id), element);
+      renderIslandControls();
+      if (selection.target && !islandTargetInfo(selection.target)) selection = { target: null, control: null };
+      collectTargets(); renderPanelList(); invalidateLabels(); renderLibrary(); renderCtx(); syncHistory();
+    }
+    function undoArrange() { if (!undoStack.length) return; redoStack.push(arrangeSnapshot()); restoreArrangeSnapshot(undoStack.pop()); statusLine.textContent = tr('Undone'); }
+    function redoArrange() { if (!redoStack.length) return; undoStack.push(arrangeSnapshot()); restoreArrangeSnapshot(redoStack.pop()); statusLine.textContent = tr('Redone'); }
+    function removeControlKey(model, key) {
+      for (const island of model.custom) island.items = island.items.filter(item => item !== key);
+      for (const managed of Object.values(model.managed)) managed.items = managed.items.filter(item => item !== key);
+      model.hidden = model.hidden.filter(item => item !== key);
+    }
+    // The keys a native island shows by itself, top to bottom (or left to right).
+    function nativeOrder(id, model = islandControlsDraft) {
+      const assigned = islandAssignments(model, islandRegistry);
+      return [...islandRegistry.values()].filter(entry => entry.island === id && assigned.get(entry.key)?.kind === 'native')
+        .map(entry => [entry.key, entry.element.getBoundingClientRect()])
+        .sort((a, b) => (a[1].top - b[1].top) || (a[1].left - b[1].left)).map(([key]) => key);
+    }
+    function tidyIslands(model) {
+      model.custom = model.custom.filter(island => island.items.length || island.fresh);
+      for (const [id, managed] of Object.entries(model.managed)) if (!managed?.items.length) delete model.managed[id];
+    }
+    // An island can show controls its saved order does not list (WME or a script added them after the layout was
+    // saved, or they were found on the page): they are drawn at its end. Before an edit they are written into the
+    // order where they are drawn, so splitting, dropping or replacing works on what is on screen.
+    function settleShownControls(model) {
+      const listed = new Set([...model.hidden, ...model.custom.flatMap(island => island.items), ...Object.values(model.managed).flatMap(managed => managed?.items || [])]);
+      const settle = (items, id) => {
+        for (const key of islandLayout.islands.get(id)?.items || []) if (!listed.has(key)) { items.push(key); listed.add(key); }
+      };
+      for (const island of model.custom) settle(island.items, `custom:${island.id}`);
+      for (const [id, managed] of Object.entries(model.managed)) if (managed) settle(managed.items, id);
+    }
+    function commitIslands(change, status) {
+      const before = arrangeSnapshot(), model = structuredClone(islandControlsDraft || emptyIslandControls());
+      settleShownControls(model);
+      const result = change(model);
+      if (result === false) return;
+      for (const [id, managed] of Object.entries(model.managed)) if (!managed) delete model.managed[id];
+      tidyIslands(model);
+      islandControlsDraft = model;
+      pushUndo(before);
+      renderIslandControls();
+      if (selection.target && !islandTargetInfo(selection.target)) selection = { target: null, control: null };
+      collectTargets(); renderLibrary(); renderCtx(); invalidateLabels();
+      // An island that grew (a control dropped in, a rotation) moves off any island it now covers.
+      if (selection.target?.startsWith('custom:')) keepIslandClear(selection.target);
+      if (status) statusLine.textContent = status;
+    }
+    function keepIslandClear(id) {
+      const item = targets.find(target => target.spec.id === id);
+      if (!item || drag) return;
+      const geometry = dragGeometry(item), rect = geometry.rects.get(id);
+      if (!rect?.width) return;
+      const others = [...geometry.rects].filter(([other]) => other !== id).map(([, other]) => other).filter(other => other?.width);
+      if (compactRectClear(rect, others)) return;
+      drag = { item, geometry, pointerId: -1, startX: 0, startY: 0, clientX: 0, clientY: 0, left: rect.left, top: rect.top, pending: false, active: false, keyboard: true, before: null };
+      previewPoint(item, rect.left, rect.top, geometry, true);
+      finishDrag();
+    }
+    // Changing WME's rail or map tools (rotate, split, replace, drop a control in) hands the island to Studio:
+    // it is drawn where it stood, with its controls in their order, and WME's own island stays empty and unseen.
+    function adoptNative(model, id) {
+      let island = model.custom.find(entry => entry.home === id);
+      if (island) return island;
+      const element = queryCompactIsland(compactIslandSpec(id)), rect = compactVisibleRect(element) || { left: id === 'tools' ? innerWidth - 64 : 12, top: innerHeight / 2 - 150, width: 52, height: 300 };
+      island = newCustomIsland(model, nativeOrder(id, model), rect, 'v');
+      island.name = tr(ISLAND_HOME_LABELS[id]); island.home = id;
+      delete model.managed[id];
+      return island;
+    }
+    function newCustomIsland(model, items, rect, orient = 'v') {
+      const number = model.next++;
+      const id = `c${number}`;
+      const island = { id, name: `${tr('Island')} ${number}`, orient, items, x: .5, y: .5 };
+      Object.assign(island, customIslandPoint(rect.left, rect.top, rect));
+      model.custom.push(island);
+      return island;
+    }
+    // What an Arrange target is, for the island toolbar and drops: a custom island, or one of WME's own.
+    function islandTargetInfo(targetId) {
+      if (!targetId) return null;
+      const model = islandControlsDraft || emptyIslandControls();
+      if (targetId.startsWith('custom:')) {
+        const island = model.custom.find(entry => `custom:${entry.id}` === targetId), drawn = islandLayout.islands.get(targetId);
+        return island && drawn ? { id: targetId, kind: 'custom', island, name: island.name, orient: island.orient, items: drawn.items, rect: drawn.rect } : null;
+      }
+      const spec = compactIslandSpec(targetId), element = spec && queryCompactIsland(spec), rect = compactVisibleRect(element);
+      if (!rect) return null;
+      const managed = model.managed[targetId];
+      const items = managed ? (islandLayout.islands.get(targetId)?.items || managed.items) : nativeOrder(targetId, model);
+      return { id: targetId, kind: managed ? 'managed' : 'native', name: tr(spec.label), orient: managed?.orient || (targetId === 'header' ? 'h' : 'v'), items, rect, spec };
+    }
+    function controlAtPoint(item, x, y) {
+      const id = item.spec.id;
+      if (id === 'online' || id === 'tile') return null;
+      const inside = rect => rect && x >= rect.left && x <= rect.left + rect.width && y >= rect.top && y <= rect.top + rect.height;
+      let best = null;
+      const consider = (key, rect) => { if (inside(rect) && (!best || rect.width * rect.height < best.area)) best = { key, area: rect.width * rect.height }; };
+      for (const [key, control] of islandLayout.controls) if (control.island === id) consider(key, control.rect);
+      if (!item.spec.custom && !islandLayout.islands.has(id)) {
+        const assigned = islandAssignments(islandControlsDraft || emptyIslandControls(), islandRegistry);
+        for (const entry of islandRegistry.values()) if (entry.island === id && assigned.get(entry.key)?.kind === 'native') consider(entry.key, entry.element.getBoundingClientRect());
+      }
+      return best;
+    }
+    function controlRect(key) {
+      const drawn = islandLayout.controls.get(key);
+      if (drawn) return drawn.rect;
+      const element = islandRegistry.get(key)?.element;
+      const rect = element && !element.hasAttribute('data-wme-studio-control-hidden') ? element.getBoundingClientRect() : null;
+      return rect && rect.width ? rect : null;
+    }
+    function controlWhere(key) {
+      const model = islandControlsDraft || emptyIslandControls(), entry = islandRegistry.get(key);
+      if (model.hidden.includes(key)) return tr('Hidden');
+      const island = model.custom.find(item => item.items.includes(key));
+      if (island) return island.name;
+      const managed = Object.entries(model.managed).find(([, item]) => item.items.includes(key));
+      if (!managed && entry?.island === 'links') return tr('Not placed');
+      return tr(ISLAND_HOME_LABELS[managed ? managed[0] : entry?.island] || '');
+    }
+    function controlIcon(entry) {
+      const box = document.createElement('span'); box.className = 'lib-ic'; box.setAttribute('aria-hidden', 'true');
+      const element = entry.element;
+      if (entry.island === 'links') {
+        const favicon = element.querySelector('img[data-loaded]');
+        if (favicon) { const copy = document.createElement('img'); copy.src = favicon.currentSrc || favicon.src; copy.alt = ''; copy.style.cssText = 'width:18px;height:18px;border-radius:4px;object-fit:contain'; box.append(copy); }
+        else box.insertAdjacentHTML('beforeend', LINK_ICON);
+        return box;
+      }
+      // The icon is taken from the button you see, not from a menu hidden inside the control (the rail's + button
+      // holds its menu, whose first icon is something else). A filled button (that + is blue) keeps its fill.
+      const inMenu = node => node !== element && !!node.parentElement?.closest('wz-menu,wz-menu-item,[role="menu"],[role="menuitem"]');
+      const visible = node => { const rect = node.getBoundingClientRect(); return rect.width > 4 && rect.height > 4; };
+      // A hidden control is measured by what is not part of a menu; a shown one by what is on screen.
+      const shown = node => !inMenu(node) && (element.hasAttribute('data-wme-studio-control-hidden') || visible(node));
+      const button = [element, ...element.querySelectorAll('wz-button,button,[role="button"]')].find(node => node.matches('wz-button,button,[role="button"]') && shown(node));
+      const scope = button || element;
+      if (button) {
+        const face = button.shadowRoot?.querySelector('.wz-button,button') || button, look = getComputedStyle(face);
+        const fill = look.backgroundColor;
+        if (fill && !/^(?:transparent|rgba\([^)]*,\s*0\))$/.test(fill.replace(/\s+/g, ' ').trim())) {
+          box.style.background = fill; box.style.color = look.color;
+        }
+      }
+      const iconIn = root => {
+        const named = root.matches('wz-icon[name]') ? root : [...root.querySelectorAll('wz-icon[name]')].find(shown);
+        if (named) { const icon = document.createElement('wz-icon'); icon.setAttribute('name', named.getAttribute('name')); return icon; }
+        const svg = [...root.querySelectorAll('svg')].find(shown);
+        if (svg) return svg.cloneNode(true);
+        const font = root.matches('i[class*="w-icon"]') ? root : [...root.querySelectorAll('i[class*="w-icon"],.w-icon')].find(shown);
+        if (font) {
+          const glyph = getComputedStyle(font, '::before');
+          const content = (glyph.content || '').replace(/^["']|["']$/g, '');
+          if (content && content !== 'none' && content !== 'normal') {
+            const icon = document.createElement('i'); icon.textContent = content; icon.style.fontFamily = glyph.fontFamily; icon.style.fontStyle = 'normal'; icon.style.color = 'inherit'; return icon;
+          }
+        }
+        return null;
+      };
+      const found = iconIn(scope) || (scope !== element ? iconIn(element) : null);
+      if (found) { box.append(found); return box; }
+      const text = (button?.textContent || '').trim();
+      if (text.length === 1) { box.textContent = text; box.style.fontSize = '20px'; box.style.fontWeight = '500'; }
+      else box.textContent = (entry.label || '?').slice(0, 1).toUpperCase();
+      return box;
+    }
+    let linkForm = null;   // {id: link being edited or null for a new one, name, url, error, focus}
+    function openLinkForm(id) {
+      const link = id && (islandControlsDraft?.links || []).find(item => item.id === id);
+      linkForm = { id: link ? id : null, name: link?.name || '', url: link?.url || '', error: '', focus: true };
+      if (!libraryOpen) setLibraryOpen(true); else renderLibrary();
+    }
+    function closeLinkForm() { linkForm = null; renderLibrary(); }
+    function linkFormElement() {
+      const form = document.createElement('form');
+      form.className = 'lib-link-form'; form.noValidate = true;
+      const field = (name, label, value, placeholder, type) => {
+        const wrap = document.createElement('label');
+        const text = document.createElement('span'); text.textContent = tr(label);
+        const input = document.createElement('input');
+        input.name = name; input.type = type; input.value = value; input.placeholder = placeholder; input.maxLength = name === 'name' ? 40 : 2000;
+        input.autocomplete = 'off'; input.spellcheck = false;
+        input.addEventListener('input', () => { linkForm[name] = input.value; });
+        wrap.append(text, input);
+        return wrap;
+      };
+      const title = document.createElement('strong'); title.textContent = tr(linkForm.id ? 'Edit link' : 'Add a custom link');
+      const error = document.createElement('p'); error.className = 'lib-link-error'; error.textContent = linkForm.error; error.hidden = !linkForm.error;
+      const actions = document.createElement('div'); actions.className = 'lib-link-actions';
+      if (linkForm.id) {
+        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger'; remove.textContent = tr('Delete link');
+        remove.addEventListener('click', () => deleteLink(linkForm.id));
+        actions.append(remove);
+      }
+      const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = tr('Cancel');
+      cancel.addEventListener('click', closeLinkForm);
+      const save = document.createElement('button'); save.type = 'submit'; save.className = 'primary'; save.textContent = tr(linkForm.id ? 'Save link' : 'Add link');
+      actions.append(cancel, save);
+      form.append(title, field('url', 'Address', linkForm.url, 'https://', 'url'), field('name', 'Name', linkForm.name, tr('Shown when you point at it'), 'text'), error, actions);
+      form.addEventListener('submit', event => { event.preventDefault(); saveLinkForm(); });
+      return form;
+    }
+    function saveLinkForm() {
+      if (!linkForm) return;
+      const url = safeLinkUrl(linkForm.url);
+      if (!url) { linkForm.error = tr('Enter a web address, like https://www.waze.com/forum'); linkForm.focus = true; renderLibrary(); return; }
+      const name = (linkForm.name || '').trim().slice(0, 40) || new URL(url).hostname.replace(/^www\./, '');
+      const editing = linkForm.id;
+      let placeId = null;
+      commitIslands(model => {
+        model.links ||= [];
+        if (editing) {
+          const link = model.links.find(item => item.id === editing);
+          if (!link) return false;
+          Object.assign(link, { name, url });
+          return;
+        }
+        const number = model.links.reduce((top, link) => Math.max(top, Number(link.id.slice(1))), 0) + 1;
+        const id = `l${number}`, key = `links@${id}`;
+        model.links.push({ id, name, url });
+        // Into the island picked on the map, or an island of its own in the middle of the screen.
+        const picked = selection.target?.startsWith('custom:') && model.custom.find(island => `custom:${island.id}` === selection.target);
+        if (picked) { picked.items.push(key); delete picked.fresh; placeId = null; selection = { target: `custom:${picked.id}`, control: key }; }
+        else {
+          const size = 50 * islandScale();
+          const island = newCustomIsland(model, [key], { left: innerWidth / 2 - size / 2, top: innerHeight / 2 - size / 2, width: size, height: size });
+          island.name = name;
+          placeId = island.id; selection = { target: `custom:${island.id}`, control: key };
+        }
+      }, editing ? `${name}: ${tr('link saved')}` : `${name}: ${tr('link added · drag it where you want it')}`);
+      linkForm = null;
+      if (placeId) placeClear(placeId);
+      renderLibrary(); renderCtx();
+    }
+    function deleteLink(id) {
+      const link = (islandControlsDraft?.links || []).find(item => item.id === id);
+      if (!link) return;
+      if (linkForm?.id === id) linkForm = null;
+      commitIslands(model => {
+        model.links = (model.links || []).filter(item => item.id !== id);
+        removeControlKey(model, `links@${id}`);
+      }, `${link.name}: ${tr('link deleted')}`);
+      if (selection.control === `links@${id}`) selectTarget(selection.target && islandTargetInfo(selection.target) ? selection.target : null);
+    }
+    function renderLibrary() {
+      library.hidden = !libraryOpen;
+      const toggle = q('[data-id="library-toggle"]');
+      toggle.setAttribute('aria-pressed', String(libraryOpen));
+      if (!libraryOpen || controlDrag) return;
+      const model = islandControlsDraft || emptyIslandControls();
+      const groups = [['header', 'Header'], ['navigation', 'Navigation'], ['tools', 'Map tools'], ['status', 'Status'], ['links', 'Custom links']];
+      const rows = [];
+      let shown = 0;
+      for (const [group, title] of groups) {
+        const entries = [...islandRegistry.values()].filter(entry => group === 'status' ? ['online', 'tile'].includes(entry.island) : entry.island === group);
+        if (!entries.length) continue;
+        const heading = document.createElement('div'); heading.className = 'lib-group'; heading.textContent = tr(title);
+        rows.push(heading);
+        for (const entry of entries) {
+          const hidden = model.hidden.includes(entry.key) && !entry.required;
+          if (!hidden) shown++;
+          const row = document.createElement('div');
+          row.className = 'lib-row'; row.dataset.key = entry.key;
+          if (hidden) row.dataset.off = 'on';
+          if (selection.control === entry.key) row.dataset.on = 'on';
+          const label = document.createElement('span'); label.className = 'lbl'; label.textContent = tr(entry.label);
+          const where = document.createElement('span'); where.className = 'where'; where.textContent = controlWhere(entry.key);
+          const eye = document.createElement('button');
+          eye.type = 'button'; eye.className = 'eye';
+          eye.disabled = entry.required;
+          eye.title = entry.required ? tr('Save always stays visible') : tr(hidden ? 'Show' : 'Hide');
+          eye.setAttribute('aria-label', `${eye.title}: ${tr(entry.label)}`);
+          eye.innerHTML = hidden ? EYE_OFF : EYE_ON;
+          eye.addEventListener('click', () => toggleHidden(entry.key));
+          if (entry.island === 'links') {
+            const id = entry.key.slice('links@'.length);
+            const edit = document.createElement('button');
+            edit.type = 'button'; edit.className = 'eye'; edit.title = tr('Edit link'); edit.setAttribute('aria-label', `${tr('Edit link')}: ${entry.label}`);
+            edit.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/></svg>';
+            edit.addEventListener('click', () => openLinkForm(id));
+            row.append(controlIcon(entry), label, where, edit, eye);
+          } else row.append(controlIcon(entry), label, where, eye);
+          rows.push(row);
+        }
+      }
+      // Custom links: a button that opens an address of your own, placed like any other control.
+      if (linkForm) rows.push(linkFormElement());
+      else {
+        const add = document.createElement('button');
+        add.type = 'button'; add.className = 'lib-add';
+        add.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+        add.append(document.createTextNode(tr('Add a custom link')));
+        add.addEventListener('click', () => openLinkForm(null));
+        rows.push(add);
+      }
+      if (rows.length <= 1 && !islandRegistry.size) {
+        const empty = document.createElement('p'); empty.className = 'lib-empty';
+        empty.textContent = tr('No controls found yet. Open the editor fully, then try again.');
+        rows.push(empty);
+      }
+      libraryBody.replaceChildren(...rows);
+      if (linkForm?.focus) { linkForm.focus = false; libraryBody.querySelector('.lib-link-form input')?.focus({ preventScroll: false }); }
+      q('[data-id="lib-summary"]').textContent = `${shown} ${tr('shown')} · ${islandRegistry.size - shown} ${tr('hidden')}`;
+    }
+    const EYE_ON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12c1-2.5 5-7 10-7s9 4.5 10 7c-1 2.5-5 7-10 7S3 14.5 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>';
+    const EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.2A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3 4.1M6.1 6.2A13 13 0 0 0 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.3-1"/></svg>';
+    function setLibraryOpen(visible) {
+      libraryOpen = visible;
+      renderLibrary();
+      invalidateLabels();
+    }
+    function toggleHidden(key) {
+      const entry = islandRegistry.get(key);
+      if (!entry || entry.required) return;
+      const hidden = (islandControlsDraft || emptyIslandControls()).hidden.includes(key);
+      commitIslands(model => { removeControlKey(model, key); if (!hidden) model.hidden.push(key); },
+        `${tr(entry.label)}: ${tr(hidden ? 'shown again' : 'hidden')}`);
+    }
+    function selectTarget(targetId, control = null, keepGroup = false) {
+      if (renaming && renaming !== targetId) finishRename(true);
+      if (!keepGroup) group.clear();
+      selection = { target: targetId, control };
+      for (const item of targets) item.shield.toggleAttribute('data-selected', item.spec.id === targetId || group.has(item.spec.id));
+      renderCtx();
+      if (libraryOpen) for (const row of libraryBody.querySelectorAll('.lib-row')) row.toggleAttribute('data-on', row.dataset.key === control);
+    }
+    function ctxButton(label, icon, action, options = {}) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'ctx-action' + (options.danger ? ' danger' : '');
+      button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${icon}"/></svg>`;
+      button.append(document.createTextNode(label));
+      button.disabled = !!options.disabled;
+      if (options.title) button.title = options.title;
+      button.addEventListener('click', action);
+      return button;
+    }
+    // Custom islands can be named: from the island toolbar, or by double-clicking the island's name tag.
+    let renaming = null;
+    function startRename(targetId) {
+      if (!targetId?.startsWith('custom:')) return;
+      closeReplaceMenu();
+      renaming = targetId; renderCtx();
+    }
+    function finishRename(keep) {
+      if (!renaming) return;
+      const targetId = renaming, field = ctxBar.querySelector('.ctx-rename');
+      const value = (field?.value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      renaming = null;
+      const island = (islandControlsDraft || emptyIslandControls()).custom.find(entry => `custom:${entry.id}` === targetId);
+      if (keep && island && value && value !== island.name) {
+        commitIslands(model => { const item = model.custom.find(entry => `custom:${entry.id}` === targetId); if (!item) return false; item.name = value; }, `${tr('Island renamed')}: ${value}`);
+      } else renderCtx();
+    }
+    function closeReplaceMenu() { replaceMenu.hidden = true; delete replaceMenu.dataset.key; }
+    function openReplaceMenu(key, anchor) {
+      const model = islandControlsDraft || emptyIslandControls(), source = islandRegistry.get(key);
+      if (!source) return;
+      const title = document.createElement('div'); title.className = 'replace-title';
+      title.textContent = `${tr('Choose what goes in its place')}: ${tr(source.label)}`;
+      const rows = [title];
+      for (const entry of islandRegistry.values()) {
+        if (entry.key === key) continue;
+        // Save must stay visible, so it never trades places with a hidden control.
+        if (source.required && model.hidden.includes(entry.key)) continue;
+        const row = document.createElement('button');
+        row.type = 'button'; row.className = 'replace-row'; row.setAttribute('role', 'menuitem');
+        const label = document.createElement('span'); label.className = 'lbl'; label.textContent = tr(entry.label);
+        const where = document.createElement('span'); where.className = 'where'; where.textContent = controlWhere(entry.key);
+        row.append(controlIcon(entry), label, where);
+        row.addEventListener('click', () => { closeReplaceMenu(); replaceControl(key, entry.key); });
+        rows.push(row);
+      }
+      replaceMenu.replaceChildren(...rows);
+      replaceMenu.dataset.key = key;
+      replaceMenu.hidden = false;
+      const button = anchor.getBoundingClientRect(), menu = replaceMenu.getBoundingClientRect();
+      const left = Math.max(12, Math.min(innerWidth - menu.width - 12, button.left));
+      const below = button.bottom + 8, above = button.top - menu.height - 8;
+      const top = below + menu.height <= innerHeight - 12 ? below : Math.max(12, above);
+      replaceMenu.style.left = `${Math.round(left)}px`; replaceMenu.style.top = `${Math.round(top)}px`;
+      replaceMenu.querySelector('.replace-row')?.focus({ preventScroll: true });
+    }
+    // The chosen control takes this control's place, and this one takes the chosen one's old place (or goes
+    // back to its own island when that place is in the header, which only holds its own controls).
+    function replaceControl(key, other) {
+      const a = islandRegistry.get(key), b = islandRegistry.get(other);
+      if (!a || !b) return;
+      commitIslands(model => {
+        const where = id => {
+          if (model.hidden.includes(id)) return { list: model.hidden, index: model.hidden.indexOf(id) };
+          for (const island of model.custom) { const index = island.items.indexOf(id); if (index >= 0) return { list: island.items, index }; }
+          for (const managed of Object.values(model.managed)) { const index = managed.items.indexOf(id); if (index >= 0) return { list: managed.items, index }; }
+          const home = islandRegistry.get(id)?.island;
+          if (ISLAND_MANAGEABLE.includes(home)) { const managed = adoptNative(model, home), index = managed.items.indexOf(id); if (index >= 0) return { list: managed.items, index }; }
+          return null;
+        };
+        const first = where(key);
+        if (!first) return false;
+        const second = where(other);
+        if (a.required && second?.list === model.hidden) return false;
+        first.list[first.index] = other;
+        if (second) second.list[second.index] = key;
+      }, tr(`${tr(a.label)} replaced with ${tr(b.label)}`));
+      const drawn = islandLayout.controls.get(other);
+      selectTarget(drawn?.island || selection.target, other);
+    }
+    function groupItems() { return targets.filter(item => group.has(item.spec.id)); }
+    function toggleGroup(item) {
+      if (!group.size && selection.target && selection.target !== item.spec.id && targets.some(other => other.spec.id === selection.target)) group.add(selection.target);
+      if (group.has(item.spec.id)) group.delete(item.spec.id); else group.add(item.spec.id);
+      for (const id of [...group]) if (!targets.some(other => other.spec.id === id)) group.delete(id);
+      if (group.size > 1) {
+        selectTarget(group.has(item.spec.id) ? item.spec.id : [...group].pop(), null, true);
+        statusLine.textContent = tr(`${group.size} islands selected · drag one to move them together`);
+      } else selectTarget(group.size ? [...group][0] : null);
+    }
+    function groupBox(rects) {
+      const left = Math.min(...rects.map(rect => rect.left)), top = Math.min(...rects.map(rect => rect.top));
+      const right = Math.max(...rects.map(rect => rect.left + rect.width)), bottom = Math.max(...rects.map(rect => rect.top + rect.height));
+      return { left, top, width: right - left, height: bottom - top };
+    }
+    // Picked islands only move together: no toolbar while several are picked.
+    function renderGroupCtx() { ctxBar.hidden = true; controlRing.hidden = true; }
+    function renderCtx() {
+      if (group.size > 1) { closeReplaceMenu(); renderGroupCtx(); return; }
+      if (!replaceMenu.hidden && replaceMenu.dataset.key !== selection.control) closeReplaceMenu();
+      const info = islandTargetInfo(selection.target);
+      const hideRing = () => { controlRing.hidden = true; };
+      if (!open || !info || drag?.active || controlDrag?.moved) { ctxBar.hidden = true; hideRing(); closeReplaceMenu(); return; }
+      const parts = [], key = selection.control && info.items.includes(selection.control) ? selection.control : null;
+      const entry = key && islandRegistry.get(key);
+      let name;
+      if (renaming === info.id && info.kind === 'custom') {
+        name = document.createElement('input');
+        name.className = 'ctx-rename'; name.type = 'text'; name.maxLength = 40; name.value = info.name;
+        name.setAttribute('aria-label', tr('Island name'));
+        name.addEventListener('blur', () => finishRename(true));
+      } else {
+        name = document.createElement('span'); name.className = 'ctx-name'; name.textContent = info.name;
+        if (info.kind === 'custom') { name.title = tr('Double-click the name tag to rename'); }
+      }
+      parts.push(name);
+      const sep = () => { const element = document.createElement('span'); element.className = 'ctx-sep'; return element; };
+      const own = ['online', 'tile'].includes(info.id), rotatable = info.kind === 'custom' || ISLAND_MANAGEABLE.includes(info.id);
+      if (rotatable) {
+        parts.push(sep(), ctxButton(tr(info.orient === 'h' ? 'Make vertical' : 'Make horizontal'), info.orient === 'h' ? 'M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4' : 'M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4', () => rotateIsland(info.id)));
+      }
+      if (key) {
+        const index = info.items.indexOf(key);
+        if (info.id !== 'header') parts.push(ctxButton(`${tr('Split after')} ${tr(entry.label)}`, 'M6 4v16M18 4v16M10 12h4M12 9v6', () => splitIsland(info.id, key), { disabled: index < 0 || index >= info.items.length - 1 }));
+        if (info.id !== 'header') {
+          const swap = ctxButton(tr('Replace with…'), 'M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7', () => replaceMenu.hidden || replaceMenu.dataset.key !== key ? openReplaceMenu(key, swap) : closeReplaceMenu());
+          swap.setAttribute('aria-haspopup', 'menu');
+          parts.push(swap);
+        }
+        parts.push(ctxButton(tr('Hide'), 'M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.2A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3 4.1M6.1 6.2A13 13 0 0 0 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.3-1', () => toggleHidden(key), { disabled: entry.required, title: entry.required ? tr('Save always stays visible') : '' }));
+        // A control away from the island it came from can go straight back there.
+        if (entry.island === 'links') {
+          const id = key.slice('links@'.length);
+          parts.push(ctxButton(tr('Edit link'), 'M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4', () => openLinkForm(id)));
+          parts.push(ctxButton(tr('Delete link'), 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', () => deleteLink(id), { danger: true }));
+        }
+        const homeHere = info.kind === 'custom' ? info.island.home === entry.island : info.id === entry.island;
+        if (!homeHere && entry.island !== 'links' && ISLAND_HOME_LABELS[entry.island]) parts.push(ctxButton(`${tr('Send back to')} ${tr(ISLAND_HOME_LABELS[entry.island])}`, 'M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11', () => returnControl(key)));
+      } else if (own) {
+        const ownKey = [...islandRegistry.values()].find(item => item.island === info.id)?.key;
+        if (ownKey) parts.push(sep(), ctxButton(tr('Hide'), 'M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.2A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3 4.1M6.1 6.2A13 13 0 0 0 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.3-1', () => toggleHidden(ownKey)));
+      } else {
+        const hint = document.createElement('span'); hint.className = 'ctx-hint';
+        hint.textContent = tr(info.items.length ? 'Click a control to split, replace or hide it' : 'Drag controls here from the Controls list');
+        parts.push(hint);
+      }
+      parts.push(sep());
+      if (info.kind === 'custom' && renaming !== info.id) parts.push(ctxButton(tr('Rename'), 'M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4', () => startRename(info.id)));
+      if (info.kind === 'custom' && info.island.home) parts.push(ctxButton(tr('Reset island'), 'M4 12a8 8 0 1 0 2.4-5.7M4 4v5h5', () => resetIslandControls(info.island.home)));
+      else if (info.kind === 'custom') parts.push(ctxButton(tr('Remove island'), 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', () => removeIsland(info.island.id), { danger: true }));
+      else parts.push(ctxButton(tr('Reset island'), 'M4 12a8 8 0 1 0 2.4-5.7M4 4v5h5', () => resetIslandControls(info.id)));
+      ctxBar.replaceChildren(...parts);
+      ctxBar.hidden = false;
+      if (name.classList.contains('ctx-rename') && shadow.activeElement !== name) { name.focus({ preventScroll: true }); name.select(); }
+      const rect = info.rect, bar = ctxBar.getBoundingClientRect(), dockRect = dock.getBoundingClientRect();
+      let top = rect.top + rect.height + 14;
+      if (top + bar.height > innerHeight - 12 || (top < dockRect.bottom && top + bar.height > dockRect.top && rect.left < dockRect.right && rect.left + rect.width > dockRect.left)) top = rect.top - bar.height - 14;
+      if (top < 12) top = Math.min(innerHeight - bar.height - 12, rect.top + rect.height + 14);
+      const left = Math.max(12, Math.min(innerWidth - bar.width - 12, rect.left + rect.width / 2 - bar.width / 2));
+      ctxBar.style.left = `${Math.round(left)}px`; ctxBar.style.top = `${Math.round(top)}px`;
+      const ring = key && controlRect(key);
+      controlRing.hidden = !ring;
+      if (ring) Object.assign(controlRing.style, { left: `${ring.left - 3}px`, top: `${ring.top - 3}px`, width: `${ring.width + 6}px`, height: `${ring.height + 6}px` });
+    }
+    function rotateIsland(targetId) {
+      commitIslands(model => {
+        if (targetId.startsWith('custom:')) {
+          const island = model.custom.find(entry => `custom:${entry.id}` === targetId);
+          if (!island) return false;
+          island.orient = island.orient === 'h' ? 'v' : 'h';
+        } else {
+          const managed = adoptNative(model, targetId);
+          managed.orient = managed.orient === 'h' ? 'v' : 'h';
+        }
+      }, tr('Island rotated'));
+      if (!targetId.startsWith('custom:')) {
+        const taken = islandControlsDraft?.custom.find(island => island.home === targetId);
+        if (taken) { selectTarget(`custom:${taken.id}`); placeClear(taken.id); }
+      }
+    }
+    // One of WME's islands that changed shape is kept on screen, as if it had been nudged into place. With
+    // pin, it is also fixed where it stands: an island WME centres by itself would otherwise slide (as it
+    // shrinks after a split) into the half that was just placed next to it.
+    function fitNative(id, pin = false) {
+      const item = targets.find(target => target.spec.id === id);
+      if (!item || drag) return;
+      const geometry = dragGeometry(item), rect = geometry.rects.get(id);
+      if (!rect || (!(pin && !draft[id]) && rect.left >= 0 && rect.top >= 0 && rect.left + rect.width <= innerWidth && rect.top + rect.height <= innerHeight)) return;
+      drag = { item, geometry, pointerId: -1, startX: 0, startY: 0, clientX: 0, clientY: 0, left: rect.left, top: rect.top, pending: false, active: false, keyboard: true, before: null };
+      previewPoint(item, rect.left, rect.top, geometry);
+      finishDrag();
+    }
+    function splitIsland(targetId, key) {
+      let adopted = false;
+      if (!targetId.startsWith('custom:')) {
+        // Take the WME island over first, then split the Studio island that replaced it (one undo step).
+        commitIslands(model => { adoptNative(model, targetId); });
+        const taken = islandControlsDraft?.custom.find(island => island.home === targetId);
+        if (!taken) return;
+        adopted = true;
+        targetId = `custom:${taken.id}`;
+      }
+      const info = islandTargetInfo(targetId);
+      if (!info) return;
+      commitIslands(model => {
+        let items;
+        if (targetId.startsWith('custom:')) items = model.custom.find(entry => `custom:${entry.id}` === targetId)?.items;
+        else items = adoptNative(model, targetId).items;
+        const index = items ? items.indexOf(key) : -1;
+        if (index < 0 || index >= items.length - 1) return false;
+        const rest = items.splice(index + 1);
+        const along = info.orient === 'h';
+        const sizeGuess = { width: along ? info.rect.width / 2 : info.rect.width, height: along ? info.rect.height : info.rect.height / 2 };
+        const rect = { left: along ? info.rect.left + info.rect.width + 16 : info.rect.left, top: along ? info.rect.top : info.rect.top + info.rect.height + 16, ...sizeGuess };
+        const island = newCustomIsland(model, rest, rect, info.orient);
+        selection = { target: `custom:${island.id}`, control: null };
+      }, tr('Island split in two'));
+      if (adopted) { undoStack.pop(); syncHistory(); }
+      // The first half shrank: put the second half beside it (or below it), in the nearest free spot.
+      const fresh = selection.target?.startsWith('custom:') ? selection.target.slice(7) : null, first = islandTargetInfo(targetId);
+      if (fresh && first) placeClear(fresh, info.orient === 'h' ? { left: first.rect.left + first.rect.width + 16, top: first.rect.top } : { left: first.rect.left, top: first.rect.top + first.rect.height + 16 });
+    }
+    // Puts a new island in the nearest free spot, with room around it, so it never lands on another island.
+    function placeClear(customId, preferred) {
+      const id = `custom:${customId}`, drawn = islandLayout.islands.get(id);
+      const island = islandControlsDraft?.custom.find(entry => entry.id === customId);
+      if (!drawn?.rect || !island) return;
+      const room = 12, obstacles = [];
+      const add = rect => { if (rect) obstacles.push({ left: rect.left - room, top: rect.top - room, width: rect.width + 2 * room, height: rect.height + 2 * room }); };
+      for (const [other, entry] of islandLayout.islands) if (other !== id) add(entry.rect);
+      for (const spec of compactIslandSpecs) {
+        if (spec.popup) continue;
+        const element = queryCompactIsland(spec);
+        if (element && !islandPlaced.has(element)) add(compactVisibleRect(element));
+      }
+      for (const element of [dock, libraryOpen ? library : null, panelPicker.hidden ? null : panelPicker]) if (element) add(element.getBoundingClientRect());
+      const footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
+      const viewport = { width: innerWidth, height: footer ? Math.min(innerHeight, footer.top + 4) : innerHeight };
+      const want = { left: preferred?.left ?? drawn.rect.left, top: preferred?.top ?? drawn.rect.top, width: drawn.rect.width, height: drawn.rect.height };
+      const spot = compactFreePosition(want, obstacles, viewport);
+      if (!spot) return;
+      Object.assign(island, customIslandPoint(spot.left, spot.top, drawn.rect));
+      renderIslandControls(); collectTargets(); renderCtx(); invalidateLabels();
+    }
+    function removeIsland(customId) {
+      commitIslands(model => { model.custom = model.custom.filter(island => island.id !== customId); }, tr('Island removed · its controls went back home'));
+      selectTarget(null);
+    }
+    function resetIslandControls(targetId) {
+      const item = targets.find(target => target.spec.id === targetId);
+      commitIslands(model => {
+        delete model.managed[targetId];
+        model.custom = model.custom.filter(island => island.home !== targetId);
+        for (const entry of islandRegistry.values()) if (entry.island === targetId) removeControlKey(model, entry.key);
+      }, `${tr(ISLAND_HOME_LABELS[targetId] || '')}: ${tr('controls restored')}`);
+      // A rail Studio drew had no target of its own while it was taken over: it has one again now, and goes back
+      // to its default place, sized for everything it holds again.
+      collectTargets();
+      const native = item || targets.find(target => target.spec.id === targetId);
+      if (native && draft[targetId]) resetIsland(native);
+      else { scheduleDefaultSideIslandCenters(true); applyCompactLayoutVariables(); syncCompactAuxiliaryPlacement(true); }
+      selectTarget(targets.some(target => target.spec.id === targetId) ? targetId : null);
+      requestAnimationFrame(() => { if (!open) return; scheduleDefaultSideIslandCenters(true); applyCompactLayoutVariables(); syncCompactAuxiliaryPlacement(true); collectTargets(); invalidateLabels(); renderCtx(); });
+    }
+    // Puts one control back in the island it came from, at its own place among that island's controls.
+    function returnControl(key) {
+      const entry = islandRegistry.get(key);
+      if (!entry) return;
+      const order = [...islandRegistry.values()].filter(item => item.island === entry.island).map(item => item.key);
+      commitIslands(model => {
+        removeControlKey(model, key);
+        const home = model.custom.find(island => island.home === entry.island);
+        const managed = model.managed[entry.island];
+        const list = home?.items || managed?.items;
+        if (list) {
+          const at = order.indexOf(key);
+          let index = list.findIndex(item => order.indexOf(item) > at);
+          if (index < 0) index = list.length;
+          list.splice(index, 0, key);
+        }
+      }, `${tr(entry.label)}: ${tr('back where it started')}`);
+      const home = islandControlsDraft?.custom.find(island => island.home === entry.island);
+      const target = home ? `custom:${home.id}` : entry.island;
+      selectTarget(islandTargetInfo(target) ? target : null, islandTargetInfo(target) ? key : null);
+    }
+    function addIsland() {
+      commitIslands(model => {
+        const size = { width: ISLAND_EMPTY.width * islandScale(), height: ISLAND_EMPTY.height * islandScale() };
+        const island = newCustomIsland(model, [], { left: (innerWidth - size.width) / 2, top: innerHeight / 2 - size.height / 2, ...size }, 'h');
+        island.fresh = true;
+        selection = { target: `custom:${island.id}`, control: null };
+      }, tr('New island · drag controls into it from the Controls list'));
+      if (!libraryOpen) setLibraryOpen(true);
+      if (selection.target?.startsWith('custom:')) placeClear(selection.target.slice(7));
+    }
+    // Dragging one control: onto an island, onto the map for an island of its own, or onto Controls to hide it.
+    function beginControlDrag(event, key, origin, capture) {
+      if (!islandRegistry.has(key)) return;
+      controlDrag = { key, origin, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, moved: false, capture, target: null };
+      try { capture.setPointerCapture(event.pointerId); } catch (studioError) { reportStudioError('beginControlDrag', studioError); }
+    }
+    function slotIndex(slots, key, orient, x, y) {
+      const kept = slots.filter(slot => slot.key !== key);
+      const along = orient === 'h' ? x : y;
+      let index = kept.findIndex(slot => along < (orient === 'h' ? slot.left + slot.width / 2 : slot.top + slot.height / 2));
+      if (index < 0) index = kept.length;
+      const zoom = islandScale(), gap = ISLAND_GAP * zoom;
+      const before = kept[index - 1], after = kept[index];
+      let at;
+      if (after) at = orient === 'h' ? after.left - gap / 2 : after.top - gap / 2;
+      else if (before) at = orient === 'h' ? before.left + before.width + gap / 2 : before.top + before.height + gap / 2;
+      return { index, at, beforeKey: after?.key ?? null };
+    }
+    function controlDropTarget(x, y, key) {
+      const entry = islandRegistry.get(key);
+      if (!entry) return { kind: 'none' };
+      if (libraryOpen) {
+        const rect = library.getBoundingClientRect();
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return entry.required ? { kind: 'none', reason: tr('Save always stays visible') } : { kind: 'hide' };
+      }
+      const takenHomes = new Set((islandControlsDraft?.custom || []).filter(island => island.home).map(island => island.home));
+      const ids = [...islandLayout.islands.keys(), ...['header', 'navigation', 'tools'].filter(id => !islandLayout.islands.has(id) && !takenHomes.has(id))];
+      const candidates = ids.map(id => islandTargetInfo(id)).filter(Boolean)
+        .filter(info => {
+          // Small islands get a wider catch area, so a drop next to a lone control joins it instead of landing on it.
+          const reach = Math.max(10, (Math.min(info.rect.width, info.rect.height) < 64 ? 26 : 12) * islandScale());
+          return x >= info.rect.left - reach && x <= info.rect.left + info.rect.width + reach && y >= info.rect.top - reach && y <= info.rect.top + info.rect.height + reach;
+        })
+        .sort((a, b) => a.rect.width * a.rect.height - b.rect.width * b.rect.height);
+      const info = candidates[0];
+      if (!info) return { kind: 'new', x, y };
+      if (info.kind === 'native' && info.id === 'header') return entry.island === 'header'
+        ? { kind: 'home', id: 'header', info } : { kind: 'none', info, reason: tr('The header only takes back its own controls') };
+      const slots = info.items.map(item => ({ key: item, ...(controlRect(item) || { left: info.rect.left, top: info.rect.top, width: 0, height: 0 }) }));
+      const { index, at, beforeKey } = slotIndex(slots, key, info.orient, x, y);
+      const zoom = islandScale();
+      const marker = at == null ? { left: info.rect.left + 16, top: info.rect.top + info.rect.height / 2 - 1.5, width: Math.max(20, info.rect.width - 32), height: 3 }
+        : info.orient === 'h' ? { left: at - 1.5, top: info.rect.top + 6 * zoom, width: 3, height: info.rect.height - 12 * zoom }
+        : { left: info.rect.left + 6 * zoom, top: at - 1.5, width: info.rect.width - 12 * zoom, height: 3 };
+      return { kind: info.kind === 'native' ? 'adopt' : 'island', id: info.id, index, beforeKey, marker, info };
+    }
+    function paintControlDrag() {
+      controlFrame = 0;
+      if (!controlDrag?.moved) return;
+      const entry = islandRegistry.get(controlDrag.key), target = controlDropTarget(controlDrag.x, controlDrag.y, controlDrag.key);
+      controlDrag.target = target;
+      ghost.hidden = false;
+      ghost.style.left = `${Math.round(controlDrag.x + 14)}px`; ghost.style.top = `${Math.round(controlDrag.y + 14)}px`;
+      const box = (element, rect) => { element.hidden = !rect; if (rect) Object.assign(element.style, { left: `${Math.round(rect.left)}px`, top: `${Math.round(rect.top)}px`, width: `${Math.round(rect.width)}px`, height: `${Math.round(rect.height)}px` }); };
+      box(dropMarker, target.marker || null);
+      box(dropRing, target.info && target.kind !== 'none' ? { left: target.info.rect.left - 5, top: target.info.rect.top - 5, width: target.info.rect.width + 10, height: target.info.rect.height + 10 } : null);
+      const size = 52 * islandScale();
+      box(newSpot, target.kind === 'new' ? { left: target.x - size / 2, top: target.y - size / 2, width: size, height: size } : null);
+      library.toggleAttribute('data-drop', target.kind === 'hide');
+      const name = tr(entry?.label || '');
+      statusLine.textContent = target.kind === 'hide' ? `${tr('Release to hide')} ${name}`
+        : target.kind === 'new' ? `${tr('Release to give it an island of its own')}`
+        : target.kind === 'home' ? `${tr('Release to put it back in the header')}`
+        : target.kind === 'none' ? (target.reason || '')
+        : `${tr('Release to move it to')} ${target.info.name}`;
+    }
+    function finishControlDrag(commit) {
+      const done = controlDrag;
+      if (!done) return;
+      controlDrag = null; cancelAnimationFrame(controlFrame); controlFrame = 0;
+      ghost.hidden = true; dropMarker.hidden = true; dropRing.hidden = true; newSpot.hidden = true; library.removeAttribute('data-drop');
+      try { if (done.capture?.hasPointerCapture?.(done.pointerId)) done.capture.releasePointerCapture(done.pointerId); } catch (studioError) { reportStudioError('finishControlDrag', studioError); }
+      if (!done.moved) {
+        const drawn = islandLayout.controls.get(done.key);
+        const home = done.origin === 'library' ? (drawn?.island || islandRegistry.get(done.key)?.island) : done.origin.spec.id;
+        if (islandTargetInfo(home)) selectTarget(home, done.key); else renderLibrary();
+        return;
+      }
+      if (!commit) { renderLibrary(); renderCtx(); return; }
+      const target = controlDropTarget(done.x, done.y, done.key), key = done.key, entry = islandRegistry.get(key);
+      if (target.kind === 'none') { statusLine.textContent = target.reason || ''; renderLibrary(); renderCtx(); return; }
+      let selected = null;
+      commitIslands(model => {
+        removeControlKey(model, key);
+        if (target.kind === 'hide') model.hidden.push(key);
+        else if (target.kind === 'island' && target.id.startsWith('custom:')) {
+          const island = model.custom.find(item => `custom:${item.id}` === target.id);
+          if (!island) return false;
+          const at = target.beforeKey ? island.items.indexOf(target.beforeKey) : -1;
+          island.items.splice(at >= 0 ? at : (target.beforeKey ? Math.min(target.index, island.items.length) : island.items.length), 0, key); delete island.fresh; selected = target.id;
+        } else if (target.kind === 'island' || target.kind === 'adopt') {
+          const managed = adoptNative(model, target.id);
+          managed.items = managed.items.filter(item => item !== key);
+          const at = target.beforeKey ? managed.items.indexOf(target.beforeKey) : -1;
+          managed.items.splice(at >= 0 ? at : (target.beforeKey ? Math.min(target.index, managed.items.length) : managed.items.length), 0, key); selected = target.id;
+        } else if (target.kind === 'new') {
+          const rect = controlRect(key) || { width: 38, height: 38 };
+          const pad = ISLAND_PAD * islandScale(), size = { width: rect.width + 2 * pad, height: rect.height + 2 * pad };
+          const island = newCustomIsland(model, [key], { left: done.x - size.width / 2, top: done.y - size.height / 2, ...size });
+          selected = `custom:${island.id}`;
+        } else selected = target.id || null;
+      }, target.kind === 'hide' ? `${tr(entry?.label || '')}: ${tr('hidden')}` : tr('Control moved · Save layout to keep it'));
+      if (selected && !selected.startsWith('custom:') && ISLAND_MANAGEABLE.includes(selected)) {
+        const taken = islandControlsDraft?.custom.find(island => island.home === selected);
+        if (taken) selected = `custom:${taken.id}`;
+      }
+      // An island of its own never lands on top of another island: it moves to the nearest free spot.
+      if (target.kind === 'new' && selected?.startsWith('custom:')) placeClear(selected.slice(7));
+      if (selected) selectTarget(selected, target.kind === 'hide' ? null : key);
+    }
+
     function popupSpecs() { return compactIslandSpecs.filter(spec => spec.popup && spec.id !== 'layers'); }
     function editorControlRects() {
       return [q('.dock')].map(element => element.getBoundingClientRect());
@@ -14069,9 +16915,9 @@ ${studioControlsCSS()}
       }
       const geometry = {rects:new Map(positions.map(([item,rect]) => [item.spec.id,rect])),width:innerWidth,height:innerHeight,obstacles:[]};
       for (const { spec, rect } of panelGeometry()) geometry.rects.set(spec.id, rect);
-      for (const element of [q('.dock'),q('.panel-picker'),document.querySelector('.wz-map-ol-footer'),document.getElementById('sidebar')]) {
+      for (const element of [q('.dock'),q('.panel-picker'),library,document.querySelector('.wz-map-ol-footer'),document.getElementById('sidebar')]) {
         if (element?.hidden) continue;
-        const rect = element === q('.dock') || element === q('.panel-picker') ? element.getBoundingClientRect() : compactVisibleRect(element);
+        const rect = element === q('.dock') || element === q('.panel-picker') || element === library ? element.getBoundingClientRect() : compactVisibleRect(element);
         if (rect) geometry.obstacles.push(rect);
       }
       for (const [item, rect] of positions) positionLabel(item, rect, geometry);
@@ -14173,12 +17019,22 @@ ${studioControlsCSS()}
       const previous = new Map(targets.map(item => [item.spec.id,item]));
       const visible = compactIslandSpecs.filter(spec => spec.arrange !== false || selectedPanels.has(spec.id)).flatMap(spec => {
         const element = (spec.popup && panelPreviews.get(spec.id)) || queryCompactIsland(spec);
-        return elementVisible(element) ? [{spec,element,radius:getComputedStyle(element).borderRadius}] : [];
-      });
+        return elementVisible(element) && !islandPlaced.has(element) && !element.hasAttribute('data-wme-studio-island-absorbed') ? [{spec,element,radius:getComputedStyle(element).borderRadius}] : [];
+      }).concat(customTargets());
       const next = [], created = [];
       for (const {spec,element,radius} of visible) {
         let item = previous.get(spec.id);
-        if (item?.element === element) previous.delete(spec.id);
+        if (item?.element === element) {
+          previous.delete(spec.id);
+          if (item.spec !== spec) {
+            item.spec = spec;
+            if (item.label.textContent !== spec.label) {
+              item.label.textContent = spec.label;
+              const size = item.label.getBoundingClientRect();
+              item.labelSize = {width:Math.ceil(size.width),height:Math.ceil(size.height)};
+            }
+          }
+        }
         else {
           const label = document.createElement('div');
           label.className = 'target-label'; label.dataset.id = spec.id; label.textContent = spec.label;
@@ -14186,6 +17042,7 @@ ${studioControlsCSS()}
           shield.className = 'drag-shield'; shield.setAttribute('data-island',spec.id);
           shield.setAttribute('aria-label',`Move ${spec.label}`); shield.style.borderRadius = radius;
           shield.tabIndex = 0; shield.setAttribute('role','button');
+          if (selection.target === spec.id) shield.setAttribute('data-selected','');
           labels.append(label); shields.append(shield);
           element.setAttribute('data-wme-studio-layout-target',spec.id);
           item = {spec,element,label,shield,labelSize:null,labelRect:null}; created.push(item);
@@ -14259,14 +17116,16 @@ ${studioControlsCSS()}
         top:Math.max(12,Math.min(desired.top,viewport.height - desired.height - 12))
       };
     }
-    function previewPoint(item, left, top, geometry, settle = false) {
+    // `exact` places the island where it is asked to, without snapping or making room: used to move several
+    // islands as one, where the group has already been snapped and each island keeps its place in it.
+    function previewPoint(item, left, top, geometry, settle = false, exact = false) {
       const rect = geometry.rects.get(item.spec.id), gap = 12;
       const expandedHeader = item.spec.id === 'header' && compactHeaderSpansViewport(rect.width, geometry.width);
       const horizontalInset = item.spec.id === 'header' ? compactHeaderHorizontalInset(rect.width, geometry.width) : gap;
       const maxLeft = Math.max(horizontalInset, geometry.width - rect.width - horizontalInset), maxTop = Math.max(gap, geometry.height - rect.height - gap);
       let nextLeft = Math.min(maxLeft, Math.max(horizontalInset, left)), nextTop = Math.min(maxTop, Math.max(gap, top));
       let centerX = false, centerY = false, guideX = null, guideY = null;
-      const free = !!(settle || drag?.free || drag?.keyboard), edges = snapEdges && !free, centers = snapCenter && !free;
+      const free = !!(exact || settle || drag?.free || drag?.keyboard), edges = snapEdges && !free, centers = snapCenter && !free;
       const threshold = 22, horizontalCenter = (geometry.width - rect.width) / 2, verticalCenter = (geometry.height - rect.height) / 2;
       if (expandedHeader) { nextLeft = horizontalCenter; centerX = true; }
       else if (edges && Math.abs(nextLeft - horizontalInset) <= threshold) nextLeft = horizontalInset;
@@ -14286,14 +17145,28 @@ ${studioControlsCSS()}
       nextLeft = Math.round(nextLeft); nextTop = Math.round(nextTop);
       const desired = { left: nextLeft, top: nextTop, width: rect.width, height: rect.height };
       // Follow the pointer across other islands; find the nearest clear location only on release.
-      const placed = settle ? settleArrangePoint(item,desired,geometry) : desired;
+      // On release an island never stays on another one: it moves to the nearest spot 2px clear of the others.
+      const placed = settle && !exact ? settleArrangePoint(item,desired,geometry) : desired;
       centerX = centerX && placed.left === nextLeft; centerY = centerY && placed.top === nextTop;
       if (placed.left !== nextLeft) guideX = null;
       if (placed.top !== nextTop) guideY = null;
       nextLeft = placed.left; nextTop = placed.top;
-      verticalGuide.style.left = guideX != null ? `${Math.round(guideX)}px` : '';
-      horizontalGuide.style.top = guideY != null ? `${Math.round(guideY)}px` : '';
-      verticalGuide.classList.toggle('show', centerX || guideX != null); horizontalGuide.classList.toggle('show', centerY || guideY != null);
+      if (!exact) {
+        verticalGuide.style.left = guideX != null ? `${Math.round(guideX)}px` : '';
+        horizontalGuide.style.top = guideY != null ? `${Math.round(guideY)}px` : '';
+        verticalGuide.classList.toggle('show', centerX || guideX != null); horizontalGuide.classList.toggle('show', centerY || guideY != null);
+      }
+      if (item.spec.custom) {
+        // A custom island moves itself and its controls; its spot is kept relative to the free space.
+        shiftIsland(item.spec.id, nextLeft, nextTop);
+        const island = islandControlsDraft?.custom.find(entry => entry.id === item.spec.customId);
+        if (island) Object.assign(island, customIslandPoint(nextLeft, nextTop, rect));
+        geometry.rects.set(item.spec.id, { left: nextLeft, top: nextTop, width: rect.width, height: rect.height });
+        if (!drag.active) { drag.active = true; const bar = toolbar.getBoundingClientRect(); dock.setAttribute('data-used', 'on'); placeDock({left:bar.left,top:bar.top},false); }
+        statusLine.textContent = `${item.spec.label} · ${nextLeft}, ${nextTop}`;
+        positionLabel(item, geometry.rects.get(item.spec.id), {...geometry,obstacles:[...geometry.obstacles,...geometry.labelObstacles]});
+        return;
+      }
       arrangeBaseline.delete(item.spec.id);
       draft[item.spec.id] = item.spec.popup || item.spec.id === 'tools' ? {
         x: nextLeft / geometry.width, y: nextTop / geometry.height, anchor: 'viewport'
@@ -14319,7 +17192,8 @@ ${studioControlsCSS()}
       previewVariable(item.element, horizontal, `${nextLeft + (item.spec.id === 'header' ? rect.width / 2 : 0)}px`);
       previewVariable(item.element, `--ws-island-${item.spec.id}-top`, `${nextTop}px`);
       geometry.rects.set(item.spec.id, placed);
-      if (item.spec.id === 'header') placeHeaderLocationPill(placed, geometry.height - geometry.footerBottom);
+      if (islandLayout.islands.get(item.spec.id)?.kind === 'managed') shiftIsland(item.spec.id, placed.left, placed.top);
+      if (item.spec.id === 'header') { shiftHeaderControls(); placeHeaderLocationPill(placed, geometry.height - geometry.footerBottom); }
       if (!drag.active) {
         drag.active = true; compactIslandLayout = draft;
         attr('layout', compactIslandSpecs.filter(spec => spec.id !== 'messages' && draft[spec.id]).map(spec => spec.id).join(' '));
@@ -14336,9 +17210,56 @@ ${studioControlsCSS()}
       }
       positionLabel(item, placed, {...geometry,obstacles:[...geometry.obstacles,...geometry.labelObstacles]});
     }
+    // Moves the picked islands together by (dx, dy) from where they started. The group is snapped as one box: to
+    // the screen edges, the screen centre and the islands outside the group.
+    function previewGroup(dx, dy, settle = false) {
+      const members = drag.group, geometry = drag.geometry, gap = 12, threshold = 22;
+      const box = drag.groupBox;
+      const free = !!(settle || drag.free || drag.keyboard), edges = snapEdges && !free, centers = snapCenter && !free;
+      const maxLeft = Math.max(gap, geometry.width - box.width - gap), maxTop = Math.max(gap, geometry.height - box.height - gap);
+      let left = Math.min(maxLeft, Math.max(gap, box.left + dx)), top = Math.min(maxTop, Math.max(gap, box.top + dy));
+      const middleX = (geometry.width - box.width) / 2, middleY = (geometry.height - box.height) / 2;
+      let centerX = false, centerY = false, guideX = null, guideY = null;
+      const ids = new Set(members.map(member => member.item.spec.id));
+      const align = (value, size, start, extent) => {
+        let best = null;
+        for (const [id, other] of geometry.rects) {
+          if (ids.has(id)) continue;
+          const options = [];
+          if (edges) options.push([other[start], other[start]], [other[start] + other[extent] - size, other[start] + other[extent]]);
+          if (centers) options.push([other[start] + (other[extent] - size) / 2, other[start] + other[extent] / 2]);
+          for (const [candidate, line] of options) {
+            const distance = Math.abs(candidate - value);
+            if (distance <= 8 && (!best || distance < best.distance)) best = { value: candidate, line, distance };
+          }
+        }
+        return best;
+      };
+      if (edges && Math.abs(left - gap) <= threshold) left = gap;
+      else if (edges && Math.abs(left - maxLeft) <= threshold) left = maxLeft;
+      else if (centers && Math.abs(left - middleX) <= threshold) { left = middleX; centerX = true; }
+      else if (edges || centers) { const snap = align(left, box.width, 'left', 'width'); if (snap) { left = snap.value; guideX = snap.line; } }
+      if (edges && Math.abs(top - gap) <= threshold) top = gap;
+      else if (edges && Math.abs(top - maxTop) <= threshold) top = maxTop;
+      else if (centers && Math.abs(top - middleY) <= threshold) { top = middleY; centerY = true; }
+      else if (edges || centers) { const snap = align(top, box.height, 'top', 'height'); if (snap) { top = snap.value; guideY = snap.line; } }
+      const moveX = Math.round(left - box.left), moveY = Math.round(top - box.top);
+      for (const member of members) previewPoint(member.item, member.rect.left + moveX, member.rect.top + moveY, geometry, settle, true);
+      verticalGuide.style.left = guideX != null ? `${Math.round(guideX)}px` : '';
+      horizontalGuide.style.top = guideY != null ? `${Math.round(guideY)}px` : '';
+      verticalGuide.classList.toggle('show', !settle && (centerX || guideX != null)); horizontalGuide.classList.toggle('show', !settle && (centerY || guideY != null));
+      statusLine.textContent = `${tr(`${members.length} islands`)} · ${Math.round(box.left + moveX)}, ${Math.round(box.top + moveY)}`;
+      drag.groupMove = { x: moveX, y: moveY };
+    }
+    function startGroupDrag(base, item) {
+      const members = groupItems().map(member => ({ item: member, rect: { ...base.geometry.rects.get(member.spec.id) } })).filter(member => member.rect.width);
+      if (members.length < 2 || !members.some(member => member.item === item)) return base;
+      for (const member of members) member.item.element.setAttribute('data-wme-studio-layout-dragging', 'on');
+      return { ...base, group: members, groupBox: groupBox(members.map(member => member.rect)) };
+    }
     function targetFromEvent(event) {
       const path = event.composedPath();
-      return targets.find(item => path.includes(item.shield));
+      return targets.find(item => path.includes(item.shield) || path.includes(item.label));
     }
     let nudgeTimer = 0;
     function nudgeIsland(item, dx, dy) {
@@ -14346,11 +17267,12 @@ ${studioControlsCSS()}
       if (!drag) {
         const geometry = dragGeometry(item), rect = geometry.rects.get(item.spec.id);
         if (!rect) return;
-        drag = { item, geometry, pointerId: -1, startX: 0, startY: 0, clientX: 0, clientY: 0, left: rect.left, top: rect.top, pending: false, active: false, keyboard: true };
+        drag = { item, geometry, pointerId: -1, startX: 0, startY: 0, clientX: 0, clientY: 0, left: rect.left, top: rect.top, pending: false, active: false, keyboard: true, before: arrangeSnapshot() };
         item.element.setAttribute('data-wme-studio-layout-dragging', 'on');
+        if (group.size > 1 && group.has(item.spec.id)) { drag = startGroupDrag(drag, item); drag.nudge = { x: 0, y: 0 }; }
       }
-      const current = drag.geometry.rects.get(item.spec.id);
-      previewPoint(item, current.left + dx, current.top + dy, drag.geometry);
+      if (drag.group) { drag.nudge.x += dx; drag.nudge.y += dy; previewGroup(drag.nudge.x, drag.nudge.y); }
+      else { const current = drag.geometry.rects.get(item.spec.id); previewPoint(item, current.left + dx, current.top + dy, drag.geometry); }
       clearTimeout(nudgeTimer);
       nudgeTimer = setTimeout(() => { if (drag?.keyboard) finishDrag(); }, 350);
     }
@@ -14368,7 +17290,7 @@ ${studioControlsCSS()}
       collectTargets(); renderPanelList(); invalidateLabels();
       statusLine.textContent = `${item.spec.label} restored to its default position`;
     }
-    function fromToolbar(event) { const path=event.composedPath(); return path.includes(toolbar) || path.includes(q('.panel-picker')); }
+    function fromToolbar(event) { const path=event.composedPath(); return path.includes(toolbar) || path.includes(q('.panel-picker')) || path.includes(library) || path.includes(ctxBar) || path.includes(replaceMenu); }
     function lockWorkspace() {
       const body = document.body;
       if (!body) return;
@@ -14386,6 +17308,7 @@ ${studioControlsCSS()}
       if (saving) { event.preventDefault(); event.stopImmediatePropagation(); return; }
       const path = event.composedPath();
       if (!panelPicker.hidden && !path.includes(panelPicker) && !path.includes(panelPickerToggle)) setPanelPickerOpen(false);
+      if (!replaceMenu.hidden && !path.includes(replaceMenu) && !path.includes(ctxBar)) closeReplaceMenu();
       if (path.includes(toolbar) && !path.some(node => ['BUTTON','INPUT','SELECT','TEXTAREA','LABEL','A','OUTPUT'].includes(node?.tagName))) {
         event.preventDefault(); event.stopImmediatePropagation();
         if (event.button !== 0 || event.isPrimary === false || drag || pickerDrag || dockDrag) return;
@@ -14404,15 +17327,26 @@ ${studioControlsCSS()}
         try { panelPickerHandle.setPointerCapture(event.pointerId); } catch (studioError) { reportStudioError("onPointerDown",studioError);}
         return;
       }
+      const row = path.find(node => node?.classList?.contains?.('lib-row'));
+      if (row && !path.some(node => node?.tagName === 'BUTTON')) {
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (event.button === 0 && event.isPrimary !== false && !drag && !controlDrag) beginControlDrag(event, row.dataset.key, 'library', row);
+        return;
+      }
       if (fromToolbar(event)) return;
       event.preventDefault(); event.stopImmediatePropagation();
       if (drag?.keyboard) finishDrag();
-      if (event.button !== 0 || event.isPrimary === false || drag || pickerDrag || dockDrag) return;
+      if (event.button !== 0 || event.isPrimary === false || drag || pickerDrag || dockDrag || controlDrag) return;
       const item = targetFromEvent(event);
-      if (!item) return;
+      if (!item) { selectTarget(null); return; }
       item.shield.focus({ preventScroll: true });
+      if ((event.ctrlKey || event.metaKey) && !path.includes(item.label)) { toggleGroup(item); return; }
+      const hit = !path.includes(item.label) && controlAtPoint(item, event.clientX, event.clientY);
+      // Pressing an island moves the whole island. A control moves on its own only after it was clicked once.
+      if (hit && selection.target === item.spec.id && selection.control === hit.key) { beginControlDrag(event, hit.key, item, item.shield); return; }
       const geometry = dragGeometry(item), rect = geometry.rects.get(item.spec.id);
-      drag = { item, geometry, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, clientX: event.clientX, clientY: event.clientY, left: rect.left, top: rect.top, pending: false, active: false };
+      drag = { item, geometry, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, clientX: event.clientX, clientY: event.clientY, left: rect.left, top: rect.top, pending: false, active: false, before: arrangeSnapshot(), clickControl: hit ? hit.key : null };
+      if (group.size > 1 && group.has(item.spec.id)) drag = startGroupDrag(drag, item);
       if (item.spec.id === 'layers') drag.unlockSize = lockPanelDragSize(item.element,rect);
       item.element.setAttribute('data-wme-studio-layout-dragging', 'on');
       item.shield.setAttribute('data-dragging', 'on');
@@ -14423,9 +17357,22 @@ ${studioControlsCSS()}
       if (!drag?.pending || !drag.item.element.isConnected) return;
       drag.pending = false;
       if (!drag.active && Math.hypot(drag.clientX - drag.startX, drag.clientY - drag.startY) < 4) return;
-      previewPoint(drag.item, drag.left + drag.clientX - drag.startX, drag.top + drag.clientY - drag.startY, drag.geometry);
+      if (drag.group) previewGroup(drag.clientX - drag.startX, drag.clientY - drag.startY);
+      else previewPoint(drag.item, drag.left + drag.clientX - drag.startX, drag.top + drag.clientY - drag.startY, drag.geometry);
     }
     function onPointerMove(event) {
+      if (open && controlDrag) {
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (event.pointerId !== controlDrag.pointerId) return;
+        controlDrag.x = event.clientX; controlDrag.y = event.clientY;
+        if (!controlDrag.moved && Math.hypot(controlDrag.x - controlDrag.startX, controlDrag.y - controlDrag.startY) >= 5) {
+          controlDrag.moved = true;
+          ghost.textContent = tr(islandRegistry.get(controlDrag.key)?.label || '');
+          ctxBar.hidden = true; controlRing.hidden = true;
+        }
+        if (controlDrag.moved && !controlFrame) controlFrame = requestAnimationFrame(paintControlDrag);
+        return;
+      }
       if (open && dockDrag) {
         event.preventDefault(); event.stopImmediatePropagation();
         if (event.pointerId === dockDrag.pointerId) placeDock({left:dockDrag.left + event.clientX - dockDrag.startX,top:dockDrag.top + event.clientY - dockDrag.startY});
@@ -14448,20 +17395,43 @@ ${studioControlsCSS()}
       cancelAnimationFrame(dragFrame); dragFrame = 0; renderDrag();
       clearTimeout(nudgeTimer);
       const finished = drag;
-      if (finished.active) {
-        const point = finished.geometry.rects.get(finished.item.spec.id);
-        previewPoint(finished.item,point.left,point.top,dragGeometry(finished.item),true);
+      if (finished.active && finished.group) {
+        drag = finished;
+        for (const member of finished.group) {
+          const point = finished.geometry.rects.get(member.item.spec.id);
+          previewPoint(member.item, point.left, point.top, finished.geometry, true, true);
+        }
         compactIslandLayout = draft; applyCompactLayoutVariables();
-        statusLine.textContent = `${finished.item.spec.label} moved · Save layout to keep it`;
+        statusLine.textContent = tr(`${finished.group.length} islands moved · Save layout to keep it`);
+      } else if (finished.active) {
+        const point = finished.geometry.rects.get(finished.item.spec.id);
+        previewPoint(finished.item,point.left,point.top,finished.exact ? finished.geometry : dragGeometry(finished.item),true,!!finished.exact);
+        compactIslandLayout = draft; applyCompactLayoutVariables();
+        if (!finished.exact) statusLine.textContent = `${finished.item.spec.label} moved · Save layout to keep it`;
       }
       clearPreviewVariables();
       drag = null; finished.unlockSize?.(); finished.item.element.removeAttribute('data-wme-studio-layout-dragging');
+      for (const member of finished.group || []) member.item.element.removeAttribute('data-wme-studio-layout-dragging');
       finished.item.shield.removeAttribute('data-dragging');
       try { if (finished.item.shield.hasPointerCapture(finished.pointerId)) finished.item.shield.releasePointerCapture(finished.pointerId); } catch (studioError) { reportStudioError("finishDrag",studioError);}
       verticalGuide.classList.remove('show'); horizontalGuide.classList.remove('show');
       renderPanelList(); scheduleLabels(); queueHeaderGuardWindows(); queueCompactAuxiliaryPlacement();
+      if (finished.active) { if (finished.before) pushUndo(finished.before); if (!finished.keyboard) selectTarget(finished.item.spec.id, null, !!finished.group); else renderCtx(); }
+      else if (!finished.keyboard) {
+        selectTarget(finished.item.spec.id, finished.clickControl || null);
+        const label = finished.clickControl && islandRegistry.get(finished.clickControl)?.label;
+        if (label) statusLine.textContent = tr(`${tr(label)} selected · drag it to move it`);
+      }
     }
     function onPointerEnd(event) {
+      if (open && controlDrag) {
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (event.pointerId === controlDrag.pointerId) {
+          if (event.type === 'pointerup') { controlDrag.x = event.clientX; controlDrag.y = event.clientY; }
+          finishControlDrag(event.type === 'pointerup');
+        }
+        return;
+      }
       if (open && dockDrag) {
         event.preventDefault(); event.stopImmediatePropagation();
         if (event.type === 'pointerup' && event.pointerId === dockDrag.pointerId) placeDock({left:dockDrag.left + event.clientX - dockDrag.startX,top:dockDrag.top + event.clientY - dockDrag.startY});
@@ -14476,13 +17446,18 @@ ${studioControlsCSS()}
       event.preventDefault(); event.stopImmediatePropagation(); finishDrag(event);
     }
     function onLostCapture(event) {
+      if (controlDrag?.pointerId === event.pointerId) finishControlDrag(false);
       if (dockDrag?.pointerId === event.pointerId) finishDockDrag();
       if (pickerDrag?.pointerId === event.pointerId) finishPickerDrag();
       if (drag?.pointerId === event.pointerId) finishDrag();
     }
     function blockControlEvent(event) {
       if (!open || fromToolbar(event)) return;
-      if (event.type === 'dblclick') { const item = targetFromEvent(event); if (item) resetIsland(item); }
+      if (event.type === 'dblclick') {
+        const item = targetFromEvent(event);
+        if (item?.spec.custom) { selectTarget(item.spec.id); startRename(item.spec.id); }
+        else if (item) resetIsland(item);
+      }
       event.preventDefault(); event.stopImmediatePropagation();
     }
     function onBlur() { finishDrag(); finishPickerDrag(); finishDockDrag(); }
@@ -14507,7 +17482,31 @@ ${studioControlsCSS()}
     function onKeydown(event) {
       if (!open) return;
       if (saving) { if (!event.ctrlKey && !event.metaKey) { event.preventDefault(); event.stopImmediatePropagation(); } return; }
-      if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); if (!panelPicker.hidden) { setPanelPickerOpen(false); panelPickerToggle.focus({preventScroll:true}); } else close(false); return; }
+      if (shadow.activeElement?.closest?.('.lib-link-form')) {
+        if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeLinkForm(); }
+        // Enter saves straight away, whatever the page does with the key afterwards.
+        else if (event.key === 'Enter' && shadow.activeElement.matches('input')) { event.preventDefault(); event.stopImmediatePropagation(); saveLinkForm(); }
+        return;
+      }
+      if (shadow.activeElement?.classList?.contains('ctx-rename')) {
+        if (event.key === 'Enter') { event.preventDefault(); event.stopImmediatePropagation(); finishRename(true); }
+        else if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); finishRename(false); }
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (controlDrag) finishControlDrag(false);
+        else if (!replaceMenu.hidden) closeReplaceMenu();
+        else if (!panelPicker.hidden) { setPanelPickerOpen(false); panelPickerToggle.focus({preventScroll:true}); }
+        else if (selection.target) selectTarget(null);
+        else close(false);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && /^[zy]$/i.test(event.key)) {
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (event.key.toLowerCase() === 'y' || event.shiftKey) redoArrange(); else undoArrange();
+        return;
+      }
       const focused = targets.find(item => item.shield === shadow.activeElement);
       const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
       if (focused && step && !event.ctrlKey && !event.metaKey) {
@@ -14519,7 +17518,7 @@ ${studioControlsCSS()}
         event.preventDefault(); event.stopImmediatePropagation(); resetIsland(focused); return;
       }
       if (event.key === 'Tab') {
-        const controls = [...shadow.querySelectorAll('.drag-shield,.toolbar input,.toolbar button,.panel-picker button')].filter(control => !control.disabled && !control.closest('[hidden]'));
+        const controls = [...shadow.querySelectorAll('.drag-shield,.toolbar input,.toolbar button,.panel-picker button,.ctx button,.replace-menu:not([hidden]) button,.library button')].filter(control => !control.disabled && !control.closest('[hidden]'));
         const current = controls.indexOf(shadow.activeElement);
         const next = current < 0 ? (event.shiftKey ? controls.length - 1 : 0) : (current + (event.shiftKey ? -1 : 1) + controls.length) % controls.length;
         event.preventDefault(); event.stopImmediatePropagation(); controls[next]?.focus({ preventScroll: true }); return;
@@ -14571,8 +17570,10 @@ ${studioControlsCSS()}
       saving = true; statusLine.textContent = 'Saving layout…';
       try {
         await studioKeep.set(COMPACT_LAYOUT_KEY, savedLayout || {});
+        const savedIslands = storedIslandControls(islandControlsDraft || emptyIslandControls());
+        await studioKeep.set(ISLAND_CONTROLS_KEY, savedIslands);
         await config.write(patch);
-        settings = {...settings,...patch}; compactIslandLayout = savedLayout;
+        settings = {...settings,...patch}; compactIslandLayout = savedLayout; islandControls = sanitizeIslandControls(savedIslands);
         close(true);
       } catch (studioError) { reportStudioError("save",studioError);
         q('[data-id="status"]').textContent = 'Could not save the layout. Save again to retry.';
@@ -14639,7 +17640,11 @@ ${studioControlsCSS()}
         togglePanel(spec,false);
       }
       applyCompactLayoutVariables();
-      collectTargets(); renderPanelList(); scheduleLabels();
+      islandControlsDraft = structuredClone(islandControls);
+      undoStack.length = 0; redoStack.length = 0; selection = { target: null, control: null }; syncHistory();
+      q('[data-id="snap"]').setAttribute('aria-pressed', String(snapEdges || snapCenter));
+      watchIslandSources(); renderIslandControls();
+      collectTargets(); renderPanelList(); scheduleLabels(); renderLibrary(); renderCtx();
       statusLine.textContent = `${targets.length} island${targets.length === 1 ? '' : 's'} · drag one to move it`;
       dock.removeAttribute('data-used');
       if (dockMoved) placeDock(); else autoPlaceDock();
@@ -14648,8 +17653,11 @@ ${studioControlsCSS()}
     function close(saved = false) {
       if (!open || saving && !saved) return;
       for (const state of chatStates()) state.finishDrag?.();
-      finishDrag(); finishDockDrag(); open = false; compactLayoutEditing = false; requestMinimizer.refresh();
+      finishControlDrag(false); finishDrag(); finishDockDrag(); open = false; compactLayoutEditing = false; requestMinimizer.refresh();
       setPanelPickerOpen(false);
+      islandControlsDraft = null; selection = { target: null, control: null };
+      ctxBar.hidden = true; controlRing.hidden = true; library.hidden = true; libraryOpen = false;
+      undoStack.length = 0; redoStack.length = 0;
       arrangeBaseline.clear();
       unbindEditorEvents(); root.removeAttribute('data-wme-studio-layout-editing');
       clearOpacityPreview();
@@ -14673,15 +17681,33 @@ ${studioControlsCSS()}
       rootStyle('--ws-compact-hover-opacity', `${Math.min(100, settings.compactIslandOpacity + 48)}%`);
       syncCompactGlassAppearance();
       applyCompactLayoutVariables();
+      renderIslandControls();
     }
     panelPickerToggle.addEventListener('click', () => setPanelPickerOpen(panelPicker.hidden));
+    q('[data-id="undo"]').addEventListener('click', undoArrange);
+    q('[data-id="redo"]').addEventListener('click', redoArrange);
+    q('[data-id="new-island"]').addEventListener('click', addIsland);
+    q('[data-id="library-toggle"]').addEventListener('click', () => setLibraryOpen(!libraryOpen));
+    q('[data-id="library-close"]').addEventListener('click', () => setLibraryOpen(false));
+    q('[data-id="snap"]').addEventListener('click', () => {
+      const on = !(snapEdges || snapCenter);
+      snapEdges = snapCenter = on;
+      q('[data-id="snap-edges"]').checked = on; q('[data-id="snap-center"]').checked = on;
+      q('[data-id="snap"]').setAttribute('aria-pressed', String(on));
+      statusLine.textContent = tr(on ? 'Snapping to edges, centers and other islands' : 'Snap is off · placing freely');
+      syncGridVisibility();
+    });
     q('[data-id="panel-picker-close"]').addEventListener('click', () => { setPanelPickerOpen(false); panelPickerToggle.focus({preventScroll:true}); });
     q('[data-id="snap-edges"]').addEventListener('change', event => { snapEdges = event.target.checked; syncGridVisibility(); });
     q('[data-id="snap-center"]').addEventListener('change', event => { snapCenter = event.target.checked; syncGridVisibility(); });
     q('[data-id="opacity"]').addEventListener('input', event => setOpacity(event.target.value, false));
     q('[data-id="opacity"]').addEventListener('change', event => setOpacity(event.target.value, true));
     q('[data-id="reset"]').addEventListener('click', () => {
-      finishDrag(); releasePanelPreviews(); clearTargetMarks();
+      const before = arrangeSnapshot();
+      finishControlDrag(false); finishDrag(); releasePanelPreviews(); clearTargetMarks();
+      // The links themselves stay: they go back to the Controls list, ready to be placed again.
+      islandControlsDraft = { ...emptyIslandControls(), links: structuredClone(islandControlsDraft?.links || []) }; selection = { target: null, control: null };
+      renderIslandControls();
       for (const spec of compactIslandSpecs) if (spec.arrange !== false || spec.popup) delete draft[spec.id];
       arrangeBaseline.clear();
       for (const state of mapLayerWindows.values()) resetMapLayerPosition(state);
@@ -14689,10 +17715,12 @@ ${studioControlsCSS()}
       scheduleDefaultSideIslandCenters(true);
       applyCompactLayoutVariables();
       syncCompactAuxiliaryPlacement(true);
-      collectTargets(); renderPanelList(); scheduleLabels(); q('[data-id="status"]').textContent = 'Default positions restored in preview';
+      collectTargets(); renderPanelList(); scheduleLabels(); renderLibrary(); renderCtx(); pushUndo(before);
+      q('[data-id="status"]').textContent = 'Default layout restored in preview';
     });
     q('[data-id="cancel"]').addEventListener('click', () => close(false)); q('[data-id="save"]').addEventListener('click', save);
-    compactLayoutEditor = { host, shadow, open: show, close, dragging: () => !!(drag || dockDrag || pickerDrag), lockChatFrames, reset: () => storeCompactIslandLayout(null) };
+    compactLayoutEditor = { host, shadow, open: show, close, dragging: () => !!(drag || dockDrag || pickerDrag || controlDrag), lockChatFrames, reset: () => storeCompactIslandLayout(null),
+      refreshIslands() { if (open && !drag && !controlDrag) { collectTargets(); renderLibrary(); renderCtx(); scheduleLabels(); } } };
     return compactLayoutEditor;
   }
 
@@ -14716,7 +17744,7 @@ ${studioControlsCSS()}
     const preferences = await config.read();
     const stored = await chrome.storage.local.get(COMPACT_LAYOUT_KEY);
     return { compactMode:preferences.compactMode,compactHeaderFullWidth:preferences.compactHeaderFullWidth,
-      compactHeaderWidth:preferences.compactHeaderWidth,layout:sanitizeCompactIslandLayout(stored[COMPACT_LAYOUT_KEY]),
+      compactHeaderWidth:preferences.compactHeaderWidth,layout:sanitizeCompactIslandLayout(stored[COMPACT_LAYOUT_KEY]),islands:storedIslandControls(islandControls),
       chatPosition:chatPanelPosition ? {...chatPanelPosition} : null };
   }
   async function writeLayoutSettings(snapshot) {
@@ -14726,12 +17754,14 @@ ${studioControlsCSS()}
       'wmeStudio.compactMode':clean.compactMode,
       'wmeStudio.compactHeaderFullWidth':clean.compactHeaderFullWidth,
       'wmeStudio.compactHeaderWidth':clean.compactHeaderWidth,
-      [COMPACT_LAYOUT_KEY]:layout || {}, [CHAT_PANEL_POSITION_KEY]:normalizedChatPanelPosition(snapshot.chatPosition)
+      [COMPACT_LAYOUT_KEY]:layout || {}, [CHAT_PANEL_POSITION_KEY]:normalizedChatPanelPosition(snapshot.chatPosition),
+      ...(snapshot.islands ? {[ISLAND_CONTROLS_KEY]:storedIslandControls(snapshot.islands)} : {})
     });
     applyLayoutSettings(snapshot);
   }
   function applyLayoutSettings(snapshot) {
     compactIslandLayout = sanitizeCompactIslandLayout(snapshot.layout);
+    if (snapshot.islands) setIslandControls(snapshot.islands);
     resetHeaderPosition();
     for (const state of headerGuardWindows.values()) {
       state.requestPoint = null; state.appliedPopupPoint = null; state.shift = 0; state.shiftX = 0;
@@ -14747,20 +17777,34 @@ ${studioControlsCSS()}
   }
   globalThis.WMEStudioCompactLayout = Object.freeze({
     open() { buildCompactLayoutEditor().open(); },
-    reset() { return storeCompactIslandLayout(null); },
-    hasCustomLayout() { return !!compactIslandLayout; },
+    async reset() { await globalThis.WMEStudioIslands?.reset(); return storeCompactIslandLayout(null); },
+    hasCustomLayout() { return !!compactIslandLayout || !islandControlsEmpty(islandControls); },
     presets:layoutPresets, currentPreset:currentLayoutPreset,
     async applyPreset(id) {
       const preset = layoutPresets.find(item=>item.id === id);
       if (!preset || compactLayoutEditing || !settings.enabled) throw new Error('Layout preset unavailable');
       const previous = await captureLayoutSettings();
-      try { await writeLayoutSettings({compactMode:true,compactHeaderFullWidth:preset.width > 0,compactHeaderWidth:preset.width,layout:preset.layout,chatPosition:null}); }
+      // An island Studio draws in place of WME's rail or map tools (Arrange) moves with the preset too, to where
+      // the preset puts that rail; the default layout keeps navigation on the left and the map tools on the right.
+      const homes = { navigation:{x:0,y:.5}, tools:{x:1,y:.5}, ...(preset.layout || {}) };
+      const current = storedIslandControls(islandControls);
+      // An island built in Arrange out of the rail's buttons counts as the rail: the one holding most of them.
+      const homeOf = new Map();
+      for (const id of ISLAND_MANAGEABLE) {
+        const owner = current.custom?.find(island => island.home === id) || (current.custom || []).filter(island => !island.home)
+          .map(island => ({ island, count: island.items.filter(key => key.startsWith(`${id}:`)).length }))
+          .filter(entry => entry.count && entry.count * 2 > entry.island.items.length).sort((a, b) => b.count - a.count)[0]?.island;
+        if (owner && !homeOf.has(owner)) homeOf.set(owner, id);
+      }
+      const islands = homeOf.size ? { ...current, custom: current.custom.map(island => homeOf.has(island) ? { ...island, x: homes[homeOf.get(island)].x, y: homes[homeOf.get(island)].y } : island) } : undefined;
+      try { await writeLayoutSettings({compactMode:true,compactHeaderFullWidth:preset.width > 0,compactHeaderWidth:preset.width,layout:preset.layout,chatPosition:null,...(islands ? {islands} : {})}); }
       catch (error) { reportStudioError("applyPreset",error); await writeLayoutSettings(previous).catch((studioError)=>{ reportStudioError("applyPreset",studioError);}); throw error; }
       return previous;
     },
     restorePreset(snapshot) { return writeLayoutSettings(snapshot); }
   });
 
+  globalThis.WMEStudioScheduleToolsPosition = scheduleCompactToolsPosition;
   let scanQueued = false;
   let upgradeTimer = 0;
   function watchUpgrades() {
@@ -15657,6 +18701,33 @@ ${studioControlsCSS()}
       break;
     }
   }
+  document.addEventListener('pointerover', event => {
+    const bubble = event.target?.closest?.('wz-button.online-editors-bubble');
+    if (!bubble) return;
+    // Beside the bubble, towards the middle of the screen; when the header (or the screen edge) is on that side,
+    // the other side, and when both are taken, under it (over it near the bottom).
+    const rect = bubble.getBoundingClientRect(), label = bubble.querySelector(':scope > .text');
+    const width = (label?.scrollWidth || 140) * (bubble.currentCSSZoom || 1), gap = 8;
+    const head = compactVisibleRect(document.getElementById('app-head'));
+    const free = (left, right) => left >= 8 && right <= innerWidth - 8 &&
+      !(head && left < head.left + head.width && right > head.left && rect.top < head.top + head.height && rect.bottom > head.top);
+    const sides = rect.left + rect.width / 2 > innerWidth / 2 ? ['left', 'right'] : ['right', 'left'];
+    let side = sides.find(name => name === 'right' ? free(rect.right + gap, rect.right + gap + width) : free(rect.left - gap - width, rect.left - gap));
+    if (!side) side = rect.top + rect.height / 2 > innerHeight / 2 ? 'above' : 'below';
+    // In an island the label is a tab the island grows, as thick as the island (like Tile Update's).
+    const own = bubble.hasAttribute('data-wme-studio-island-fit') ? movedControlIsland(bubble)?.rect : null;
+    const zoom = bubble.currentCSSZoom || 1, flat = own && own.width > own.height;
+    const edge = (value, always) => own && value > 0 && (always || value < 12) ? Math.round(value / zoom * 100) / 100 : 0;
+    const out = { top: edge(rect.top - own?.top, flat), bottom: edge(own?.top + own?.height - rect.bottom, flat),
+      left: edge(rect.left - own?.left, !flat || side === 'right'), right: edge(own?.left + own?.width - rect.right, !flat || side === 'left') };
+    for (const [name, value] of Object.entries(out)) bubble.style.setProperty(`--ws-online-out-${name}`, `${value}px`);
+    bubble.style.setProperty('--ws-label-zoom', String(Math.round(zoom * 1000) / 1000));
+    if (own && !flat) bubble.setAttribute('data-wme-studio-label-detached', ''); else bubble.removeAttribute('data-wme-studio-label-detached');
+    if (own) bubble.style.setProperty('--ws-online-out-radius', `${Math.round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ws-compact-radius')) / zoom || 20)}px`);
+    else bubble.style.removeProperty('--ws-online-out-radius');
+    if (side === 'right') { if (bubble.hasAttribute('data-wme-studio-label-side')) bubble.removeAttribute('data-wme-studio-label-side'); }
+    else if (bubble.getAttribute('data-wme-studio-label-side') !== side) bubble.setAttribute('data-wme-studio-label-side', side);
+  }, { capture: true, passive: true });
   function tagOnlineEditorsPanel(node) {
     if (node.nodeType !== 1) return;
     const launcher = node.classList.contains('online-editors-bubble'), list = !launcher && node.classList.contains('online-editors-list-wrapper');
@@ -16015,7 +19086,9 @@ ${studioControlsCSS()}
         for (const element of container.querySelectorAll(':scope > .ws-street-view-toolbar,:scope > .ws-street-view-grip,:scope > .ws-street-view-notice')) element.remove();
         for (const axis of ['left','top','width','height']) container.style.removeProperty(`--ws-street-view-${axis}`);
       }
-      state.toolbar = null; state.rect = null; if (wasActive) resizeMap(true); return;
+      state.toolbar = null; state.rect = null; if (wasActive) resizeMap(true);
+      if (islandSpaceDocked) { islandSpaceDocked = ''; scheduleIslandControls(); applyCompactLayoutVariables(); }
+      return;
     }
     const newlyActive = !state.active; state.active = true;
     if (!state.toolbar?.isConnected) buildStreetViewToolbar(container);
@@ -16028,6 +19101,8 @@ ${studioControlsCSS()}
     state.toolbar.setAttribute('aria-label',globalThis.WMEStudioI18n.translate(state.docked ? 'Street View' : 'Move Street View'));
     if (state.docked) placeDockedStreetViewToolbar();
     else clearDockedStreetViewTools();
+    const area = state.docked ? islandSpace() : null, space = area?.pane ? `${Math.round(area.left)}:${Math.round(area.width)}` : '';
+    if (space !== islandSpaceDocked) { islandSpaceDocked = space; scheduleIslandControls(); applyCompactLayoutVariables(); }
     const label = globalThis.WMEStudioI18n.translate(state.docked ? 'Float' : 'Dock');
     if (state.dockButton.textContent !== label) state.dockButton.textContent = label;
     state.dockButton.title = globalThis.WMEStudioI18n.translate(state.docked ? 'Float Street View' : 'Return to split view');
@@ -17294,7 +20369,7 @@ ${studioControlsCSS()}
     if (id === 'WMETB_logger' || id === 'WMETB_logger_warn') trackToolboxLogger(host);
     if (idAttribute.startsWith('toast-container-') || classes.contains('toast-container-wazedev')) trackAddonToast(host);
     if (id === 'WMETB_Dashboard') trackToolboxDashboard(host);
-    if (id === 'RAUtilWindow' || id === 'header' && host.closest('#RAUtilWindow')) studioResourceRecovery.inspect(host);
+    if (id === 'RAUtilWindow' || id === 'SSUtilWindow' || id === 'header' && host.closest('#RAUtilWindow,#SSUtilWindow')) studioResourceRecovery.inspect(host);
     if (tag === 'select') restrictionSelects.inspect(host);
     if (tag === 'wz-dialog' && (classes.contains('restrictions-modal') || schoolZoneDialog(host))) trackRestrictionPanel(host);
     if (tag === 'wz-dialog-header' && schoolZoneDialog(host.parentElement)) trackRestrictionPanel(host.parentElement);
@@ -17348,6 +20423,7 @@ ${studioControlsCSS()}
     if (classes.contains('wmeRcFriendsHeaderLauncherSlot')) trackRightClickHeaderSlot(host);
     if (id === 'app-head' || classes.contains('secondary-toolbar')) queueRightClickHeaderLaunchers();
     if (host === document.body || classes.contains('app')) watchNativeScopes();
+    if (tag === 'wz-button' && host.closest('#drawer')) queueAccentFills();
     if (host.id === 'drawer' && !compactDrawers.has(host)) {
       compactDrawers.add(host); compactDrawerObserver?.observe(host); scheduleCompactDrawerTop();
     }
@@ -17594,10 +20670,26 @@ ${studioControlsCSS()}
   })();
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
-  const studioUpdateNotes = `<p>What’s new in WME Studio ${USERSCRIPT_VERSION}:</p><p><strong>Fixed</strong></p><ul><li>Editing area warnings now fit the request panel without squeezing its controls.</li></ul>`;
+  const studioUpdateNotes = `<p>What’s new in WME Studio ${USERSCRIPT_VERSION}:</p>
+<p><strong>Arrange your own islands</strong></p><ul>
+<li>Click a control, then drag it into another island, or onto the map to give it an island of its own.</li>
+<li>Make new islands, rename them, rotate them, split them in two, or swap one control for another.</li>
+<li>Hide the controls you never use from the new Controls list, and bring them back any time.</li>
+<li>Custom links: add a button for any website. It shows the site’s icon and opens it in a new tab.</li>
+<li>Ctrl + click several islands to move them together, and undo or redo every step.</li></ul>
+<p><strong>Right-click menu</strong></p><ul>
+<li>Right-click the map for coordinates, permalinks, Google Maps and a switch to WME Beta and back.</li>
+<li>Right-click a segment or a selection to copy its IDs or names, or zoom to it.</li>
+<li>Switch between WME and WME Beta at the same spot, and reach Arrange, the theme and Settings in one click.</li></ul>
+<p><strong>Also</strong></p><ul>
+<li>Custom scrollbars: slim and rounded, in your theme colors.</li>
+<li>More map problems and requests now move the map so their marker isn’t hidden under the panel.</li>
+<li>Theming for WME Segment Shift Utility, and many layout and dark theme fixes.</li></ul>`;
   let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
   function showStudioUpdateNotes() {
     if (studioUpdateReported || studioUpdateTimer || !document.getElementById('WazeMap')) return;
+    // In the editor itself the update tour (WMEStudioTour) presents the release, so WazeWrap's notes stay quiet there.
+    if (window.top === window.self && /(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname)) { studioUpdateReported=true; return; }
     const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
     if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
       try {
@@ -17650,6 +20742,7 @@ ${studioControlsCSS()}
     if (Object.keys(items).every(key => key === 'wmeStudio.workspaceProfiles.v1' || key === 'wmeStudio.scriptTabPins.v1')) return;
     globalThis.WMEStudioWorkspaces?.syncSizes(items);
     if (items[COMPACT_LAYOUT_KEY]) compactIslandLayout = sanitizeCompactIslandLayout(items[COMPACT_LAYOUT_KEY].newValue);
+    if (items[ISLAND_CONTROLS_KEY] && !compactLayoutEditing) setIslandControls(items[ISLAND_CONTROLS_KEY].newValue);
     const changedKeys = new Set(Object.keys(items)
       .filter(key => key.startsWith('wmeStudio.'))
       .map(key => key.slice('wmeStudio.'.length)));
@@ -17662,6 +20755,51 @@ ${studioControlsCSS()}
     }
   });
   reducedMotion.addEventListener('change', () => apply(new Set(['motion'])));
+  // WME shows a loading screen while it starts. Studio's floating islands sit above it, so they stay hidden until
+  // the loading screen is gone (or, as a safety net, for at most 45 seconds).
+  (function watchLoading() {
+    if (standaloneSignin || editorProfile) return;
+    const started = performance.now();
+    const loadingNow = () => {
+      if (performance.now() - started > 45000) return false;
+      const screen = document.querySelector('.app-loading');
+      if (screen) {
+        if (screen.classList.contains('hide') || screen.hidden) return false;
+        const style = getComputedStyle(screen);
+        // Over once the loading screen is fading out or no longer covers the editor: the rails come in with the map.
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) <= .5) return false;
+        const rect = screen.getBoundingClientRect();
+        if (rect.width < innerWidth * .6 || rect.height < innerHeight * .6) return false;
+        if (style.pointerEvents === 'none') return true;
+        const top = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+        return !top || screen === top || screen.contains(top);
+      }
+      return !pageWindow.W?.map;   // no loading screen yet and no map yet: still starting
+    };
+    (function poll() {
+      const loading = loadingNow();
+      attr('loading', loading ? 'on' : null);
+      if (loading) setTimeout(poll, 250);
+      else scheduleIslandControls();
+    })();
+  })();
+  function syncEyeSaver() {
+    const strength = activeEyeSaver();
+    rootStyle('--ws-eye-saver-opacity', String(strength * 0.65 / 100));
+    attr('eye-saver', strength > 0 ? 'on' : null);
+  }
+  // Theme and eye saver schedules: check the clock twice a minute, and straight away when the tab comes back.
+  // A new theme repaints like a theme change; the eye saver only moves its overlay, so a fade costs nothing.
+  function tickSchedule() {
+    if (!ready || !settings.enabled || ((settings.theme !== 'light' || settings.themeSchedule === 'off') && settings.eyeSaverSchedule === 'off')) return;
+    if (previewOverride && settings === previewOverride) return;
+    refreshSchedule();
+    if (liveSchedule.theme !== appliedScheduleTheme) apply(new Set(['theme']));
+    else syncEyeSaver();
+  }
+  setInterval(tickSchedule, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tickSchedule(); });
+  window.addEventListener('focus', tickSchedule);
   let resizeSettleTimers = [], resizeSettleSize = `${innerWidth}x${innerHeight}`;
   function settleAfterResize() {
     for (const timer of resizeSettleTimers) clearTimeout(timer);
@@ -17785,6 +20923,8 @@ ${studioControlsCSS()}
       workspace.layout = sanitizeCompactIslandLayout(source.layout);
       if (source.chatPosition !== null && !record(source.chatPosition)) error('Backup Messages position is invalid.');
       workspace.chatPosition = source.chatPosition === null ? null : {x:bounded(source.chatPosition.x,-10000,10000),y:bounded(source.chatPosition.y,-10000,10000)};
+      // Workspaces and backups from before custom islands have none: switching to one keeps the current controls.
+      workspace.islands = record(source.islands) ? storedIslandControls(source.islands) : null;
       const view = value.streetView;
       if (!record(view) || typeof view.docked !== 'boolean') error('Backup Street View layout is invalid.');
       return {workspace,layoutSettings:preferences(value.layoutSettings,layoutKeys),panelSizes:sizes(value.panelSizes),
@@ -17834,6 +20974,7 @@ ${studioControlsCSS()}
       available();const clean = validateSnapshot(value), workspace = clean.workspace;
       const patch = {...clean.layoutSettings,...prefs,compactMode:workspace.compactMode,compactHeaderFullWidth:workspace.compactHeaderFullWidth,compactHeaderWidth:workspace.compactHeaderWidth};
       const data = Object.fromEntries(Object.entries(patch).map(([key,val])=>['wmeStudio.'+key,val]));
+      if (workspace.islands) data[ISLAND_CONTROLS_KEY] = workspace.islands;
       Object.assign(data,{[COMPACT_LAYOUT_KEY]:workspace.layout || {},[CHAT_PANEL_POSITION_KEY]:workspace.chatPosition,[PANEL_SIZES_KEY]:clean.panelSizes,[STREET_VIEW_WINDOW_KEY]:clean.streetView});
       if (profiles) data[KEY] = profiles;
       if (scriptTabs) data[scriptTabPicker.key] = scriptTabPicker.validate(scriptTabs);
@@ -17925,20 +21066,15 @@ ${studioControlsCSS()}
   const studioIcon = `<img src="${STUDIO_LOGO_DATA_URI}" alt="" aria-hidden="true">`;
 
   function uiRouteAllowed() {
-    return /(?:^|\/)editor(?:\/|$)/i.test(location.pathname) || /^(?:\/[^/]+)?\/signin\/?$/i.test(location.pathname);
+    return /(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname) || /^(?:\/[^/]+)?\/signin\/?$/i.test(location.pathname);
   }
 
   // Miniature editors for the Layout page, drawn from the real layouts at one tenth of a 1920 px window: satellite
   // ground with WME road colours, and Studio's header, rails and circles where each mode and preset puts them.
   function layoutThumb(kind) {
     const road = (d, color, width) => `<path d="${d}" stroke="#141a14" stroke-opacity=".55" stroke-width="${width + 1}"/><path d="${d}" stroke="${color}" stroke-width="${width}"/>`;
-    const map = `<rect width="192" height="108" fill="#3c4a33"/><path d="M0 0h66L48 26 0 38z" fill="#33412d"/><path d="M104 56l46-12 42 20v44h-74z" fill="#4b5639"/><path d="M58 70l30-7 16 45H50z" fill="#5c573e"/><path d="M128 0h40l-8 26-30 6z" fill="#46503a"/><path d="M0 60l30-5 14 30-16 23H0z" fill="#2f3d2b"/>`
-      + `<path d="M0 86c14-5 24 1 33 8s22 7 31 14H0z" fill="#1f4263"/><path d="M0 91c12-4 20 1 28 7s16 6 24 10H0z" fill="#16304f"/>`
-      + `<g fill="#b9bbb2" fill-opacity=".5"><path d="M104 18h5v4h-5zM112 16h7v5h-7zM122 19h5v5h-5zM105 26h7v4h-7zM115 25h5v5h-5zM124 28h6v4h-6zM108 33h5v4h-5zM117 34h7v4h-7zM36 34h6v4h-6zM45 33h5v5h-5zM37 42h7v4h-7zM64 44h6v4h-6zM68 51h6v4h-6z"/></g>`
-      + `<g fill="none" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f4f4e6" stroke-opacity=".85" stroke-width=".8"><path d="M30 30v38M57 27l4 33M100 45L66 92M121 12l8 37M112 33l34-6M101 74h54M152 52l40 17M34 50h26M130 49l-4 25M160 74l6 34"/></g>`
-      + road('M-4 27C28 31 60 27 92 18s60-13 104-8', '#eee35a', 1.5) + road('M140-4c-6 27 3 45 13 56s21 27 19 58', '#6cc28c', 1.4)
-      + road('M84-4c3 25 11 40 16 49s7 40 2 67', '#47b6d2', 1.9) + road('M-4 71C40 63 70 47 100 45s64 13 96 5', '#c678d4', 2.3)
-      + `</g><g stroke="#fff" stroke-width=".7"><circle cx="76" cy="39" r="2.1" fill="#f5a623"/><circle cx="136" cy="68" r="2.1" fill="#e5484d"/></g>`;
+    // A plain, quiet ground: the islands and panels are what the picture is about.
+    const map = `<rect class="t-bg" width="192" height="108"/><path class="t-grid" d="M0 27h192M0 54h192M0 81h192M48 0v108M96 0v108M144 0v108"/>`;
     const island = (x, y, w, h, r) => `<rect class="t-sh" x="${x}" y="${y + .9}" width="${w}" height="${h}" rx="${r}"/><rect class="t-ui" x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/>`;
     const bar = (x, y, w, cls = 't-ink', h = 1.2) => `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}"/>`;
     const dot = (x, y, r = 1.05, cls = 't-ink') => `<circle class="${cls}" cx="${x}" cy="${y}" r="${r}"/>`;
@@ -17976,6 +21112,28 @@ ${studioControlsCSS()}
     return `<svg class="thumb" viewBox="0 0 192 108" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">${map}${ui}</svg>`;
   }
 
+  // The editor's own user name, for bug reports and the update tour. Several places, since WME moves it around.
+  function wmeUserName() {
+    const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
+    const text = value => (typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '').replace(/\s+/g, ' ').trim();
+    const tries = [
+      () => (globalThis.WazeWrap || page.WazeWrap)?.User?.Username?.(),
+      () => { const user = page.W?.loginManager?.user; return typeof user?.getUserName === 'function' ? user.getUserName() : null; },
+      () => page.W?.loginManager?.user?.userName,
+      () => page.W?.loginManager?.user?.attributes?.userName,
+      () => page.W?.loginManager?.getUserName?.(),
+      () => page.W?.loginManager?.user?.name,
+      () => page.W?.model?.users?.getObjectById?.(page.W?.loginManager?.user?.id || page.W?.loginManager?.user?.attributes?.id)?.attributes?.userName,
+      () => { const box = document.querySelector('wz-user-box'); return box && (box.getAttribute('user-name') || box.getAttribute('username') || box.getAttribute('name') || box.querySelector('[slot="label"], [slot="name"]')?.textContent || box.shadowRoot?.querySelector('.user-name, .username, [class*="userName"], [class*="user-name"]')?.textContent); },
+      () => document.querySelector('#user-info .user-name, .user-info .user-name, [class*="userName--"], [class*="username--"]')?.textContent
+    ];
+    for (const attempt of tries) {
+      let name = '';
+      try { name = text(attempt()); } catch (_) { name = ''; }
+      if (name && name.length <= 60 && !/^(?:undefined|null|unknown|guest)$/i.test(name)) return name;
+    }
+    return '';
+  }
   function buildStudioUI() {
     if (studioUI || !uiRouteAllowed() || window.top !== window.self) return studioUI;
     const host = document.createElement('div');
@@ -18021,7 +21179,20 @@ ${studioControlsCSS()}
   .brand{display:flex;align-items:center;gap:10px;padding:0 6px}
   .logo{width:36px;height:36px;flex:0 0 36px;display:grid;place-items:center}
   .logo img{display:block;width:34px;height:34px;object-fit:contain}
-  .brand b{font-size:16px;letter-spacing:-.3px;white-space:nowrap}
+  .brand b{font-size:15px;letter-spacing:-.3px;white-space:nowrap}
+  .brand-text{display:grid;gap:1px;min-width:0}.brand-sub{font-size:11px;color:var(--muted);white-space:nowrap}.brand-link{color:var(--accent);text-decoration:none}.brand-link:hover{text-decoration:underline}
+  .nav-group{padding:8px 11px 4px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.nav-group:first-child{padding-top:0}
+  .nav-badge{min-width:18px;height:18px;margin-left:auto;padding:0 5px;border-radius:999px;background:#23a86b;color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center}
+  .small-note{color:var(--muted);font-size:10.5px}
+  .head-text{display:grid;gap:2px;min-width:0}.page-sub{margin:0;color:var(--muted);font-size:12px}.page-sub:empty{display:none}
+  .chips{display:flex;gap:6px;flex:0 0 auto;padding:0 28px 12px;margin:0;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
+  .sec-chip{flex:0 0 auto;height:26px;margin:0;padding:0 11px;border:0;border-radius:999px;background:transparent;color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap}
+  .sec-chip:hover{background:var(--hover);color:var(--text)}.sec-chip[aria-current="true"]{background:var(--hover);color:var(--text)}
+  .section-note{margin-left:auto;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .srow[data-changed]>.srow-text>strong::after{content:"";display:inline-block;width:6px;height:6px;margin:0 0 1px 7px;border-radius:50%;background:var(--accent);vertical-align:middle}
+  .row-reset{display:inline-block;margin:4px 0 0;padding:0;border:0;background:transparent;color:var(--accent);font-size:11.5px;font-weight:600;cursor:pointer}.row-reset:hover{text-decoration:underline}.row-reset[hidden]{display:none}
+  .value[role="button"]{cursor:text;border-radius:7px;padding:3px 6px;margin-right:-6px;border:1px solid transparent}.value[role="button"]:hover{border-color:var(--line);background:var(--surface2);color:var(--text)}
+  .value-edit{width:54px;height:22px;box-sizing:border-box;padding:0 4px;border:1px solid var(--accent);border-radius:6px;background:var(--surface2);color:var(--text);font:inherit;font-size:12px;text-align:right;outline:none}
   .search-trigger{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;height:36px;margin:0;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--muted);font-size:12px;text-align:left}
   .search-trigger:hover:not(:disabled){border-color:var(--line2);color:var(--text)}.search-trigger:disabled{opacity:.5}
   .search-trigger svg{width:15px;height:15px;flex:0 0 15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
@@ -18038,8 +21209,9 @@ ${studioControlsCSS()}
   .head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px 14px 28px;flex:0 0 auto}
   .head h2{margin:0;font-size:21px;line-height:1.2;letter-spacing:-.45px}
   .head-tools{display:flex;align-items:center;gap:10px;min-width:0}
-  .notice{display:flex;align-items:center;gap:6px;min-width:0;font-size:11.5px;color:var(--muted)}.notice [data-id="status"]{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .save-indicator{color:#23a86b;font-size:13px}.notice[data-state="error"] .save-indicator{color:var(--text)}
+  .notice{display:flex;align-items:center;gap:6px;min-width:0;height:28px;padding:0 10px 0 8px;border-radius:999px;background:color-mix(in srgb,#23a86b 14%,transparent);color:#23a86b;font-size:12px;font-weight:600}.notice [data-id="status"]{min-width:0;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .notice[data-state="saving"]{background:color-mix(in srgb,#f5a524 16%,transparent);color:#d98c0a}.notice[data-state="error"]{background:color-mix(in srgb,#ff6b6b 16%,transparent);color:#e05252}
+  .save-indicator{font-size:13px;line-height:1}
   .close{flex:0 0 32px;display:grid;place-items:center;width:32px;height:32px;margin:0;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);line-height:0}
   .close svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
   .close:hover{background:var(--hover);color:var(--text)}
@@ -18052,19 +21224,21 @@ ${studioControlsCSS()}
   fieldset[data-preferences]:disabled fieldset[data-compact-preferences]{opacity:1}
   .group{display:grid;gap:10px;min-width:0}
   .section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:20px}
-  .section-label{display:flex;align-items:center;gap:9px;margin:0;font-size:13px;font-weight:650;line-height:20px;color:var(--text)}
-  .step{display:flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:20px;border-radius:50%;background:var(--hover);color:var(--text)}
+  .section-label{display:flex;align-items:center;gap:9px;margin:0;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:20px;color:var(--muted)}
+  .step{display:none}
   .step b{font-size:11px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums;text-box:trim-both cap alphabetic}
   .modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-  .mode-card{display:flex;align-items:center;gap:12px;min-width:0;padding:10px 12px 10px 10px;border:1px solid var(--line);border-radius:16px;background:var(--surface);cursor:pointer}
+  .mode-card{position:relative;display:flex;align-items:center;gap:12px;min-width:0;padding:10px 12px 10px 10px;border:1px solid var(--line);border-radius:14px;background:var(--surface);cursor:pointer}
+  .mode-card::after{content:"\\2713";position:absolute;top:10px;right:10px;width:18px;height:18px;border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:11px;font-weight:700;line-height:18px;text-align:center;opacity:0}.mode-card:has(input:checked)::after{opacity:1}
   .mode-card:hover{border-color:var(--line2)}.mode-card:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface));box-shadow:0 0 0 1px var(--accent)}
   .mode-card:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:3px}.mode-card:has(input:disabled){cursor:default}
   .mode-text{flex:1 1 auto;min-width:0;display:grid;gap:3px}.mode-text strong{font-size:13px;font-weight:650}.mode-text .small{margin:0;font-size:11px}
-  .mode-card input{flex:0 0 16px;width:16px;height:16px;margin:0;accent-color:var(--accent);cursor:inherit}.mode-card input:focus-visible{outline:none}
+  .mode-card input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:inherit}.mode-card input:focus-visible{outline:none}
   .mode-hint{margin:0;color:var(--muted);font-size:11.5px;line-height:1.5}
-  .mode-preview{flex:0 0 136px;display:block;width:136px;height:76.5px;overflow:hidden;border:1px solid var(--line);border-radius:9px;background:#3c4a33}
+  .mode-preview{flex:0 0 112px;display:block;width:112px;height:63px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface2)}
   .thumb{display:block;width:100%;height:100%}
-  .thumb .t-ui{fill:var(--surface);stroke:var(--line);stroke-width:.4}.thumb .t-sh{fill:#000;fill-opacity:.32}
+  .thumb .t-bg{fill:color-mix(in srgb,var(--text) 12%,var(--surface2))}.thumb .t-grid{fill:none;stroke:var(--text);stroke-opacity:.08;stroke-width:.6}
+  .thumb .t-ui{fill:var(--surface);stroke:var(--line2);stroke-width:.7}.thumb .t-sh{fill:#000;fill-opacity:.18}
   .thumb .t-soft{fill:color-mix(in srgb,var(--text) 12%,var(--surface))}.thumb .t-ink{fill:color-mix(in srgb,var(--text) 55%,var(--surface))}.thumb .t-strong{fill:color-mix(in srgb,var(--text) 86%,var(--surface))}
   .thumb .t-acc{fill:var(--accent)}.thumb .t-save{fill:color-mix(in srgb,var(--accent) 62%,var(--surface))}.thumb .t-on{fill:color-mix(in srgb,var(--accent) 26%,var(--surface));stroke:var(--accent);stroke-width:.7}.thumb .t-warn{fill:#f5a623}
   .thumb .t-plus{fill:none;stroke:#fff;stroke-width:.8;stroke-linecap:round}.thumb .t-foot{fill:#fff;fill-opacity:.6}
@@ -18076,16 +21250,21 @@ ${studioControlsCSS()}
   .small{display:block;margin-top:3px;color:var(--muted);font-size:11.5px;line-height:1.4}
   .togrow{cursor:pointer}
   .value{flex:0 0 auto;min-width:46px;text-align:right;white-space:nowrap;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .srow:has(>input[type="range"]+.value+.seg)>input[type="range"]{flex:0 1 150px;width:150px}
   .actions{display:flex;flex:0 0 auto;align-items:center;gap:8px}
   .stack{flex-direction:column;align-items:stretch;gap:10px}.stack-main{display:flex;align-items:center;gap:16px}.stack-line{display:flex;align-items:center;justify-content:space-between;gap:12px}
   .switch{position:relative;display:inline-block;width:36px;height:21px;flex:0 0 36px}
   .switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;z-index:2;cursor:pointer}.switch input:disabled{cursor:default}
-  .switch i{position:absolute;inset:0;border-radius:999px;background:var(--line2);transition:background-color 120ms ease}
-  .switch i::after{content:"";position:absolute;left:3px;top:3px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #00000024;transition:transform 120ms ease}
-  .switch input:checked+i{background:var(--accent)}.switch input:checked+i::after{transform:translateX(15px)}
+  /* The knob is painted by the track itself, so the two are always drawn together and the knob stays centred at
+     any zoom and on any half pixel the row happens to land on. */
+  .switch i{position:absolute;inset:0;border-radius:999px;background-color:var(--line2);
+    background-image:radial-gradient(circle,#fff 7.1px,rgba(255,255,255,0) 7.9px),radial-gradient(circle at 50% 58%,rgba(0,0,0,.2) 7px,rgba(0,0,0,0) 9.5px);
+    background-size:21px 21px;background-repeat:no-repeat;background-position:0 50%,0 50%;
+    transition:background-color 120ms ease,background-position 120ms ease}
+  .switch input:checked+i{background-color:var(--accent);background-position:100% 50%,100% 50%}
   .switch:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:3px;border-radius:999px}
   /* Text buttons: a fixed height, and the label trimmed to its cap height so it sits in the optical middle in any font. */
-  .reset,.primary,.ghost,.seg button,.picker-done,.picker-reset{display:inline-block;flex:0 0 auto;margin:0;line-height:1.2;white-space:nowrap;vertical-align:middle;text-box:trim-both cap alphabetic}
+  .reset,.primary,.ghost,.seg button,.picker-done,.picker-reset{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;margin:0;line-height:1.2;white-space:nowrap;vertical-align:middle;text-box:trim-both cap alphabetic}
   .reset{height:32px;padding:0 13px;border:1px solid var(--line);border-radius:9px;background:var(--surface2);color:var(--text);font-size:12px;font-weight:600}
   .shortcut{min-width:92px;text-align:center}.shortcut[data-recording]{border-color:var(--accent);color:var(--accent)}
   .doc{padding:14px 16px 16px;display:grid;gap:10px;user-select:text;-webkit-user-select:text}.doc p{margin:0;font-size:12.5px;line-height:1.55;color:var(--text)}.doc p.note{color:var(--muted);font-size:11.5px}
@@ -18111,7 +21290,7 @@ ${studioControlsCSS()}
   .preset-card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.preset-card:disabled{cursor:default}
   .preset-name{display:flex;align-items:flex-start;justify-content:space-between;gap:6px;padding:0 3px;font-size:12px;font-weight:650;line-height:1.3}.preset-name>span:first-child{min-width:0;overflow-wrap:anywhere}
   .preset-check{color:var(--accent)}.preset-card[aria-pressed="false"] .preset-check{visibility:hidden}
-  .preset-preview{display:block;width:100%;aspect-ratio:16/9;overflow:hidden;border:1px solid var(--line);border-radius:9px;background:#3c4a33}
+  .preset-preview{display:block;width:100%;aspect-ratio:16/9;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface2)}
   .preset-feedback{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px;color:var(--muted);font-size:11.5px}
   .saved{display:grid;gap:9px;padding:11px 14px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface2)}
   .saved-row{display:flex;align-items:center;gap:8px;min-height:28px}.saved-row strong{font-size:12px;font-weight:650}
@@ -18130,6 +21309,10 @@ ${studioControlsCSS()}
   .profile-list{display:grid;gap:8px}.profile-editor{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
   .backup-review{padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface2)}.backup-review strong{font-size:12px}.backup-review p{margin:4px 0 10px;font-size:11.5px;color:var(--muted)}
   .themes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+  .themes[hidden],.rows>[hidden]{display:none!important}.srow.wrap{flex-wrap:wrap;row-gap:10px}.srow.wrap>.srow-text{flex-basis:220px}
+  .schedule-status{color:var(--text);font-weight:600}.schedule-status::before{content:"";display:inline-block;width:7px;height:7px;margin:0 7px 1px 0;border-radius:50%;background:var(--accent);vertical-align:middle}
+  .times{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:8px}.time{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11.5px;cursor:pointer}
+  .time input{height:32px;min-width:96px;padding:0 8px;border:1px solid var(--line);border-radius:9px;background:var(--surface2);color:var(--text);font:inherit;font-size:12px;font-variant-numeric:tabular-nums}.time input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
   .theme{position:relative;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;min-width:0;margin:0;text-align:left;gap:9px;padding:10px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);box-shadow:0 2px 3px #0000000b}
   .theme:hover{border-color:var(--line2)}.theme[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 28%,transparent),inset 0 0 0 1px var(--accent)}
   .theme[aria-pressed="true"]::after{content:"✓";position:absolute;right:12px;top:12px;width:21px;height:21px;display:grid;place-items:center;border:2px solid var(--surface);border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:11px;font-weight:800}
@@ -18178,32 +21361,78 @@ ${studioControlsCSS()}
   ${studioButtonMotionCSS('.primary,.reset,.close,.picker-done')}
   @keyframes studio-modal-enter{from{opacity:0;transform:translate(-50%,-50%) scale(.985)}to{opacity:1;transform:translate(round(-50%,1px),round(-50%,1px)) scale(1)}}
   @keyframes studio-setting-flash{0%,55%{box-shadow:0 0 0 2px var(--accent)}100%{box-shadow:0 0 0 2px transparent}}
-  @media(max-width:760px){.panel{width:calc(100vw - 24px);height:min(660px,calc(100dvh - 24px));grid-template-columns:184px minmax(0,1fr)}.head{padding:16px 14px 12px 20px}.body{padding:4px 20px 20px}.sidebar{padding-inline:10px}.notice [data-id="status"]{display:none}.srow{flex-wrap:wrap;row-gap:8px}.srow:has(>input[type="range"]) .srow-text,.srow:has(>.actions) .srow-text,.srow:has(>.swatches) .srow-text{flex-basis:100%}.srow input[type="range"]{flex:1 1 160px;width:auto}.stack-main{flex-wrap:wrap;row-gap:8px}.modes{grid-template-columns:1fr}.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.themes{gap:8px}}
-  @media(max-width:580px){.panel{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);border-radius:17px}.sidebar{gap:8px;padding:10px 12px;border-right:0;border-bottom:1px solid var(--line)}.brand{display:none}.nav{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}.nav-item{flex-direction:column;justify-content:center;gap:6px;height:auto;padding:8px 3px;font-size:10.5px;text-align:center}.sidebar-footer{padding:0 2px}.head{padding:14px 12px 10px 16px}.head h2{font-size:19px}.body{padding:4px 16px 18px}.theme{padding:8px;border-radius:12px}.preview{height:64px}.theme-desc{font-size:9.5px}.theme-name{font-size:11px}.swatches{gap:7px}}
+  .reset.primary{background:var(--accent);border-color:transparent;color:var(--on-accent)}.reset.primary:hover:not(:disabled){background:var(--accent);color:var(--on-accent);filter:brightness(1.08)}.reset.primary:active:not(:disabled){filter:brightness(.96)}.reset.primary:disabled{opacity:.6}
+  .card.doc ul{margin:0;padding-left:18px}.card.doc li{margin:4px 0}
+  .bug-backdrop{position:fixed;inset:0;z-index:5;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.42);pointer-events:auto}
+  .bug-dialog{--accent:var(--wme-studio-accent,#0099ff);--on-accent:var(--wme-studio-on-accent,#fff);--surface:var(--wme-studio-surface,#fff);--surface2:var(--wme-studio-surface-2,#f5f7fa);--text:var(--wme-studio-text,#202830);--muted:var(--wme-studio-text-muted,#72767d);--line:var(--wme-studio-border,#d5d7db);--hover:var(--wme-studio-hover,#e8eaed);
+    position:relative;width:min(560px,100%);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;margin:0;padding:0;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);box-shadow:0 24px 70px rgba(0,0,0,.4);font:13px/1.45 var(--ws-font,system-ui,sans-serif);overflow:hidden;animation:bug-in 160ms cubic-bezier(.2,.8,.2,1)}
+  @keyframes bug-in{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+  .bug-head{display:flex;gap:12px;align-items:flex-start;padding:18px 14px 10px 20px}.bug-head>div{flex:1 1 auto;min-width:0}.bug-head .bug-close{margin:-4px 0 0 auto}.bug-head h3{margin:0;font-size:16px;font-weight:700}.bug-head p{margin:3px 0 0;color:var(--muted);font-size:12px}
+  .bug-close{flex:none;width:30px;height:30px;padding:0;border:0;border-radius:9px;background:transparent;color:var(--muted);display:grid;place-items:center}.bug-close:hover{background:var(--hover);color:var(--text)}.bug-close svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+  .bug-body{display:flex;flex-direction:column;gap:12px;padding:4px 20px 8px;overflow:auto;min-height:0}
+  .bug-field{display:flex;flex-direction:column;gap:5px;min-width:0}.bug-field>span{font-size:12px;font-weight:600}.bug-field em{color:var(--accent);font-style:normal}.bug-field small{color:var(--muted);font-weight:500}
+  .bug-field textarea,.bug-field input,.bug-field select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:var(--text);font:inherit;resize:vertical;min-width:0}
+  .bug-field textarea:focus,.bug-field input:focus,.bug-field select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+  .bug-field.invalid textarea{border-color:#ff6b6b}
+  .bug-select{position:relative;min-width:0}
+  .bug-select-button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;height:36px;margin:0;padding:0 10px 0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:var(--text);font:inherit;text-align:left;cursor:pointer}
+  .bug-select-button span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bug-select-button:hover,.bug-select-button[aria-expanded="true"]{border-color:var(--accent)}.bug-select-button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+  .bug-select-button svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
+  .bug-select-button[aria-expanded="true"] svg{transform:rotate(180deg)}
+  .bug-select-menu{position:fixed;z-index:6;max-height:248px;overflow-y:auto;box-sizing:border-box;padding:5px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 14px 34px rgba(0,0,0,.28)}
+  .bug-select-menu[hidden]{display:none}
+  .bug-option{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;margin:0;padding:0 12px 0 8px;border:0;border-radius:8px;background:transparent;color:var(--text);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}
+  .bug-option::before{content:"";flex:none;width:14px;text-align:center;color:var(--accent);font-weight:700}
+  .bug-option[aria-selected="true"]{font-weight:700}.bug-option[aria-selected="true"]::before{content:"\\2713"}
+  .bug-option:hover,.bug-option:focus-visible{background:var(--surface2);outline:none}
+  .bug-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:520px){.bug-two{grid-template-columns:1fr}}
+  .bug-shot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.bug-shot-name{color:var(--muted);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .bug-shot-clear{width:26px;height:26px;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--muted);font-size:12px}
+  .bug-preview{max-width:100%;max-height:160px;border:1px solid var(--line);border-radius:10px;object-fit:contain;background:var(--surface2);align-self:flex-start}
+  .bug-details summary{cursor:pointer;color:var(--muted);font-size:12px}.bug-details pre{margin:8px 0 0;max-height:160px;overflow:auto;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+  .bug-error{margin:0;padding:8px 10px;border-radius:10px;background:rgba(255,107,107,.14);color:#ff6b6b;font-size:12px}
+  .bug-foot{display:flex;align-items:center;gap:8px;padding:12px 20px 18px}.bug-note{flex:1;color:var(--muted);font-size:11.5px;min-width:0}
+  .bug-done{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px;text-align:center;background:var(--surface);animation:bug-in 180ms ease}
+  .bug-as{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--text);font-size:12px;line-height:1.35}.bug-as svg{flex:none;width:15px;height:15px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.bug-as b{font-weight:700}
+  .fix-notice{--accent:var(--wme-studio-accent,#0099ff);--on-accent:var(--wme-studio-on-accent,#fff);--surface:var(--wme-studio-surface,#fff);--surface2:var(--wme-studio-surface-2,#f5f7fa);--text:var(--wme-studio-text,#202830);--muted:var(--wme-studio-text-muted,#72767d);--line:var(--wme-studio-border,#d5d7db);--hover:var(--wme-studio-hover,#e8eaed);
+    position:fixed;left:50%;bottom:44px;transform:translateX(-50%);z-index:4;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;width:min(460px,calc(100vw - 32px));padding:14px 16px 12px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);box-shadow:0 18px 50px rgba(0,0,0,.32);font:13px/1.4 var(--ws-font,system-ui,sans-serif);pointer-events:auto;animation:bug-in 220ms cubic-bezier(.2,.8,.2,1)}
+  .fix-icon{grid-row:1/3;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center}.fix-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  .fix-text strong{display:block;font-size:14px;line-height:1.3}.fix-list{display:flex;flex-direction:column;gap:6px;margin-top:5px;color:var(--muted);font-size:12.5px}
+  .fix-item q{quotes:"\\201C" "\\201D";color:var(--text)}.fix-item .fix-version{color:var(--text);font-weight:600}.fix-item .fix-note{display:block;margin-top:2px;padding-left:8px;border-left:2px solid var(--line);font-style:italic}
+  .fix-actions{grid-column:2;display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+  .bug-done-icon{width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:26px;font-weight:700;margin-bottom:6px}.bug-done h3{margin:0;font-size:17px}.bug-done p{margin:0 0 14px;color:var(--muted);max-width:360px}
+  @media(max-width:760px){.panel{width:calc(100vw - 24px);height:min(660px,calc(100dvh - 24px));grid-template-columns:64px minmax(0,1fr)}.head{padding:16px 14px 12px 20px}.chips{padding-inline:20px}.body{padding:4px 20px 20px}.sidebar{align-items:center;gap:8px;padding:14px 0 12px}.brand{padding:0}.brand-text{display:none}.search-trigger{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.search-trigger span{display:none}.nav{width:100%;justify-items:center;gap:4px}.nav-group{display:none}.nav-item{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.nav-item span{display:none}.nav-item .nav-badge{display:grid;position:absolute;top:4px;right:4px;min-width:8px;height:8px;padding:0;font-size:0}.nav-item{position:relative}.sidebar-footer{padding:0}.power-text{display:none}.notice{width:28px;padding:0;justify-content:center}.notice [data-id="status"]{display:none}.srow{flex-wrap:wrap;row-gap:8px}.srow:has(>input[type="range"]) .srow-text,.srow:has(>.actions) .srow-text,.srow:has(>.swatches) .srow-text{flex-basis:100%}.srow input[type="range"]{flex:1 1 160px;width:auto}.stack-main{flex-wrap:wrap;row-gap:8px}.modes{grid-template-columns:1fr}.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.themes{gap:8px}}
+  @media(max-width:580px){.panel{border-radius:17px}.head{padding:14px 12px 10px 16px}.head h2{font-size:19px}.body{padding:4px 16px 18px}.theme{padding:8px;border-radius:12px}.preview{height:64px}.theme-desc{font-size:9.5px}.theme-name{font-size:11px}.swatches{gap:7px}}
   @media(prefers-reduced-motion:reduce){.panel.open{animation:none}*,*::before,*::after{transition:none!important}}
 </style>
 <div class="backdrop" hidden aria-hidden="true"></div>
 <section class="panel" role="dialog" aria-modal="true" aria-label="WME Studio settings" tabindex="-1">
   <aside class="sidebar">
-    <div class="brand"><div class="logo">${studioIcon}</div><b data-ws-keep>WME Studio</b></div>
+    <div class="brand"><div class="logo">${studioIcon}</div><span class="brand-text"><b data-ws-keep>WME Studio</b><span class="brand-sub"><span class="version" data-ws-keep>v${USERSCRIPT_VERSION}</span> · <a class="brand-link" href="https://greasyfork.org/scripts/599569/versions" target="_blank" rel="noopener" data-id="whats-new">What's new</a></span></span></div>
     <button class="search-trigger" type="button" data-id="commands" aria-label="Search settings and commands"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span>Search settings</span></button>
     <nav class="nav" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+      <div class="nav-group" aria-hidden="true">Workspace</div>
       <button class="nav-item" type="button" role="tab" id="studio-tab-layout" data-page-target="layout" aria-controls="studio-page-layout"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11M17 13v3"/></svg><span>Layout</span></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-look" data-page-target="look" aria-controls="studio-page-look"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7c-.8-.5-.5-1.8.5-1.8H17a4 4 0 0 0 4-4A8.5 8.5 0 0 0 12 3Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="11" cy="7" r=".8"/><circle cx="15.5" cy="8" r=".8"/></svg><span>Look</span></button>
+      <div class="nav-group" aria-hidden="true">Editor</div>
       <button class="nav-item" type="button" role="tab" id="studio-tab-map" data-page-target="map" aria-controls="studio-page-map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg><span>Map</span></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-panels" data-page-target="panels" aria-controls="studio-page-panels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7l-5 3v-3H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 9h10M7 13h6"/></svg><span>Panels</span></button>
-      <button class="nav-item" type="button" role="tab" id="studio-tab-studio" data-page-target="studio" aria-controls="studio-page-studio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span data-ws-keep>Studio</span></button>
+      <div class="nav-group" aria-hidden="true" data-ws-keep>Studio</div>
+      <button class="nav-item" type="button" role="tab" id="studio-tab-studio" data-page-target="studio" aria-controls="studio-page-studio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>General</span></button>
+      <button class="nav-item" type="button" role="tab" id="studio-tab-bug" data-page-target="bug" aria-controls="studio-page-bug"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7a4 4 0 0 1 8 0v1a4 4 0 0 1-8 0V7Z"/><path d="M6 12h12M5 17c1.5-.8 2.5-2.5 2.5-4.5M19 17c-1.5-.8-2.5-2.5-2.5-4.5M8 12v4a4 4 0 0 0 8 0v-4M10 5 8 3M14 5l2-2"/></svg><span>Report a bug</span><b class="nav-badge" data-id="bug-badge" hidden></b></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-developers" data-page-target="developers" aria-controls="studio-page-developers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg><span>Developers</span></button>
     </nav>
-    <div class="sidebar-footer"><label class="power"><span class="power-text"><span>Studio enabled</span><span class="version" data-ws-keep>v${USERSCRIPT_VERSION}</span></span><span class="switch"><input data-id="enabled" type="checkbox" aria-label="Enable WME Studio"><i></i></span></label></div>
+    <div class="sidebar-footer"><label class="power"><span class="power-text"><span>Studio enabled</span><span class="small-note">Pause without uninstalling</span></span><span class="switch"><input data-id="enabled" type="checkbox" aria-label="Enable WME Studio"><i></i></span></label></div>
   </aside>
   <div class="workspace">
-    <header class="head"><h2 data-id="page-title">Layout</h2><div class="head-tools"><div class="notice" data-state="saved"><span class="save-indicator" aria-hidden="true">✓</span><span data-id="status" role="status" aria-live="polite">Changes save automatically</span></div><button class="close" type="button" aria-label="Close settings"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2l10 10M12 2 2 12"/></svg></button></div></header>
+    <header class="head"><div class="head-text"><h2 data-id="page-title">Layout</h2><p class="page-sub" data-id="page-sub"></p></div><div class="head-tools"><div class="notice" data-state="saved"><span class="save-indicator" aria-hidden="true">✓</span><span data-id="status" role="status" aria-live="polite">Changes save automatically</span></div><button class="close" type="button" aria-label="Close settings"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2l10 10M12 2 2 12"/></svg></button></div></header>
+    <nav class="chips" data-id="chips" aria-label="Sections on this page" hidden></nav>
     <div class="body">
       <section class="settings-page" id="studio-page-layout" data-page="layout" role="tabpanel" aria-labelledby="studio-tab-layout"><fieldset data-preferences>
         <div class="group"><h3 class="section-label" id="studio-workspace-mode-label"><span class="step" aria-hidden="true"><b>1</b></span>Mode</h3><div class="modes" role="radiogroup" aria-labelledby="studio-workspace-mode-label">
-          <label class="mode-card"><span class="mode-preview" aria-hidden="true">${layoutThumb('standard')}</span><span class="mode-text"><strong>Standard</strong><span class="small">Keep WME’s usual header, rails and panel layout.</span></span><input data-id="workspaceMode-standard" type="radio" name="workspace-mode" value="standard" aria-label="Standard workspace"></label>
-          <label class="mode-card"><span class="mode-preview compact" aria-hidden="true">${layoutThumb('floating')}</span><span class="mode-text"><strong>Floating compact</strong><span class="small">Float the controls as movable glass islands on desktop.</span></span><input data-id="workspaceMode-compact" type="radio" name="workspace-mode" value="compact" aria-label="Floating compact workspace"></label>
+          <label class="mode-card"><span class="mode-preview" aria-hidden="true">${layoutThumb('standard')}</span><span class="mode-text"><strong>Standard</strong><span class="small">WME’s own layout, restyled. Panels dock at the left.</span></span><input data-id="workspaceMode-standard" type="radio" name="workspace-mode" value="standard" aria-label="Standard workspace"></label>
+          <label class="mode-card"><span class="mode-preview compact" aria-hidden="true">${layoutThumb('floating')}</span><span class="mode-text"><strong>Floating</strong><span class="small">Islands over the map. Move them, split them, hide them.</span></span><input data-id="workspaceMode-compact" type="radio" name="workspace-mode" value="compact" aria-label="Floating compact workspace"></label>
         </div></div>
         <div class="group"><div class="section-head"><h3 class="section-label"><span class="step" aria-hidden="true"><b>2</b></span>Starting layout</h3><p class="preset-summary"><span>Current layout</span><strong data-id="preset-current">Balanced</strong></p></div>
           <div class="preset-grid">${globalThis.WMEStudioCompactLayout.presets.map(preset=>`<button class="preset-card" type="button" data-preset="${preset.id}" aria-pressed="false" title="${preset.description}"><span class="preset-preview" aria-hidden="true">${layoutThumb(preset.id)}</span><span class="preset-name"><span>${preset.name}</span><span class="preset-check" aria-hidden="true">✓</span></span></button>`).join('')}</div>
@@ -18222,25 +21451,34 @@ ${studioControlsCSS()}
             <div class="srow" id="studio-header-width"><div class="srow-text"><label for="studio-header-extension"><strong>Header width</strong></label><span class="small">Extend the header evenly on both sides. Drag to reposition it; full page width can move vertically.</span></div><input id="studio-header-extension" data-id="compactHeaderWidth" type="range" min="0" max="100" step="1" value="0" aria-label="Header width"><output class="value" data-id="compactHeaderWidth-value" for="studio-header-extension">0%</output></div>
             <div class="srow"><div class="srow-text"><strong>HUD size</strong><span class="small">Makes the header, the floating islands and the panels smaller. 100% is the normal size.</span></div><input data-id="hudScale" type="range" min="70" max="100" step="5" value="100" aria-label="HUD size"><span class="value" data-id="hudScale-value">100%</span></div>
           </div></fieldset>
-          <div class="card"><div class="srow"><div class="srow-text"><strong>Arrange layout</strong><span class="small">Move islands and set default opening positions for the side panel, requests and Messages.</span></div><button class="primary" data-id="compactLayoutEditor" data-action="arrange" type="button"><span data-arrange-label>Arrange</span></button></div></div>
+          <div class="card"><div class="srow"><div class="srow-text"><strong>Arrange islands</strong><span class="small">Drag islands and controls on the map itself. Your layout is saved as you go.</span></div><button class="primary" data-id="compactLayoutEditor" data-action="arrange" type="button"><span data-arrange-label>Open Arrange</span></button></div></div>
         </div>
       </fieldset></section>
       <section class="settings-page" id="studio-page-look" data-page="look" role="tabpanel" aria-labelledby="studio-tab-look" hidden><fieldset data-preferences>
-        <div class="group"><h3 class="section-label">Theme</h3><div class="themes" role="group" aria-label="Theme">
+        <div class="group"><div class="section-head"><h3 class="section-label">Theme</h3><span class="section-note" data-id="theme-note" hidden></span></div><div class="themes" role="group" aria-label="Theme" data-id="theme-cards">
           <button class="theme" type="button" data-setting="theme" data-value="light"><span class="preview light"><i></i></span><span class="theme-name">Light</span><span class="theme-desc">Bright and clear</span></button>
           <button class="theme" type="button" data-setting="theme" data-value="dark"><span class="preview dark"><i></i></span><span class="theme-name">Dark</span><span class="theme-desc">Balanced contrast</span></button>
           <button class="theme" type="button" data-setting="theme" data-value="black"><span class="preview black"><i></i></span><span class="theme-name">Full black</span><span class="theme-desc">Pure black surfaces</span></button>
-        </div></div>
+        </div>
+          <div class="card rows" data-id="dark-schedule">
+            <div class="srow wrap" data-row="themeSchedule"><div class="srow-text"><strong>Dark at night</strong><span class="small">Switch from Light to a dark theme in the evening and back in the morning.</span><span class="small schedule-status" data-id="themeSchedule-status" hidden></span><span class="small" data-id="themeSchedule-sun" hidden></span></div><div class="seg" role="group" aria-label="Dark at night"><button type="button" data-setting="themeSchedule" data-value="off">Off</button><button type="button" data-setting="themeSchedule" data-value="sun">Sun</button><button type="button" data-setting="themeSchedule" data-value="custom">Hours</button></div></div>
+            <div class="srow wrap" data-when="themeSchedule"><div class="srow-text"><strong>Dark theme to use</strong></div><div class="seg" role="group" aria-label="Dark theme to use"><button type="button" data-setting="themeNight" data-value="dark">Dark</button><button type="button" data-setting="themeNight" data-value="black">Full black</button></div></div>
+            <div class="srow wrap" data-when="themeSchedule-custom"><div class="srow-text"><strong>Switch times</strong><span class="small">When dark starts and when Light returns.</span></div><div class="times"><label class="time"><span>Dark</span><input type="time" data-time="themeNightStart" required></label><label class="time"><span>Light</span><input type="time" data-time="themeDayStart" required></label></div></div>
+          </div>
+        </div>
         <div class="group"><h3 class="section-label">Accent and shape</h3><div class="card rows">
-          <div class="srow" data-row="accent"><div class="srow-text"><strong>Active controls and highlights</strong><span class="small">Choose a preset or your own color.</span></div><div class="swatches">
+          <div class="srow" data-row="accent"><div class="srow-text"><strong>Accent color</strong><span class="small">Active controls, highlights and the Studio button.</span></div><div class="swatches">
             <button class="swatch" style="background:#0099ff" type="button" data-setting="accent" data-value="#0099ff" aria-label="Waze blue"></button><button class="swatch" style="background:#00bba7" type="button" data-setting="accent" data-value="#00bba7" aria-label="Teal"></button><button class="swatch" style="background:#9878f0" type="button" data-setting="accent" data-value="#9878f0" aria-label="Violet"></button><button class="swatch" style="background:#f5aa3c" type="button" data-setting="accent" data-value="#f5aa3c" aria-label="Amber"></button><span class="custom"><span class="value" data-id="accent-value">#0099FF</span><button class="colorshell" data-id="accent-picker-open" type="button" aria-label="Custom accent color" aria-controls="studio-color-picker" aria-expanded="false"></button><input data-id="accent" type="hidden" value="#0099ff"></span>
           </div></div>
           <div class="srow" data-row="corners"><div class="srow-text"><strong>Corners</strong><span class="small">Panel and control shape.</span></div><div class="seg" role="group" aria-label="Corners"><button type="button" data-setting="corners" data-value="flat">Flat</button><button type="button" data-setting="corners" data-value="soft">Soft</button></div></div>
           <div class="srow"><div class="srow-text"><strong>Font size</strong><span class="small">Makes text in the header, menus and panels smaller or larger without resizing them. 100% is the normal size.</span></div><input data-id="fontScale" type="range" min="85" max="120" step="5" value="100" aria-label="Font size"><span class="value" data-id="fontScale-value">100%</span></div>
         </div></div>
         <div class="group"><h3 class="section-label">Comfort</h3><div class="card rows">
-          <div class="srow"><div class="srow-text"><strong>Eye saver</strong><span class="small">Warmer colors across the editor.</span></div><input data-id="eyeSaver" type="range" min="0" max="100" step="5" value="0" aria-label="Eye saver strength"><span class="value" data-id="eyeSaver-value">Off</span></div>
+          <div class="srow" data-row="eyeSaverSchedule"><div class="srow-text"><strong>Eye saver</strong><span class="small" data-id="eyeSaver-hint">Warmer colors across the editor.</span><span class="small schedule-status" data-id="eyeSaverSchedule-status" hidden></span><span class="small" data-id="eyeSaverSchedule-sun" hidden></span></div><input data-id="eyeSaver" type="range" min="0" max="100" step="5" value="0" aria-label="Eye saver strength"><span class="value" data-id="eyeSaver-value">Off</span><div class="seg" role="group" aria-label="Eye saver schedule" title="Always, or only at night: by the sun, or between your own hours"><button type="button" data-setting="eyeSaverSchedule" data-value="off">Always</button><button type="button" data-setting="eyeSaverSchedule" data-value="sun">Sun</button><button type="button" data-setting="eyeSaverSchedule" data-value="custom">Hours</button></div></div>
+          <div class="srow wrap" data-when="eyeSaverSchedule-custom"><div class="srow-text"><strong>Active hours</strong><span class="small">Warm colors between these times.</span></div><div class="times"><label class="time"><span>From</span><input type="time" data-time="eyeSaverStart" required></label><label class="time"><span>To</span><input type="time" data-time="eyeSaverEnd" required></label></div></div>
+          <label class="srow togrow" data-when="eyeSaverSchedule"><span class="srow-text"><strong>Fade in and out</strong><span class="small">Warms up and cools down over 30 minutes.</span></span><span class="switch"><input data-id="eyeSaverFade" type="checkbox"><i></i></span></label>
           <label class="srow togrow"><span class="srow-text"><strong>Interface animations</strong><span class="small">Smooth panel and menu animations.</span></span><span class="switch"><input data-id="motion" type="checkbox"><i></i></span></label>
+          <label class="srow togrow" data-row="customScrollbars"><span class="srow-text"><strong>Custom scrollbars</strong><span class="small">Slim, rounded scrollbars in your theme colors.</span></span><span class="switch"><input data-id="customScrollbars" type="checkbox"><i></i></span></label>
           <fieldset data-compact-preferences><div class="srow"><div class="srow-text"><strong>Glass opacity</strong><span class="small">Adjust idle glass surfaces without fading their text or icons.</span></div><input data-id="compactIslandOpacity" type="range" min="20" max="100" step="5" value="60" aria-label="Compact island glass opacity"><span class="value" data-id="compactIslandOpacity-value">60%</span></div></fieldset>
         </div></div>
         <div class="group"><h3 class="section-label">Add-ons</h3><div class="card rows">
@@ -18257,6 +21495,9 @@ ${studioControlsCSS()}
           <div class="srow"><div class="srow-text"><strong>GPS points opacity</strong><span class="small">100% keeps GPS points unchanged. Lower values make them more transparent.</span></div><input data-id="gpsOpacity" type="range" min="0" max="100" step="5" value="100" aria-label="GPS points opacity"><span class="value" data-id="gpsOpacity-value">100%</span></div>
           <label class="srow togrow"><span class="srow-text"><strong>GPS points below roads</strong><span class="small">Keep road segments above GPS points.</span></span><span class="switch"><input data-id="gpsBelowRoads" type="checkbox"><i></i></span></label>
         </div></div>
+        <div class="group"><h3 class="section-label">Right-click</h3><div class="card rows">
+          <label class="srow togrow" data-row="contextMenu"><span class="srow-text"><strong>Studio right-click menu</strong><span class="small">Right-click the map for coordinates, links, selection and editor actions, and Studio shortcuts. Shift + right-click opens the browser menu. While on, it is used instead of the RightClick Functions menu.</span></span><span class="switch"><input data-id="contextMenu" type="checkbox"><i></i></span></label>
+        </div></div>
       </fieldset></section>
       <section class="settings-page" id="studio-page-panels" data-page="panels" role="tabpanel" aria-labelledby="studio-tab-panels" hidden><fieldset data-preferences>
         <div class="group"><h3 class="section-label">Requests</h3><div class="card rows">
@@ -18272,11 +21513,26 @@ ${studioControlsCSS()}
       <section class="settings-page" id="studio-page-studio" data-page="studio" role="tabpanel" aria-labelledby="studio-tab-studio" hidden><div class="page-stack">
         <div class="group"><h3 class="section-label">General</h3><div class="card rows">
           <div class="srow" data-row="language"><div class="srow-text"><strong>Language</strong><span class="small">Language of Studio's own menus and messages.</span></div><div class="language" data-id="language-control"><button class="language-button" data-id="language" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Language"><span data-id="language-value"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="language-menu" data-id="language-menu" role="listbox" aria-label="Language" hidden></div></div></div>
+          <div class="srow" data-row="tour"><div class="srow-text"><strong>What's new</strong><span class="small">A short tour of what this version of Studio can do.</span></div><div class="actions"><button class="reset" data-id="tour" type="button">Show the tour</button></div></div>
           <div class="srow" data-row="shortcut"><div class="srow-text"><strong>Command palette shortcut</strong><span class="small" data-id="shortcut-hint">Opens the search for settings and commands from anywhere in the editor.</span></div><div class="actions"><button class="reset" data-id="shortcut-default" type="button" hidden>Default</button><button class="reset shortcut" data-id="shortcut" type="button" aria-label="Change shortcut"></button></div></div>
         </div></div>
         <div class="group"><h3 class="section-label">Your settings</h3><div class="card rows">
           <div class="srow stack" data-id="backup-tools"><div class="stack-main"><div class="srow-text"><strong>Backup & restore</strong><span class="small">Export Studio settings, layouts, panel sizes and saved workspaces. Waze edits, account data and saved UR pills are not included.</span></div><div class="actions"><button class="reset" data-id="backup-choose" type="button">Import backup</button><button class="reset" data-id="backup-export" type="button">Export backup</button></div></div><input data-id="backup-file" type="file" accept=".json,application/json" hidden><div class="backup-review" data-id="backup-review" hidden><strong>Review import</strong><p data-id="backup-summary"></p><div class="feature-actions"><button class="reset" data-id="backup-apply" type="button">Replace settings & layouts</button><button class="reset" data-id="backup-cancel" type="button">Cancel</button></div></div><div class="stack-line"><span class="feature-feedback" data-id="backup-feedback" role="status" aria-live="polite">Import replaces your Studio settings and saved workspaces. You can undo it in this session.</span><button class="reset" data-id="backup-undo" type="button" hidden>Undo import</button></div></div>
           <div class="srow"><div class="srow-text"><strong>Start with the defaults</strong><span class="small">Restore Studio’s default appearance and layout settings.</span></div><div class="actions"><button class="reset" data-id="reset" type="button">Reset settings</button></div></div>
+        </div></div>
+      </div></section>
+      <section class="settings-page" id="studio-page-bug" data-page="bug" role="tabpanel" aria-labelledby="studio-tab-bug" hidden><div class="page-stack">
+        <div class="group"><h3 class="section-label">Something not right?</h3><div class="card rows">
+          <div class="srow" data-row="bugReport"><div class="srow-text"><strong>Report a bug</strong><span class="small">Tell the author what went wrong. Your report includes your Studio version, settings, the last errors Studio caught and your Waze username, so you can be told when it is fixed. Never your edits.</span></div><div class="actions"><button class="reset primary" data-id="bug-report" type="button">Report a bug</button></div></div>
+          <div class="srow" data-row="bugFixes" hidden><div class="srow-text"><strong>Fixed reports</strong><span class="small" data-id="bug-fixes-text">When a report of yours is fixed, a note shows up here in the editor.</span></div><div class="actions"><button class="reset" data-id="bug-check" type="button">Check now</button></div></div>
+          <div class="srow"><div class="srow-text"><strong>Copy the details instead</strong><span class="small">Copies the same technical details as text, for a forum post or a message.</span></div><div class="actions"><button class="reset" data-id="bug-copy" type="button">Copy report</button></div></div>
+        </div></div>
+        <div class="group"><h3 class="section-label">Before you report</h3><div class="card doc">
+          <ul>
+            <li><strong>Reload the editor once.</strong> Most odd layouts come from the editor and Studio starting in a different order.</li>
+            <li><strong>Try with other scripts paused.</strong> If the problem goes away, say which script was on.</li>
+            <li><strong>Add a screenshot.</strong> A picture of the problem is worth a paragraph.</li>
+          </ul>
         </div></div>
       </div></section>
       <section class="settings-page" id="studio-page-developers" data-page="developers" role="tabpanel" aria-labelledby="studio-tab-developers" hidden><div class="page-stack">
@@ -18455,7 +21711,32 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       <div class="picker-foot"><button class="picker-reset" data-id="picker-reset" type="button">Waze blue</button><button class="picker-done" data-id="picker-done" type="button">Done</button></div>
     </div>
   </div>
-</section>`;
+</section>
+<div class="bug-backdrop" data-id="bug-backdrop" hidden>
+  <form class="bug-dialog" data-id="bug-dialog" role="dialog" aria-modal="true" aria-labelledby="bug-title" novalidate>
+    <div class="bug-head"><div><h3 id="bug-title">Report a bug</h3><p>It goes straight to the author of WME Studio.</p></div><button class="bug-close" type="button" data-id="bug-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="bug-body">
+      <div class="bug-as" data-id="bug-as" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span data-id="bug-as-text"></span></div>
+      <label class="bug-field"><span>What happened? <em>*</em></span><textarea data-id="bug-what" rows="3" maxlength="2000" placeholder="For example: after I moved the zoom buttons to the left, the + menu opens under the header."></textarea></label>
+      <div class="bug-two">
+        <div class="bug-field"><span id="bug-where-label">Where</span><div class="bug-select" data-id="bug-category-control"><button class="bug-select-button" type="button" data-id="bug-category" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="bug-where-label bug-category-value"><span id="bug-category-value" data-id="bug-category-value">Floating mode and islands</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="bug-select-menu" data-id="bug-category-menu" role="listbox" aria-labelledby="bug-where-label" hidden><button class="bug-option" type="button" role="option" data-value="layout" aria-selected="true">Floating mode and islands</button><button class="bug-option" type="button" role="option" data-value="arrange" aria-selected="false">Arrange</button><button class="bug-option" type="button" role="option" data-value="theme" aria-selected="false">Theme and colors</button><button class="bug-option" type="button" role="option" data-value="panels" aria-selected="false">Panels and windows</button><button class="bug-option" type="button" role="option" data-value="menu" aria-selected="false">Right-click menu</button><button class="bug-option" type="button" role="option" data-value="addons" aria-selected="false">Another script</button><button class="bug-option" type="button" role="option" data-value="speed" aria-selected="false">Speed</button><button class="bug-option" type="button" role="option" data-value="other" aria-selected="false">Something else</button></div></div></div>
+        <label class="bug-field"><span>Another way to reach you <small>(optional)</small></span><input data-id="bug-contact" type="text" maxlength="120" placeholder="Forum name or email"></label>
+      </div>
+      <label class="bug-field"><span>Steps to see it again <small>(optional)</small></span><textarea data-id="bug-steps" rows="2" maxlength="2000" placeholder="1. Open Arrange  2. …"></textarea></label>
+      <div class="bug-shot"><button class="reset" type="button" data-id="bug-shot-pick">Add a screenshot</button><input data-id="bug-shot-file" type="file" accept="image/*" hidden><span class="bug-shot-name" data-id="bug-shot-name">Optional. You can also paste or drop an image here.</span><button class="bug-shot-clear" type="button" data-id="bug-shot-clear" hidden aria-label="Remove screenshot">✕</button></div>
+      <img class="bug-preview" data-id="bug-preview" alt="" hidden>
+      <details class="bug-details"><summary>What else is sent</summary><pre data-id="bug-diag"></pre></details>
+      <p class="bug-error" data-id="bug-error" role="alert" hidden></p>
+    </div>
+    <div class="bug-foot"><span class="bug-note" data-id="bug-note"></span><button class="reset" type="button" data-id="bug-cancel">Cancel</button><button class="reset primary" type="submit" data-id="bug-send">Send report</button></div>
+    <div class="bug-done" data-id="bug-done" hidden><div class="bug-done-icon">✓</div><h3>Thank you!</h3><p data-id="bug-done-text">Your report was sent.</p><button class="reset primary" type="button" data-id="bug-done-close">Close</button></div>
+  </form>
+</div>
+<div class="fix-notice" data-id="fix-notice" role="status" aria-live="polite" hidden>
+  <div class="fix-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
+  <div class="fix-text"><strong data-id="fix-title">Your bug report was fixed</strong><div class="fix-list" data-id="fix-list"></div></div>
+  <div class="fix-actions"><button class="reset" type="button" data-id="fix-update" hidden>Get the update</button><button class="reset primary" type="button" data-id="fix-ok">Got it</button></div>
+</div>`;
     (document.documentElement || document).appendChild(host);
 
     const q = sel => shadow.querySelector(sel);
@@ -18497,16 +21778,18 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     shortcutButton.addEventListener('click', () => setShortcutRecording(!shortcutRecording));
     shortcutButton.addEventListener('blur', () => { if (shortcutRecording) setShortcutRecording(false); });
     shortcutDefault.addEventListener('click', () => change({ commandShortcut: config.defaults.commandShortcut }));
-    commandButton.hidden = !/(?:^|\/)editor(?:\/|$)/i.test(location.pathname);
+    commandButton.hidden = !/(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname);
     commandButton.addEventListener('click',()=>{close();openStudioCommands();});
     const arrangeViewport = matchMedia(globalThis.WMEStudioSafari.viewport);
     let returnFocus = null;
     const sliderTimers = new Map();
     let rangeDrag = null;
-    const pages = { layout: 'Layout', look: 'Look', map: 'Map', panels: 'Panels', studio: 'Studio', developers: 'Developers' };
+    const pages = { layout: 'Layout', look: 'Look', map: 'Map', panels: 'Panels', studio: 'General', bug: 'Report a bug', developers: 'Developers' };
+    const pageSubtitles = { layout: 'Mode, size and where the islands go.', look: 'Theme, accent and comfort.', map: 'Brightness, GPS points and the right-click menu.', panels: 'Requests, size and columns.', studio: 'Language, backups and defaults.', bug: 'Tell the author what went wrong.', developers: 'For script authors.' };
     // Earlier page names, so older callers still land on the right section.
     const pageAliases = { workspace: 'layout', presets: 'layout', appearance: 'look', addons: 'look', requests: 'panels', help: 'studio' };
 
+    for (const item of qa('.nav-item')) item.title = item.querySelector('span')?.textContent || '';
     function selectPage(name) {
       name = pageAliases[name] || name;
       if (!Object.hasOwn(pages, name)) return;
@@ -18519,7 +21802,45 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       });
       qa('[data-page]').forEach(page => { page.hidden = page.dataset.page !== name; });
       q('[data-id="page-title"]').textContent = pages[name];
+      q('[data-id="page-sub"]').textContent = pageSubtitles[name] || '';
+      renderChips(name);
     }
+    // Section chips: one per section of the page, under its title. A click scrolls to the section; the chip of
+    // the section at the top of the view is marked as the page scrolls.
+    const chips = q('[data-id="chips"]'), body = q('.body');
+    let chipTargets = [], chipFrame = 0, chipLock = -1, chipLockTimer = 0;
+    function renderChips(name) {
+      const page = q(`[data-page="${name}"]`);
+      chipTargets = page ? [...page.querySelectorAll('.section-label')].map(label => ({ label, group: label.closest('.group') || label.parentElement })).filter(entry => entry.group && !entry.group.hidden) : [];
+      chips.textContent = '';
+      chips.hidden = chipTargets.length < 2;
+      if (chips.hidden) return;
+      for (const [index, entry] of chipTargets.entries()) {
+        const chip = document.createElement('button');
+        chip.type = 'button'; chip.className = 'sec-chip'; chip.dataset.index = String(index);
+        chip.textContent = [...entry.label.childNodes].filter(node => node.nodeType === 3 || !node.matches?.('.step')).map(node => node.textContent).join('').trim();
+        chip.addEventListener('click', () => {
+          const top = body.scrollTop + entry.group.getBoundingClientRect().top - body.getBoundingClientRect().top - 10;
+          chipLock = index; clearTimeout(chipLockTimer); chipLockTimer = setTimeout(() => { chipLock = -1; }, 700);
+          body.scrollTo({ top: Math.max(0, top), behavior: current.motion ? 'smooth' : 'auto' }); markChip(index);
+        });
+        chips.append(chip);
+      }
+      markChip(0);
+    }
+    function markChip(index) { chips.querySelectorAll('.sec-chip').forEach((chip, position) => chip.setAttribute('aria-current', String(position === index))); }
+    body.addEventListener('scroll', () => {
+      if (chipFrame || chips.hidden) return;
+      chipFrame = requestAnimationFrame(() => {
+        chipFrame = 0;
+        if (chipLock >= 0) { markChip(chipLock); return; }   // a chip was clicked: it stays lit while the page scrolls to it
+        const edge = body.getBoundingClientRect().top + 40;
+        let index = 0;
+        chipTargets.forEach((entry, position) => { if (entry.group.getBoundingClientRect().top <= edge) index = position; });
+        if (body.scrollTop + body.clientHeight >= body.scrollHeight - 2) index = chipTargets.length - 1;
+        markChip(index);
+      });
+    }, { passive: true });
     function renderPresets() {
       const api = globalThis.WMEStudioCompactLayout, active = api.currentPreset();
       const preset = api.presets.find(item=>item.id === active);
@@ -18662,11 +21983,16 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       if (event.key === 'Escape' && !languageMenu.hidden) setLanguageMenu(false);
       if (event.composedPath().includes(colorPlane) && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) { adjustPickerPlane(event); return; }
       if (event.key === 'Enter' && event.composedPath().includes(q('[data-id="picker-hex"]'))) { event.preventDefault(); readPickerHex(); return; }
+      const valueField = event.composedPath().find(node => node?.wsValueKeydown);
+      if (valueField) { valueField.wsValueKeydown(event); return; }   // a slider value being typed (keys stop here, so the field gets them this way)
       if (event.key === 'Escape') {
         event.preventDefault();
-        if (q('[data-id="color-picker"]').matches(':popover-open')) closeColorPicker(); else close();
+        if (q('[data-id="color-picker"]').matches(':popover-open')) closeColorPicker();
+        else if (!q('[data-id="bug-backdrop"]').hidden) { if (bug.category.open) bug.category.close(); else closeBugDialog(); }
+        else close();
         return;
       }
+      if (!q('[data-id="bug-backdrop"]').hidden) { bug.category.keydown(event); return; }   // the dialog's own fields take the keys
       const tab = event.composedPath().find(node => node?.dataset?.pageTarget);
       if (tab && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End'].includes(event.key)) {
         event.preventDefault();
@@ -18710,12 +22036,13 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       }
       globalThis.WMEStudioI18n.setLanguage(current.language);
       paintShortcut();
-      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests']) q(`[data-id="${key}"]`).checked = current[key];
+      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu']) q(`[data-id="${key}"]`).checked = current[key];
+      paintSchedule();
       fieldsets.forEach(fieldset => { fieldset.disabled = !current.enabled || profilesBusy; });
       qa('input[name="workspace-mode"]').forEach(input => { input.checked = (input.value === 'compact') === current.compactMode; });
       qa('[data-compact-preferences]').forEach(fieldset=>{fieldset.disabled = !current.enabled || !current.compactMode;});
       qa('[data-action="arrange"]').forEach(button=>{button.disabled = !current.enabled || !arrangeViewport.matches || presetBusy || profilesBusy;});
-      qa('[data-arrange-label]').forEach(label=>{label.textContent = current.compactMode ? 'Arrange' : 'Floating & arrange';});
+      qa('[data-arrange-label]').forEach(label=>{label.textContent = current.compactMode ? 'Open Arrange' : 'Floating & arrange';});
       renderPresets();
       syncWorkspaceControls();
       q('[data-id="compactModeHint"]').textContent = !current.enabled ? 'Enable Studio to adjust workspace settings.' :
@@ -18740,6 +22067,71 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         input.style.setProperty('--range-fill', `${Math.max(0, Math.min(100, (value - min) * 100 / Math.max(1, max - min)))}%`);
       });
       qa('[data-setting]').forEach(button => button.setAttribute('aria-pressed', String(current[button.dataset.setting] === button.dataset.value)));
+      const status = q('[data-id="themeSchedule-status"]'), note = q('[data-id="theme-note"]');
+      note.textContent = status.hidden ? '' : status.textContent; note.hidden = !note.textContent;
+      paintChanged();
+    }
+    // A row whose setting differs from the default shows a dot and a Reset link.
+    const SETTING_ROW_SKIP = new Set(['enabled', 'commandShortcut', 'language']);
+    function rowSettingKeys(row) {
+      const keys = new Set();
+      for (const node of row.querySelectorAll('[data-id],[data-setting],[data-time]')) {
+        const key = node.dataset.setting || node.dataset.time || node.dataset.id;
+        if (key && Object.hasOwn(config.defaults, key) && !SETTING_ROW_SKIP.has(key)) keys.add(key);
+      }
+      if (keys.has('hudScale')) keys.add('panelScale');
+      return [...keys];
+    }
+    function paintChanged() {
+      for (const row of qa('.srow')) {
+        const keys = rowSettingKeys(row);
+        const changed = keys.some(key => JSON.stringify(current[key]) !== JSON.stringify(config.defaults[key]));
+        row.toggleAttribute('data-changed', changed);
+        let reset = row.querySelector(':scope > .srow-text > .row-reset');
+        if (changed && !reset && keys.length) {
+          const text = row.querySelector(':scope > .srow-text');
+          if (!text) continue;
+          reset = document.createElement('button'); reset.type = 'button'; reset.className = 'row-reset'; reset.textContent = 'Reset to default';
+          reset.addEventListener('click', event => {
+            event.preventDefault(); event.stopPropagation();
+            change(Object.fromEntries(keys.map(key => [key, config.defaults[key]])));
+          });
+          text.append(reset);
+        }
+        if (reset) reset.hidden = !changed;
+      }
+    }
+    // Scheduling an eye saver set to Off gives it a strength to use.
+    function settingPatch(key, value) {
+      const patch = { [key]: value };
+      if (key === 'eyeSaverSchedule' && value !== 'off' && current.eyeSaver === 0) patch.eyeSaver = 50;
+      return patch;
+    }
+    function scheduleText(node, text) {
+      node.hidden = !text;
+      if (node.dataset.source === text) return;
+      node.dataset.source = text; node.textContent = text;
+    }
+    function paintSchedule() {
+      const api = globalThis.WMEStudioSchedule, state = api.resolve(current), at = date => api.time(date);
+      const themeOn = current.theme === 'light' && current.themeSchedule !== 'off', eyeOn = current.eyeSaverSchedule !== 'off';
+      q('[data-id="dark-schedule"]').hidden = current.theme !== 'light';
+      qa('[data-when]').forEach(node => {
+        const [key, mode] = node.dataset.when.split('-');
+        node.hidden = mode ? current[key] !== mode : current[key] === 'off';
+      });
+      qa('[data-time]').forEach(input => { if (input !== shadow.activeElement && input.value !== current[input.dataset.time]) input.value = current[input.dataset.time]; });
+      scheduleText(q('[data-id="eyeSaver-hint"]'), eyeOn ? 'Strength during the scheduled hours.' : 'Warmer colors across the editor.');
+      const sunLine = () => !state.sun ? '' : state.sun.polar === 'day' ? 'The sun stays up all day where the map is' : state.sun.polar === 'night' ? 'The sun stays down all day where the map is' :
+        `Sunrise ${at(state.sun.rise)} · sunset ${at(state.sun.set)} where the map is`;
+      scheduleText(q('[data-id="themeSchedule-status"]'), !themeOn ? '' : state.night
+        ? (state.themeNext ? `Dark now · Light returns at ${at(state.themeNext)}` : 'Dark now')
+        : (state.themeNext ? `Light now · dark begins at ${at(state.themeNext)}` : 'Light now'));
+      scheduleText(q('[data-id="themeSchedule-sun"]'), themeOn && current.themeSchedule === 'sun' ? sunLine() : '');
+      scheduleText(q('[data-id="eyeSaverSchedule-status"]'), !eyeOn || current.eyeSaver === 0 ? '' : state.eyeSaverActive
+        ? (state.eyeSaverNext ? `On now · turns off at ${at(state.eyeSaverNext)}` : 'On now')
+        : (state.eyeSaverNext ? `Off now · turns on at ${at(state.eyeSaverNext)}` : 'Off now'));
+      scheduleText(q('[data-id="eyeSaverSchedule-sun"]'), current.eyeSaverSchedule === 'sun' && !(themeOn && current.themeSchedule === 'sun') ? sunLine() : '');
     }
     const colorPicker = q('[data-id="color-picker"]'), colorPlane = q('[data-id="picker-plane"]');
     let pickerHSV = {h:204,s:1,v:1}, pickerHex = '', pickerDrag = null, pickerTimer = 0;
@@ -18851,7 +22243,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       q('.notice').dataset.state = state;
       q('.save-indicator').textContent = state === 'saving' ? '…' : state === 'error' ? '!' : '✓';
     }
-    function savedStatus() { setStatus(current.enabled ? 'Changes save automatically' : 'Studio is paused'); }
+    function savedStatus() { setStatus(current.enabled ? 'Saved' : 'Paused'); }
     let workspaceModeChange = 0, pendingWorkspaceMode = null;
     let workspaceModeSave = Promise.resolve();
     const painted = () => document.hidden ? Promise.resolve() : new Promise(resolve => {
@@ -18883,6 +22275,37 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     function rangePatch(key, value) {
       // HUD size carries Panel size with it, so one slider makes the whole floating workspace smaller. Panel size keeps its own slider for a different value.
       return key === 'compactHeaderWidth' ? { compactHeaderWidth:value, compactHeaderFullWidth:value > 0 } : key === 'hudScale' ? { hudScale:value, panelScale:value } : { [key]:value };
+    }
+    // The value beside a slider can be typed: click it, type a number, Enter. Esc puts the old value back.
+    for (const output of qa('.value[data-id$="-value"]')) {
+      const key = output.dataset.id.replace(/-value$/, ''), input = q(`[data-id="${key}"]`);
+      if (!input || input.type !== 'range') continue;
+      output.setAttribute('role', 'button'); output.tabIndex = 0; output.title = 'Type a value';
+      const edit = () => {
+        if (output.querySelector('input')) return;
+        const field = document.createElement('input');
+        field.type = 'text'; field.className = 'value-edit'; field.inputMode = 'numeric'; field.setAttribute('aria-label', input.getAttribute('aria-label') || key);
+        field.value = String(current[key] ?? input.value);
+        const previous = output.textContent;
+        let done = false;
+        const finish = commit => {
+          if (done) return;
+          done = true;
+          let number = parseFloat(field.value.replace(',', '.'));
+          if (field.isConnected) field.remove();
+          if (commit && Number.isFinite(number)) {
+            const min = Number(input.min) || 0, max = Number(input.max) || 100, step = Number(input.step) || 1;
+            number = Math.max(min, Math.min(max, Math.round(number / step) * step));
+            if (number !== Number(input.value)) { input.value = number; previewRange(key, number); return; }
+          }
+          output.textContent = previous;
+        };
+        field.wsValueKeydown = event => { if (event.key === 'Enter') { event.preventDefault(); finish(true); } else if (event.key === 'Escape') { event.preventDefault(); finish(false); } };
+        field.addEventListener('blur', () => finish(true));
+        output.textContent = ''; output.append(field); field.focus(); field.select();
+      };
+      output.addEventListener('click', edit);
+      output.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); edit(); } });
     }
     function previewRange(key, value) {
       current = config.sanitize({ ...current, ...rangePatch(key,value) });
@@ -18968,6 +22391,8 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       refreshProfiles();
     }
     function close() {
+      if (bugDialogSending()) return;
+      hideBugDialog();
       if (shortcutRecording) setShortcutRecording(false);
       if (colorPicker.matches(':popover-open')) closeColorPicker();
       rangeDrag = null;setPeek(null);
@@ -18998,8 +22423,10 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     qa('[data-preset]').forEach(button=>button.addEventListener('click',()=>usePreset(button.dataset.preset)));
     q('[data-id="preset-undo"]').addEventListener('click',undoPreset);
     arrangeViewport.addEventListener('change',()=>{if(studioPanelOpen)render();});
-    qa('[data-setting]').forEach(button => button.addEventListener('click', () => change({ [button.dataset.setting]: button.dataset.value }, true)));
-    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
+    qa('[data-setting]').forEach(button => button.addEventListener('click', () => change(settingPatch(button.dataset.setting, button.dataset.value), true)));
+    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
+    qa('[data-time]').forEach(input => input.addEventListener('change', () => { if (/^\d\d:\d\d$/.test(input.value)) change({ [input.dataset.time]: input.value }); else paintSchedule(); }));
+    setInterval(() => { if (studioPanelOpen) paintSchedule(); }, 30000);
     qa('input[name="workspace-mode"]').forEach(input => input.addEventListener('change', e => {
       if (e.target.checked) change({ compactMode: e.target.value === 'compact' });
     }));
@@ -19018,11 +22445,301 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         close();requestAnimationFrame(()=>requestAnimationFrame(()=>globalThis.WMEStudioCompactLayout.open()));
       } catch (studioError) { reportStudioError("buildStudioUI",studioError);setStatus('Could not save preferences.','error');}
     }));
+    const showTour = event => { event.preventDefault(); close(); requestAnimationFrame(() => globalThis.WMEStudioTour?.open()); };
+    q('[data-id="tour"]').addEventListener('click', showTour);
+    q('[data-id="whats-new"]').addEventListener('click', showTour);
     q('[data-id="reset"]').addEventListener('click', () => {
       Promise.resolve(globalThis.WMEStudioCompactLayout?.reset?.()).catch((studioError) => { reportStudioError("buildStudioUI",studioError);});
       change({ ...config.defaults });
     });
     q('[data-id="resetPanelSizes"]').addEventListener('click', () => globalThis.WMEStudioPanelSizes?.reset());
+    // Report a bug: a plain-text summary of this setup for the feedback page. It holds no account details, no
+    // edits and no addresses of custom links; it is only copied, and only when asked.
+    function bugReport() {
+      const html = document.documentElement, settingsNow = { ...current };
+      const islands = globalThis.WMEStudioIslands?.snapshot?.() || {};
+      const scripts = [...new Set([...document.querySelectorAll('#user-tabs .nav-tabs a, .userscripts-drawer-tabs .nav-tabs a, #user-tabs [data-script-name]')]
+        .map(element => (element.getAttribute('data-script-name') || element.textContent || '').replace(/\s+/g, ' ').trim()).filter(Boolean))].slice(0, 40);
+      const handler = typeof GM_info === 'object' ? `${GM_info.scriptHandler || 'unknown'} ${GM_info.version || ''}`.trim() : 'unknown';
+      const wme = (document.getElementById('version-info')?.textContent || '').replace(/\s+/g, ' ').trim();
+      const errors = reportStudioError.recent || [];
+      const lines = [
+        '### WME Studio bug report',
+        '',
+        '**What happened:** (describe it here)',
+        '**What you expected:** ',
+        '**Steps to reproduce:** ',
+        '',
+        '---',
+        `- Studio: ${USERSCRIPT_VERSION} (${handler})`,
+        `- Editor: ${location.hostname}${location.pathname}${wme ? ` · ${wme}` : ''}`,
+        `- Browser: ${navigator.userAgent}`,
+        `- Window: ${innerWidth}×${innerHeight} @${Math.round((window.devicePixelRatio || 1) * 100) / 100}x · language ${navigator.language}`,
+        `- Studio state: ${['', 'theme', 'compact', 'page', 'layout', 'addons', 'requests', 'motion'].map(name => `${name || 'on'}=${html.getAttribute(name ? `data-wme-studio-${name}` : 'data-wme-studio') ?? '-'}`).join(' ')}`,
+        `- Islands: ${(islands.custom || []).length} custom (${(islands.custom || []).map(island => `${island.orient}:${island.items.length}`).join(', ') || 'none'}), ${(islands.hidden || []).length} hidden controls, ${(islands.links || []).length} custom links`,
+        `- Other scripts: ${scripts.join(', ') || 'none found'}`,
+        `- Settings: \`${JSON.stringify(settingsNow)}\``,
+        `- Reporter: ${wmeUserName() || '(not signed in)'}`,
+        `- Recent Studio errors: ${errors.length ? '' : 'none'}`,
+        ...errors.map(entry => `  - ${entry.time} ${entry.context}: ${entry.message}${entry.count > 1 ? ` (×${entry.count})` : ''}${entry.where ? ` — ${entry.where}` : ''}`)
+      ];
+      return lines.join('\n');
+    }
+    async function copyBugReport() {
+      const done = await copyBugReportText(bugReport());
+      setStatus(done ? 'Report copied.' : 'Could not copy the report.', done ? 'saved' : 'error');
+      return done;
+    }
+    q('[data-id="bug-copy"]').addEventListener('click', () => { copyBugReport(); });
+    // ---- Report a bug: the dialog ------------------------------------------------------------------------------
+    const bug = {
+      backdrop: q('[data-id="bug-backdrop"]'), form: q('[data-id="bug-dialog"]'), what: q('[data-id="bug-what"]'), steps: q('[data-id="bug-steps"]'),
+      category: null, contact: q('[data-id="bug-contact"]'), file: q('[data-id="bug-shot-file"]'), shotName: q('[data-id="bug-shot-name"]'),
+      shotClear: q('[data-id="bug-shot-clear"]'), preview: q('[data-id="bug-preview"]'), diag: q('[data-id="bug-diag"]'), error: q('[data-id="bug-error"]'),
+      note: q('[data-id="bug-note"]'), send: q('[data-id="bug-send"]'), done: q('[data-id="bug-done"]'), doneText: q('[data-id="bug-done-text"]'),
+      as: q('[data-id="bug-as"]'), asText: q('[data-id="bug-as-text"]'),
+      screenshot: null, sending: false, opener: null
+    };
+    // The editor account's user name: the author can then tell the person, inside the editor, when a report is fixed.
+    // "Where": Studio's own dropdown, drawn like the Language one (a native <select> list cannot be themed).
+    bug.category = (() => {
+      const button = q('[data-id="bug-category"]'), menu = q('[data-id="bug-category-menu"]'), label = q('[data-id="bug-category-value"]');
+      const options = () => [...menu.querySelectorAll('.bug-option')];
+      let value = 'layout';
+      const setOpen = open => {
+        if (open) {
+          // Drawn over the dialog (fixed), so its scrolling body never cuts the list off: below the button when
+          // there is room, above it when there is more room there, and scrolling when neither fits it all.
+          menu.hidden = false;
+          const box = button.getBoundingClientRect(), want = Math.min(menu.scrollHeight, 248);
+          const below = innerHeight - box.bottom - 18, above = box.top - 18;
+          const down = below >= want || below >= above, height = Math.max(96, Math.min(want, down ? below : above));
+          Object.assign(menu.style, { left: `${Math.round(box.left)}px`, width: `${Math.round(box.width)}px`, maxHeight: `${Math.round(height)}px`,
+            top: `${Math.round(down ? box.bottom + 6 : box.top - 6 - height)}px` });
+          (options().find(option => option.dataset.value === value) || options()[0])?.focus({ preventScroll: true });
+        } else menu.hidden = true;
+        button.setAttribute('aria-expanded', String(open));
+      };
+      const choose = next => {
+        value = options().some(option => option.dataset.value === next) ? next : 'layout';
+        for (const option of options()) option.setAttribute('aria-selected', String(option.dataset.value === value));
+        label.textContent = options().find(option => option.dataset.value === value)?.textContent || '';
+      };
+      button.addEventListener('click', () => setOpen(menu.hidden));
+      menu.addEventListener('click', event => { const option = event.target.closest('.bug-option'); if (!option) return; choose(option.dataset.value); setOpen(false); button.focus({ preventScroll: true }); });
+      // Keys reach it through the settings panel's own key handler (which keeps them from the editor).
+      const keydown = event => {
+        const path = event.composedPath();
+        if (path.includes(button) && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) { event.preventDefault(); setOpen(true); return true; }
+        if (menu.hidden || !path.includes(menu)) return false;
+        const list = options(), index = list.indexOf(shadow.activeElement);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); list[(index + (event.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length]?.focus(); return true; }
+        if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); list[event.key === 'Home' ? 0 : list.length - 1]?.focus(); return true; }
+        if (event.key === 'Tab') setOpen(false);
+        return false;
+      };
+      bug.form.addEventListener('pointerdown', event => { if (!menu.hidden && !event.composedPath().includes(q('[data-id="bug-category-control"]'))) setOpen(false); });
+      bug.backdrop.addEventListener('pointerdown', event => { if (!menu.hidden && !event.composedPath().includes(q('[data-id="bug-category-control"]'))) setOpen(false); });
+      q('.bug-body').addEventListener('scroll', () => { if (!menu.hidden) setOpen(false); }, { passive: true });
+      window.addEventListener('resize', () => { if (!menu.hidden) setOpen(false); }, { passive: true });
+      return { get value() { return value; }, set value(next) { choose(next); }, get open() { return !menu.hidden; }, close() { setOpen(false); button.focus({ preventScroll: true }); }, keydown };
+    })();
+    const endpointReady = /^https:\/\/[^/\s]+/.test(BUG_REPORT_ENDPOINT);
+    // The settings panel is localized from its DOM (see WMEStudioI18n.localize), so text is set in English here.
+    const translate = text => text;
+    const CATEGORY_LABELS = { layout: 'Floating mode and islands', arrange: 'Arrange', theme: 'Theme and colors', panels: 'Panels and windows', menu: 'Right-click menu', addons: 'Another script', speed: 'Speed', other: 'Something else' };
+    function bugText() {
+      const what = bug.what.value.trim(), steps = bug.steps.value.trim();
+      return bugReport()
+        .replace('**What happened:** (describe it here)', `**What happened:** ${what || '(not filled in)'}`)
+        .replace('**What you expected:** \n', '')
+        .replace('**Steps to reproduce:** ', `**Steps to reproduce:** ${steps || '(not filled in)'}`)
+        .replace('\n---\n', `\n**Where:** ${CATEGORY_LABELS[bug.category.value] || 'Something else'}\n---\n`);
+    }
+    function refreshBugDiag() { bug.diag.textContent = bugReport().split('\n---\n')[1] || ''; }
+    function showBugError(text) { bug.error.textContent = text || ''; bug.error.hidden = !text; }
+    function openBugDialog() {
+      bug.opener = shadow.activeElement;
+      bug.done.hidden = true; showBugError(''); bug.what.closest('.bug-field').classList.remove('invalid');
+      bug.note.textContent = translate(endpointReady ? 'Sent to the author of WME Studio.' : 'Copied for the feedback page.');
+      bug.send.textContent = translate(endpointReady ? 'Send report' : 'Copy & open feedback page');
+      const user = wmeUserName();
+      bug.as.hidden = !endpointReady;
+      if (user) { bug.asText.textContent = ''; bug.asText.append(Object.assign(document.createElement('span'), { textContent: translate('Sent as') }), ' ', Object.assign(document.createElement('b'), { textContent: user }), ' · ', Object.assign(document.createElement('span'), { textContent: translate("You'll get a note in the editor when it's fixed.") })); }
+      else bug.asText.textContent = translate('Not signed in, so add a way to reach you below if you would like an answer.');
+      refreshBugDiag();
+      bug.backdrop.hidden = false;
+      requestAnimationFrame(() => bug.what.focus({ preventScroll: true }));
+    }
+    function closeBugDialog() {
+      if (bug.sending) return;
+      bug.backdrop.hidden = true;
+      bug.opener?.focus?.({ preventScroll: true });
+    }
+    function resetBugDialog() {
+      bug.what.value = ''; bug.steps.value = ''; bug.contact.value = ''; bug.category.value = 'layout';
+      clearScreenshot();
+    }
+    function clearScreenshot() {
+      bug.screenshot = null; bug.file.value = '';
+      bug.preview.hidden = true; bug.preview.removeAttribute('src');
+      bug.shotClear.hidden = true; bug.shotName.textContent = translate('Optional. You can also paste or drop an image here.');
+    }
+    // A screenshot is shrunk to at most 1600px and about 300 KB in the browser before it is sent.
+    function loadScreenshot(file) {
+      if (!file || !/^image\//.test(file.type)) return;
+      const url = URL.createObjectURL(file), image = new Image();
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(image.naturalWidth * scale); canvas.height = Math.round(image.naturalHeight * scale);
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        let quality = .85, data = canvas.toDataURL('image/jpeg', quality);
+        while (data.length > 420000 && quality > .4) { quality -= .1; data = canvas.toDataURL('image/jpeg', quality); }
+        bug.screenshot = data;
+        bug.preview.src = data; bug.preview.hidden = false; bug.shotClear.hidden = false;
+        bug.shotName.textContent = `${file.name || 'screenshot'} · ${Math.round(data.length * 3 / 4 / 1024)} KB`;
+      };
+      image.onerror = () => { URL.revokeObjectURL(url); showBugError(translate('That image could not be read.')); };
+      image.src = url;
+    }
+    function bugApi(method, path, payload) {
+      return new Promise((resolve, reject) => {
+        const body = payload ? JSON.stringify(payload) : undefined, url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`;
+        // Whatever the script manager does, the dialog never stays on "Sending…" for good.
+        const guard = setTimeout(() => reject(new Error(translate('The server took too long'))), 25000);
+        const finish = (status, text) => {
+          clearTimeout(guard);
+          let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+          if (status >= 200 && status < 300 && data?.ok) resolve(data);
+          else reject(new Error(data?.error || (status ? `${translate('The server answered')} ${status}` : translate('No answer from the server'))));
+        };
+        if (typeof GM_xmlhttpRequest === 'function') {
+          GM_xmlhttpRequest({ method, url, data: body, headers: body ? { 'Content-Type': 'application/json' } : {}, timeout: 20000, anonymous: true,
+            onload: response => finish(response.status, response.responseText || ''),
+            onerror: () => { clearTimeout(guard); reject(new Error(translate('Could not reach the server'))); }, ontimeout: () => { clearTimeout(guard); reject(new Error(translate('The server took too long'))); } });
+        } else {
+          fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body, mode: 'cors' })
+            .then(async response => finish(response.status, await response.text())).catch(() => { clearTimeout(guard); reject(new Error(translate('Could not reach the server'))); });
+        }
+      });
+    }
+    async function submitBugReport() {
+      if (bug.sending) return;
+      const what = bug.what.value.trim();
+      if (what.length < 5) { bug.what.closest('.bug-field').classList.add('invalid'); showBugError(translate('Please say what happened first.')); bug.what.focus(); return; }
+      bug.what.closest('.bug-field').classList.remove('invalid'); showBugError('');
+      const text = bugText();
+      if (!endpointReady) {
+        window.open(BUG_REPORT_FALLBACK_URL, '_blank', 'noopener');
+        const done = await copyBugReportText(text);
+        bug.doneText.textContent = translate(done ? 'The report is on your clipboard. Paste it into the feedback page that just opened.' : 'The feedback page is open. Copy the report from "What else is sent" and paste it there.');
+        bug.done.hidden = false; return;
+      }
+      bug.sending = true; bug.send.disabled = true; bug.send.textContent = translate('Sending…');
+      try {
+        const result = await bugApi('POST', '/api/report', { report: text, version: USERSCRIPT_VERSION, editor: `${location.hostname}${location.pathname}`, browser: navigator.userAgent,
+          summary: what.slice(0, 200), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.category.value, screenshot: bug.screenshot || '' });
+        bug.doneText.textContent = (result.id ? translate('Your report #{0} was sent to the author of WME Studio.') : translate('Your report was sent to the author of WME Studio.')).replace('{0}', String(result.id || ''));
+        bug.done.hidden = false; resetBugDialog();
+      } catch (error) {
+        showBugError(`${translate('The report could not be sent')}: ${error.message}. ${translate('Use "Copy report" and paste it on the feedback page instead.')}`);
+      } finally { bug.sending = false; bug.send.disabled = false; bug.send.textContent = translate('Send report'); }
+    }
+    async function copyBugReportText(text) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (_) {
+        const area = document.createElement('textarea');
+        area.value = text; area.setAttribute('readonly', ''); area.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+        shadow.append(area); area.select();
+        let done = false; try { done = document.execCommand('copy'); } catch (__) { done = false; }
+        area.remove(); return done;
+      }
+    }
+    // ---- Fixed reports: a note inside the editor when the author marks a report of this person as fixed --------
+    const BUG_FIXES_KEY = 'wmeStudio.bugFixes.v1', BUG_CHECK_EVERY = 6 * 3600 * 1000;
+    const fix = { box: q('[data-id="fix-notice"]'), list: q('[data-id="fix-list"]'), update: q('[data-id="fix-update"]'), ok: q('[data-id="fix-ok"]'), title: q('[data-id="fix-title"]'), items: [], user: '' };
+    const fixesRow = q('[data-row="bugFixes"]'), fixesText = q('[data-id="bug-fixes-text"]');
+    fixesRow.hidden = !endpointReady;
+    const versionParts = text => String(text || '').split(/[.-]/).map(part => parseInt(part, 10) || 0);
+    function versionNewer(a, b) {   // a > b, numerically by part
+      const x = versionParts(a), y = versionParts(b);
+      for (let i = 0; i < Math.max(x.length, y.length); i += 1) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); }
+      return false;
+    }
+    async function readFixState() {
+      const saved = await Promise.resolve(studioKeep.get(BUG_FIXES_KEY, null)).catch(() => null);
+      return saved && typeof saved === 'object' ? { checked: saved.checked || 0, seen: Array.isArray(saved.seen) ? saved.seen.slice(-200) : [] } : { checked: 0, seen: [] };
+    }
+    function setBugBadge(count) {
+      const badge = q('[data-id="bug-badge"]');
+      badge.textContent = count ? String(count) : ''; badge.hidden = !count;
+    }
+    function showFixNotice(items, user) {
+      fix.items = items; fix.user = user;
+      setBugBadge(items.length);
+      fix.title.textContent = translate(items.length > 1 ? 'Your bug reports were fixed' : 'Your bug report was fixed');
+      fix.list.textContent = '';
+      for (const item of items) {
+        const row = document.createElement('div'); row.className = 'fix-item';
+        const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.id).slice(0, 120);
+        row.append(quote, ' — ');
+        const version = document.createElement('span'); version.className = 'fix-version'; version.textContent = `${translate('fixed in WME Studio')} ${item.version || ''}`.trim();
+        row.append(version);
+        if (item.note) { const note = document.createElement('span'); note.className = 'fix-note'; note.textContent = item.note.slice(0, 300); row.append(note); }
+        fix.list.append(row);
+      }
+      fix.update.hidden = !items.some(item => versionNewer(item.version, USERSCRIPT_VERSION));
+      fix.box.hidden = false;
+    }
+    async function dismissFixNotice() {
+      fix.box.hidden = true; setBugBadge(0);
+      const ids = fix.items.map(item => item.id);
+      const state = await readFixState();
+      state.seen = [...new Set([...state.seen, ...ids])].slice(-200);
+      try { await Promise.resolve(studioKeep.set(BUG_FIXES_KEY, state)); } catch (_) { /* the server keeps the mark too */ }
+      bugApi('POST', '/api/updates/ack', { user: fix.user, ids }).catch(() => { /* told next time */ });
+      fix.items = [];
+    }
+    async function checkBugFixes(manual = false) {
+      if (!endpointReady) return;
+      const user = wmeUserName();
+      if (!user) { if (manual) setStatus(translate('Sign in to the editor first.'), 'error'); return; }
+      const state = await readFixState();
+      if (!manual && state.checked && Date.now() - state.checked < BUG_CHECK_EVERY) return;
+      if (manual) setStatus(translate('Checking…'), 'saving');
+      let data;
+      try { data = await bugApi('GET', `/api/updates?user=${encodeURIComponent(user)}&v=${encodeURIComponent(USERSCRIPT_VERSION)}`); }
+      catch (error) { if (manual) setStatus(`${translate('Could not check')}: ${error.message}`, 'error'); return; }
+      state.checked = Date.now();
+      try { await Promise.resolve(studioKeep.set(BUG_FIXES_KEY, state)); } catch (_) { /* checked again next time */ }
+      const fixed = Array.isArray(data?.fixed) ? data.fixed.filter(item => item && Number.isInteger(item.id)) : [];
+      const fresh = fixed.filter(item => !state.seen.includes(item.id));
+      if (fresh.length) { showFixNotice(fresh, user); if (manual) savedStatus(); }
+      else if (manual) setStatus(translate(fixed.length ? 'Nothing new since last time.' : 'No fixed reports for {0} yet.').replace('{0}', user), 'saved');
+      const open = Number.isInteger(data?.open) ? data.open : 0;
+      fixesText.textContent = open ? translate('{0} report(s) of yours are waiting. A note shows up here in the editor when one is fixed.').replace('{0}', String(open))
+        : translate('When a report of yours is fixed, a note shows up here in the editor.');
+    }
+    fix.ok.addEventListener('click', () => { dismissFixNotice(); });
+    fix.update.addEventListener('click', () => { window.open('https://greasyfork.org/scripts/599569', '_blank', 'noopener'); dismissFixNotice(); });
+    q('[data-id="bug-check"]').addEventListener('click', () => { checkBugFixes(true); });
+    if (endpointReady) setTimeout(() => { checkBugFixes(false).catch(error => reportStudioError('bug fixes check', error)); }, 12000);
+    function bugDialogSending() { return !!bug.sending; }
+    function hideBugDialog() { if (!bug.backdrop.hidden) bug.backdrop.hidden = true; }
+    q('[data-id="bug-report"]').addEventListener('click', openBugDialog);
+    q('[data-id="bug-close"]').addEventListener('click', closeBugDialog);
+    q('[data-id="bug-cancel"]').addEventListener('click', closeBugDialog);
+    q('[data-id="bug-done-close"]').addEventListener('click', () => { bug.done.hidden = true; closeBugDialog(); });
+    bug.backdrop.addEventListener('pointerdown', event => { if (event.target === bug.backdrop) closeBugDialog(); });
+    bug.form.addEventListener('submit', event => { event.preventDefault(); submitBugReport(); });
+    bug.what.addEventListener('input', () => { if (bug.what.value.trim().length >= 5) { bug.what.closest('.bug-field').classList.remove('invalid'); showBugError(''); } });
+    q('[data-id="bug-shot-pick"]').addEventListener('click', () => bug.file.click());
+    bug.file.addEventListener('change', () => loadScreenshot(bug.file.files?.[0]));
+    bug.shotClear.addEventListener('click', clearScreenshot);
+    bug.form.addEventListener('paste', event => { const item = [...(event.clipboardData?.items || [])].find(entry => entry.type.startsWith('image/')); if (item) { event.preventDefault(); loadScreenshot(item.getAsFile()); } });
+    bug.form.addEventListener('dragover', event => { event.preventDefault(); });
+    bug.form.addEventListener('drop', event => { event.preventDefault(); loadScreenshot(event.dataTransfer?.files?.[0]); });
     languageButton.addEventListener('click', () => setLanguageMenu(languageMenu.hidden));
     languageMenu.addEventListener('click', event => {
       const option = event.target.closest('.language-option');
@@ -19071,7 +22788,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
 
   let studioCommands = null;
   function openStudioCommands() {
-    if (!/(?:^|\/)editor(?:\/|$)/i.test(location.pathname) || document.documentElement.hasAttribute('data-wme-studio-layout-editing')) return;
+    if (!/(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname) || document.documentElement.hasAttribute('data-wme-studio-layout-editing')) return;
     if (studioCommands) {studioUI?.close();studioCommands.open();return;}
     const host = document.createElement('div');host.id = 'wme-studio-command-palette';host.hidden = true;
     host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;contain:layout style paint;';
@@ -19151,15 +22868,15 @@ ${studioControlsCSS()}
         const cfg = globalThis.WMEStudioSettings, api = globalThis.WMEStudioWorkspaces, [prefs,profiles] = await Promise.all([cfg.read(),api.list()]);
         if (host.hidden || token !== generation) return;
         const page = (label,target,keywords,section)=>({label:translate(label),category:'Settings',keywords,run:()=>openStudioUI(target,section)});
-        const sections = {layout:'Layout',look:'Look',map:'Map',panels:'Panels',studio:'Studio',developers:'Developers'};
+        const sections = {layout:'Layout',look:'Look',map:'Map',panels:'Panels',studio:'General',bug:'Report a bug',developers:'Developers'};
         const setting = (label,target,section,keywords)=>({label:translate(label),category:sections[target],keywords,run:()=>openStudioUI(target,section)});
-        commands = [page('Open settings','layout','settings options preferences'),page('Saved workspaces','layout','profiles presets layouts save','workspace-profiles'),page('Backup & restore','studio','import export backup restore','backup-tools'),
+        commands = [page('Open settings','layout','settings options preferences'),page('Saved workspaces','layout','profiles presets layouts save','workspace-profiles'),page('Backup & restore','studio','import export backup restore','backup-tools'),page('Report a bug','bug','bug report issue problem feedback support help','bugReport'),
           setting('Presets','layout','preset-current','starting layout balanced left-handed review desk wide header'),setting('Header width','layout','compactHeaderWidth','floating header extend full page'),setting('HUD size','layout','hudScale','floating scale islands header'),
-          setting('Accent colour','look','accent','color highlight custom'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','look','eyeSaver','warm night comfort'),setting('Interface animations','look','motion','motion reduce'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
-          setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),
+          setting('Accent colour','look','accent','color highlight custom'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','look','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','look','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
+          setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),
           setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
           setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script authors','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
-          {label:translate('Arrange layout'),category:'Workspace',keywords:'move position panels islands',disabled:!prefs.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches,run:async()=>{await cfg.write({compactMode:true});globalThis.WMEStudioCompactLayout.open();}},
+          {label:translate('Arrange layout'),category:'Workspace',keywords:'move position panels islands controls hide split custom island buttons',disabled:!prefs.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches,run:async()=>{await cfg.write({compactMode:true});globalThis.WMEStudioCompactLayout.open();}},
           ...[['Standard',false],['Floating compact',true]].map(([label,value])=>({label:translate(label),category:'Workspace',keywords:'workspace mode layout',disabled:!prefs.enabled,run:()=>cfg.write({compactMode:value})})),
           ...['light','dark','black'].map(theme=>({label:translate('Theme')+': '+translate(theme === 'black' ? 'Full black' : theme[0].toUpperCase()+theme.slice(1)),category:'Appearance',keywords:'theme color '+theme,run:()=>cfg.write({theme})})),
           {label:translate('Export backup'),category:'Backup',keywords:'download json settings',run:()=>api.download()},
@@ -19189,9 +22906,624 @@ ${studioControlsCSS()}
     if (!commandShortcut || globalThis.WMEStudioShortcut.recording || event.defaultPrevented || event.repeat || event.isComposing) return;
     if (globalThis.WMEStudioShortcut.fromEvent(event) !== commandShortcut) return;
     if (event.composedPath().some(node=>node?.nodeType === 1 && (node.matches('input,textarea,select,[role="textbox"],[role="combobox"]') || node.isContentEditable))) return;
-    if (!/(?:^|\/)editor(?:\/|$)/i.test(location.pathname) || document.documentElement.hasAttribute('data-wme-studio-layout-editing')) return;
+    if (!/(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname) || document.documentElement.hasAttribute('data-wme-studio-layout-editing')) return;
     event.preventDefault();event.stopImmediatePropagation();openStudioCommands();
   },true);
+
+  // Studio's own right-click menu for the map. It opens on a right-click on the map surface while Studio is on and
+  // the "Right-click menu" setting is on; Shift + right-click still opens the browser's menu. When the
+  // RightClick Functions script is installed too, this menu takes its place (see takeOverOtherMenu below).
+  const studioContextMenu = (() => {
+    const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
+    const HOST_ID = 'wme-studio-context-menu';
+    const t = text => globalThis.WMEStudioI18n?.translate?.(text) ?? text;
+    const tf = (text, value) => t(text).replace('{0}', value);
+    const ICONS = {
+      copy: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/>',
+      link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/>',
+      center: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.6"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+      zoomIn: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4M11 8.2v5.6M8.2 11h5.6"/>',
+      gmaps: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.3"/>',
+      beta: '<path d="M9 3.5h6M10 3.5v5.8L4.9 18.2A1.9 1.9 0 0 0 6.5 21h11a1.9 1.9 0 0 0 1.6-2.8L14 9.3V3.5"/><path d="M7.3 15h9.4"/>',
+      stable: '<path d="M4 11.2 12 4.5l8 6.7"/><path d="M6.5 9.5v10h11v-10"/><path d="M10.2 19.5v-5h3.6v5"/>',
+      newTab: '<path d="M14 4h6v6M20 4l-8.5 8.5"/><path d="M18 14v3.5A2.5 2.5 0 0 1 15.5 20h-9A2.5 2.5 0 0 1 4 17.5v-9A2.5 2.5 0 0 1 6.5 6H10"/>',
+      hash: '<path d="M9.5 4 8 20M16 4l-1.5 16M4.5 9h15M4 15h15"/>',
+      street: '<path d="M8 3 5 21M16 3l3 18M12 4v3M12 10.5v3M12 17v3"/>',
+      map: '<path d="m9 4-5 2v14l5-2 6 2 5-2V4l-5 2-6-2Z"/><path d="M9 4v14M15 6v14"/>',
+      focus: '<path d="M4 9V6.5A2.5 2.5 0 0 1 6.5 4H9M15 4h2.5A2.5 2.5 0 0 1 20 6.5V9M20 15v2.5a2.5 2.5 0 0 1-2.5 2.5H15M9 20H6.5A2.5 2.5 0 0 1 4 17.5V15"/><rect x="9" y="9" width="6" height="6" rx="1.2"/>',
+      deselect: '<rect x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="3 3"/><path d="m9.5 9.5 5 5M14.5 9.5l-5 5"/>',
+      refresh: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/>',
+      arrange: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="4.5" rx="1.6"/><rect x="13" y="10.5" width="7" height="9.5" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/>',
+      floating: '<rect x="3.5" y="5" width="17" height="14" rx="3"/><rect x="6" y="7.5" width="3.5" height="9" rx="1.4"/><rect x="11.5" y="7.5" width="6.5" height="3" rx="1.2"/>',
+      theme: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16Z" fill="currentColor" stroke="none"/>',
+      sun: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>',
+      moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/>',
+      black: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z" fill="currentColor"/>',
+      command: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/>',
+      settings: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>'
+    };
+    const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+    const TYPES = {
+      segment: { one: 'Segment', many: '{0} segments', param: 'segments', model: 'segments', sdk: ['Segments', 'segmentId'] },
+      venue: { one: 'Place', many: '{0} places', param: 'venues', model: 'venues', sdk: ['Venues', 'venueId'] },
+      node: { one: 'Junction', many: '{0} junctions', param: 'nodes', model: 'nodes', sdk: ['Nodes', 'nodeId'] },
+      mapComment: { one: 'Map comment', many: '{0} map comments', param: 'mapComments', model: 'mapComments', sdk: ['MapComments', 'mapCommentId'] },
+      bigJunction: { one: 'Junction box', many: '{0} junction boxes', param: 'bigJunctions', model: 'bigJunctions', sdk: ['BigJunctions', 'bigJunctionId'] }
+    };
+    let enabled = true, host = null, shadow = null, menu = null, toastTimer = 0, openedAt = 0, gesture = null;
+    let sdk = null, sdkRequested = false;
+
+    globalThis.WMEStudioSettings?.read().then(value => { enabled = value.contextMenu !== false; }).catch(error => reportStudioError('Reading the right-click menu setting', error));
+    chrome.storage.onChanged.addListener(changes => {
+      const item = changes['wmeStudio.contextMenu'];
+      if (!item) return;
+      enabled = item.newValue !== false;
+      if (!enabled) close();
+    });
+
+    function getSDK() {
+      if (sdk || sdkRequested) return sdk;
+      const ready = page.SDK_INITIALIZED;
+      if (!ready?.then || typeof page.getWmeSdk !== 'function') return null;
+      sdkRequested = true;
+      Promise.resolve(ready).then(() => {
+        try { sdk = page.getWmeSdk({ scriptId: 'wme-studio-context-menu', scriptName: 'WME Studio' }); } catch (error) { reportStudioError('Connecting the right-click menu', error); }
+      }).catch(() => {});
+      return null;
+    }
+    const attempt = (fn, fallback = null) => { try { const value = fn(); return value === undefined ? fallback : value; } catch (_) { return fallback; } };
+    const olMap = () => attempt(() => { const map = page.W?.map; return map?.getOLMap?.() || map?.olMap || null; });
+    const fmt = value => (Math.round(value * 1e6) / 1e6).toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+    const R = 6378137;
+    const toLonLat = (x, y) => ({ lon: x / R * 180 / Math.PI, lat: (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI });
+    const toMercator = (lon, lat) => ({ x: lon * Math.PI / 180 * R, y: Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) * R });
+    const geographic = ol => /4326|CRS:84/.test(String(attempt(() => ol.getProjectionObject?.()?.getCode?.() || ol.getProjection?.() || ol.projection, '')));
+
+    function lonLatAt(clientX, clientY) {
+      const ol = olMap();
+      if (ol?.div && typeof ol.getLonLatFromPixel === 'function') {
+        const box = ol.div.getBoundingClientRect(), Pixel = page.OpenLayers?.Pixel;
+        const x = clientX - box.left, y = clientY - box.top;
+        const point = attempt(() => ol.getLonLatFromPixel(Pixel ? new Pixel(x, y) : { x, y }));
+        if (point && Number.isFinite(point.lon) && Number.isFinite(point.lat)) return geographic(ol) ? { lon: point.lon, lat: point.lat } : toLonLat(point.lon, point.lat);
+      }
+      const api = getSDK();
+      if (typeof api?.Map?.getLonLatFromPixel === 'function') {
+        const box = document.querySelector('#WazeMap, #map')?.getBoundingClientRect();
+        const point = attempt(() => api.Map.getLonLatFromPixel({ x: clientX - (box?.left || 0), y: clientY - (box?.top || 0) }));
+        if (point && Number.isFinite(point.lon) && Number.isFinite(point.lat)) return { lon: point.lon, lat: point.lat };
+      }
+      return null;
+    }
+    function zoomLevel() {
+      const api = getSDK();
+      for (const read of [() => api?.Map?.getZoomLevel?.(), () => api?.Map?.getZoom?.(), () => page.W?.map?.getZoom?.(), () => Number(new URLSearchParams(location.search).get('zoomLevel'))]) {
+        const value = attempt(read);
+        if (Number.isFinite(value) && value > 0) return Math.round(value);
+      }
+      return null;
+    }
+    function moveMap(center, zoom = null) {
+      const api = getSDK();
+      if (typeof api?.Map?.setMapCenter === 'function' && attempt(() => (api.Map.setMapCenter(zoom == null ? { lonLat: center } : { lonLat: center, zoomLevel: zoom }), true))) return true;
+      if (typeof api?.Map?.setCenter === 'function' && attempt(() => { api.Map.setCenter(center); if (zoom != null) api.Map.setZoom?.({ zoomLevel: zoom }); return true; })) return true;
+      const ol = olMap();
+      if (ol?.setCenter) {
+        const point = geographic(ol) ? { x: center.lon, y: center.lat } : toMercator(center.lon, center.lat);
+        const LonLat = page.OpenLayers?.LonLat, target = LonLat ? new LonLat(point.x, point.y) : { lon: point.x, lat: point.y };
+        const current = zoomLevel(), olZoom = attempt(() => ol.getZoom());
+        const next = zoom != null && current != null && Number.isFinite(olZoom) ? olZoom + (zoom - current) : undefined;
+        return attempt(() => (ol.setCenter(target, next), true), false);
+      }
+      return false;
+    }
+    function selection() {
+      const api = getSDK();
+      const picked = attempt(() => api?.Editing?.getSelection?.());
+      if (picked?.ids?.length) return { type: String(picked.objectType), ids: picked.ids.map(String) };
+      const models = attempt(() => page.W?.selectionManager?.getSelectedDataModelObjects?.() || page.W?.selectionManager?.getSelectedFeatures?.()?.map(feature => feature.data?.model || feature.model) || [], []).filter(Boolean);
+      if (!models.length) return null;
+      const type = String(models[0].type || attempt(() => models[0].getType?.(), '') || '');
+      return { type, ids: models.map(model => String(attempt(() => model.getID?.()) ?? model.attributes?.id ?? model.id)), models };
+    }
+    function selectionBounds(picked) {
+      const spec = TYPES[picked.type], api = getSDK(), points = [];
+      const addCoordinates = value => {
+        if (!Array.isArray(value)) return;
+        if (typeof value[0] === 'number' && typeof value[1] === 'number') points.push({ lon: value[0], lat: value[1] });
+        else for (const item of value) addCoordinates(item);
+      };
+      if (spec && api?.DataModel?.[spec.sdk[0]]?.getById) {
+        for (const id of picked.ids) {
+          const object = attempt(() => api.DataModel[spec.sdk[0]].getById({ [spec.sdk[1]]: Number(id) }));
+          addCoordinates(object?.geometry?.coordinates);
+        }
+      }
+      if (!points.length) {
+        const ol = olMap(), degrees = ol && geographic(ol);
+        const models = picked.models || (spec ? picked.ids.map(id => attempt(() => page.W?.model?.[spec.model]?.getObjectById?.(Number(id)))).filter(Boolean) : []);
+        for (const model of models) {
+          const box = attempt(() => (model.getOLGeometry?.() || model.geometry)?.getBounds?.());
+          if (!box) continue;
+          for (const [x, y] of [[box.left, box.bottom], [box.right, box.top]]) points.push(degrees ? { lon: x, lat: y } : toLonLat(x, y));
+        }
+      }
+      if (!points.length) return null;
+      const lons = points.map(point => point.lon), lats = points.map(point => point.lat);
+      return { west: Math.min(...lons), east: Math.max(...lons), south: Math.min(...lats), north: Math.max(...lats) };
+    }
+    function zoomToSelection(picked) {
+      const box = selectionBounds(picked);
+      if (!box) return false;
+      const api = getSDK();
+      const pad = Math.max((box.east - box.west), (box.north - box.south)) * .15 || .0006;
+      if (typeof api?.Map?.zoomToExtent === 'function' && attempt(() => (api.Map.zoomToExtent({ bbox: [box.west - pad, box.south - pad, box.east + pad, box.north + pad] }), true))) return true;
+      const view = (olMap()?.div || document.querySelector('#WazeMap, #map'))?.getBoundingClientRect() || { width: innerWidth, height: innerHeight };
+      const a = toMercator(box.west, box.south), b = toMercator(box.east, box.north);
+      const resolution = Math.max((b.x - a.x) / Math.max(1, view.width * .75), (b.y - a.y) / Math.max(1, view.height * .75), .01);
+      const zoom = Math.max(12, Math.min(22, Math.floor(Math.log2(156543.03392 / resolution))));
+      return moveMap({ lon: (box.west + box.east) / 2, lat: (box.south + box.north) / 2 }, zoom);
+    }
+    function deselect() {
+      const api = getSDK();
+      if (typeof api?.Editing?.clearSelection === 'function' && attempt(() => (api.Editing.clearSelection(), true))) return;
+      attempt(() => page.W?.selectionManager?.unselectAll?.());
+    }
+    // The segment drawn under the cursor, if any: the closest one within a few pixels of the click.
+    function segmentAt(clientX, clientY) {
+      const ol = olMap();
+      if (!ol?.div || typeof ol.getLonLatFromPixel !== 'function') return null;
+      const box = ol.div.getBoundingClientRect(), Pixel = page.OpenLayers?.Pixel, x = clientX - box.left, y = clientY - box.top;
+      const raw = attempt(() => ol.getLonLatFromPixel(Pixel ? new Pixel(x, y) : { x, y }));
+      if (!raw || !Number.isFinite(raw.lon) || !Number.isFinite(raw.lat)) return null;
+      const degrees = geographic(ol), here = degrees ? toMercator(raw.lon, raw.lat) : { x: raw.lon, y: raw.lat };
+      const zoom = zoomLevel();
+      const resolution = attempt(() => ol.getResolution()) || (zoom != null ? 156543.03392 / 2 ** zoom : 0);
+      if (!(resolution > 0)) return null;
+      let best = null, bestDistance = resolution * 9;
+      const measure = (id, points) => {
+        for (let i = 1; i < points.length; i++) {
+          const a = points[i - 1], b = points[i], dx = b.x - a.x, dy = b.y - a.y, length = dx * dx + dy * dy;
+          const k = length ? Math.max(0, Math.min(1, ((here.x - a.x) * dx + (here.y - a.y) * dy) / length)) : 0;
+          const distance = Math.hypot(here.x - (a.x + k * dx), here.y - (a.y + k * dy));
+          if (distance < bestDistance) { bestDistance = distance; best = String(id); }
+        }
+      };
+      const models = attempt(() => page.W?.model?.segments?.getObjectArray?.(), []) || [];
+      for (const model of models) {
+        const id = attempt(() => model.getID?.()) ?? model.attributes?.id;
+        const parts = attempt(() => (model.getOLGeometry?.() || model.geometry)?.components);
+        if (id == null || !Array.isArray(parts)) continue;
+        measure(id, parts.map(part => degrees ? toMercator(part.x, part.y) : { x: part.x, y: part.y }));
+      }
+      if (!models.length) {
+        const all = attempt(() => getSDK()?.DataModel?.Segments?.getAll?.(), []);
+        for (const segment of Array.isArray(all) ? all : []) {
+          const line = segment?.geometry?.coordinates;
+          if (Array.isArray(line)) measure(segment.id, line.map(([lon, lat]) => toMercator(lon, lat)));
+        }
+      }
+      return best;
+    }
+    function selectSegment(id) {
+      const api = getSDK(), number = Number(id);
+      if (typeof api?.Editing?.setSelection === 'function') {
+        if (attempt(() => (api.Editing.setSelection({ selection: { ids: [number], objectType: 'segment' } }), true), false)) return true;
+        if (attempt(() => (api.Editing.setSelection({ selection: [{ objectType: api.Editing.ObjectType?.SEGMENT ?? 'segment', objectId: number }] }), true), false)) return true;
+      }
+      const model = attempt(() => page.W?.model?.segments?.getObjectById?.(number));
+      return !!(model && attempt(() => (page.W.selectionManager.setSelectedModels([model]), true), false));
+    }
+    // Street names of the selected segments, or the names of the selected places.
+    function names(picked) {
+      const api = getSDK(), out = [];
+      const add = name => { if (typeof name === 'string' && name.trim() && !out.includes(name.trim())) out.push(name.trim()); };
+      for (const id of picked.ids.slice(0, 50)) {
+        const number = Number(id);
+        if (picked.type === 'segment') {
+          const segment = attempt(() => api?.DataModel?.Segments?.getById?.({ segmentId: number }));
+          let name = attempt(() => api?.DataModel?.Streets?.getById?.({ streetId: segment?.primaryStreetId })?.name);
+          if (typeof name !== 'string') {
+            const model = attempt(() => page.W?.model?.segments?.getObjectById?.(number));
+            const streetId = model?.attributes?.primaryStreetID ?? attempt(() => model?.getPrimaryStreetID?.());
+            const street = streetId == null ? null : attempt(() => page.W?.model?.streets?.getObjectById?.(streetId));
+            name = street?.attributes?.name ?? street?.name;
+          }
+          add(name);
+        } else if (picked.type === 'venue') {
+          let name = attempt(() => api?.DataModel?.Venues?.getById?.({ venueId: id })?.name);
+          if (typeof name !== 'string') { const model = attempt(() => page.W?.model?.venues?.getObjectById?.(id)); name = model?.attributes?.name ?? model?.name; }
+          add(name);
+        }
+      }
+      return out;
+    }
+    function permalink(point, picked, withSelection = true) {
+      const current = new URLSearchParams(location.search), params = new URLSearchParams();
+      for (const key of ['env', 'tab', 'language', 'locale', 'country', 's']) if (current.has(key)) params.set(key, current.get(key));
+      if (point) { params.set('lat', fmt(point.lat)); params.set('lon', fmt(point.lon)); }
+      const zoom = zoomLevel();
+      if (zoom != null) params.set('zoomLevel', String(zoom));
+      const spec = picked && TYPES[picked.type];
+      if (withSelection && spec) params.set(spec.param, picked.ids.join(','));
+      return `${location.origin}${location.pathname}?${params}`;
+    }
+    const actions = () => attempt(() => page.W?.model?.actionManager);
+    function unsavedCount() {
+      const api = getSDK();
+      for (const read of [() => api?.Editing?.getUnsavedChangesCount?.(), () => actions()?.unsavedActionsNum?.(), () => actions()?.getUnsavedActionsNum?.()]) {
+        const value = attempt(read);
+        if (Number.isFinite(value)) return value;
+      }
+      return null;
+    }
+    function refreshData() {
+      const controller = attempt(() => page.W?.controller);
+      for (const name of ['reloadData', 'reload']) if (typeof controller?.[name] === 'function') return () => controller[name]();
+      return null;
+    }
+    async function copy(text) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* the clipboard API needs focus; try the older way */ }
+      const area = document.createElement('textarea');
+      area.value = text; area.setAttribute('readonly', ''); area.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      (document.body || document.documentElement).append(area); area.select();
+      let done = false;
+      try { done = document.execCommand('copy'); } catch (_) { done = false; }
+      area.remove();
+      return done;
+    }
+
+    function ensureHost() {
+      if (host?.isConnected) return;
+      host = document.createElement('div');
+      host.id = HOST_ID;
+      host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;contain:layout style;';
+      shadow = host.attachShadow({ mode: 'open' });
+      shadow.innerHTML = `<style>
+${studioControlsCSS()}
+:host{all:initial;color-scheme:inherit}
+*{box-sizing:border-box}
+.menu{position:fixed;left:0;top:0;width:256px;max-height:calc(100dvh - 16px);overflow:auto;overscroll-behavior:contain;pointer-events:auto;
+  padding:5px;margin:0;color:var(--wme-studio-text,#202830);font:13px/1.3 var(--ws-font,Inter,"Segoe UI",system-ui,sans-serif);
+  background:var(--wme-studio-surface,#fff);border:1px solid var(--wme-studio-border,#dde3e8);border-radius:var(--wme-studio-panel-radius,7px);
+  box-shadow:0 14px 36px #00000038,0 1px 3px #0000001f;scrollbar-width:thin;scrollbar-color:var(--wme-studio-border-strong,#bdc7d0) transparent;
+  transform-origin:var(--origin,top left);animation:in .15s cubic-bezier(.2,.9,.2,1)}
+:host-context(html[data-wme-studio-compact="on"]) .menu{background:color-mix(in srgb,var(--wme-studio-surface,#fff) 90%,transparent);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);backdrop-filter:blur(18px) saturate(140%);border-radius:min(var(--ws-compact-radius,20px),15px);
+  border-color:color-mix(in srgb,var(--wme-studio-border,#dde3e8) 75%,transparent);box-shadow:0 10px 32px #0000002e}
+:host-context(html[data-wme-studio-motion="reduced"]) .menu,:host-context(html[data-wme-studio-motion="reduced"]) .toast{animation:none}
+@media (prefers-reduced-motion:reduce){.menu,.toast{animation:none}}
+@keyframes in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 9px 9px;margin:-1px 0 4px;border-bottom:1px solid var(--wme-studio-border,#dde3e8)}
+.title{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{flex:none;color:var(--wme-studio-text-muted,#747e88);font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.label{padding:8px 9px 3px;color:var(--wme-studio-text-muted,#747e88);font-size:10.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase}
+.sep{height:1px;margin:5px 4px;background:var(--wme-studio-border,#dde3e8)}
+.item{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;min-height:30px;padding:5px 9px;border-radius:var(--wme-studio-radius,5px);
+  color:inherit;cursor:pointer;transition:background-color .12s ease,color .12s ease}
+:host-context(html[data-wme-studio-compact="on"]) .item{border-radius:max(var(--wme-studio-radius,5px),calc(min(var(--ws-compact-radius,20px),15px) - 5px))}
+.item svg{flex:none;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;
+  color:var(--wme-studio-text-secondary,#57616d);transition:color .12s ease}
+.item .text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item:is(:hover,:focus-visible):not([aria-disabled="true"]){background:var(--wme-studio-hover,#edf1f4)}
+.item:is(:hover,:focus-visible):not([aria-disabled="true"]) svg{color:var(--wme-studio-accent,#0099ff)}
+.item:active:not([aria-disabled="true"]){background:var(--wme-studio-active,#e5f6ff)}
+.item:focus-visible{outline:2px solid var(--wme-studio-focus,#0099ff6b);outline-offset:-2px}
+.item[aria-disabled="true"]{cursor:default;color:var(--wme-studio-text-muted,#747e88)}
+.item-row{display:flex;align-items:stretch;gap:2px}.item-row>.item{flex:1;min-width:0}
+.side{all:unset;box-sizing:border-box;flex:none;display:grid;place-items:center;width:30px;min-height:30px;border-radius:var(--wme-studio-radius,5px);cursor:pointer;color:var(--wme-studio-text-secondary,#57616d);transition:background-color .12s ease,color .12s ease}
+:host-context(html[data-wme-studio-compact="on"]) .side{border-radius:max(var(--wme-studio-radius,5px),calc(min(var(--ws-compact-radius,20px),15px) - 5px))}
+.side svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.side:is(:hover,:focus-visible){background:var(--wme-studio-hover,#edf1f4);color:var(--wme-studio-accent,#0099ff)}.side:active{background:var(--wme-studio-active,#e5f6ff)}
+.side:focus-visible{outline:2px solid var(--wme-studio-focus,#0099ff6b);outline-offset:-2px}
+.chevron{flex:none;color:var(--wme-studio-text-muted,#747e88);font-size:16px;line-height:1}
+.item:is(:hover,:focus-visible) .chevron{color:var(--wme-studio-accent,#0099ff)}
+.item[aria-disabled="true"] svg{color:inherit;opacity:.65}
+kbd,.count{flex:none;font:600 10.5px/1 var(--ws-font,system-ui,sans-serif);color:var(--wme-studio-text-muted,#747e88);padding:4px 6px;border-radius:var(--wme-studio-radius,5px);
+  background:var(--wme-studio-input,#f6f7f9);border:1px solid var(--wme-studio-border,#dde3e8);white-space:nowrap}
+.count{color:var(--wme-studio-on-accent,#fff);background:var(--wme-studio-accent,#0099ff);border-color:transparent;border-radius:999px;padding:4px 7px}
+.switch{flex:none;position:relative;width:30px;height:18px;border-radius:999px;background:var(--wme-studio-border-strong,#bdc7d0);transition:background-color .15s ease}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #0000004d;transition:transform .15s ease}
+.item[aria-checked="true"] .switch{background:var(--wme-studio-accent,#0099ff)}
+.item[aria-checked="true"] .switch::after{transform:translateX(12px)}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:5px -5px -5px;padding:6px 6px 6px 5px;border-top:1px solid var(--wme-studio-border,#dde3e8);
+  background:color-mix(in srgb,var(--wme-studio-input,#f6f7f9) 70%,transparent)}
+.tools{display:flex;gap:2px}
+.tool{all:unset;box-sizing:border-box;display:grid;place-items:center;width:30px;height:28px;border-radius:var(--wme-studio-radius,5px);cursor:pointer;color:var(--wme-studio-text-secondary,#57616d);transition:background-color .12s ease,color .12s ease}
+.tool svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tool:is(:hover,:focus-visible):not([aria-disabled="true"]){background:var(--wme-studio-hover,#edf1f4);color:var(--wme-studio-accent,#0099ff)}
+.tool:focus-visible{outline:2px solid var(--wme-studio-focus,#0099ff6b);outline-offset:-2px}
+.tool[aria-pressed="true"]{background:var(--wme-studio-active,#e5f6ff);color:var(--wme-studio-accent,#0099ff)}
+.tool[aria-disabled="true"]{cursor:default;opacity:.4}
+.seg{display:flex;gap:2px;padding:2px;border-radius:calc(var(--wme-studio-radius,5px) + 2px);background:var(--wme-studio-input,#f6f7f9);border:1px solid var(--wme-studio-border,#dde3e8)}
+.seg button{all:unset;box-sizing:border-box;display:grid;place-items:center;width:28px;height:22px;border-radius:var(--wme-studio-radius,5px);cursor:pointer;color:var(--wme-studio-text-secondary,#57616d)}
+.seg button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.seg button:hover{color:var(--wme-studio-text,#202830);background:var(--wme-studio-hover,#edf1f4)}
+.seg button:focus-visible{outline:2px solid var(--wme-studio-focus,#0099ff6b)}
+.seg button[aria-checked="true"]{background:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-on-accent,#fff)}
+.toast{position:fixed;left:0;top:0;pointer-events:none;padding:7px 12px;border-radius:999px;font:600 12px/1.2 var(--ws-font,system-ui,sans-serif);
+  color:var(--wme-studio-on-accent,#fff);background:var(--wme-studio-accent,#0099ff);box-shadow:0 8px 22px #00000033;animation:toast 1.6s ease forwards}
+.toast.error{background:#c62828;color:#fff}
+@keyframes toast{0%{opacity:0;transform:translateY(4px)}12%,78%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-4px)}}
+</style>`;
+      (document.body || document.documentElement).append(host);
+      globalThis.WMEStudioI18n?.localize?.(shadow);
+    }
+
+    function toast(message, x, y, error = false) {
+      ensureHost();
+      shadow.querySelector('.toast')?.remove();
+      clearTimeout(toastTimer);
+      const note = document.createElement('div');
+      note.className = 'toast' + (error ? ' error' : '');
+      note.setAttribute('role', 'status');
+      note.textContent = message;
+      shadow.append(note);
+      const box = note.getBoundingClientRect();
+      note.style.left = `${Math.max(8, Math.min(innerWidth - box.width - 8, x - box.width / 2))}px`;
+      note.style.top = `${Math.max(8, Math.min(innerHeight - box.height - 8, y - box.height - 12))}px`;
+      toastTimer = setTimeout(() => note.remove(), 1700);
+    }
+
+    function close() {
+      if (!menu) return;
+      menu.remove(); menu = null;
+      window.removeEventListener('pointerdown', outside, true);
+      window.removeEventListener('wheel', outside, true);
+      window.removeEventListener('keydown', keys, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('blur', close);
+    }
+    function outside(event) {
+      if (!menu) return;
+      if (event.composedPath().includes(host)) return;
+      if (event.type === 'pointerdown' && event.button === 2 && wanted(event)) return;   // a new right-click on the map reopens the menu there
+      close();
+    }
+    function keys(event) {
+      if (!menu) return;
+      const items = [...menu.querySelectorAll('.item:not([aria-disabled="true"]), .side, .tool:not([aria-disabled="true"]), .seg button')];
+      const index = items.indexOf(shadow.activeElement);
+      if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); close(); return; }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Tab'].includes(event.key) && !(index >= 0 && ['Enter', ' '].includes(event.key))) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (event.key === 'Enter' || event.key === ' ') { items[index].click(); return; }
+      const step = event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey) ? -1 : 1;
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : index < 0 ? (step > 0 ? 0 : items.length - 1) : (index + step + items.length) % items.length;
+      items[next]?.focus();
+    }
+
+    function build(clientX, clientY, mode = 'auto') {
+      const point = lonLatAt(clientX, clientY);
+      let picked = mode === 'map' ? null : selection();
+      if (mode !== 'map') {
+        // A right-click on a segment selects it first, unless it is already part of the selection.
+        const hit = segmentAt(clientX, clientY);
+        if (hit && !(picked?.type === 'segment' && picked.ids.includes(hit)) && selectSegment(hit)) picked = { type: 'segment', ids: [hit] };
+      }
+      const spec = picked && TYPES[picked.type];
+      const labels = picked ? names(picked) : [];
+      const area = picked ? selectionBounds(picked) : null;
+      const middle = area ? { lon: (area.west + area.east) / 2, lat: (area.south + area.north) / 2 } : point;
+      const html = document.documentElement, studioOn = html.getAttribute('data-wme-studio') === 'on';
+      const floating = html.getAttribute('data-wme-studio-compact') === 'on';
+      const theme = html.getAttribute('data-wme-studio-theme') || 'dark';
+      const refresh = refreshData();
+      const shortcut = globalThis.WMEStudioShortcut?.label?.(commandShortcut) || '';
+      const canArrange = studioOn && !!globalThis.WMEStudioCompactLayout && attempt(() => matchMedia(globalThis.WMEStudioSafari.viewport).matches, true);
+      const rows = [];
+      const item = (iconName, text, run, options = {}) => rows.push({ kind: 'item', iconName, text, run, ...options });
+      const label = text => rows.push({ kind: 'label', text });
+      const sep = () => rows.push({ kind: 'sep' });
+      const at = { x: clientX, y: clientY };
+      const copied = async (text, message) => { const done = await copy(text); toast(done ? t(message) : t('Could not copy'), at.x, at.y, !done); };
+
+      if (picked) {
+        const many = picked.ids.length > 1;
+        item('hash', many ? 'Copy IDs' : 'Copy ID', () => copied(picked.ids.join(', '), many ? 'IDs copied' : 'ID copied'));
+        if (picked.type === 'segment') item('street', labels.length > 1 ? 'Copy street names' : 'Copy street name', () => copied(labels.join(', '), 'Street name copied'), { disabled: !labels.length });
+        if (picked.type === 'venue') item('street', labels.length > 1 ? 'Copy names' : 'Copy name', () => copied(labels.join(', '), 'Name copied'), { disabled: !labels.length });
+        item('link', 'Copy permalink', () => copied(permalink(middle || null, picked), 'Permalink copied'));
+        sep();
+        item('focus', 'Zoom to selection', () => { if (!zoomToSelection(picked)) toast(t('Selection is not loaded'), at.x, at.y, true); }, { disabled: !area });
+        item('gmaps', 'Open in Google Maps', () => window.open(`https://www.google.com/maps/search/?api=1&query=${fmt(middle.lat)},${fmt(middle.lon)}`, '_blank', 'noopener'), { disabled: !middle });
+        item('deselect', 'Deselect', deselect, { kbd: 'Esc' });
+      } else {
+        item('copy', 'Copy coordinates', () => copied(`${fmt(point.lat)}, ${fmt(point.lon)}`, 'Coordinates copied'), { disabled: !point });
+        item('link', 'Copy permalink', () => copied(permalink(point || null, null), 'Permalink copied'));
+        item('center', 'Center map here', () => moveMap(point, zoomLevel()), { disabled: !point });
+        item('zoomIn', 'Zoom in here', () => { const zoom = zoomLevel(); moveMap(point, zoom == null ? null : Math.min(22, zoom + 1)); }, { disabled: !point });
+        item('gmaps', 'Open in Google Maps', () => window.open(`https://www.google.com/maps/search/?api=1&query=${fmt(point.lat)},${fmt(point.lon)}`, '_blank', 'noopener'), { disabled: !point });
+        item('newTab', 'Open here in a new tab', () => window.open(permalink(point, null, false), '_blank', 'noopener'), { disabled: !point });
+      }
+      // The same view in the other editor: WME Beta from WME, and WME from WME Beta. With unsaved edits here it
+      // opens in a new tab, so this tab (and the edits) stay as they are.
+      const onBeta = /^beta\./i.test(location.hostname);
+      const otherEditor = () => {
+        const box = document.getElementById('WazeMap')?.getBoundingClientRect();
+        const view = (box && box.width ? lonLatAt(box.left + box.width / 2, box.top + box.height / 2) : null) || middle || point;
+        const url = new URL(permalink(view || null, picked));
+        url.hostname = onBeta ? 'www.waze.com' : 'beta.waze.com';
+        return url.href;
+      };
+      item(onBeta ? 'stable' : 'beta', onBeta ? 'Switch to WME' : 'Switch to WME Beta', () => {
+        const href = otherEditor();
+        if ((unsavedCount() || 0) > 0) { window.open(href, '_blank', 'noopener'); toast(t('Opened in a new tab to keep your unsaved edits'), at.x, at.y); }
+        else location.assign(href);
+      }, { side: { iconName: 'newTab', text: onBeta ? 'Open WME in a new tab' : 'Open WME Beta in a new tab', run: () => window.open(otherEditor(), '_blank', 'noopener') } });
+      sep();
+      if (refresh) item('refresh', 'Refresh map data', refresh);
+      else item('refresh', 'Reload editor here', () => location.assign(permalink(point || null, picked)));
+      if (picked) { sep(); item('map', 'Map options here', () => open(clientX, clientY, 'map'), { keepOpen: true, chevron: true }); }
+      rows.push({ kind: 'bar', theme, tools: [
+        { iconName: 'arrange', text: 'Arrange layout', disabled: !canArrange, run: async () => { if (!floating) await globalThis.WMEStudioSettings.write({ compactMode: true }); globalThis.WMEStudioCompactLayout.open(); } },
+        { iconName: 'floating', text: 'Floating mode', pressed: floating, disabled: !studioOn, run: () => globalThis.WMEStudioSettings.write({ compactMode: !floating }) },
+        { iconName: 'command', text: 'Command palette', kbd: shortcut, run: openStudioCommands },
+        { iconName: 'settings', text: 'Studio settings', run: () => openStudioUI() }
+      ] });
+
+      const title = picked ? (picked.ids.length > 1 ? tf(spec?.many || '{0} selected', picked.ids.length) : t(spec?.one || 'Selected item')) : t('Map');
+      const short = value => fmt(value).replace(/(\.\d{5})\d+/, '$1');
+      const subtitle = picked
+        ? (labels.length === 1 ? labels[0] : picked.ids.length === 1 ? `ID ${picked.ids[0]}` : '')
+        : point ? `${short(point.lat)}, ${short(point.lon)}` : '';
+      const box = document.createElement('div');
+      box.className = 'menu'; box.dataset.mode = picked ? 'selection' : 'map'; box.setAttribute('role', 'menu'); box.setAttribute('aria-label', picked ? title : t('Map menu'));
+      const head = document.createElement('div');
+      head.className = 'head';
+      head.innerHTML = '<span class="title"></span><span class="sub" data-ws-keep></span>';
+      head.querySelector('.title').textContent = title;
+      head.querySelector('.sub').textContent = subtitle;
+      box.append(head);
+      for (const row of rows) {
+        if (row.kind === 'sep') { box.append(Object.assign(document.createElement('div'), { className: 'sep', role: 'separator' })); continue; }
+        if (row.kind === 'label') { box.append(Object.assign(document.createElement('div'), { className: 'label', textContent: t(row.text) })); continue; }
+        if (row.kind === 'bar') {
+          const group = document.createElement('div');
+          group.className = 'bar';
+          group.innerHTML = '<span class="tools" role="group"></span><span class="seg" role="radiogroup"></span>';
+          group.title = t('Shift + right-click opens the browser menu.');
+          for (const tool of row.tools) {
+            const button = document.createElement('button');
+            button.type = 'button'; button.className = 'tool'; button.innerHTML = icon(tool.iconName);
+            const name = t(tool.text) + (tool.kbd ? ` (${tool.kbd})` : '');
+            button.title = name; button.setAttribute('aria-label', name);
+            if (tool.pressed != null) button.setAttribute('aria-pressed', String(tool.pressed));
+            if (tool.disabled) button.setAttribute('aria-disabled', 'true');
+            button.addEventListener('click', event => {
+              event.preventDefault(); event.stopPropagation();
+              if (tool.disabled) return;
+              if (tool.pressed != null) { button.setAttribute('aria-pressed', String(!tool.pressed)); setTimeout(close, 160); } else close();
+              Promise.resolve().then(tool.run).catch(error => { reportStudioError(`Right-click menu: ${tool.text}`, error); toast(t('That did not work'), at.x, at.y, true); });
+            });
+            group.querySelector('.tools').append(button);
+          }
+          group.querySelector('.seg').setAttribute('aria-label', t('Theme'));
+          for (const [value, name, glyph] of [['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['black', 'Full black', 'black']]) {
+            const button = document.createElement('button');
+            button.type = 'button'; button.setAttribute('role', 'radio'); button.setAttribute('aria-checked', String(theme === value));
+            button.title = t(name); button.setAttribute('aria-label', t(name)); button.innerHTML = icon(glyph);
+            button.addEventListener('click', () => {
+              for (const other of group.querySelectorAll('.seg button')) other.setAttribute('aria-checked', String(other === button));
+              globalThis.WMEStudioSettings.write({ theme: value }).catch(error => reportStudioError('Changing the theme from the right-click menu', error));
+            });
+            group.querySelector('.seg').append(button);
+          }
+          box.append(group);
+          continue;
+        }
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'item';
+        button.setAttribute('role', row.toggle == null ? 'menuitem' : 'menuitemcheckbox');
+        if (row.toggle != null) button.setAttribute('aria-checked', String(row.toggle));
+        if (row.disabled) button.setAttribute('aria-disabled', 'true');
+        button.innerHTML = `${icon(row.iconName)}<span class="text"></span>`;
+        button.querySelector('.text').textContent = t(row.text);
+        if (row.count) button.insertAdjacentHTML('beforeend', `<span class="count">${row.count}</span>`);
+        else if (row.kbd) { const key = document.createElement('kbd'); key.textContent = row.kbd; key.setAttribute('data-ws-keep', ''); button.append(key); }
+        if (row.toggle != null) button.insertAdjacentHTML('beforeend', '<span class="switch" aria-hidden="true"></span>');
+        if (row.chevron) button.insertAdjacentHTML('beforeend', '<span class="chevron" aria-hidden="true">›</span>');
+        button.addEventListener('click', event => {
+          event.preventDefault();
+          if (row.disabled) return;
+          if (row.toggle != null) { button.setAttribute('aria-checked', String(!row.toggle)); setTimeout(close, 140); }
+          else if (!row.keepOpen) close();
+          Promise.resolve().then(row.run).catch(error => { reportStudioError(`Right-click menu: ${row.text}`, error); toast(t('That did not work'), at.x, at.y, true); });
+        });
+        if (!row.side) { box.append(button); continue; }
+        const line = document.createElement('div'), side = document.createElement('button');
+        line.className = 'item-row';
+        side.type = 'button'; side.className = 'side'; side.setAttribute('role', 'menuitem'); side.innerHTML = icon(row.side.iconName);
+        side.title = t(row.side.text); side.setAttribute('aria-label', t(row.side.text));
+        side.addEventListener('click', event => {
+          event.preventDefault(); event.stopPropagation(); close();
+          Promise.resolve().then(row.side.run).catch(error => { reportStudioError(`Right-click menu: ${row.side.text}`, error); toast(t('That did not work'), at.x, at.y, true); });
+        });
+        line.append(button, side); box.append(line);
+      }
+      box.addEventListener('contextmenu', event => event.preventDefault());
+      return box;
+    }
+
+    function open(clientX, clientY, mode = 'auto') {
+      close();
+      ensureHost();
+      menu = build(clientX, clientY, mode);
+      shadow.append(menu);
+      const box = menu.getBoundingClientRect(), pad = 8;
+      const left = clientX + box.width + pad > innerWidth ? Math.max(pad, clientX - box.width) : clientX;
+      const top = clientY + box.height + pad > innerHeight ? Math.max(pad, Math.min(clientY - box.height, innerHeight - box.height - pad)) : clientY;
+      menu.style.left = `${left}px`; menu.style.top = `${top}px`;
+      menu.style.setProperty('--origin', `${left < clientX ? 'right' : 'left'} ${top < clientY ? 'bottom' : 'top'}`);
+      openedAt = performance.now();
+      window.addEventListener('pointerdown', outside, true);
+      window.addEventListener('wheel', outside, { capture: true, passive: true });
+      window.addEventListener('keydown', keys, true);
+      window.addEventListener('resize', close);
+      window.addEventListener('blur', close);
+    }
+
+    // Only the map surface itself: not Studio's islands, WME's controls, panels or anything you can type in.
+    function onMap(event) {
+      const path = event.composedPath();
+      const target = path[0];
+      if (!target?.closest) return false;
+      if (path.some(node => node?.nodeType === 1 && node.matches('button,wz-button,a[href],input,textarea,select,[contenteditable="true"],[role="button"],[role="dialog"],[role="menu"],.ws-custom-island,#overlay-buttons,.wmeRcMenu,.wmeRcPins'))) return false;
+      return !!(target.closest('.olMapViewport') || target.matches('#WazeMap,#map'));
+    }
+    function wanted(event) {
+      const html = document.documentElement;
+      return enabled && !event.shiftKey && html.getAttribute('data-wme-studio') === 'on' && !html.hasAttribute('data-wme-studio-layout-editing') &&
+        /(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname) && onMap(event);
+    }
+
+    // RightClick Functions opens its own menu from the same right-click. When it gets the event first, it stops it
+    // before Studio sees it, so Studio closes that menu and opens its own at the same spot.
+    function takeOverOtherMenu() {
+      const other = document.querySelector('.wmeRcMenu');
+      if (!other) return false;
+      try { document.documentElement.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: -100, clientY: -100 })); } catch (_) { /* fall through */ }
+      for (const element of document.querySelectorAll('.wmeRcMenu')) element.remove();
+      return true;
+    }
+
+    // While a right-click on the map is being handled, the other script's menu is kept invisible so it does not
+    // flash before Studio replaces it.
+    const pendingStyle = document.createElement('style');
+    pendingStyle.textContent = 'html[data-wme-studio-context-pending] .wmeRcMenu { visibility: hidden !important; }';
+    (document.head || document.documentElement).append(pendingStyle);
+    let pendingTimer = 0;
+    const pending = on => {
+      clearTimeout(pendingTimer);
+      document.documentElement.toggleAttribute('data-wme-studio-context-pending', on);
+      if (on) pendingTimer = setTimeout(pending, 1500, false);
+    };
+    window.addEventListener('contextmenu', event => {
+      if (!wanted(event)) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (gesture) gesture.handled = true;
+      pending(false);
+      open(event.clientX, event.clientY);
+    }, true);
+    window.addEventListener('pointerdown', event => {
+      if (event.button !== 2) return;
+      gesture = wanted(event) ? { x: event.clientX, y: event.clientY, handled: false } : null;
+      pending(!!gesture);
+      if (gesture) setTimeout(check, 40, gesture);   // macOS and Linux send the menu event on press
+    }, true);
+    window.addEventListener('pointerup', event => {
+      if (event.button !== 2 || !gesture) return;
+      setTimeout(check, 40, gesture, true);          // Windows sends it on release
+    }, true);
+    function check(state, last = false) {
+      if (state !== gesture || state.handled) return;
+      if (takeOverOtherMenu()) { state.handled = true; open(state.x, state.y); }
+      if (state.handled || last) pending(false);
+    }
+
+    return Object.freeze({ open, close, isOpen: () => !!menu, openedAt: () => openedAt });
+  })();
+  globalThis.WMEStudioContextMenu = studioContextMenu;
 
   const SETUP_KEY = 'wmeStudio.setup.v1';
   const SETUP_HOST_ID = 'wme-studio-setup';
@@ -19226,16 +23558,9 @@ ${studioControlsCSS()}
     } catch (studioError) { reportStudioError("detectNativeCompact",studioError);}
     return !!document.querySelector(':is(html,body,.app,#wz-app):is(.compact-density,.compact-mode,.is-compact,[data-density="compact"],[density="compact"])');
   }
-  function buildStudioSetup() {
-    if (studioSetup || !uiRouteAllowed() || window.top !== window.self) return studioSetup;
-    const host = document.createElement('div');
-    host.id = SETUP_HOST_ID;
-    host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;contain:layout style paint;';
-    const shadow = host.attachShadow({ mode: 'open' });
-    queueMicrotask(() => globalThis.WMEStudioI18n?.localize(shadow));
-    shadow.innerHTML = `
-<style>
-${studioControlsCSS()}
+  // Shared shell of the setup and the update tour: the dialog, its copy column, buttons and the miniature editor.
+  function studioSetupShellCSS() {
+    return `
   :host{all:initial;color-scheme:inherit}
   *,*::before,*::after{box-sizing:border-box}
   [hidden]{display:none!important}
@@ -19387,6 +23712,19 @@ ${studioControlsCSS()}
   .setup[data-motion="reduced"],.setup[data-motion="reduced"] *,.setup[data-motion="reduced"] *::before,.setup[data-motion="reduced"] *::after{transition:none!important;animation:none!important}
   @media (prefers-reduced-motion:reduce){.setup,.setup *,.setup *::before,.setup *::after,.scrim{transition:none!important;animation:none!important}}
   @media (max-width:780px){.setup{grid-template-columns:minmax(0,1fr)}.stage{display:none}.copy{padding:22px 20px 18px}h2{font-size:23px}}
+`;
+  }
+  function buildStudioSetup() {
+    if (studioSetup || !uiRouteAllowed() || window.top !== window.self) return studioSetup;
+    const host = document.createElement('div');
+    host.id = SETUP_HOST_ID;
+    host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;contain:layout style paint;';
+    const shadow = host.attachShadow({ mode: 'open' });
+    queueMicrotask(() => globalThis.WMEStudioI18n?.localize(shadow));
+    shadow.innerHTML = `
+<style>
+${studioControlsCSS()}
+${studioSetupShellCSS()}
 </style>
 <div class="scrim" data-id="scrim"></div>
 <section class="setup" role="dialog" aria-modal="true" aria-labelledby="studio-setup-title" tabindex="-1" data-step="0" data-mode="floating">
@@ -19576,6 +23914,7 @@ ${studioControlsCSS()}
       dialog.classList.remove('open'); scrim.classList.remove('open');
       document.removeEventListener('keydown', onKeydown, true);
       setupSeen = true;
+      if (tourSeen !== USERSCRIPT_VERSION) markTourSeen();
       try { Promise.resolve(studioKeep.set(SETUP_KEY, true)).catch((studioError) => { reportStudioError("close",studioError);}); } catch (studioError) { reportStudioError("close",studioError);}
       if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
       returnFocus = null;
@@ -19597,6 +23936,414 @@ ${studioControlsCSS()}
   }
   function openStudioSetup() {
     buildStudioSetup()?.open();
+  }
+  // The update tour: the setup dialog's shell with one stop per 2.0.0 feature and a miniature editor that acts
+  // each one out. Shown once per version to editors who already ran the setup; new installs see the setup only.
+  const TOUR_KEY = 'wmeStudio.tour.v1', TOUR_HOST_ID = 'wme-studio-tour';
+  const TOUR_CURSOR = '<div class="cursor"><svg viewBox="0 0 18 22" aria-hidden="true"><path d="M2 1.5 16.2 12.6l-6.3.9 3.4 6.6-2.9 1.4-3.3-6.6L2 19.4z" fill="#fff" stroke="#1c2024" stroke-width="1.4" stroke-linejoin="round"/></svg></div>';
+  let studioTour = null, tourSeen = null, tourStarted = false;
+  function buildStudioTour() {
+    if (studioTour || !uiRouteAllowed() || window.top !== window.self) return studioTour;
+    const host = document.createElement('div');
+    host.id = TOUR_HOST_ID;
+    host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;contain:layout style paint;';
+    const shadow = host.attachShadow({ mode: 'open' });
+    queueMicrotask(() => globalThis.WMEStudioI18n?.localize(shadow));
+    shadow.innerHTML = `
+<style>
+${studioControlsCSS()}
+${studioSetupShellCSS()}
+  .setup,.setup[data-step="3"]{width:min(960px,calc(100vw - 40px));height:min(600px,calc(100vh - 40px));height:min(600px,calc(100dvh - 40px))}
+  .note a+a::before{content:"·";margin:0 7px;color:var(--muted)}
+  .actions .btn{flex:0 1 auto;min-width:0;padding:0 12px;overflow:hidden;text-overflow:ellipsis}
+  .actions .btn.go{flex:none;min-width:96px}
+  .actions .gap{min-width:6px}
+  .tag{display:inline-flex;align-items:center;height:22px;padding:0 9px;margin-left:8px;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);font-size:11.5px;font-weight:700;letter-spacing:.02em;vertical-align:3px}
+  .where{gap:8px}
+  .where li{font-size:13.5px}
+  .where li span{display:block}
+  .where b{display:block}
+  .where small{display:block;color:var(--muted);font-size:12.5px;line-height:1.45}
+  .note{margin:12px 0 0;padding:11px 13px;border:1px solid var(--line);border-radius:13px;color:var(--soft);font-size:12.5px;line-height:1.45}
+  .note b{color:var(--text);font-weight:650}
+  .note a{color:var(--accent);text-decoration:none}
+  .note a:hover{text-decoration:underline}
+  kbd{display:inline-block;padding:1px 6px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:6px;background:var(--surface2);color:var(--text);font:600 11.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  /* Stage: extra actors over the miniature editor, one set per stop. */
+  .mini{font:2.5cqw/1.35 ui-sans-serif,"Segoe UI",system-ui,-apple-system,sans-serif;color:var(--text)}
+  .t{position:absolute;display:none}
+  .t b,.t i,.t span,.t em{display:block;flex:none;font-style:normal}
+  .t-pulse{inset:0;pointer-events:none;border-radius:inherit}
+  .t-pulse i{position:absolute;border-radius:2.6cqw;box-shadow:0 0 0 0 var(--accent);opacity:0;animation:tour-ring 2600ms ease-out infinite}
+  .t-pulse i:nth-child(1){inset:4.5% 9% 84.4% 9%}
+  .t-pulse i:nth-child(2){inset:22% 91.4% 22% 2.2%;border-radius:2.2cqw;animation-delay:260ms}
+  .t-pulse i:nth-child(3){inset:25% 2.2% 25% 91.4%;border-radius:2.2cqw;animation-delay:520ms}
+  @keyframes tour-ring{0%{opacity:0;box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 80%,transparent)}12%{opacity:1}100%{opacity:0;box-shadow:0 0 0 2.4cqw transparent}}
+  .cursor{position:absolute;width:3.6cqw;height:4.4cqw;pointer-events:none;z-index:5;filter:drop-shadow(0 .4cqw .8cqw #0006)}
+  .cursor svg{display:block;width:100%;height:100%}
+  .t-island{left:44%;top:62%;width:22%;height:10.5%;align-items:center;justify-content:center;gap:1.6cqw;border:.35cqw dashed var(--line2);border-radius:2.2cqw;background:color-mix(in srgb,var(--surface) 55%,transparent);animation:tour-island 5600ms ease-in-out infinite}
+  .t-island i{width:3.2cqw;aspect-ratio:1;border-radius:50%;background:color-mix(in srgb,var(--text) 26%,transparent)}
+  .t-island .link{background:conic-gradient(from 20deg,#4285f4,#34a853,#fbbc05,#ea4335,#4285f4);box-shadow:inset 0 0 0 .5cqw var(--surface)}
+  .t-island .slot{width:3.2cqw;aspect-ratio:1;border-radius:50%;border:.3cqw dashed var(--line2);background:transparent;animation:tour-slot 5600ms ease-in-out infinite}
+  @keyframes tour-island{0%,12%{opacity:0;transform:scale(.9)}20%,58%{opacity:1;transform:none;border-style:dashed;border-color:var(--line2);background:color-mix(in srgb,var(--surface) 55%,transparent)}66%,88%{opacity:1;border-style:solid;border-color:color-mix(in srgb,var(--line) 45%,transparent);background:color-mix(in srgb,var(--surface) 80%,transparent);box-shadow:0 1.2cqw 3cqw #0000003d}100%{opacity:0;transform:scale(.96)}}
+  @keyframes tour-slot{0%,58%{border-color:var(--line2);background:transparent}66%,100%{border-color:transparent;background:color-mix(in srgb,var(--text) 26%,transparent)}}
+  .t-ghost{left:93.5%;top:52.5%;width:3.2cqw;aspect-ratio:1;border-radius:50%;background:var(--accent);box-shadow:0 0 0 .5cqw var(--surface),0 .6cqw 1.6cqw #0005;animation:tour-ghost 5600ms cubic-bezier(.4,0,.2,1) infinite}
+  @keyframes tour-ghost{0%,18%{transform:none;opacity:1}22%{transform:translate(-4cqw,-2cqw) scale(1.25)}58%{transform:translate(-35.3cqw,8.5cqw) scale(1.25);opacity:1}66%,88%{transform:translate(-35.3cqw,8.5cqw) scale(1);opacity:1}92%,100%{transform:translate(-35.3cqw,8.5cqw) scale(1);opacity:0}}
+  .t-ghost .cursor{left:50%;top:50%;animation:tour-ghost-cursor 5600ms ease infinite}
+  @keyframes tour-ghost-cursor{0%,12%{opacity:0}18%,66%{opacity:1}72%,100%{opacity:0}}
+  .t-bar{left:50%;top:19%;transform:translateX(-50%);align-items:center;gap:.6cqw;padding:.9cqw;border-radius:99px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1cqw 2.6cqw #00000030;font-size:2.2cqw;font-weight:600}
+  .t-bar span{padding:.5cqw 1.6cqw;border-radius:99px;color:var(--soft)}
+  .t-bar .go{background:var(--accent);color:var(--on-accent)}
+  .t-menu{left:37%;top:25%;width:40%;padding:1cqw;border:1px solid var(--line);border-radius:2.4cqw;background:var(--surface);box-shadow:0 2.4cqw 5cqw #00000045}
+  .t-menu .row{display:flex;align-items:center;gap:1.6cqw;height:5.2cqw;padding:0 1.4cqw;border-radius:1.5cqw;color:var(--text);font-size:2.35cqw;white-space:nowrap}
+  .t-menu .row i{width:2.6cqw;aspect-ratio:1;border-radius:28%;background:color-mix(in srgb,var(--text) 32%,transparent)}
+  .t-menu .row em{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis}
+  .t-menu .row small{font-size:2cqw;color:var(--muted)}
+  .t-menu .row.on{background:var(--hover)}
+  .t-menu .row .side{display:grid;place-items:center;width:4.2cqw;height:4.2cqw;margin-right:-.6cqw;border-radius:1.2cqw;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+  .t-menu .row .side svg{width:2.4cqw;height:2.4cqw;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .t-menu .rule{height:1px;margin:.8cqw .6cqw;background:var(--line)}
+  .t-menu .cursor{left:72%;top:44%}
+  .t-pin{left:34.2%;top:22.8%;width:3cqw;aspect-ratio:1;border-radius:50%;background:var(--accent);box-shadow:0 0 0 .6cqw color-mix(in srgb,var(--accent) 30%,transparent)}
+  .setup[data-step="3"] .m-head{z-index:3;inset:4.5% 41% 84.4% 9%;animation:tour-head 6000ms cubic-bezier(.4,0,.2,1) infinite}
+  .setup[data-step="3"] .m-head .city,.setup[data-step="3"] .m-head .ic:nth-of-type(n+4){display:none}
+  @keyframes tour-head{0%,10%{transform:none;box-shadow:0 1.4cqw 3.4cqw #0000003d}22%{transform:translate(2cqw,26cqw);box-shadow:0 2.6cqw 5cqw #00000052}40%{transform:translate(2cqw,26cqw)}52%{transform:translate(31cqw,26cqw);box-shadow:0 1.4cqw 3.4cqw #0000003d}78%{transform:translate(31cqw,26cqw)}90%,100%{transform:none}}
+  .t-hand{left:11.5%;top:7%;animation:tour-hand 6000ms cubic-bezier(.4,0,.2,1) infinite}
+  @keyframes tour-hand{0%,10%{transform:none;opacity:1}22%{transform:translate(2cqw,26cqw)}40%{transform:translate(2cqw,26cqw);opacity:1}48%,100%{transform:translate(2cqw,26cqw);opacity:0}}
+  .t-handle{left:24.75%;top:20.3%;width:7cqw;height:.9cqw;margin-left:-3.5cqw;border-radius:99px;background:var(--accent);animation:tour-handle 6000ms ease infinite,tour-panel 6000ms cubic-bezier(.4,0,.2,1) infinite}
+  @keyframes tour-handle{0%,55%{opacity:.35}62%,88%{opacity:1}95%,100%{opacity:.35}}
+  .setup[data-step="3"] .m-panel{animation:tour-panel 6000ms cubic-bezier(.4,0,.2,1) infinite;transition:none}
+  @keyframes tour-panel{0%,62%{transform:none}72%,88%{transform:translateY(8cqw)}96%,100%{transform:none}}
+  .t-notice{left:50%;top:50%;transform:translate(-50%,-50%);width:74%;grid-template-columns:auto minmax(0,1fr);gap:1.2cqw 2.2cqw;padding:2.6cqw 2.8cqw;border:1px solid var(--line);border-radius:3cqw;background:var(--surface);box-shadow:0 3cqw 7cqw #0000004d;animation:tour-notice 520ms cubic-bezier(.2,.9,.2,1) both}
+  @keyframes tour-notice{from{opacity:0;transform:translate(-50%,-44%) scale(.96)}to{opacity:1;transform:translate(-50%,-50%)}}
+  .t-notice .ok{display:grid;place-items:center;width:6.4cqw;height:6.4cqw;grid-row:1 / span 2;border-radius:50%;background:#1fa971;color:#fff}
+  .t-notice .ok svg{width:3.6cqw;height:3.6cqw;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+  .t-notice strong{display:block;font-size:2.9cqw;font-weight:680;letter-spacing:-.01em}
+  .t-notice .item{display:flex;align-items:baseline;gap:1.4cqw;font-size:2.35cqw;color:var(--soft)}
+  .t-notice .item em{color:var(--text);font-weight:600}
+  .t-notice .item small{display:flex;gap:.5cqw;font-size:2.05cqw;color:var(--muted);white-space:nowrap}
+  .t-notice .acts{grid-column:2;display:flex;gap:1.4cqw;margin-top:.6cqw}
+  .t-notice .acts span{height:5.4cqw;padding:0 2.4cqw;display:grid;place-items:center;border:1px solid var(--line);border-radius:1.8cqw;font-size:2.3cqw;font-weight:620;color:var(--text)}
+  .t-notice .acts .go{border-color:transparent;background:var(--accent);color:var(--on-accent)}
+  .t-sent{left:50%;top:14%;transform:translateX(-50%);align-items:center;gap:1.2cqw;height:5.4cqw;padding:0 2.2cqw;border-radius:99px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1cqw 2.6cqw #00000030;font-size:2.2cqw;color:var(--soft);white-space:nowrap}
+  .t-sent i{width:2.6cqw;aspect-ratio:1;border-radius:50%;background:linear-gradient(140deg,#f2b36b,#c45d7a)}
+  .t-sent b{color:var(--text);font-weight:650}
+  .t-win{inset:4% 3%;grid-template-columns:28% minmax(0,1fr);overflow:hidden;border:1px solid var(--line);border-radius:3cqw;background:var(--surface);box-shadow:0 3cqw 7cqw #0000004d;font-size:2.25cqw}
+  .t-win .side{display:flex;flex-direction:column;gap:.4cqw;padding:2.2cqw 1.6cqw;border-right:1px solid var(--line);background:var(--surface2)}
+  .t-win .brand{display:flex;align-items:center;gap:1.2cqw;margin:0 .6cqw 1.6cqw;font-weight:700;font-size:2.4cqw}
+  .t-win .brand i{width:3.6cqw;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle at 50% 44%,#fff 0 30%,transparent 33%),var(--accent)}
+  .t-win .grp{margin:1.4cqw .9cqw .5cqw;font-size:1.75cqw;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .t-win .nav{display:flex;align-items:center;gap:1.4cqw;height:4.9cqw;padding:0 1.4cqw;border-radius:1.5cqw;color:var(--soft);white-space:nowrap}
+  .t-win .nav i{width:2.5cqw;aspect-ratio:1;border-radius:28%;background:color-mix(in srgb,var(--text) 30%,transparent)}
+  .t-win .nav.on{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--text);font-weight:600}
+  .t-win .nav.on i{background:var(--accent)}
+  .t-win .nav .badge{margin-left:auto;min-width:3.2cqw;height:3.2cqw;padding:0 .8cqw;display:grid;place-items:center;border-radius:99px;background:#1fa971;color:#fff;font-size:1.8cqw;font-weight:700}
+  .t-win .main{display:flex;flex-direction:column;gap:1.6cqw;padding:2.4cqw 2.8cqw;overflow:hidden}
+  .t-win h4{margin:0;font-size:3.4cqw;font-weight:700;letter-spacing:-.02em}
+  .t-win .sub{margin:-1cqw 0 0;color:var(--muted);font-size:2.1cqw}
+  .t-win .chips{display:flex;gap:1cqw}
+  .t-win .chips span{height:4.2cqw;padding:0 2cqw;display:grid;place-items:center;border:1px solid var(--line);border-radius:99px;color:var(--soft);font-size:2cqw;font-weight:600}
+  .t-win .chips .on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--text)}
+  .t-win .card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:2.2cqw;overflow:hidden}
+  .t-win .srow{display:flex;align-items:center;gap:2cqw;padding:1.6cqw 2cqw}
+  .t-win .srow + .srow{border-top:1px solid var(--line)}
+  .t-win .srow .txt{flex:1 1 10cqw;min-width:0}
+  .t-win .srow em span{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .t-win .reset{flex:none;white-space:nowrap}
+  .t-win .srow em{display:flex;align-items:center;gap:1cqw;font-weight:600;color:var(--text)}
+  .t-win .srow em i{width:1.5cqw;aspect-ratio:1;border-radius:50%;background:var(--accent)}
+  .t-win .srow small{display:block;color:var(--muted);font-size:1.95cqw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .t-win .reset{color:var(--accent);font-size:2cqw;font-weight:600}
+  .t-win .range{position:relative;flex:none;width:11cqw;height:.9cqw;border-radius:99px;background:var(--line)}
+  .t-win .range::before{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--v);border-radius:99px;background:var(--accent)}
+  .t-win .range::after{content:"";position:absolute;left:var(--v);top:50%;width:3cqw;height:3cqw;transform:translate(-50%,-50%);border-radius:50%;background:var(--surface);border:1px solid var(--line2);box-shadow:0 .4cqw 1cqw #0003}
+  .t-win .val{min-width:8cqw;height:4.4cqw;padding:0 1.4cqw;display:grid;place-items:center;border:1px solid var(--accent);border-radius:1.4cqw;background:var(--surface2);font-variant-numeric:tabular-nums;font-weight:600;box-shadow:0 0 0 .5cqw color-mix(in srgb,var(--accent) 22%,transparent)}
+  .t-win .val.plain{border-color:var(--line);box-shadow:none}
+  .t-win .seg{display:flex;border:1px solid var(--line);border-radius:99px;overflow:hidden}
+  .t-win .seg span{height:4.2cqw;padding:0 1.1cqw;display:grid;place-items:center;font-size:1.85cqw;font-weight:600;color:var(--soft)}
+  .t-win .seg .on{background:var(--accent);color:var(--on-accent)}
+  .t-win .sw{width:6.2cqw;height:3.4cqw;border-radius:99px;background:var(--accent);position:relative}
+  .t-win .sw::after{content:"";position:absolute;right:.4cqw;top:.4cqw;width:2.6cqw;height:2.6cqw;border-radius:50%;background:#fff}
+  .t-win .cursor{left:58%;top:60.5%}
+  .t-scroll{left:35.5%;top:24%;width:1.1cqw;height:22%;border-radius:99px;background:var(--line2);animation:tour-scroll 3200ms ease-in-out infinite alternate}
+  @keyframes tour-scroll{from{transform:none}to{transform:translateY(24cqw)}}
+  .setup[data-step="0"] .t-pulse,.setup[data-step="1"] .t-island,.setup[data-step="1"] .t-ghost,.setup[data-step="1"] .t-bar,
+  .setup[data-step="2"] .t-menu,.setup[data-step="2"] .t-pin,.setup[data-step="3"] .t-hand,.setup[data-step="3"] .t-handle,
+  .setup[data-step="4"] .t-notice,.setup[data-step="4"] .t-sent,.setup[data-step="5"] .t-win,.setup[data-step="6"] .t-scroll{display:block}
+  .setup[data-step="1"] .t-island,.setup[data-step="1"] .t-bar,.setup[data-step="4"] .t-notice,.setup[data-step="4"] .t-sent,.setup[data-step="5"] .t-win{display:grid}
+  .setup[data-step="1"] .t-island,.setup[data-step="1"] .t-bar,.setup[data-step="4"] .t-sent{display:flex}
+  .setup[data-step="2"] .m-panel,.setup[data-step="4"] .m-panel,.setup[data-step="5"] .m,.setup[data-step="5"] .m-foot{opacity:.35}
+  .setup[data-step="5"] .m-bubble{opacity:0}
+  .setup[data-step="2"] .m-nav .on{background:transparent;box-shadow:none}
+  .setup[data-motion="reduced"] .t,.setup[data-motion="reduced"] .t *,.setup[data-motion="reduced"] .m{animation:none!important}
+</style>
+<div class="scrim" data-id="scrim"></div>
+<section class="setup" role="dialog" aria-modal="true" aria-labelledby="studio-tour-title" tabindex="-1" data-step="0" data-mode="floating">
+  <div class="copy">
+    <div class="top"><img src="${STUDIO_LOGO_DATA_URI}" alt=""><b>WME Studio</b><span class="count" data-id="count" aria-live="polite"></span></div>
+    <div class="steps" data-id="steps">
+      <div class="step" data-step="0">
+        <h2 id="studio-tour-title">What's new in 2.0.0.</h2>
+        <p>The biggest Studio update yet. Here is a quick tour of what you can do now: six stops, two minutes.</p>
+        <p>Everything here lives in Settings too, so skip whenever you like.</p>
+      </div>
+      <div class="step" data-step="1" hidden>
+        <h2>Arrange your own islands.</h2>
+        <p>Click a control, then drag it into another island, or onto the map to give it an island of its own.</p>
+        <ul class="where">
+          <li><span><b>Shape them</b><small>Make new islands, rename them, rotate them, split them in two, or swap one control for another.</small></span></li>
+          <li><span><b>Hide what you never use</b><small>Take controls off the islands from the Controls list, and bring them back any time.</small></span></li>
+          <li><span><b>Custom links</b><small>Add a button for any website. It shows the site's icon and opens it in a new tab.</small></span></li>
+          <li><span><b>Pick several, undo anything</b><small>Ctrl + click moves islands together. Every step can be undone and redone.</small></span></li>
+        </ul>
+        <p class="note">Open Arrange from Settings, under Layout, or from the right-click menu on the map.</p>
+      </div>
+      <div class="step" data-step="2" hidden>
+        <h2>Right-click the map.</h2>
+        <p>Studio's own menu, with the things you look up most.</p>
+        <ul class="where">
+          <li><span><b>Coordinates and permalinks</b><small>One click to copy, plus Google Maps at the same spot.</small></span></li>
+          <li><span><b>WME Beta and back</b><small>Switch at the same place and zoom. The button beside it opens Beta in a new tab instead.</small></span></li>
+          <li><span><b>Segments and selections</b><small>Right-click one to copy its ID or name, or to zoom to it.</small></span></li>
+          <li><span><b>Studio, one click away</b><small>Arrange, the theme and Settings sit at the bottom of the menu.</small></span></li>
+        </ul>
+      </div>
+      <div class="step" data-step="3" hidden>
+        <h2>Move the header. Move the panel.</h2>
+        <p>Drag the header by its three-line button. It glides over panels while you hold it and settles in free space when you let go. Click the button to send it back.</p>
+        <p>The side panel has a handle at its top. Drag it to move the panel; double-click the handle to put it back.</p>
+        <p class="note">Islands got the same rounded hover as the Studio button, and the eye saver no longer leaves a band under the navigation island.</p>
+      </div>
+      <div class="step" data-step="4" hidden>
+        <h2>Report a bug, hear back.</h2>
+        <p>Report a bug from Settings. The report carries your Waze username, so the fix can find you. Never your edits or account details.</p>
+        <p>When a report of yours is fixed, a note shows up here in the editor, with the version that fixed it.</p>
+        <p class="note">Fixed reports also show as a green count on Report a bug in Settings.</p>
+      </div>
+      <div class="step" data-step="5" hidden>
+        <h2>A settings window that finds things for you.</h2>
+        <ul class="where">
+          <li><span><b>Three groups</b><small>Workspace, Editor and Studio in the sidebar, so the eye lands on the right page.</small></span></li>
+          <li><span><b>Section chips</b><small>Under each title, one click jumps to Comfort instead of scrolling past Theme.</small></span></li>
+          <li><span><b>A dot for anything you changed</b><small>With Reset to default right next to it.</small></span></li>
+          <li><span><b>Type a value</b><small>Click the number beside any slider and type it.</small></span></li>
+        </ul>
+        <p class="note"><kbd data-id="shortcut" data-ws-keep>Shift + P</kbd> <span>opens the command palette: search every setting and command from anywhere.</span></p>
+      </div>
+      <div class="step" data-step="6" hidden>
+        <h2>And the rest.</h2>
+        <ul class="where">
+          <li><span><b>Custom scrollbars</b><small>Slim and rounded, in your theme colors.</small></span></li>
+          <li><span><b>Nothing hidden under the panel</b><small>More map problems and requests move the map so their marker stays in view.</small></span></li>
+          <li><span><b>More add-ons themed</b><small>WME Segment Shift Utility, plus many layout and dark theme fixes.</small></span></li>
+        </ul>
+        <p class="note"><span>This tour can be run again from Settings, on the General page.</span><br><a href="#" data-id="settings">Open settings</a><a href="#" data-id="arrange" hidden>Open Arrange</a><a href="https://greasyfork.org/scripts/599569/versions" target="_blank" rel="noopener">Full release notes</a></p>
+      </div>
+    </div>
+    <div class="progress" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="actions">
+      <button class="btn" type="button" data-id="skip">Skip tour</button>
+      <span class="gap"></span>
+      <button class="btn" type="button" data-id="back" hidden>Back</button>
+      <button class="btn go" type="button" data-id="next">Start the tour</button>
+    </div>
+  </div>
+  <div class="stage" aria-hidden="true">
+    <div class="mini">
+      <svg class="map" viewBox="0 0 470 323" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <rect width="470" height="323" fill="#69735a"/>
+        <g opacity=".6"><ellipse cx="80" cy="70" rx="130" ry="72" fill="#7f8b68"/><ellipse cx="390" cy="255" rx="150" ry="92" fill="#566148"/><ellipse cx="335" cy="52" rx="96" ry="50" fill="#8d866a"/><ellipse cx="170" cy="270" rx="110" ry="56" fill="#74805f"/></g>
+        <g fill="none" stroke-linecap="round">
+          <g stroke="#3d4435" stroke-width="5.4" opacity=".55"><path d="M-10 118 480 58M-10 212 480 150M-10 304 480 242M66-10 118 333M188-10 240 333M302-10 354 333M408-10 460 333"/></g>
+          <g stroke="#f6f3e8" stroke-width="3.2"><path d="M-10 118 480 58M-10 212 480 150M-10 304 480 242M66-10 118 333M188-10 240 333M302-10 354 333M408-10 460 333"/></g>
+          <path d="M-10 258 480 196" stroke="#ad8f1f" stroke-width="7.4"/><path d="M-10 258 480 196" stroke="#f2dc5d" stroke-width="4.8"/>
+          <path d="M-10 34C120 86 262 178 480 296" stroke="#1f7f55" stroke-width="9.6"/><path d="M-10 34C120 86 262 178 480 296" stroke="#48c28d" stroke-width="6.4"/>
+        </g>
+      </svg>
+      <div class="m m-head"><i class="logo"></i><span class="find"><i></i><b></b></span><span class="fill"></span><span class="city"></span><span class="fill"></span><i class="ic"></i><i class="ic"></i><i class="ic"></i><span class="save"></span><i class="ic"></i><i class="ic"></i><i class="me"></i></div>
+      <div class="m m-nav"><i class="add"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="m m-panel">
+        <div class="p-title"><i></i><b></b></div>
+        <div class="p-tabs"><b class="on"></b><b></b><b></b></div>
+        <div class="p-field"><b></b><i></i><i></i></div>
+        <div class="p-label"></div>
+        <div class="p-chips"><i style="--c:#f6f3e8"></i><i style="--c:#f2dc5d"></i><i style="--c:#48c28d"></i><i style="--c:#45b8d1"></i><i style="--c:#c577d2"></i><i style="--c:#aeb4ba"></i></div>
+        <div class="p-field"><b></b><i></i></div>
+        <div class="p-check"><i></i><b></b></div>
+        <div class="p-check on"><i></i><b></b></div>
+        <div class="p-label"></div>
+        <div class="p-seg"><b></b><b class="on"></b><b></b></div>
+      </div>
+      <div class="m m-tools"><i class="studio"></i><i></i><i></i><i></i><i></i><i class="zoom"></i></div>
+      <div class="m m-bubble online"><i></i></div><div class="m m-bubble tile"><i></i></div>
+      <div class="m-foot"><i></i><i></i><i></i></div>
+      <div class="t t-pulse"><i></i><i></i><i></i></div>
+      <div class="t t-bar"><span>Undo</span><span>Redo</span><span class="go">Done</span></div>
+      <div class="t t-island"><i></i><i class="link"></i><i class="slot"></i></div>
+      <div class="t t-ghost">${TOUR_CURSOR}</div>
+      <div class="t t-pin"></div>
+      <div class="t t-menu">
+        <div class="row"><i></i><em>Copy coordinates</em></div>
+        <div class="row"><i></i><em>Copy permalink</em></div>
+        <div class="row"><i></i><em>Open in Google Maps</em></div>
+        <div class="rule"></div>
+        <div class="row on"><i></i><em>Switch to WME Beta</em><span class="side"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></span></div>
+        <div class="rule"></div>
+        <div class="row"><i></i><em>Arrange</em></div>
+        <div class="row"><i></i><em>Settings</em></div>
+        ${TOUR_CURSOR}
+      </div>
+      <div class="t t-hand">${TOUR_CURSOR}</div>
+      <div class="t t-handle"></div>
+      <div class="t t-sent"><i></i><span>Sent as</span><b data-ws-keep>you</b></div>
+      <div class="t t-notice">
+        <div class="ok"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
+        <strong>Your bug report was fixed</strong>
+        <div class="item"><em>Link button jumps when clicked</em><small><span>fixed in WME Studio</span> ${USERSCRIPT_VERSION}</small></div>
+        <div class="acts"><span>Get the update</span><span class="go">Got it</span></div>
+      </div>
+      <div class="t t-win">
+        <div class="side">
+          <div class="brand"><i></i><span>WME Studio</span></div>
+          <div class="grp">Workspace</div><div class="nav"><i></i><span>Layout</span></div><div class="nav on"><i></i><span>Look</span></div>
+          <div class="grp">Editor</div><div class="nav"><i></i><span>Map</span></div><div class="nav"><i></i><span>Panels</span></div>
+          <div class="grp">Studio</div><div class="nav"><i></i><span>General</span></div><div class="nav"><i></i><span>Report a bug</span><span class="badge">1</span></div>
+        </div>
+        <div class="main">
+          <h4>Look</h4><p class="sub">Theme, colors and comfort</p>
+          <div class="chips"><span>Theme</span><span>Accent</span><span>Corners</span><span class="on">Comfort</span></div>
+          <div class="card">
+            <div class="srow"><span class="txt"><em><i></i><span>Font size</span></em><small>Text in the header, menus and panels.</small></span><span class="reset">Reset</span><span class="range" style="--v:62%"></span><span class="val">110%</span></div>
+            <div class="srow"><span class="txt"><em><span>Eye saver</span></em><small>Warmer colors.</small></span><span class="range" style="--v:35%"></span><span class="val plain">35%</span><span class="seg"><span>Always</span><span class="on">Sun</span><span>Hours</span></span></div>
+            <div class="srow"><span class="txt"><em><span>Interface animations</span></em><small>Animate workspace switches with smooth movement.</small></span><span class="sw"></span></div>
+          </div>
+        </div>
+        ${TOUR_CURSOR}
+      </div>
+      <div class="t t-scroll"></div>
+    </div>
+  </div>
+</section>`;
+    (document.documentElement || document).append(host);
+    const q = sel => shadow.querySelector(sel);
+    const qa = sel => [...shadow.querySelectorAll(sel)];
+    const dialog = q('.setup'), scrim = q('.scrim');
+    const config = globalThis.WMEStudioSettings;
+    const lastStep = 6;
+    let current = { ...config.defaults };
+    let step = 0, opened = false, returnFocus = null;
+    function focusedElement() {
+      let element = document.activeElement;
+      while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+      return element;
+    }
+    function shortcutLabel() {
+      const value = String(current.commandShortcut || '');
+      if (!value) return '';
+      return value.split('+').map(part => part.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Arrow/, '')).join(' + ');
+    }
+    function render() {
+      dialog.dataset.step = String(step);
+      dialog.dataset.motion = current.motion ? 'full' : 'reduced';
+      qa('.step').forEach(element => { element.hidden = Number(element.dataset.step) !== step; });
+      q('[data-id="count"]').textContent = step === 0 ? USERSCRIPT_VERSION : `${step} / ${lastStep}`;
+      qa('.progress i').forEach((element, index) => { element.toggleAttribute('data-on', index <= step); });
+      q('[data-id="back"]').hidden = step === 0;
+      q('[data-id="skip"]').hidden = step === lastStep;
+      q('[data-id="arrange"]').hidden = !current.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches;
+      q('[data-id="next"]').textContent = step === 0 ? 'Start the tour' : step === lastStep ? 'Done' : 'Continue';
+      const shortcut = q('[data-id="shortcut"]'), keys = shortcutLabel();
+      shortcut.textContent = keys || 'Shift + P';
+      shortcut.closest('.note').hidden = !keys;
+    }
+    function go(next) {
+      step = Math.max(0, Math.min(lastStep, next));
+      render();
+      q('[data-id="steps"]').scrollTop = 0;
+    }
+    function onKeydown(event) {
+      if (!opened) return;
+      event.stopPropagation();
+      if (event.key === 'Escape') { event.preventDefault(); close(); return; }
+      if (event.key === 'Enter' && focusedElement() === dialog) { event.preventDefault(); q('[data-id="next"]').click(); return; }
+      if (event.key === 'ArrowRight' && focusedElement() === dialog) { event.preventDefault(); if (step < lastStep) go(step + 1); return; }
+      if (event.key === 'ArrowLeft' && focusedElement() === dialog) { event.preventDefault(); go(step - 1); return; }
+      if (event.key !== 'Tab') return;
+      const controls = qa('button,a[href]').filter(element => !element.closest('[hidden]') && !element.disabled);
+      const index = controls.indexOf(focusedElement());
+      if (index === -1 || (event.shiftKey ? index === 0 : index === controls.length - 1)) {
+        event.preventDefault();
+        (event.shiftKey ? controls.at(-1) : controls[0])?.focus({ preventScroll: true });
+      }
+    }
+    function open() {
+      if (opened) return;
+      if (studioSetup?.isOpen?.()) return;
+      opened = true; step = 0;
+      returnFocus = focusedElement();
+      q('.t-sent b').textContent = wmeUserName() || globalThis.WMEStudioI18n.translate('you');
+      render();
+      dialog.classList.add('open'); scrim.classList.add('open');
+      document.addEventListener('keydown', onKeydown, true);
+      dialog.focus({ preventScroll: true });
+      config.read().then(value => { current = value; render(); }).catch((studioError) => { reportStudioError("open",studioError);});
+    }
+    function close() {
+      if (!opened) return;
+      opened = false;
+      dialog.classList.remove('open'); scrim.classList.remove('open');
+      document.removeEventListener('keydown', onKeydown, true);
+      markTourSeen();
+      if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+      returnFocus = null;
+    }
+    q('[data-id="next"]').addEventListener('click', () => { if (step === lastStep) close(); else go(step + 1); });
+    q('[data-id="back"]').addEventListener('click', () => go(step - 1));
+    q('[data-id="skip"]').addEventListener('click', close);
+    q('[data-id="settings"]').addEventListener('click', event => { event.preventDefault(); close(); openStudioUI(); });
+    q('[data-id="arrange"]').addEventListener('click', async event => {
+      event.preventDefault(); close();
+      try {
+        if (!current.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches) return;
+        if (!current.compactMode) await config.write({ compactMode: true });
+        requestAnimationFrame(() => requestAnimationFrame(() => globalThis.WMEStudioCompactLayout?.open()));
+      } catch (studioError) { reportStudioError("tour arrange",studioError); }
+    });
+    scrim.addEventListener('click', close);
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (!opened || area !== 'local' || !Object.keys(changes).some(key => key.startsWith('wmeStudio.'))) return;
+      current = config.changes(current, changes);
+      render();
+    });
+    studioTour = { host, open, close, isOpen: () => opened };
+    return studioTour;
+  }
+  function markTourSeen() {
+    tourSeen = USERSCRIPT_VERSION;
+    try { Promise.resolve(studioKeep.set(TOUR_KEY, USERSCRIPT_VERSION)).catch((studioError) => { reportStudioError("markTourSeen",studioError);}); } catch (studioError) { reportStudioError("markTourSeen",studioError);}
+  }
+  function openStudioTour() {
+    buildStudioTour()?.open();
+  }
+  globalThis.WMEStudioTour = Object.freeze({ open: openStudioTour });
+  // Editors who already ran the setup get the tour once per version; a fresh install sees the setup instead.
+  const tourParts = value => String(value || '').split('.').map(part => parseInt(part, 10) || 0);
+  function tourDue() {   // the installed version is newer than the one last toured (a reinstall of an older one shows nothing)
+    if (tourSeen === null) return false;
+    const now = tourParts(USERSCRIPT_VERSION), seen = tourParts(tourSeen);
+    for (let i = 0; i < Math.max(now.length, seen.length); i += 1) { if ((now[i] || 0) !== (seen[i] || 0)) return (now[i] || 0) > (seen[i] || 0); }
+    return false;
+  }
+  function maybeStartTour() {
+    if (tourStarted || !tourDue() || setupSeen !== true || !uiRouteAllowed() || window.top !== window.self) return;
+    if (!document.getElementById('app-head') || !document.querySelector('.overlay-buttons-container,#overlay-buttons')) return;
+    tourStarted = true;
+    const settled = new Promise(ok => { const go = () => setTimeout(ok, 2500); if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true }); });
+    Promise.all([globalThis.WMEStudioSettings.read(), settled]).then(([value]) => {
+      if (!value.enabled || !tourDue() || studioSetup?.isOpen?.()) return;
+      const visible = document.visibilityState === 'visible' ? Promise.resolve() : new Promise(ok => document.addEventListener('visibilitychange', function shown() { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', shown); ok(); } }));
+      visible.then(() => { if (!document.documentElement.hasAttribute('data-wme-studio-layout-editing')) buildStudioTour()?.open(); }).catch((studioError) => { reportStudioError("maybeStartTour",studioError);});
+    }).catch((studioError) => { reportStudioError("maybeStartTour",studioError);});
   }
   function playStudioIntro(value) {
     const preview = globalThis.WMEStudioPreview;
@@ -19758,7 +24505,7 @@ ${studioControlsCSS()}
       visible.then(() => playStudioIntro(value)).catch((studioError) => { reportStudioError("maybeStartSetup",studioError);}).then(() => buildStudioSetup()?.open(value));
     }).catch((studioError) => { reportStudioError("maybeStartSetup",studioError);});
   }
-  Promise.resolve(studioKeep.get(SETUP_KEY, false)).then(value => { setupSeen = value === true; maybeStartSetup(); }).catch((studioError) => { reportStudioError("Studio initialization",studioError); setupSeen = true; });
+  Promise.all([studioKeep.get(SETUP_KEY, false), studioKeep.get(TOUR_KEY, '')]).then(([value, tour]) => { setupSeen = value === true; tourSeen = typeof tour === 'string' ? tour : ''; maybeStartSetup(); maybeStartTour(); }).catch((studioError) => { reportStudioError("Studio initialization",studioError); setupSeen = true; });
 
   function setLauncherActive(active) {
     const button = studioLauncher?.shadow?.querySelector('.launcher');
@@ -19779,7 +24526,7 @@ ${studioControlsCSS()}
         studioLauncher.host.style.cssText = 'display:block;width:var(--wme-studio-map-control-size,38px);height:var(--wme-studio-map-control-size,38px);flex:0 0 var(--wme-studio-map-control-size,38px);pointer-events:auto;';
         toolbar.prepend(studioLauncher.host);
         studioLauncher.toolbar = toolbar;
-        scheduleCompactToolsPosition();
+        globalThis.WMEStudioScheduleToolsPosition?.();
       }
       return studioLauncher;
     }
@@ -19801,7 +24548,7 @@ ${studioControlsCSS()}
   .launcher:focus-visible{outline:2px solid var(--wme-studio-accent);outline-offset:2px}
   .launcher img{width:min(29px,calc(var(--wme-studio-map-control-size,38px) - 6px));height:min(29px,calc(var(--wme-studio-map-control-size,38px) - 6px));display:block;object-fit:contain}
   @media (min-width:1180px) and (min-height:640px){
-    :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .launcher{position:relative;z-index:0;background:transparent;border:0;border-radius:10px;box-shadow:none;transition:background-color 160ms ease,color 160ms ease,box-shadow 160ms ease}
+    :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .launcher{position:relative;z-index:0;background:transparent;border:0;border-radius:var(--ws-island-button-radius, 13px)!important;box-shadow:none;transition:background-color 160ms ease,color 160ms ease,box-shadow 160ms ease}
     :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .launcher:hover{background:var(--wme-studio-hover)}
     :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .launcher.active{color:var(--wme-studio-text);background:var(--wme-studio-active);box-shadow:0 0 0 2px var(--wme-studio-accent);z-index:2}
   }
@@ -19832,7 +24579,7 @@ ${studioControlsCSS()}
     });
     studioLauncher = { host, shadow, toolbar };
     setLauncherActive(studioPanelOpen);
-    scheduleCompactToolsPosition();
+    globalThis.WMEStudioScheduleToolsPosition?.();
     return studioLauncher;
   }
 
@@ -19858,6 +24605,7 @@ ${studioControlsCSS()}
   refreshStudioLauncher = () => {
     if (uiRouteAllowed()) mountStudioLauncher();
     if (setupSeen === false && !setupStarted) maybeStartSetup();
+    if (setupSeen === true && !tourStarted) maybeStartTour();
   };
 
   // "WME Studio: Record performance" (extension menu). Watches a few seconds of normal use and shows a short
@@ -20025,7 +24773,7 @@ ${studioControlsCSS()}
       const elapsed = (performance.now() - started) / 1000;
       let saved = {};
       try { saved = await globalThis.WMEStudioSettings.read(); } catch (_) { saved = {}; }
-      const keep = ['enabled', 'theme', 'compactMode', 'compactIslandOpacity', 'motion', 'addons', 'eyeSaver', 'satelliteBrightness', 'viewportBrightness', 'gpsOpacity', 'gpsBelowRoads', 'fontScale', 'hudScale', 'compactRequests'];
+      const keep = ['enabled', 'theme', 'compactMode', 'compactIslandOpacity', 'motion', 'addons', 'eyeSaver', 'satelliteBrightness', 'viewportBrightness', 'gpsOpacity', 'gpsBelowRoads', 'fontScale', 'hudScale', 'compactRequests', 'themeSchedule', 'eyeSaverSchedule', 'customScrollbars', 'contextMenu'];
       const top = [...scripts.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 14)
         .map(([name, item]) => ({ script: name, ms: Math.round(item.ms), calls: item.calls, forcedLayoutMs: Math.round(item.layout) }));
       const report = {
