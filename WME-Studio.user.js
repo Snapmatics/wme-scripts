@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.0.0
+// @version      2.0.1
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -150,7 +150,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.0.0';
+  const USERSCRIPT_VERSION = '2.0.1';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -3018,8 +3018,10 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
 :host-context(html[data-wme-studio="on"]) :where(.wz-dialog-content):is(.wz-dialog,.wz-dialog-content)::-webkit-scrollbar-corner { background: var(--wme-studio-surface-3); }
 :host-context(html[data-wme-studio="on"]) :where(.wz-dialog):is(.wz-dialog,.wz-dialog-content)::-webkit-scrollbar-thumb,
 :host-context(html[data-wme-studio="on"]) :where(.wz-dialog-content):is(.wz-dialog,.wz-dialog-content)::-webkit-scrollbar-thumb { background: var(--wme-studio-border-strong); border: 2px solid var(--wme-studio-surface-3); border-radius: 8px; }
-:host-context(html[data-wme-studio="on"]) .wz-empty-state { padding: 32px 22px; gap: 16px; }
-:host-context(html[data-wme-studio="on"]) img:is(.wz-empty-state > *) { width: 128px !important; height: 128px !important; object-fit: contain; }
+/* The small empty states (the "No impact yet" picture over the charts in Your hub) keep WME's own size: they sit
+   over a chart, and drawn at the big size they covered its months and the rows under it. */
+:host-context(html[data-wme-studio="on"]):host(:not([size="sm"])) .wz-empty-state { padding: 32px 22px; gap: 16px; }
+:host-context(html[data-wme-studio="on"]):host(:not([size="sm"])) img:is(.wz-empty-state > *) { width: 128px !important; height: 128px !important; object-fit: contain; }
 :host-context(html[data-wme-studio="on"]) .headline:is(.wz-empty-state *) { color: var(--wme-studio-text); font-size: 16px; line-height: 1.35; font-weight: 650; }
 :host-context(html[data-wme-studio="on"]) .description:is(.wz-empty-state *) { color: var(--wme-studio-text-secondary); font-size: 13px; line-height: 1.65; }
 :host-context(html[data-wme-studio="on"]) :where(.wz-dialog):is(.wz-dialog, .wz-modal),
@@ -4076,12 +4078,37 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   function compactHeaderHorizontalInset(width, viewportWidth = innerWidth) {
     return width > viewportWidth - 24 ? 0 : 12;
   }
+  // An island placed in Arrange is put where its size says (a point between the edges, so a taller island starts
+  // higher). WME swaps some buttons for new ones that are drawn a moment later (the share button, when its popup
+  // opens or closes), and for that moment the island is shorter: placed by that size, the whole island jumped and
+  // came back. A smaller size is only believed once it has lasted a little; a bigger one at once.
+  const ISLAND_SHRINK_WAIT = 600;
+  const islandHeldSize = new Map();   // island id -> { width, height, since }
+  let islandShrinkTimer = 0;
   function compactIslandSize(spec) {
     const element = queryCompactIsland(spec);
     const rect = element ? element.getBoundingClientRect() : null;
     const width = rect?.width > 12 ? rect.width : spec.width();
     const height = rect?.height > 12 ? rect.height : spec.height();
-    return { width: Math.min(width, innerWidth - (spec.id === 'header' && settings.compactHeaderFullWidth ? 0 : 24)), height: Math.min(height, innerHeight - 24) };
+    const size = { width: Math.min(width, innerWidth - (spec.id === 'header' && settings.compactHeaderFullWidth ? 0 : 24)), height: Math.min(height, innerHeight - 24) };
+    if (spec.popup || compactLayoutEditing || !rect) { islandHeldSize.delete(spec.id); return size; }
+    return heldIslandSize(spec.id, size);
+  }
+  function heldIslandSize(key, size) {
+    const held = islandHeldSize.get(key), now = performance.now();
+    if (held && (size.width < held.width - .5 || size.height < held.height - .5)) {
+      held.since ||= now;
+      if (now - held.since < ISLAND_SHRINK_WAIT) {
+        if (!islandShrinkTimer) islandShrinkTimer = setTimeout(() => {
+          islandShrinkTimer = 0;
+          if (!compactLayoutActive() || compactLayoutEditing) return;
+          applyCompactLayoutVariables(); scheduleDefaultSideIslandCenters();
+        }, ISLAND_SHRINK_WAIT - (now - held.since) + 20);
+        return { width: Math.max(size.width, held.width), height: Math.max(size.height, held.height) };
+      }
+    }
+    islandHeldSize.set(key, { width: size.width, height: size.height, since: 0 });
+    return size;
   }
   function compactViewportFrame() {
     return { width: innerWidth, height: innerHeight, footer: compactVisibleRect(document.querySelector('.wz-map-ol-footer')) };
@@ -4738,9 +4765,10 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     clearDefaultSideIslandCenters();
     for (const spec of compactIslandSpecs.filter(spec => spec.popup)) for (const axis of ['left','top']) root.style.removeProperty(`--ws-island-${spec.id}-${axis}`);
   }
-  function applyCompactChatLayout(state, constrain = true) {
+  function applyCompactChatLayout(state, constrain = true, reopen = false) {
     const spec = compactIslandSpec('messages');
-    if (!state?.target?.isConnected || !compactIslandLayout?.messages || !settings.enabled || !settings.compactMode || !mapLayerViewport.matches) return;
+    if (reopen && state) state.movedByHand = false;
+    if (!state?.target?.isConnected || !compactIslandLayout?.messages || !settings.enabled || !settings.compactMode || !mapLayerViewport.matches || state.movedByHand) return;
     const rect = state.target.getBoundingClientRect();
     const size = { width: rect.width || spec.width(), height: rect.height || spec.height() };
     const target = compactIslandPixels(spec, compactIslandLayout.messages, size);
@@ -4915,7 +4943,9 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       const rect = element.getBoundingClientRect();
       if (rect.width < 12 || rect.height < 12) { needsAnotherPass = true; continue; }
 
-      const desiredTop = viewport.top + (viewport.height - rect.height) / 2;
+      // Centred by a size that has lasted (see heldIslandSize): a button WME swaps for a moment moves nothing.
+      const height = force ? rect.height : heldIslandSize(`centre:${id}`, { width: rect.width, height: rect.height }).height;
+      const desiredTop = viewport.top + (viewport.height - height) / 2;
       const cssTop = Number.parseFloat(center[2]);
       const currentTop = Number.isFinite(cssTop) ? cssTop : 0;
       const nextTop = currentTop + desiredTop - rect.top;
@@ -5481,6 +5511,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     state.motion.finished.then(() => { state.motion = null; }).catch(() => {});
   }
   function closeChatPanelThen(state, proceed) {
+    if (state) state.movedByHand = false;   // it opens at its place from Arrange again
     if (state.closing) return;
     if (reducedMotion.matches || !settings.motion) { proceed(); return; }
     state.closing = true;
@@ -5660,7 +5691,13 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       handle.classList.remove('dragging');
       doc.defaultView?.removeEventListener('blur', onChatBlur);
       try { if (handle.hasPointerCapture?.(finished.pointerId)) handle.releasePointerCapture(finished.pointerId); } catch (studioError) { reportStudioError("finishDrag",studioError);}
-      if (persist) { applyChatPanelPosition(state,state.offset,true); if (!storeCompactChatLayout(state)) storeChatPanelPosition(state.offset); }
+      // Moving Messages by hand is for now: the place set for it in Arrange stays, and it opens there next time.
+      // Without a place from Arrange, the last place it was dragged to is remembered as before.
+      if (persist) {
+        applyChatPanelPosition(state,state.offset,true);
+        if (compactIslandLayout?.messages && settings.compactMode) state.movedByHand = true;
+        else storeChatPanelPosition(state.offset);
+      }
       queueCompactAuxiliaryPlacement();
       event?.preventDefault(); event?.stopPropagation();
     };
@@ -5672,12 +5709,9 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     handle.addEventListener('lostpointercapture', finishDrag);
     handle.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
     handle.addEventListener('dblclick', event => {
-      if (compactIslandLayout?.messages) {
-        const { messages: _saved, ...rest } = compactIslandLayout;
-        compactIslandLayout = sanitizeCompactIslandLayout(rest);
-        try { Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY, compactIslandLayout || {})).catch((studioError) => { reportStudioError("syncChatPanel",studioError);}); } catch (studioError) { reportStudioError("syncChatPanel",studioError);}
-      }
-      storeChatPanelPosition(null);
+      // Back to the place set in Arrange when there is one, otherwise to Studio's default place.
+      if (compactIslandLayout?.messages && settings.compactMode) { applyCompactChatLayout(state, true, true); event.preventDefault(); event.stopPropagation(); return; }
+      storeChatPanelPosition(null); state.movedByHand = false;
       applyChatPanelPosition(state, DEFAULT_CHAT_PANEL_OFFSET);
       event.preventDefault(); event.stopPropagation();
     });
@@ -5698,7 +5732,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   function replayChatOpenWhenVisible(attempt = 0) {
     for (const frame of chatFrames.keys()) {
       const state = chatPanelStates.get(frame);
-      if (frame.isConnected && state && chatPanelIsVisible(state)) { applyCompactChatLayout(state,true); applyChatPanelPosition(state,state.offset,true); replayChatPanelOpen(state); return; }
+      if (frame.isConnected && state && chatPanelIsVisible(state)) { applyCompactChatLayout(state,true,true); applyChatPanelPosition(state,state.offset,true); replayChatPanelOpen(state); return; }
     }
     if (attempt < 12) requestAnimationFrame(() => replayChatOpenWhenVisible(attempt + 1));
   }
@@ -6866,13 +6900,30 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       const style = getComputedStyle(wrapper);
       const menu = wrapper.getBoundingClientRect();
       if (style.display === 'none' || style.visibility === 'hidden' || menu.width < 1 || menu.height < 1) {
-        clearNavigationMenuPosition(state); continue;
+        clearNavigationMenuPosition(state); state.width = 0; continue;
       }
       const anchor = location.anchor === location.rail ? (moved ? location.control.getBoundingClientRect() : rail) : location.anchor.getBoundingClientRect();
       const borderTop = Number.parseFloat(style.borderTopWidth) || 0;
       const zoom = positioner.currentCSSZoom || 1;
       const naturalHeight = Math.max(menu.height, (wrapper.scrollHeight + borderTop + (Number.parseFloat(style.borderBottomWidth) || 0)) * zoom);
-      const naturalWidth = Math.max(menu.width, (wrapper.scrollWidth + wrapper.offsetWidth - wrapper.clientWidth) * zoom);
+      // A list is measured as it opens and then keeps that width until it closes: its items do not change while it
+      // is open, and an open submenu (Place › Crisis location) sits inside the list and counts in its scroll width,
+      // so measuring again then made the list wider, which moved the submenu further out, which made the list wider
+      // again, a step more every time the pointer came back to the row. WME's markup for an open submenu has not
+      // been the same everywhere, so it is not relied on: only the first moments after opening may still widen it,
+      // and only while no submenu inside it shows.
+      const now = performance.now();
+      if (!state.width) state.openedAt = now;
+      const nestedOpen = [...state.host.querySelectorAll('wz-menu-sub-menu,wz-menu')].some(sub => {
+        if (sub === state.host) return false;
+        if (sub.shadowRoot?.querySelector('.wz-menu-sub-menu.expanded,.wz-menu-sub-menu[aria-expanded="true"],.wz-menu-sub-menu > .options-wrapper:not(.hidden)') || navigationMenus.get(sub)?.positioner?.hasAttribute('data-wme-studio-nav-menu')) return true;
+        const list = sub.shadowRoot?.querySelector('.wz-menu > .options-container > .options-wrapper');
+        const box = list?.getBoundingClientRect();
+        return !!box && box.width > 0 && box.height > 0;
+      });
+      const measuredWidth = Math.max(menu.width, (wrapper.scrollWidth + wrapper.offsetWidth - wrapper.clientWidth) * zoom);
+      const naturalWidth = !state.width || (!nestedOpen && now - state.openedAt < 250) ? measuredWidth : state.width;
+      state.width = naturalWidth;
       const placed = navigationMenuPlacement(rail, anchor, { width: naturalWidth, height: naturalHeight },
         location.anchor === location.rail, ((Number.parseFloat(style.paddingTop) || 0) + borderTop) * zoom, innerWidth, innerHeight, moved);
       for (const [name, value] of [['--ws-nav-menu-left',placed.left],['--ws-nav-menu-top',placed.top],['--ws-nav-menu-width',placed.width],['--ws-nav-menu-height',placed.capacity]]) {
@@ -9827,7 +9878,7 @@ ${studioRangeCSS('.picker-hue')}
   // control is only drawn somewhere else (fixed in place over the map), and a new island is a glass backdrop
   // that Studio draws behind the controls it holds. Taking the layout away puts every control back as it was.
   const ISLAND_CONTROLS_KEY = 'wmeStudio.islandControls.v1';
-  const ISLAND_HOME_LABELS = Object.freeze({ header: 'Header', navigation: 'Navigation', tools: 'Map tools', online: 'Online Editors', tile: 'Tile Update', links: 'Custom links' });
+  const ISLAND_HOME_LABELS = Object.freeze({ header: 'Header', navigation: 'Navigation', tools: 'Map tools', online: 'Online Editors', tile: 'Tile Update', links: 'Custom links', create: 'Create' });
   // Islands whose own controls Studio may lay out (reorder, rotate, receive controls from other islands). The
   // header also holds the logo, the address and add-on pills, so it only lends controls and takes its own back.
   const ISLAND_MANAGEABLE = Object.freeze(['navigation', 'tools']);
@@ -9849,6 +9900,7 @@ ${studioRangeCSS('.picker-hue')}
     },
     online: () => [queryCompactIsland(compactIslandSpec('online'))],
     links: () => { syncLinkElements(); return [...linkElements.values()]; },
+    create: () => { seedCreateDefaults(); if (createCatalog.length || createElements.size) syncCreateElements(); return [...createElements.values()]; },
     tile: () => [queryCompactIsland(compactIslandSpec('tile'))]
   });
   const ISLAND_NAMED_CONTROLS = Object.freeze({ 'search-autocomplete': 'Search', 'notification-button': 'Notifications', 'save-button': 'Save' });
@@ -9922,6 +9974,7 @@ ${studioRangeCSS('.picker-hue')}
   }
   function controlKeyBase(island, element) {
     if (element.dataset?.wsLink) return `links@${element.dataset.wsLink}`;
+    if (element.dataset?.wsCreate) return `create@${element.dataset.wsCreate}`;
     if (element.id && (element.id === 'wme-studio-launcher-host' || !/^(?:ws-|wme-studio)/.test(element.id))) return `${island}#${element.id}`;
     const named = element.getAttribute('data-testid') || element.getAttribute('data-test-id') || element.getAttribute('data-for') || element.getAttribute('name');
     if (named) return `${island}@${named}`;
@@ -9931,6 +9984,7 @@ ${studioRangeCSS('.picker-hue')}
   }
   function controlLabel(element, island) {
     if (element.dataset?.wsLink) return islandModel().links?.find(link => link.id === element.dataset.wsLink)?.name || 'Link';
+    if (element.dataset?.wsCreate) return createCatalog.find(entry => entry.id === element.dataset.wsCreate)?.labels.at(-1) || 'Create';
     if (island === 'online' || island === 'tile') return ISLAND_HOME_LABELS[island];
     if (element.id === 'wme-studio-launcher-host') return 'WME Studio';
     if (ISLAND_NAMED_CONTROLS[element.id]) return ISLAND_NAMED_CONTROLS[element.id];
@@ -10032,6 +10086,545 @@ ${studioRangeCSS('.picker-hue')}
       if (element.title !== link.name) { element.title = link.name; element.setAttribute('aria-label', link.name); }
       if (element.parentElement !== dock) dock.append(element);
     }
+  }
+  // Create shortcuts: a button for each item of WME's + menu (Roads, Place and its categories, House number…), to
+  // place in any island. Studio reads the menu from the editor, so the names and icons are WME's own, in the
+  // editor's language. A shortcut opens the menu out of sight and picks its item, as a click on it would.
+  const CREATE_KEY = 'wmeStudio.createMenu.v1';
+  const CREATE_ITEM = 'wz-menu-item,wz-menu-sub-menu,[role="menuitem"]';
+  const CREATE_MENU = 'wz-menu,[role="menu"]';
+  const CREATE_SKIP = `${CONTROL_ICON_SKIP},wz-tooltip,wz-basic-tooltip,wz-rich-tooltip,wz-tooltip-source,wz-tooltip-target`;
+  let createCatalog = [];   // [{id, steps, labels, icon, sub, disabled}] in menu order
+  let createCatalogLoaded = false, createRunning = false, createProbed = false;
+  const createElements = new Map();   // id -> button
+  // The menu as WME has it in English, so the buttons are there before the menu is first read. Reading the menu
+  // later takes these over by name (their ids stay, so placed buttons keep their place).
+  const CREATE_DEFAULTS = [
+    ['Roads', [['Roads'], ['Pedestrian Path'], ['Roundabout'], ['Junction Box']]],
+    ['Place', [['Car Services', []], ['Transportation'], ['Professional and Public'], ['Shopping / Services'], ['Food and drink'], ['Culture / Entertainment'], ['Other'], ['Lodging'],
+      ['Outdoors'], ['Natural feature'], ['Parking Lot'], ['Residence / Home'], ['Crisis location', [['Shelter'], ['Donation center']]]]],
+    ['Hazard', [['Traffic lights & signs', []], ['Cameras', []], ['Railroad crossing'], ['School zone'], ['Sharp curve'], ['Complex intersection'], ['Multiple lanes merging'], ['Speed bump'],
+      ['Tollbooth'], ['Raised crosswalk'], ['Crosswalk: High-speed crossing'], ['Narrow bridge'], ['Lane end (abrupt)'], ['Shoulder end (abrupt)']]],
+    ['House number'], ['Restricted area'], ['Community schedule']];
+  // Map notes are left out of the buttons: the + menu's Note, in the languages WME and Studio share.
+  const CREATE_LEFT_OUT = new Set(['note', 'σημείωση', 'nota', 'notiz', 'notitie', 'notatka', 'заметка', 'not']);
+  const createLeftOut = labels => labels.length === 1 && CREATE_LEFT_OUT.has(String(labels[0]).trim().toLowerCase());
+  let createSeeded = false;
+  const createSameLabels = (a, b) => a.length === b.length && a.every((label, index) => label.toLowerCase() === String(b[index]).toLowerCase());
+  function seedCreateDefaults() {
+    if (createSeeded || !createCatalogLoaded) return;
+    const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
+    let locale = '';
+    try { locale = String(page.I18n?.currentLocale?.() || page.I18n?.locale || document.documentElement.lang || ''); } catch (_) { locale = ''; }
+    if (!locale) return;
+    createSeeded = true;
+    if (!/^en\b/i.test(locale)) return;   // the names below are WME's English ones
+    let changed = false;
+    const add = (items, parent) => {
+      for (const [label, children] of items) {
+        const labels = [...parent, label];
+        if (!createCatalog.some(entry => createSameLabels(entry.labels, labels))) {
+          // After the entries of its parent, so the list keeps the menu's order.
+          let at = createCatalog.length;
+          if (parent.length) for (let index = createCatalog.length - 1; index >= 0; index--) if (createSameLabels(createCatalog[index].labels.slice(0, parent.length), parent)) { at = index + 1; break; }
+          createCatalog.splice(at, 0, { id: `b:${labels.join('>')}`.slice(0, 280), steps: labels.map(item => `t:${item.toLowerCase()}`), labels, icon: null, sub: !!children, disabled: false,
+            shapes: !children && labels[0] === 'Place' && !['Residence / Home', 'Parking Lot'].includes(label) });
+          changed = true;
+        }
+        if (children?.length) add(children, labels);
+      }
+    };
+    add(CREATE_DEFAULTS, []);
+    if (changed) saveCreateCatalog();
+  }
+  // WME's own icon for an item, from the Resources library, by its English name.
+  function createBundledIcon(entry) {
+    const icons = globalThis.WMEStudioResources?.createIcons;
+    if (!icons) return '';
+    const path = entry.labels.join('>'), last = entry.labels.at(-1);
+    const name = Object.keys(icons).find(key => key.toLowerCase() === path.toLowerCase()) || (entry.labels.length > 1 && entry.labels.at(-1) === entry.labels.at(-2) ? '' : Object.keys(icons).find(key => !key.includes('>') && key.toLowerCase() === last.toLowerCase()));
+    return name ? icons[name] : '';
+  }
+  const createLooks = new WeakMap();
+  const createWait = ms => new Promise(done => setTimeout(done, ms));
+  async function createUntil(test, ms) {
+    const end = performance.now() + ms;
+    for (;;) {
+      const value = test();
+      if (value && (!Array.isArray(value) || value.length)) return value;
+      if (performance.now() > end) return Array.isArray(value) ? value : null;
+      await new Promise(done => requestAnimationFrame(done));
+    }
+  }
+  // Every element under root, including inside open shadow roots, that matches the selector.
+  function createDeepAll(root, selector) {
+    const out = [];
+    const walk = node => { for (const element of node.querySelectorAll('*')) { if (element.matches(selector)) out.push(element); if (element.shadowRoot) walk(element.shadowRoot); } };
+    if (root?.shadowRoot) walk(root.shadowRoot);
+    if (root) walk(root);
+    return out;
+  }
+  const createUp = node => node.assignedSlot || node.parentElement || node.getRootNode?.()?.host || null;
+  function createParentItem(item) {
+    for (let node = createUp(item); node; node = createUp(node)) if (node.matches?.(CREATE_ITEM)) return node;
+    return null;
+  }
+  const createShown = node => { const rect = node.getBoundingClientRect(); return rect.width > 2 && rect.height > 2; };
+  // The + button: the rail's control that holds a menu (WME keeps the menu inside it), or one whose button says it
+  // opens one.
+  function createTrigger() {
+    const entries = [...islandRegistry.values()].filter(entry => entry.island === 'navigation');
+    const drawer = document.getElementById('drawer');
+    const candidates = [...entries.map(entry => entry.element), ...(drawer ? [...drawer.querySelectorAll('[class*="menuContainer--"]')] : [])];
+    for (const element of candidates) {
+      const menu = element.querySelector(CREATE_MENU) || createDeepAll(element, CREATE_MENU)[0];
+      const popup = element.querySelector('[aria-haspopup="menu"],[aria-haspopup="true"]');
+      if (!menu && !popup) continue;
+      const button = popup || [element, ...element.querySelectorAll('wz-button,button,[role="button"]')]
+        .find(node => node.matches('wz-button,button,[role="button"]') && !node.parentElement?.closest(CREATE_MENU));
+      if (button) return { element, button, menu };
+    }
+    return null;
+  }
+  // The menu's items on screen now: inside the + control, and, while the menu is open, in a menu WME draws
+  // elsewhere on the page (never another menu that happens to be open, a header menu say).
+  let createSession = null, createClickedAt = -1e9;
+  function createVisibleItems(trigger = createTrigger()) {
+    if (!trigger) return [];
+    const found = new Set(createDeepAll(trigger.element, CREATE_ITEM).filter(createShown));
+    if (found.size || createSession || performance.now() - createClickedAt < 2000) {
+      for (const menu of document.querySelectorAll(CREATE_MENU)) {
+        if (trigger.element.contains(menu) || menu.closest('#wme-studio-userscript-ui,#wme-studio-compact-layout-editor,[id^="wme-studio-"]') || !createShown(menu)) continue;
+        for (const item of createDeepAll(menu, CREATE_ITEM)) if (createShown(item)) found.add(item);
+      }
+    }
+    return [...found];
+  }
+  function createItemLabel(item) {
+    const named = item.getAttribute('label') || item.getAttribute('aria-label') || item.getAttribute('title');
+    if (named?.trim()) return named.replace(/\s+/g, ' ').trim().slice(0, 60);
+    let text = '';
+    const walk = node => {
+      for (const child of node.childNodes) {
+        if (child.nodeType === 3) text += child.textContent;
+        // Buttons inside an item (WME's point and area buttons) are not part of its name.
+        else if (child.nodeType === 1 && !child.matches(CREATE_SKIP) && !child.matches(CREATE_ITEM) && !child.matches(CREATE_MENU) && !child.matches('wz-button,button,[role="button"]')) {
+          if (child.localName === 'slot') child.assignedNodes({ flatten: true }).forEach(assigned => assigned.nodeType === 3 ? text += assigned.textContent : walk({ childNodes: [assigned] }));
+          else walk(child);
+        }
+      }
+    };
+    walk(item);
+    if (!text.trim() && item.shadowRoot) walk(item.shadowRoot);
+    return text.replace(/\s+/g, ' ').trim().slice(0, 60);
+  }
+  // The item's own picture: the first image, icon or painted box in it that is not part of a tooltip, a nested
+  // item, or the arrow of a submenu.
+  function createIconNode(item) {
+    const own = node => { for (let up = createUp(node); up && up !== item; up = createUp(up)) if (up.matches?.(`${CREATE_SKIP},${CREATE_ITEM},${CREATE_MENU}`)) return false; return true; };
+    const nodes = createDeepAll(item, '*').filter(node => own(node) && !node.matches(CREATE_SKIP));
+    return nodes.find(node => {
+      if (node.matches('img,svg,wz-icon,i[class*="w-icon"]')) {
+        const name = `${node.getAttribute('name') || ''} ${node.getAttribute('class') || ''}`;
+        return !/chevron|arrow|caret|info/i.test(name);
+      }
+      const look = getComputedStyle(node);
+      return (look.backgroundImage !== 'none' || (look.maskImage || look.webkitMaskImage || 'none') !== 'none') && !node.children.length;
+    }) || null;
+  }
+  function createSignature(item, icon) {
+    if (icon) {
+      const look = getComputedStyle(icon);
+      const source = icon.localName === 'img' ? icon.getAttribute('src') : icon.localName === 'wz-icon' ? `icon:${icon.getAttribute('name')}`
+        : icon.localName === 'i' ? [...icon.classList].find(name => /^w-icon-./.test(name)) : icon.localName === 'svg' ? icon.querySelector('use')?.getAttribute('href') || icon.querySelector('use')?.getAttribute('xlink:href')
+        : [look.backgroundImage, look.maskImage || look.webkitMaskImage].find(value => value && value !== 'none');
+      const clean = String(source || '').replace(/^url\(["']?|["']?\)$/g, '').split(/[?#]/)[0].split('/').pop().slice(-80);
+      if (clean && !/^data:/.test(source || '')) return `i:${clean}`;
+    }
+    const named = item.getAttribute('data-testid') || item.getAttribute('value') || item.getAttribute('name') || item.id;
+    if (named) return `n:${named.slice(0, 60)}`;
+    return `t:${createItemLabel(item).toLowerCase()}`;
+  }
+  // A copy of the icon with the look it has in the menu written onto it, so it shows the same anywhere.
+  const CREATE_ICON_PROPS = ['color', 'background-color', 'background-image', 'background-size', 'background-position', 'background-repeat', 'border-radius', 'width', 'height', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
+    'mask-image', 'mask-size', 'mask-position', 'mask-repeat', '-webkit-mask-image', '-webkit-mask-size', '-webkit-mask-position', '-webkit-mask-repeat', 'font-family', 'font-size', 'line-height', 'display', 'box-sizing', 'padding', 'object-fit'];
+  function createIconSnapshot(icon) {
+    if (!icon) return null;
+    const copy = icon.cloneNode(true);
+    const originals = [icon, ...icon.querySelectorAll('*')].slice(0, 60), copies = [copy, ...copy.querySelectorAll('*')].slice(0, 60);
+    originals.forEach((node, index) => {
+      const target = copies[index];
+      if (!target) return;
+      target.removeAttribute('id');
+      for (const name of [...target.getAttributeNames()]) if (/^on/i.test(name) || name.startsWith('data-wme-studio') || name === 'slot') target.removeAttribute(name);
+      if (node.localName === 'img') target.setAttribute('src', node.currentSrc || node.src);
+      const look = getComputedStyle(node);
+      target.setAttribute('style', CREATE_ICON_PROPS.map(name => { const value = look.getPropertyValue(name); return value && value !== 'none' && value !== 'auto' && value !== 'normal' ? `${name}:${value}` : ''; }).filter(Boolean).join(';'));
+    });
+    const rect = icon.getBoundingClientRect();
+    const html = copy.outerHTML;
+    return html.length <= 12000 ? { html, width: Math.round(rect.width) || 0, height: Math.round(rect.height) || 0 } : null;
+  }
+  const createDisabled = item => item.hasAttribute('disabled') || item.getAttribute('aria-disabled') === 'true' || item.matches(':disabled') || /(?:^|\s)disabled(?:\s|$)/.test(item.getAttribute('class') || '');
+  const createLooksSub = item => item.localName === 'wz-menu-sub-menu' || item.hasAttribute('aria-haspopup') || item.hasAttribute('aria-expanded') ||
+    !!item.querySelector(CREATE_ITEM) || createDeepAll(item, 'wz-icon[name],i[class*="w-icon"],svg').some(node => /chevron|arrow-right|caret|right/i.test(`${node.getAttribute('name') || ''} ${node.getAttribute('class') || ''}`));
+  // Reads items into the list. An item's place in the menu comes from the item that holds it, or from the item that
+  // was opened to show it (a submenu WME draws apart from its parent).
+  const createItemIds = new WeakMap();   // menu item element -> list id
+  function createRecord(items, parentSteps = [], parentLabels = []) {
+    let changed = false;
+    for (const item of items) {
+      const icon = createIconNode(item), step = createSignature(item, icon), label = createItemLabel(item);
+      if (!label) continue;
+      const chain = [];
+      for (let up = createParentItem(item); up && chain.length < 4; up = createParentItem(up)) chain.unshift(up);
+      let steps, labels;
+      if (chain.length) {
+        const holder = createItemIds.get(chain.at(-1)), known = holder && createCatalog.find(entry => entry.id === holder);
+        steps = known ? [...known.steps, step] : [...chain.map(node => createSignature(node, createIconNode(node))), step];
+        labels = known ? [...known.labels, label] : [...chain.map(createItemLabel), label];
+      } else { steps = [...parentSteps, step]; labels = [...parentLabels, label]; }
+      if (steps.length > 5 || createLeftOut(labels)) continue;
+      const id = steps.join('>').slice(0, 280);
+      const sub = createLooksSub(item), disabled = createDisabled(item);
+      let entry = createCatalog.find(other => other.id === id);
+      if (!entry) {
+        // An item known by name (from the list Studio starts with, or read before WME changed its icon) keeps its id.
+        entry = createCatalog.find(other => createSameLabels(other.labels, labels));
+        if (entry) { if (entry.steps.join('>') !== steps.join('>')) { entry.steps = steps; changed = true; } }
+        else {
+          entry = { id, steps, labels, icon: null, sub, disabled };
+          // After its parent and the siblings read before it, so the list keeps the menu's order.
+          const parent = labels.slice(0, -1);
+          let at = createCatalog.length;
+          if (parent.length) for (let index = createCatalog.length - 1; index >= 0; index--) if (createSameLabels(createCatalog[index].labels.slice(0, parent.length), parent)) { at = index + 1; break; }
+          createCatalog.splice(at, 0, entry); changed = true;
+        }
+      }
+      createItemIds.set(item, entry.id);
+      // The icon is copied once, from the menu at rest: pointing at items changes how they look, and copying it
+      // again on every move would rebuild the islands under the open menu.
+      const snapshot = !entry.icon && !createBundledIcon({ labels }) && createShown(item) ? createIconSnapshot(icon) : null;
+      if (JSON.stringify(entry.labels) !== JSON.stringify(labels)) { entry.labels = labels; changed = true; }
+      if (snapshot) { entry.icon = snapshot; changed = true; }
+      if (entry.sub !== sub || entry.disabled !== disabled) { entry.sub = sub; entry.disabled = disabled; changed = true; }
+    }
+    if (changed) saveCreateCatalog();
+    return changed;
+  }
+  let createSaveTimer = 0;
+  function saveCreateCatalog() {
+    clearTimeout(createSaveTimer);
+    createSaveTimer = setTimeout(() => {
+      try { Promise.resolve(studioKeep.set(CREATE_KEY, { v: 1, items: createCatalog.slice(0, 120) })).catch(error => reportStudioError('saveCreateCatalog', error)); }
+      catch (error) { reportStudioError('saveCreateCatalog', error); }
+    }, 300);
+    // New buttons are only listed until placed; while the menu is open the islands are left alone (laying them out
+    // moves the + button, and WME moves its open menu with it).
+    if (syncCreateElements()) {
+      if (!createSession) { scheduleIslandControls(); return; }
+      if (!createLayoutPending) {
+        createLayoutPending = true;
+        const settle = () => {
+          if (!createLayoutPending) return;
+          if (createVisibleItems().length) { setTimeout(settle, 400); return; }
+          createSession = null; createLayoutPending = false; scheduleIslandControls();
+        };
+        setTimeout(settle, 400);
+      }
+    }
+  }
+  let createLayoutPending = false;
+  Promise.resolve(studioKeep.get(CREATE_KEY, null)).then(saved => {
+    const items = Array.isArray(saved?.items) ? saved.items : [];
+    createCatalog = items.filter(entry => entry && typeof entry.id === 'string' && Array.isArray(entry.steps) && Array.isArray(entry.labels) && entry.steps.length === entry.labels.length && entry.steps.length <= 5 && !createLeftOut(entry.labels))
+      .map(entry => ({ id: entry.id.slice(0, 280), steps: entry.steps.map(String), labels: entry.labels.map(label => String(label).slice(0, 60)), sub: !!entry.sub, disabled: !!entry.disabled, shapes: !!entry.shapes,
+        icon: entry.icon && typeof entry.icon.html === 'string' && entry.icon.html.length <= 12000 ? { html: entry.icon.html, width: Number(entry.icon.width) || 0, height: Number(entry.icon.height) || 0 } : null }));
+    createCatalogLoaded = true;
+    if (createCatalog.length) scheduleIslandControls();
+  }).catch(error => { createCatalogLoaded = true; reportStudioError('loadCreateCatalog', error); });
+
+  // Whenever the menu is open, what it shows is read: a submenu opened by pointing at an item belongs to that item.
+  let createPointed = null, createWatchFrame = 0;
+  function createWatch() {
+    if (createWatchFrame || createRunning) return;
+    createWatchFrame = requestAnimationFrame(() => {
+      createWatchFrame = 0;
+      const trigger = createTrigger(), items = trigger ? createVisibleItems(trigger) : [];
+      if (!items.length) {
+        createSession = null;
+        if (createLayoutPending) { createLayoutPending = false; scheduleIslandControls(); }
+        return;
+      }
+      const free = items.filter(item => !createParentItem(item));
+      if (!createSession) {
+        // The menu has just opened: what shows now is its first level.
+        createSession = { top: new Set(free) };
+        createRecord(free);
+      } else {
+        for (const item of free) {
+          const id = createItemIds.get(item), known = id && createCatalog.find(entry => entry.id === id);
+          if (known) { createRecord([item], known.steps.slice(0, -1), known.labels.slice(0, -1)); continue; }
+          if (createSession.top.has(item)) { createRecord([item]); continue; }
+          // New on screen since the menu opened: the submenu of the item last pointed at.
+          const pointedId = createPointed && createItemIds.get(createPointed), parent = pointedId && createCatalog.find(entry => entry.id === pointedId);
+          if (parent?.sub) createRecord([item], parent.steps, parent.labels);
+        }
+      }
+      createRecord(items.filter(item => createParentItem(item)));
+    });
+  }
+  document.addEventListener('pointerover', event => {
+    if (createRunning) return;
+    const item = event.composedPath().find(node => node.matches?.(CREATE_ITEM));
+    if (!item) return;
+    createPointed = item;
+    setTimeout(createWatch, 180);
+  }, { capture: true, passive: true });
+  document.addEventListener('click', event => {
+    if (createRunning) return;
+    const trigger = createTrigger();
+    if (!trigger || !event.composedPath().includes(trigger.element)) return;
+    createClickedAt = performance.now(); createSession = null;
+    setTimeout(createWatch, 250);
+  }, { capture: true, passive: true });
+
+  function createPress(node, trigger = null) {
+    if (trigger) createClickedAt = performance.now();
+    const target = node.shadowRoot?.querySelector('button,.wz-button,[role="button"]') && node.localName !== 'wz-button' ? node.shadowRoot.querySelector('button,.wz-button,[role="button"]') : node;
+    target.click();
+  }
+  function createHover(item) {
+    const rect = item.getBoundingClientRect(), init = { bubbles: true, composed: true, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, pointerType: 'mouse' };
+    for (const type of ['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'pointermove', 'mousemove']) {
+      const Event = type.startsWith('pointer') && typeof PointerEvent === 'function' ? PointerEvent : MouseEvent;
+      item.dispatchEvent(new Event(type, { ...init, bubbles: !type.endsWith('enter') }));
+    }
+  }
+  function createCloseMenu(trigger) {
+    // Escape is sent to an element: WME's own key handler reads the target as an element (target.matches) and threw
+    // "t.matches is not a function" when it was sent to the document itself.
+    const focused = document.activeElement?.nodeType === 1 ? document.activeElement : null;
+    for (const target of new Set([focused, document.body].filter(Boolean))) target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, composed: true }));
+    if (trigger && createVisibleItems(trigger).length) createPress(trigger.button, trigger);
+  }
+  // Opens the menu and each submenu on the way to an item. Returns the item, or null. A step WME has turned off
+  // (Hazard, until the map is zoomed in far enough) is returned itself, so its reason can be shown.
+  let createReached = null;
+  async function createReach(trigger, steps, labels) {
+    createReached = null;
+    let pool = createVisibleItems(trigger).filter(item => !createParentItem(item));
+    if (!pool.length) {
+      createPress(trigger.button, trigger);
+      pool = await createUntil(() => createVisibleItems(trigger).filter(item => !createParentItem(item)), 1500);
+      if (!pool.length) return null;
+    }
+    for (let depth = 0; depth < steps.length; depth++) {
+      const match = pool.find(item => createSignature(item, createIconNode(item)) === steps[depth]) || pool.find(item => createItemLabel(item) === labels[depth]);
+      if (!match) return null;
+      createReached = match;
+      if (depth === steps.length - 1 || createDisabled(match)) return match;
+      const before = new Set(createVisibleItems(trigger));
+      const nested = () => createVisibleItems(trigger).filter(item => !before.has(item) || createParentItem(item) === match).filter(item => item !== match && (createParentItem(item) === match || !createParentItem(item)));
+      createHover(match);
+      pool = await createUntil(nested, 450);
+      if (!pool.length) { createPress(match); pool = await createUntil(nested, 700); }
+      if (!pool.length) return null;
+    }
+    return null;
+  }
+  // The point and area buttons WME shows on an item that can be either (a note, most place categories), first
+  // point, then area. Found by pointing at the item, as WME only shows them then.
+  function createShapeButtons(item) {
+    const own = node => { for (let up = createUp(node); up && up !== item; up = createUp(up)) if (up.matches?.(`${CREATE_SKIP},${CREATE_ITEM},${CREATE_MENU}`)) return false; return true; };
+    return createDeepAll(item, 'wz-button,button,[role="button"]').filter(node => own(node) && !node.matches(CREATE_SKIP) && createShown(node))
+      .filter((node, index, list) => !list.some(other => other !== node && other.contains(node)));
+  }
+  async function runCreateShortcut(id, shape = null, anchor = null) {
+    const entry = createCatalog.find(item => item.id === id);
+    const trigger = createTrigger();
+    if (!entry || !trigger || createRunning) return;
+    // Point or area: asked first when the item is known to need it, so the menu opens only once.
+    if (!shape && entry.shapes && !entry.sub && !entry.disabled) { openCreateShapePicker(entry, anchor); return; }
+    createRunning = true;
+    const html = document.documentElement, hide = !entry.sub;
+    if (hide) html.setAttribute('data-wme-studio-create-run', '');
+    let done = false;
+    try {
+      const item = await createReach(trigger, entry.steps, entry.labels);
+      if (!item) {
+        console.warn('[WME Studio] Create shortcut: could not find', entry.labels.join(' › '), 'in the + menu', createReached ? `(reached ${createItemLabel(createReached)})` : '(the menu did not open)');
+        // Not found where it was read (WME changed its menu, or the language): the menu is left open where it got
+        // to, so the item can still be picked by hand.
+        if (createVisibleItems(trigger).length) { html.removeAttribute('data-wme-studio-create-run'); if (createReached) createHover(createReached); done = true; }
+        return;
+      }
+      if (entry.sub) { createHover(item); if (!createVisibleItems(trigger).some(other => createParentItem(other) === item)) createPress(item); done = true; return; }
+      if (createDisabled(item)) {
+        // WME says why it cannot be made here: the menu is shown with the item, as if it had been opened by hand.
+        html.removeAttribute('data-wme-studio-create-run'); createHover(item); done = true; return;
+      }
+      createHover(item);
+      const shapes = await createUntil(() => createShapeButtons(item).length >= 2 ? createShapeButtons(item) : null, shape ? 700 : 300);
+      if (shapes) {
+        if (!entry.shapes) { entry.shapes = true; saveCreateCatalog(); }
+        if (!shape) { createCloseMenu(trigger); done = true; queueMicrotask(() => openCreateShapePicker(entry, anchor)); return; }
+        createPress(shapes[shape === 'area' ? 1 : 0]);
+      } else {
+        if (entry.shapes && !shape) { entry.shapes = false; saveCreateCatalog(); }
+        createPress(item);
+      }
+      done = true;
+    } catch (error) { reportStudioError('runCreateShortcut', error); }
+    finally {
+      if (!done) createCloseMenu(trigger);
+      requestAnimationFrame(() => requestAnimationFrame(() => { html.removeAttribute('data-wme-studio-create-run'); createRunning = false; }));
+    }
+  }
+  // A small choice beside the button: Point or Area, as WME asks for it in its menu.
+  let createShapePicker = null;
+  const CREATE_SHAPE_ICONS = {
+    point: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.2" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="12" r="3.3" fill="currentColor"/></svg>',
+    area: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M7.5 5.5h9M7.5 18.5h9M5.5 7.5v9M18.5 7.5v9"/><rect x="3.5" y="3.5" width="4" height="4" rx="1"/><rect x="16.5" y="3.5" width="4" height="4" rx="1"/><rect x="3.5" y="16.5" width="4" height="4" rx="1"/><rect x="16.5" y="16.5" width="4" height="4" rx="1"/></svg>'
+  };
+  function closeCreateShapePicker() {
+    if (!createShapePicker) return;
+    createShapePicker.remove(); createShapePicker = null;
+    document.removeEventListener('pointerdown', createShapeOutside, true);
+    document.removeEventListener('keydown', createShapeKey, true);
+  }
+  function createShapeOutside(event) { if (createShapePicker && !event.composedPath().includes(createShapePicker)) closeCreateShapePicker(); }
+  function createShapeKey(event) { if (event.key === 'Escape' && createShapePicker) { event.preventDefault(); event.stopImmediatePropagation(); closeCreateShapePicker(); } }
+  function openCreateShapePicker(entry, anchor) {
+    closeCreateShapePicker();
+    const button = anchor?.isConnected ? anchor : createElements.get(entry.id);
+    const rect = button?.getBoundingClientRect();
+    if (!rect || !rect.width) return;
+    const tr = text => globalThis.WMEStudioI18n?.translate?.(text) || text;
+    const picker = document.createElement('div');
+    picker.className = 'ws-create-shape'; picker.setAttribute('role', 'menu');
+    picker.setAttribute('aria-label', entry.labels.join(' › '));
+    const title = document.createElement('span'); title.className = 'ws-create-shape-title'; title.textContent = entry.labels.at(-1);
+    picker.append(title);
+    for (const shape of ['point', 'area']) {
+      const choice = document.createElement('button');
+      choice.type = 'button'; choice.setAttribute('role', 'menuitem'); choice.dataset.shape = shape;
+      choice.title = tr(shape === 'point' ? 'Point' : 'Area'); choice.setAttribute('aria-label', `${entry.labels.at(-1)}: ${choice.title}`);
+      choice.innerHTML = CREATE_SHAPE_ICONS[shape];
+      choice.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); closeCreateShapePicker(); runCreateShortcut(entry.id, shape); });
+      picker.append(choice);
+    }
+    document.body.append(picker);
+    // Beside the button, on the side with room, and never off screen.
+    const own = picker.getBoundingClientRect(), gap = 8;
+    let left = rect.right + gap, top = rect.top + rect.height / 2 - own.height / 2;
+    if (left + own.width > innerWidth - 8) left = rect.left - gap - own.width;
+    if (left < 8) { left = Math.max(8, Math.min(innerWidth - own.width - 8, rect.left + rect.width / 2 - own.width / 2)); top = rect.bottom + gap; if (top + own.height > innerHeight - 8) top = rect.top - gap - own.height; }
+    top = Math.max(8, Math.min(innerHeight - own.height - 8, top));
+    picker.style.left = `${Math.round(left)}px`; picker.style.top = `${Math.round(top)}px`;
+    createShapePicker = picker;
+    document.addEventListener('pointerdown', createShapeOutside, true);
+    document.addEventListener('keydown', createShapeKey, true);
+    picker.querySelector('button')?.focus({ preventScroll: true });
+  }
+  // Reads the whole menu, submenus included, with the menu out of sight (Arrange's Controls list asks for it).
+  async function probeCreateMenu() {
+    const trigger = createTrigger();
+    if (!trigger || createRunning) return false;
+    createRunning = true; createProbed = true;
+    const html = document.documentElement;
+    html.setAttribute('data-wme-studio-create-run', '');
+    // Arrange makes the editor inert, which would keep the menu from opening: lifted while the menu is read.
+    const inert = [];
+    for (let node = trigger.element; node; node = createUp(node)) if (node.hasAttribute?.('inert')) { inert.push([node, node.getAttribute('inert')]); node.removeAttribute('inert'); }
+    try {
+      // Items WME keeps in the page while the menu is closed are read as they are.
+      const resting = createDeepAll(trigger.element, CREATE_ITEM);
+      if (resting.length) createRecord(resting);
+      let top = createVisibleItems(trigger).filter(item => !createParentItem(item));
+      const opened = !top.length;
+      if (opened) { createPress(trigger.button, trigger); top = await createUntil(() => createVisibleItems(trigger).filter(item => !createParentItem(item)), 1500); }
+      if (!top.length) return !!resting.length;
+      createRecord(top);
+      const expand = async (items, steps, labels, depth) => {
+        for (const item of items) {
+          if (depth > 2 || !createLooksSub(item)) continue;
+          const own = { step: createSignature(item, createIconNode(item)), label: createItemLabel(item) };
+          const before = new Set(createVisibleItems(trigger));
+          const nested = () => createVisibleItems(trigger).filter(other => other !== item && (createParentItem(other) === item || (!before.has(other) && !createParentItem(other))));
+          createHover(item);
+          let found = await createUntil(nested, 450);
+          if (!found.length) { createPress(item); found = await createUntil(nested, 700); }
+          if (!found.length) continue;
+          const chainSteps = [...steps, own.step], chainLabels = [...labels, own.label];
+          createRecord(found.filter(other => !createParentItem(other)), chainSteps, chainLabels);
+          createRecord(found.filter(other => createParentItem(other)));
+          await expand(found, chainSteps, chainLabels, depth + 1);
+        }
+      };
+      await expand(top, [], [], 0);
+      if (opened) createCloseMenu(trigger);
+      return true;
+    } catch (error) { reportStudioError('probeCreateMenu', error); return false; }
+    finally { await createWait(60); for (const [node, value] of inert) node.setAttribute('inert', value); html.removeAttribute('data-wme-studio-create-run'); createRunning = false; createSession = null; }
+  }
+  function createIconElement(entry) {
+    const box = document.createElement('span');
+    box.className = 'ws-create-icon'; box.setAttribute('aria-hidden', 'true');
+    const bundled = createBundledIcon(entry);
+    if (bundled) {
+      const image = new Image(); image.alt = ''; image.decoding = 'async'; image.src = bundled; image.className = 'ws-create-bundled';
+      box.append(image);
+    } else if (entry.icon?.html) {
+      const template = document.createElement('template');
+      template.innerHTML = entry.icon.html;
+      for (const bad of template.content.querySelectorAll('script,iframe,object,embed,foreignObject,link,style')) bad.remove();
+      for (const node of template.content.querySelectorAll('*')) for (const name of [...node.getAttributeNames()]) {
+        if (/^on/i.test(name) || (/(?:href|src)$/i.test(name) && /^\s*javascript:/i.test(node.getAttribute(name)))) node.removeAttribute(name);
+      }
+      const icon = template.content.firstElementChild;
+      if (icon) {
+        const size = Math.max(entry.icon.width, entry.icon.height);
+        if (size > 24) icon.style.setProperty('zoom', String(Math.round(24 / size * 1000) / 1000));
+        box.append(icon);
+      }
+    }
+    if (!box.firstChild) box.textContent = (entry.labels.at(-1) || '?').slice(0, 1).toUpperCase();
+    return box;
+  }
+  // Returns whether buttons came or went (only then do the islands need laying out again).
+  function syncCreateElements() {
+    let changedSet = false;
+    const wanted = new Set(createCatalog.map(entry => entry.id));
+    for (const [id, element] of createElements) if (!wanted.has(id)) { releaseControl(element); element.remove(); createElements.delete(id); changedSet = true; }
+    if (!createCatalog.length) return changedSet;
+    let dock = document.getElementById('ws-link-dock');
+    if (!dock) { dock = document.createElement('div'); dock.id = 'ws-link-dock'; }
+    const host = document.querySelector('.app:not(.sidebar-fullscreen) .edit-area-main') || document.querySelector('.app') || document.body || document.documentElement;
+    if (dock.parentElement !== host) host.append(dock);
+    for (const entry of createCatalog) {
+      let element = createElements.get(entry.id);
+      if (!element) {
+        element = document.createElement('button');
+        element.type = 'button'; element.className = 'ws-link-control ws-create-control'; element.dataset.wsCreate = entry.id;
+        element.addEventListener('click', event => { event.preventDefault(); if (!compactLayoutEditing) runCreateShortcut(entry.id, null, element); });
+        createElements.set(entry.id, element); changedSet = true;
+      }
+      const title = entry.labels.join(' › ');
+      if (element.title !== title) { element.title = title; element.setAttribute('aria-label', title); }
+      const look = `${createBundledIcon(entry) ? 'b' : entry.icon?.html || ''}|${entry.labels.join('>')}`;
+      if (createLooks.get(element) !== look) { createLooks.set(element, look); element.replaceChildren(createIconElement(entry)); }
+      setToggle(element, 'data-ws-disabled', entry.disabled);
+      if (element.parentElement !== dock) dock.append(element);
+    }
+    // In the menu's order, so the Controls list shows them as the menu does.
+    const order = createCatalog.map(entry => entry.id);
+    if ([...createElements.keys()].some((id, index) => id !== order[index])) {
+      const sorted = new Map(order.filter(id => createElements.has(id)).map(id => [id, createElements.get(id)]));
+      createElements.clear(); for (const [id, element] of sorted) createElements.set(id, element);
+      changedSet = true;
+    }
+    return changedSet;
   }
   // Every control Studio can move, found again on each pass, so a control WME redraws is picked up by its key.
   let islandRegistry = new Map();
@@ -10177,6 +10770,26 @@ ${studioRangeCSS('.picker-hue')}
     .ws-link-control img { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; visibility: hidden; }
     .ws-link-control svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
     .ws-link-control img[data-loaded] { visibility: visible; }
+    /* A + menu shortcut: WME's own icon for the item, at the size of a rail icon. */
+    button.ws-create-control { margin: 0; border: 0; background: transparent; color: var(--wme-studio-text, #e8eaed); font: inherit; }
+    .ws-create-control .ws-create-icon { display: grid; place-items: center; width: 24px; height: 24px; overflow: hidden; pointer-events: none; font: 600 15px/1 var(--ws-font, system-ui); }
+    .ws-create-control .ws-create-icon img { visibility: visible; display: block; }
+    .ws-create-control .ws-create-icon > * { flex: none; margin: 0; vertical-align: middle; }
+    .ws-create-control .ws-create-icon img.ws-create-bundled { width: 24px; height: 24px; border-radius: 0; object-fit: contain; image-rendering: auto; }
+    .ws-create-control[data-ws-disabled] .ws-create-icon { opacity: .45; filter: grayscale(.7); }
+    /* Point or area, for an item that can be either: beside the button, like WME's own two buttons. */
+    .ws-create-shape { position: fixed; z-index: 2147483000; display: flex; align-items: center; gap: 2px; padding: 4px 4px 4px 12px; box-sizing: border-box;
+      border: 1px solid var(--wme-studio-border, #3b4249); border-radius: 14px; background: var(--wme-studio-surface, #24282c); color: var(--wme-studio-text, #e8eaed);
+      box-shadow: 0 10px 28px #00000052, 0 2px 6px #0000002e; font: 600 12.5px/1 var(--ws-font, system-ui, sans-serif); animation: ws-create-shape-in 140ms ease-out; }
+    @keyframes ws-create-shape-in { from { opacity: 0; transform: scale(.96); } }
+    .ws-create-shape-title { margin-inline-end: 6px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--wme-studio-text-secondary, #b7c0c8); }
+    .ws-create-shape button { display: grid; place-items: center; width: 34px; height: 34px; margin: 0; padding: 0; border: 0; border-radius: 10px; background: transparent; color: inherit; cursor: pointer; }
+    .ws-create-shape button:hover, .ws-create-shape button:focus-visible { background: var(--wme-studio-hover, #363c42); outline: none; }
+    .ws-create-shape button:focus-visible { box-shadow: inset 0 0 0 2px var(--wme-studio-accent, #0099ff); }
+    .ws-create-shape svg { width: 20px; height: 20px; }
+    html[data-wme-studio-motion="reduced"] .ws-create-shape { animation: none; }
+    /* While a shortcut opens the + menu to pick its item, the menu stays out of sight. */
+    html[data-wme-studio-create-run] :is(wz-menu, [role="menu"], wz-menu-item, wz-menu-sub-menu, [role="menuitem"], wz-tooltip-content) { opacity: 0 !important; pointer-events: none !important; transition: none !important; animation: none !important; }
     .ws-link-control img[data-loaded] + svg { visibility: hidden; }
     /* A link on its own is just its site's icon on the map, a little larger, with a soft shadow to stand out. */
     .ws-link-control[data-wme-studio-alone] img { width: 28px; height: 28px; border-radius: 7px; filter: drop-shadow(0 2px 6px #00000059); transition: transform 160ms ease; }
@@ -10262,9 +10875,12 @@ ${studioRangeCSS('.picker-hue')}
     html[data-wme-studio="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble[data-wme-studio-island-fit][data-wme-studio-label-detached][data-wme-studio-label-side="left"]:not(#ws-fit-a):not(#ws-fit-b) > .text {
       left: auto !important; right: calc(100% + var(--ws-online-out-left, 0px) + 8px) !important;
     }
+    /* The open label is rounded by a wide corner, so near the icon's top and bottom edge the pointer is over the
+       control but no longer over the label: opening on the label's hover alone then closed it again, opened it
+       again, every frame (its tooltip flashing on and off). The control's own hover keeps it open as well. */
     /* Tile Update's label is the control itself growing, so its round icon stays in the island: a transparent
        border spans the island and the gap, and only the card past it is painted. */
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-detached]:not(#ws-tile-b) > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-detached]:not(#ws-tile-b) > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card),#tile-build-status:hover > *) {
       --ws-tile-skip: calc(52px + var(--ws-tile-out-left, 0px) + 8px);
       --ws-tile-shift-y: 0px; --ws-tile-shift-x: calc(-1 * var(--ws-tile-skip));
       top: 0 !important; height: 52px !important; padding: 0 6px 0 4px !important;
@@ -10274,14 +10890,14 @@ ${studioRangeCSS('.picker-hue')}
       background-clip: padding-box !important; box-shadow: none !important;
       -webkit-backdrop-filter: none !important; backdrop-filter: none !important; overflow: visible !important;
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-detached][data-wme-studio-tile-expand="right"]:not(#ws-tile-b) > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-detached][data-wme-studio-tile-expand="right"]:not(#ws-tile-b) > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card),#tile-build-status:hover > *) {
       --ws-tile-skip: calc(52px + var(--ws-tile-out-right, 0px) + 8px);
       left: 0 !important; right: auto !important; padding: 0 6px 0 4px !important;
       border-right-width: 0 !important; border-left-width: var(--ws-tile-skip) !important;
       border-radius: calc(var(--ws-tile-skip) + 26px) 26px 26px calc(var(--ws-tile-skip) + 26px) / 26px !important;
     }
     /* Open, in an island: the label covers the island's padding on its sides (see syncCompactAuxiliaryPlacement). */
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card),#tile-build-status:hover > *) {
       --ws-tile-shift-y: var(--ws-tile-out-top, 0px);
       top: calc(-1 * var(--ws-tile-out-top, 0px)) !important;
       height: calc(52px + var(--ws-tile-out-top, 0px) + var(--ws-tile-out-bottom, 0px)) !important;
@@ -10292,26 +10908,26 @@ ${studioRangeCSS('.picker-hue')}
       right: calc(-1 * var(--ws-tile-out-right, 0px)) !important; padding-right: calc(52px + var(--ws-tile-out-right, 0px)) !important;
       --ws-tile-shift-x: var(--ws-tile-out-right, 0px);
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card),#tile-build-status:hover > *) {
       right: auto !important; padding-right: 0 !important;
       left: calc(-1 * var(--ws-tile-out-left, 0px)) !important; padding-left: calc(52px + var(--ws-tile-out-left, 0px)) !important;
       --ws-tile-shift-x: var(--ws-tile-out-left, 0px);
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card))::before,
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card))::after {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card),#tile-build-status:hover > *)::before,
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card),#tile-build-status:hover > *)::after {
       top: calc(6px + var(--ws-tile-shift-y)) !important; right: calc(6px + var(--ws-tile-shift-x)) !important;
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card))::before,
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card))::after {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card),#tile-build-status:hover > *)::before,
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card),#tile-build-status:hover > *)::after {
       right: auto !important; left: calc(6px + var(--ws-tile-shift-x)) !important;
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) > .tile-build-status-icon:not(.phone-icon,.open-icon) {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card),#tile-build-status:hover > *) > .tile-build-status-icon:not(.phone-icon,.open-icon) {
       top: calc(15px + var(--ws-tile-shift-y)) !important; right: calc(15px + var(--ws-tile-shift-x)) !important;
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card)) > .tile-build-status-icon:not(.phone-icon,.open-icon) {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit][data-wme-studio-tile-expand="right"] > .tile-build-status:is(:hover,:focus-within,:has(.tile-build-status-card),#tile-build-status:hover > *) > .tile-build-status-icon:not(.phone-icon,.open-icon) {
       right: auto !important; left: calc(15px + var(--ws-tile-shift-x)) !important;
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:not(:hover,:focus-within):not(:has(.tile-build-status-card)) {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] #tile-build-status[data-wme-studio-island-fit] > .tile-build-status:not(:hover,:focus-within):not(:has(.tile-build-status-card)):not(#tile-build-status:hover > *) {
       background: transparent !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important;
     }
     .ws-custom-island {
@@ -10365,24 +10981,51 @@ ${studioRangeCSS('.picker-hue')}
 
   // Hovering a control lights up the island it is shown in. Moved controls still sit inside their own island in
   // WME's page, so that island is told not to light up for them.
-  const islandHoverHost = new WeakMap(), islandOfControl = new WeakMap();
+  const islandOfControl = new WeakMap();
   function hoverHostFor(element) {
     const id = islandOfControl.get(element);
     if (!id || !islandPlaced.has(element)) return null;
     return id.startsWith('custom:') ? islandGlass.get(id.slice(7)) : queryCompactIsland(compactIslandSpec(id));
   }
-  function bindIslandHover(element) {
-    if (islandHoverHost.has(element)) return;
-    islandHoverHost.set(element, null);
-    element.addEventListener('pointerenter', () => {
-      const host = hoverHostFor(element);
-      if (host) { host.setAttribute('data-wme-studio-island-hover', ''); islandHoverHost.set(element, host); }
-    });
-    element.addEventListener('pointerleave', () => {
-      islandHoverHost.get(element)?.removeAttribute('data-wme-studio-island-hover');
-      islandHoverHost.set(element, null);
+  // WME swaps some controls for new ones while they are under the pointer (the share button when it opens or closes
+  // its popup). The old button never gets a "pointer left" and the new one no "pointer came in" until the mouse moves,
+  // so following each button's own enter/leave left the island lit or dark at random. The page's pointer is followed
+  // instead, and checked again whenever a control is placed or let go.
+  let islandHoverLit = null, islandPointer = null, islandHoverCheck = 0;
+  function islandControlAt(node) {
+    for (let n = node; n; n = n.parentNode || n.host) if (n.nodeType === 1 && islandPlaced.has(n)) return n;
+    return null;
+  }
+  function lightIsland(host) {
+    if (islandHoverLit === host) return;
+    islandHoverLit?.removeAttribute('data-wme-studio-island-hover');
+    islandHoverLit = host || null;
+    islandHoverLit?.setAttribute('data-wme-studio-island-hover', '');
+  }
+  function islandHoverFrom(node) {
+    const control = islandControlAt(node);
+    if (control) return lightIsland(hoverHostFor(control));
+    // A button being swapped is briefly not placed (or not there at all): the island stays lit while the pointer is
+    // still over it.
+    const lit = islandPointer && islandHoverLit?.isConnected && islandHoverLit.getBoundingClientRect();
+    if (lit && islandPointer.x >= lit.left && islandPointer.x <= lit.right && islandPointer.y >= lit.top && islandPointer.y <= lit.bottom) return;
+    lightIsland(null);
+  }
+  function recheckIslandHover() {
+    if (islandHoverCheck) return;
+    islandHoverCheck = requestAnimationFrame(() => {
+      islandHoverCheck = 0;
+      if (!islandPointer) return lightIsland(null);
+      islandHoverFrom(document.elementFromPoint(islandPointer.x, islandPointer.y));
     });
   }
+  document.addEventListener('pointerover', event => {
+    islandPointer = { x: event.clientX, y: event.clientY };
+    islandHoverFrom(event.composedPath()[0]);
+  }, true);
+  document.addEventListener('pointermove', event => { islandPointer = { x: event.clientX, y: event.clientY }; }, { capture: true, passive: true });
+  document.addEventListener('pointerout', event => { if (!event.relatedTarget) { islandPointer = null; lightIsland(null); } }, true);
+  function bindIslandHover() { recheckIslandHover(); }
   const PLACED_PROPS = ['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height', 'margin', 'transform', 'translate', 'flex', 'box-sizing', 'inset', 'zoom'];
   function writePlacedValues(element, values) {
     for (const [name, value] of Object.entries(values)) if (element.style.getPropertyValue(name) !== value || element.style.getPropertyPriority(name) !== 'important') element.style.setProperty(name, value, 'important');
@@ -10427,8 +11070,8 @@ ${studioRangeCSS('.picker-hue')}
       else element.style.removeProperty(name);
     }
     element.removeAttribute('data-wme-studio-island-control');
-    islandHoverHost.get(element)?.removeAttribute('data-wme-studio-island-hover');
     islandPlaced.delete(element);
+    recheckIslandHover();
   }
   const managedSizes = new Map();   // native island element -> previous inline width/height
   function sizeNativeIsland(element, width, height) {
@@ -10960,7 +11603,17 @@ ${studioRangeCSS('.picker-hue')}
   const islandWatched = new WeakSet();
   // Any change of size (HUD size, header width, WME redrawing a rail) lays the moved controls out again.
   const islandResize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (islandPlaced.size || islandGlass.size) scheduleIslandControls(); }) : null;
+  // WME's full-page panels (Your hub › Your impact, opened large) put "sidebar-fullscreen" on the app: the islands
+  // step aside for them and are laid out again the moment the page closes. They used to wait for a check that only
+  // looked at controls already placed, and with none placed (all let go for the page) they never came back.
+  const islandAppWatch = new MutationObserver(records => {
+    const full = value => /(?:^|\s)sidebar-fullscreen(?:\s|$)/.test(value || '');
+    if (records.some(record => full(record.oldValue) !== full(record.target.className))) scheduleIslandControls();
+  });
+  let islandAppWatched = null;
   function watchIslandSources() {
+    const app = document.querySelector('.app');
+    if (app && app !== islandAppWatched) { islandAppWatch.disconnect(); islandAppWatched = app; islandAppWatch.observe(app, { attributes: true, attributeOldValue: true, attributeFilter: ['class'] }); }
     for (const id of ['header', 'navigation', 'tools']) {
       const element = queryCompactIsland(compactIslandSpec(id));
       if (element && !islandWatched.has(element)) { islandWatched.add(element); islandWatch.observe(element, { childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['name', 'class', 'style'] }); islandResize?.observe(element); }
@@ -10970,6 +11623,7 @@ ${studioRangeCSS('.picker-hue')}
     if (document.hidden || document.documentElement.getAttribute('data-wme-studio-loading') === 'on' || (islandControlsEmpty(islandModel()) && !islandPlaced.size)) return;
     if (!compactLayoutActive() || document.querySelector('.app.sidebar-fullscreen')) { if (islandPlaced.size || islandGlass.size) scheduleIslandControls(); return; }
     watchIslandSources();
+    if (!islandLayout.controls.size && !islandLayout.islands.size) { scheduleIslandControls(); return; }
     // A control that drifted (its island moved or WME redrew it) is put back on its slot.
     for (const [key, control] of islandLayout.controls) {
       const element = islandRegistry.get(key)?.element;
@@ -11049,11 +11703,21 @@ ${studioControlsCSS()}
       .lib-head{display:flex;align-items:flex-start;gap:8px;padding:14px 10px 8px 16px}.lib-head>div{flex:1;min-width:0}
       .lib-head strong{display:block;font-size:13px}.lib-head span{display:block;margin-top:3px;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px;line-height:1.4}
       .lib-body{flex:1;min-height:0;overflow:auto;padding:0 8px 8px;scrollbar-width:thin}
+      .lib-search{display:flex;align-items:center;gap:7px;margin:0 12px 6px;padding:0 4px 0 10px;height:34px;border:1px solid var(--wme-studio-border,#4b5560);border-radius:10px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text-muted,#99a4ae);cursor:text}
+      .lib-search:focus-within{border-color:var(--wme-studio-accent,#0099ff)}
+      .lib-search>svg{flex:none;width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+      .lib-search input{flex:1;min-width:0;height:100%;padding:0;border:0;outline:0;background:transparent;color:var(--wme-studio-text,#fff);font:inherit;font-size:12px}
+      .lib-search input::placeholder{color:var(--wme-studio-text-muted,#99a4ae)}
+      .lib-search-clear{flex:none;display:grid;place-items:center;width:26px;height:26px;padding:0;border:0;border-radius:7px;background:transparent;color:inherit;cursor:pointer}.lib-search-clear[hidden]{display:none}
+      .lib-search-clear:hover{background:var(--wme-studio-hover,#363c42);color:var(--wme-studio-text,#fff)}.lib-search-clear svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+      .lib-path{display:block;overflow:hidden;text-overflow:ellipsis;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px;line-height:1.3}
+      .lib-none{margin:14px 8px;color:var(--wme-studio-text-muted,#99a4ae);font-size:12px;text-align:center}
       .lib-group{padding:12px 8px 5px;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px;font-weight:700;letter-spacing:.02em}
       .lib-row{display:flex;align-items:center;gap:9px;min-height:38px;padding:0 4px 0 6px;border-radius:10px;cursor:grab;touch-action:none;user-select:none}
       .lib-row:hover{background:var(--wme-studio-hover,#363c42)}.lib-row[data-on]{background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 16%,transparent)}
       .lib-ic{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff);font-size:12px;font-weight:700;overflow:hidden}
       .lib-ic svg,.lib-ic wz-icon,.lib-ic i{max-width:17px;max-height:17px;font-size:16px;line-height:1;pointer-events:none}
+      .lib-ic>*{display:block;flex:none;margin:0}.lib-ic>i{display:grid;place-items:center;width:17px;height:17px}.lib-ic img{display:block}
       .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
       .where{flex:none;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px}
       .lib-row[data-off] .lbl,.lib-row[data-off] .lib-ic{opacity:.45}.lib-row[data-off] .where{color:var(--ws-change-alert,#ff8f8f)}
@@ -11064,6 +11728,8 @@ ${studioControlsCSS()}
       .lib-add{display:flex;align-items:center;gap:8px;width:calc(100% - 8px);margin:10px 4px 4px;padding:9px 10px;border:1.5px dashed var(--wme-studio-border,#4b5560);border-radius:11px;background:transparent;color:var(--wme-studio-text,#e8eaed);font:inherit;font-weight:650;cursor:pointer}
       .lib-add:hover{border-color:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-accent,#0099ff)}
       .lib-add svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+      .lib-row[data-depth="1"]{padding-left:22px}.lib-row[data-depth="2"]{padding-left:38px}
+      .lib-read{margin:4px 4px 2px;padding:7px 10px;border-style:solid;border-width:1px;font-size:12px;color:var(--wme-studio-text-secondary,#b7c0c8)}.lib-read:disabled{opacity:.6;cursor:progress}.lib-read svg{stroke-linejoin:round}
       .lib-link-form{display:grid;gap:9px;margin:10px 4px 4px;padding:12px;border:1px solid var(--wme-studio-border,#4b5560);border-radius:12px;background:var(--wme-studio-surface-2,#30363c)}
       .lib-link-form strong{font-size:12.5px}
       .lib-link-form label{display:grid;gap:4px;color:var(--wme-studio-text-muted,#99a4ae);font-size:11px;font-weight:650}
@@ -11111,6 +11777,7 @@ ${studioControlsCSS()}
     <aside class="library" id="wme-studio-arrange-library" aria-label="Controls" hidden>
       <div class="lib-head"><div><strong>Controls</strong><span data-id="lib-summary"></span><span>Drag a control onto an island, or onto the map for an island of its own.</span></div>
         <button class="icon-action" data-id="library-close" type="button" aria-label="Close the controls list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <label class="lib-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input data-id="lib-search" type="text" spellcheck="false" autocomplete="off" placeholder="Search controls" aria-label="Search controls"><button class="lib-search-clear" data-id="lib-search-clear" type="button" aria-label="Clear the search" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button></label>
       <div class="lib-body" data-id="lib-body"></div>
       <div class="lib-drop"><svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16" style="fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.2A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3 4.1M6.1 6.2A13 13 0 0 0 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.3-1"/></svg><span>Drop a control here to hide it</span></div>
     </aside>
@@ -11192,7 +11859,11 @@ ${studioControlsCSS()}
     const replaceMenu = q('[data-id="replace-menu"]');
     const ghost = q('.ghost'), dropMarker = q('.marker'), dropRing = q('.drop-ring'), controlRing = q('.control-ring'), newSpot = q('.newspot');
     const undoStack = [], redoStack = [];
-    let selection = { target: null, control: null }, controlDrag = null, controlFrame = 0, libraryOpen = false;
+    let selection = { target: null, control: null }, controlDrag = null, controlFrame = 0, libraryOpen = false, libraryQuery = '';
+    // The Controls list's search: every word typed has to appear in the control's name, the menu path of a + menu
+    // item, the island it sits in or its group, ignoring case and accents ("cafe" finds "Café", "σταθμος" finds
+    // "Σταθμός").
+    const searchFold = text => String(text || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
     // Islands picked together with Ctrl (or Cmd) + click: they move as one and can be lined up with each other.
     const group = new Set();
     const customSpecs = new Map();
@@ -11344,7 +12015,7 @@ ${studioControlsCSS()}
       const island = model.custom.find(item => item.items.includes(key));
       if (island) return island.name;
       const managed = Object.entries(model.managed).find(([, item]) => item.items.includes(key));
-      if (!managed && entry?.island === 'links') return tr('Not placed');
+      if (!managed && (entry?.island === 'links' || entry?.island === 'create')) return tr('Not placed');
       return tr(ISLAND_HOME_LABELS[managed ? managed[0] : entry?.island] || '');
     }
     function controlIcon(entry) {
@@ -11354,6 +12025,21 @@ ${studioControlsCSS()}
         const favicon = element.querySelector('img[data-loaded]');
         if (favicon) { const copy = document.createElement('img'); copy.src = favicon.currentSrc || favicon.src; copy.alt = ''; copy.style.cssText = 'width:18px;height:18px;border-radius:4px;object-fit:contain'; box.append(copy); }
         else box.insertAdjacentHTML('beforeend', LINK_ICON);
+        return box;
+      }
+      if (entry.island === 'create') {
+        const shortcut = createCatalog.find(item => `create@${item.id}` === entry.key);
+        // Styled here too: the list lives in Arrange's own shadow root, where the page's rules for these icons do not
+        // reach, and an image left inline sits on the text baseline instead of in the middle.
+        if (shortcut) {
+          const icon = createIconElement(shortcut);
+          icon.style.cssText = 'display:grid;place-items:center;width:20px;height:20px;line-height:1;font-size:12px;overflow:hidden';
+          for (const node of icon.children) { node.style.display = node.localName === 'img' ? 'block' : node.style.display; node.style.flex = 'none'; }
+          const bundled = icon.querySelector('img.ws-create-bundled');
+          if (bundled) { bundled.style.width = '20px'; bundled.style.height = '20px'; }
+          else if (shortcut.icon) { const size = Math.max(shortcut.icon.width, shortcut.icon.height); if (size > 20) icon.firstElementChild?.style.setProperty('zoom', String(Math.round(20 / size * 1000) / 1000)); }
+          box.append(icon);
+        }
         return box;
       }
       // The icon is taken from the button you see, not from a menu hidden inside the control (the rail's + button
@@ -11477,22 +12163,40 @@ ${studioControlsCSS()}
       toggle.setAttribute('aria-pressed', String(libraryOpen));
       if (!libraryOpen || controlDrag) return;
       const model = islandControlsDraft || emptyIslandControls();
-      const groups = [['header', 'Header'], ['navigation', 'Navigation'], ['tools', 'Map tools'], ['status', 'Status'], ['links', 'Custom links']];
+      const groups = [['header', 'Header'], ['navigation', 'Navigation'], ['tools', 'Map tools'], ['status', 'Status'], ['create', 'Create menu'], ['links', 'Custom links']];
+      // The + menu's items are read from WME the first time this list opens, out of sight.
+      if (!createProbed && createCatalogLoaded && createTrigger()) probeCreateMenu().then(() => { if (libraryOpen) renderLibrary(); });
       const rows = [];
-      let shown = 0;
+      let shown = 0, hiddenCount = 0, matches = 0;
+      const words = searchFold(libraryQuery).split(/\s+/).filter(Boolean);
+      const shortcutOf = entry => entry.island === 'create' ? createCatalog.find(item => `create@${item.id}` === entry.key) : null;
+      const matching = (entry, title) => !words.length || (haystack => words.every(word => haystack.includes(word)))(searchFold(
+        [tr(entry.label), entry.label, ...(shortcutOf(entry)?.labels || []), tr(title), title, controlWhere(entry.key)].join(' ')));
       for (const [group, title] of groups) {
-        const entries = [...islandRegistry.values()].filter(entry => group === 'status' ? ['online', 'tile'].includes(entry.island) : entry.island === group);
+        const all = [...islandRegistry.values()].filter(entry => group === 'status' ? ['online', 'tile'].includes(entry.island) : entry.island === group);
+        for (const entry of all) {
+          if (model.hidden.includes(entry.key) && !entry.required) hiddenCount++;
+          else if (!(entry.island === 'create' && controlWhere(entry.key) === tr('Not placed'))) shown++;
+        }
+        const entries = all.filter(entry => matching(entry, group === 'create' ? '' : title));
+        matches += entries.length;
         if (!entries.length) continue;
         const heading = document.createElement('div'); heading.className = 'lib-group'; heading.textContent = tr(title);
         rows.push(heading);
         for (const entry of entries) {
           const hidden = model.hidden.includes(entry.key) && !entry.required;
-          if (!hidden) shown++;
           const row = document.createElement('div');
           row.className = 'lib-row'; row.dataset.key = entry.key;
           if (hidden) row.dataset.off = 'on';
           if (selection.control === entry.key) row.dataset.on = 'on';
+          const shortcut = shortcutOf(entry);
+          if (shortcut) {
+            if (shortcut.labels.length > 1 && !words.length) row.dataset.depth = String(Math.min(2, shortcut.labels.length - 1));
+            row.title = shortcut.labels.join(' › ');
+          }
           const label = document.createElement('span'); label.className = 'lbl'; label.textContent = tr(entry.label);
+          // Found by a search, a + menu item shows the menus it sits in under its name (Place › Car Services).
+          if (shortcut && words.length && shortcut.labels.length > 1) label.append(Object.assign(document.createElement('span'), { className: 'lib-path', textContent: shortcut.labels.slice(0, -1).join(' › ') }));
           const where = document.createElement('span'); where.className = 'where'; where.textContent = controlWhere(entry.key);
           const eye = document.createElement('button');
           eye.type = 'button'; eye.className = 'eye';
@@ -11511,10 +12215,24 @@ ${studioControlsCSS()}
           } else row.append(controlIcon(entry), label, where, eye);
           rows.push(row);
         }
+        if (group === 'create' && !words.length) {
+          const again = document.createElement('button');
+          again.type = 'button'; again.className = 'lib-add lib-read';
+          again.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>';
+          again.append(document.createTextNode(tr(createRunning ? 'Reading the + menu…' : 'Read the + menu again')));
+          again.disabled = createRunning;
+          again.addEventListener('click', () => { probeCreateMenu().then(() => { if (libraryOpen) renderLibrary(); }); renderLibrary(); });
+          rows.push(again);
+        }
       }
       // Custom links: a button that opens an address of your own, placed like any other control.
+      if (words.length && !matches) {
+        const none = document.createElement('p'); none.className = 'lib-none';
+        none.textContent = tr('No controls match your search.');
+        rows.push(none);
+      }
       if (linkForm) rows.push(linkFormElement());
-      else {
+      else if (!words.length) {
         const add = document.createElement('button');
         add.type = 'button'; add.className = 'lib-add';
         add.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
@@ -11529,7 +12247,7 @@ ${studioControlsCSS()}
       }
       libraryBody.replaceChildren(...rows);
       if (linkForm?.focus) { linkForm.focus = false; libraryBody.querySelector('.lib-link-form input')?.focus({ preventScroll: false }); }
-      q('[data-id="lib-summary"]').textContent = `${shown} ${tr('shown')} · ${islandRegistry.size - shown} ${tr('hidden')}`;
+      q('[data-id="lib-summary"]').textContent = `${shown} ${tr('shown')} · ${hiddenCount} ${tr('hidden')}`;
     }
     const EYE_ON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12c1-2.5 5-7 10-7s9 4.5 10 7c-1 2.5-5 7-10 7S3 14.5 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>';
     const EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.2A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3 4.1M6.1 6.2A13 13 0 0 0 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.3-1"/></svg>';
@@ -11690,7 +12408,11 @@ ${studioControlsCSS()}
           parts.push(ctxButton(tr('Delete link'), 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', () => deleteLink(id), { danger: true }));
         }
         const homeHere = info.kind === 'custom' ? info.island.home === entry.island : info.id === entry.island;
-        if (!homeHere && entry.island !== 'links' && ISLAND_HOME_LABELS[entry.island]) parts.push(ctxButton(`${tr('Send back to')} ${tr(ISLAND_HOME_LABELS[entry.island])}`, 'M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11', () => returnControl(key)));
+        if (entry.island === 'create' && info.kind === 'custom') parts.push(ctxButton(tr('Take off the island'), 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', () => {
+          commitIslands(model => removeControlKey(model, key), `${tr(entry.label)}: ${tr('taken off the island')}`);
+          selectTarget(selection.target && islandTargetInfo(selection.target) ? selection.target : null);
+        }));
+        if (!homeHere && entry.island !== 'links' && entry.island !== 'create' && ISLAND_HOME_LABELS[entry.island]) parts.push(ctxButton(`${tr('Send back to')} ${tr(ISLAND_HOME_LABELS[entry.island])}`, 'M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11', () => returnControl(key)));
       } else if (own) {
         const ownKey = [...islandRegistry.values()].find(item => item.island === info.id)?.key;
         if (ownKey) parts.push(sep(), ctxButton(tr('Hide'), 'M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.2A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3 4.1M6.1 6.2A13 13 0 0 0 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.3-1', () => toggleHidden(ownKey)));
@@ -12742,7 +13464,7 @@ ${studioControlsCSS()}
       if (drag?.pointerId === event.pointerId) finishDrag();
     }
     function blockControlEvent(event) {
-      if (!open || fromToolbar(event)) return;
+      if (!open || fromToolbar(event) || (createRunning && !event.isTrusted)) return;   // Studio reading the + menu
       if (event.type === 'dblclick') {
         const item = targetFromEvent(event);
         if (item?.spec.custom) { selectTarget(item.spec.id); startRename(item.spec.id); }
@@ -12770,12 +13492,19 @@ ${studioControlsCSS()}
       }
     }
     function onKeydown(event) {
+      if (createRunning && !event.isTrusted) return;   // Studio closing the + menu it read
       if (!open) return;
       if (saving) { if (!event.ctrlKey && !event.metaKey) { event.preventDefault(); event.stopImmediatePropagation(); } return; }
       if (shadow.activeElement?.closest?.('.lib-link-form')) {
         if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeLinkForm(); }
         // Enter saves straight away, whatever the page does with the key afterwards.
         else if (event.key === 'Enter' && shadow.activeElement.matches('input')) { event.preventDefault(); event.stopImmediatePropagation(); saveLinkForm(); }
+        return;
+      }
+      // Typing in the Controls search stays in the search: the editor's own shortcuts never see the keys.
+      if (shadow.activeElement === librarySearch) {
+        if (event.key === 'Escape') { event.preventDefault(); if (librarySearch.value) setLibraryQuery(''); else librarySearch.blur(); }
+        event.stopImmediatePropagation();
         return;
       }
       if (shadow.activeElement?.classList?.contains('ctx-rename')) {
@@ -12946,7 +13675,7 @@ ${studioControlsCSS()}
       finishControlDrag(false); finishDrag(); finishDockDrag(); open = false; compactLayoutEditing = false; requestMinimizer.refresh();
       setPanelPickerOpen(false);
       islandControlsDraft = null; selection = { target: null, control: null };
-      ctxBar.hidden = true; controlRing.hidden = true; library.hidden = true; libraryOpen = false;
+      ctxBar.hidden = true; controlRing.hidden = true; library.hidden = true; libraryOpen = false; libraryQuery = ''; q('[data-id="lib-search"]').value = ''; q('[data-id="lib-search-clear"]').hidden = true;
       undoStack.length = 0; redoStack.length = 0;
       arrangeBaseline.clear();
       unbindEditorEvents(); root.removeAttribute('data-wme-studio-layout-editing');
@@ -12979,6 +13708,16 @@ ${studioControlsCSS()}
     q('[data-id="new-island"]').addEventListener('click', addIsland);
     q('[data-id="library-toggle"]').addEventListener('click', () => setLibraryOpen(!libraryOpen));
     q('[data-id="library-close"]').addEventListener('click', () => setLibraryOpen(false));
+    const librarySearch = q('[data-id="lib-search"]'), librarySearchClear = q('[data-id="lib-search-clear"]');
+    function setLibraryQuery(value) {
+      libraryQuery = value;
+      if (librarySearch.value !== value) librarySearch.value = value;
+      librarySearchClear.hidden = !value;
+      libraryBody.scrollTop = 0;
+      renderLibrary();
+    }
+    librarySearch.addEventListener('input', () => setLibraryQuery(librarySearch.value));
+    librarySearchClear.addEventListener('click', () => { setLibraryQuery(''); librarySearch.focus({ preventScroll: true }); });
     q('[data-id="snap"]').addEventListener('click', () => {
       const on = !(snapEdges || snapCenter);
       snapEdges = snapCenter = on;
@@ -14365,6 +15104,20 @@ ${studioControlsCSS()}
     }
     if (sdkCheck !== state.sdkCheck) return;
     if (container !== document.getElementById('street-view-container')) { queueStreetViewWindow(); return; }
+    // Said ahead of time: the page's style floats Street View, and keeps the map full width, from the moment WME
+    // switches it on, before this function hears about it a frame or two later.
+    const floatingReady = !!(container && map && ready && settings.enabled && !standaloneSignin && !editorProfile && !state.docked);
+    if (floatingReady) {
+      if (root.getAttribute('data-wme-studio-street-view-pref') !== 'floating') root.setAttribute('data-wme-studio-street-view-pref','floating');
+      if (!state.drag && !compactLayoutEditing) {
+        const point = compactIslandLayout?.streetView || {x:.55,y:.5}, size = state.size;
+        const rect = fitStreetViewWindow({left:point.anchor === 'viewport' ? point.x * innerWidth : 12 + point.x * Math.max(0,innerWidth - size.width - 24),top:point.anchor === 'viewport' ? point.y * innerHeight : 12 + point.y * Math.max(0,innerHeight - size.height - 24),...size});
+        for (const axis of ['left','top','width','height']) {
+          const name = `--ws-street-view-${axis}`, value = `${Math.round(rect[axis])}px`;
+          if (container.style.getPropertyValue(name) !== value) container.style.setProperty(name, value);
+        }
+      }
+    } else if (root.hasAttribute('data-wme-studio-street-view-pref')) root.removeAttribute('data-wme-studio-street-view-pref');
     const active = !!(container && map && ready && settings.enabled && !standaloneSignin && !editorProfile && !container.hidden && container.getAttribute('aria-hidden') !== 'true' && nativeActive);
     if (!active) {
       const wasActive = state.active; state.active = false; finishStreetViewDrag(null,false);
@@ -14374,7 +15127,8 @@ ${studioControlsCSS()}
       root.removeAttribute('data-wme-studio-street-view'); container?.removeAttribute('data-wme-studio-street-view');
       if (container) {
         for (const element of container.querySelectorAll(':scope > .ws-street-view-toolbar,:scope > .ws-street-view-grip,:scope > .ws-street-view-notice')) element.remove();
-        for (const axis of ['left','top','width','height']) container.style.removeProperty(`--ws-street-view-${axis}`);
+        // The window's place stays on it while floating is the choice, ready for the next time it opens.
+        if (!floatingReady) for (const axis of ['left','top','width','height']) container.style.removeProperty(`--ws-street-view-${axis}`);
       }
       state.toolbar = null; state.rect = null; if (wasActive) resizeMap(true);
       if (islandSpaceDocked) { islandSpaceDocked = ''; scheduleIslandControls(); applyCompactLayoutVariables(); }
@@ -15972,6 +16726,8 @@ ${studioControlsCSS()}
 <li>Right-click a segment or a selection to copy its IDs or names, or zoom to it.</li>
 <li>Switch between WME and WME Beta at the same spot, and reach Arrange, the theme and Settings in one click.</li></ul>
 <p><strong>Also</strong></p><ul>
+<li>The + menu as buttons: put Roads, Place or any place category in an island and create it with one click.</li>
+<li>Request windows keep the reporter’s description pinned at the top while you scroll down.</li>
 <li>Custom scrollbars: slim and rounded, in your theme colors.</li>
 <li>More map problems and requests now move the map so their marker isn’t hidden under the panel.</li>
 <li>Theming for WME Segment Shift Utility, and many layout and dark theme fixes.</li></ul>`;
@@ -16347,7 +17103,7 @@ ${studioControlsCSS()}
 
   const UI_HOST_ID = 'wme-studio-userscript-ui';
   const LAUNCHER_HOST_ID = 'wme-studio-launcher-host';
-  let studioUI = null;
+  let studioUI = null, studioUIFixes = null;
   let studioLauncher = null;
   let studioPanelOpen = false;
 
@@ -16424,6 +17180,57 @@ ${studioControlsCSS()}
     }
     return '';
   }
+  // ---- Changelog ------------------------------------------------------------------------------------------------
+  // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
+  // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
+  const STUDIO_BUILD = '2.0.1-2026-10-18d';
+  const STUDIO_CHANGELOG = Object.freeze([
+    { version: '2.0.1', items: [
+      'New: search in the Controls list, by name or by + menu path.',
+      'New: this changelog. It shows once after an update, and stays in Settings › Studio.',
+      'Studio checks whether your bug reports were fixed every time the editor loads.',
+      'Report a bug: the Where box starts empty, so you choose where it happened.',
+      'Place categories in the + menu ask for a point or an area first. Note is no longer offered as a control.',
+      'Shortcuts under a menu WME has turned off (Hazard › Traffic light until you zoom in) open the menu to show why, instead of doing nothing.',
+      'Street View in a floating window no longer makes the map jump.',
+      'Place › Crisis location no longer makes the menu wider every time you point at it.',
+      'Moved islands no longer jump when you press Share location, and the island stays lit while you point at it.',
+      'Your islands come back after Your hub’s full page closes, and the map’s bar no longer covers that page.',
+      'The No impact yet picture in Your hub no longer covers the chart.',
+      'Tile Update no longer flashes its tooltip near the edge of its icon.',
+      'Messages keeps the spot you gave it in Arrange when you move it by hand.',
+      'Icons in the Controls list are centered.'
+    ] },
+    { version: '2.0.0', items: [
+      'Arrange your own islands: move controls between islands or onto the map, and create, rename, rotate and split islands.',
+      'Hide the controls you never use, and add buttons for your own links.',
+      'A right-click menu for the map and segments: coordinates, permalinks, IDs and a switch to WME Beta.',
+      'The + menu as buttons: create roads, places and any place category with one click.',
+      'Request windows keep the reporter’s description pinned while you scroll.',
+      'Custom scrollbars in your theme colors, and Report a bug in Studio’s settings.'
+    ] },
+    { version: '1.0.0', items: ['First public release.'] }
+  ]);
+  const CHANGELOG_KEY = 'wmeStudio.changelog.v1';
+  let changelogStarted = false;
+  function markChangelogSeen() {
+    try { Promise.resolve(studioKeep.set(CHANGELOG_KEY, STUDIO_BUILD)).catch(studioError => reportStudioError('markChangelogSeen', studioError)); } catch (studioError) { reportStudioError('markChangelogSeen', studioError); }
+  }
+  // Once the setup and tour state are known: a fresh install gets the setup, a new feature release the tour, and
+  // any other update this card, once.
+  async function maybeShowChangelog() {
+    if (changelogStarted || setupSeen === null || tourSeen === null || !uiRouteAllowed() || window.top !== window.self) return;
+    changelogStarted = true;
+    const seen = await Promise.resolve(studioKeep.get(CHANGELOG_KEY, '')).catch(() => STUDIO_BUILD);
+    if (seen === STUDIO_BUILD) return;
+    if (setupSeen === false || tourDue()) { markChangelogSeen(); return; }
+    await new Promise(ok => { const go = () => setTimeout(ok, 3500); if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true }); });
+    if (document.visibilityState !== 'visible') await new Promise(ok => document.addEventListener('visibilitychange', function shown() { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', shown); ok(); } }));
+    const value = await globalThis.WMEStudioSettings.read().catch(() => null);
+    if (!value?.enabled || studioSetup?.isOpen?.() || studioTour?.isOpen?.() || document.documentElement.hasAttribute('data-wme-studio-layout-editing')) { changelogStarted = false; return; }
+    buildStudioUI()?.showChangelog?.('new');
+  }
+
   function buildStudioUI() {
     if (studioUI || !uiRouteAllowed() || window.top !== window.self) return studioUI;
     const host = document.createElement('div');
@@ -16663,7 +17470,8 @@ ${studioControlsCSS()}
   .bug-field{display:flex;flex-direction:column;gap:5px;min-width:0}.bug-field>span{font-size:12px;font-weight:600}.bug-field em{color:var(--accent);font-style:normal}.bug-field small{color:var(--muted);font-weight:500}
   .bug-field textarea,.bug-field input,.bug-field select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:var(--text);font:inherit;resize:vertical;min-width:0}
   .bug-field textarea:focus,.bug-field input:focus,.bug-field select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
-  .bug-field.invalid textarea{border-color:#ff6b6b}
+  .bug-field.invalid textarea,.bug-field.invalid .bug-select-button{border-color:#ff6b6b}
+  .bug-select-button .bug-placeholder{color:var(--muted)}
   .bug-select{position:relative;min-width:0}
   .bug-select-button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;height:36px;margin:0;padding:0 10px 0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:var(--text);font:inherit;text-align:left;cursor:pointer}
   .bug-select-button span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -16690,6 +17498,12 @@ ${studioControlsCSS()}
   .fix-icon{grid-row:1/3;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center}.fix-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
   .fix-text strong{display:block;font-size:14px;line-height:1.3}.fix-list{display:flex;flex-direction:column;gap:6px;margin-top:5px;color:var(--muted);font-size:12.5px}
   .fix-item q{quotes:"\\201C" "\\201D";color:var(--text)}.fix-item .fix-version{color:var(--text);font-weight:600}.fix-item .fix-note{display:block;margin-top:2px;padding-left:8px;border-left:2px solid var(--line);font-style:italic}
+  .log-notice{bottom:calc(44px + var(--ws-log-lift,0px))}
+  .log-version{display:block;margin-top:1px;color:var(--muted);font-size:11.5px}
+  .log-list{display:flex;flex-direction:column;gap:5px;max-height:min(42vh,340px);overflow:auto;margin:8px 0 0;padding:0 4px 0 16px;color:var(--text);font-size:12.5px;line-height:1.4;scrollbar-width:thin}
+  .log-list li::marker{color:var(--accent)}
+  .log-body{gap:16px;padding-bottom:16px}.log-release h4{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;font-size:13.5px}.log-release h4 span{padding:1px 7px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:10.5px;font-weight:700}
+  .log-release ul{display:flex;flex-direction:column;gap:5px;margin:0;padding-left:18px;font-size:12.5px;line-height:1.45}.log-release li::marker{color:var(--accent)}
   .fix-actions{grid-column:2;display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
   .bug-done-icon{width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:26px;font-weight:700;margin-bottom:6px}.bug-done h3{margin:0;font-size:17px}.bug-done p{margin:0 0 14px;color:var(--muted);max-width:360px}
   @media(max-width:760px){.panel{width:calc(100vw - 24px);height:min(660px,calc(100dvh - 24px));grid-template-columns:64px minmax(0,1fr)}.head{padding:16px 14px 12px 20px}.chips{padding-inline:20px}.body{padding:4px 20px 20px}.sidebar{align-items:center;gap:8px;padding:14px 0 12px}.brand{padding:0}.brand-text{display:none}.search-trigger{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.search-trigger span{display:none}.nav{width:100%;justify-items:center;gap:4px}.nav-group{display:none}.nav-item{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.nav-item span{display:none}.nav-item .nav-badge{display:grid;position:absolute;top:4px;right:4px;min-width:8px;height:8px;padding:0;font-size:0}.nav-item{position:relative}.sidebar-footer{padding:0}.power-text{display:none}.notice{width:28px;padding:0;justify-content:center}.notice [data-id="status"]{display:none}.srow{flex-wrap:wrap;row-gap:8px}.srow:has(>input[type="range"]) .srow-text,.srow:has(>.actions) .srow-text,.srow:has(>.swatches) .srow-text{flex-basis:100%}.srow input[type="range"]{flex:1 1 160px;width:auto}.stack-main{flex-wrap:wrap;row-gap:8px}.modes{grid-template-columns:1fr}.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.themes{gap:8px}}
@@ -16803,6 +17617,7 @@ ${studioControlsCSS()}
       <section class="settings-page" id="studio-page-studio" data-page="studio" role="tabpanel" aria-labelledby="studio-tab-studio" hidden><div class="page-stack">
         <div class="group"><h3 class="section-label">General</h3><div class="card rows">
           <div class="srow" data-row="language"><div class="srow-text"><strong>Language</strong><span class="small">Language of Studio's own menus and messages.</span></div><div class="language" data-id="language-control"><button class="language-button" data-id="language" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Language"><span data-id="language-value"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="language-menu" data-id="language-menu" role="listbox" aria-label="Language" hidden></div></div></div>
+          <div class="srow" data-row="changelog"><div class="srow-text"><strong>Changelog</strong><span class="small">Every fix and change, version by version.</span></div><div class="actions"><button class="reset" data-id="changelog" type="button">Show changelog</button></div></div>
           <div class="srow" data-row="tour"><div class="srow-text"><strong>What's new</strong><span class="small">A short tour of what this version of Studio can do.</span></div><div class="actions"><button class="reset" data-id="tour" type="button">Show the tour</button></div></div>
           <div class="srow" data-row="shortcut"><div class="srow-text"><strong>Command palette shortcut</strong><span class="small" data-id="shortcut-hint">Opens the search for settings and commands from anywhere in the editor.</span></div><div class="actions"><button class="reset" data-id="shortcut-default" type="button" hidden>Default</button><button class="reset shortcut" data-id="shortcut" type="button" aria-label="Change shortcut"></button></div></div>
         </div></div>
@@ -17009,7 +17824,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       <div class="bug-as" data-id="bug-as" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span data-id="bug-as-text"></span></div>
       <label class="bug-field"><span>What happened? <em>*</em></span><textarea data-id="bug-what" rows="3" maxlength="2000" placeholder="For example: after I moved the zoom buttons to the left, the + menu opens under the header."></textarea></label>
       <div class="bug-two">
-        <div class="bug-field"><span id="bug-where-label">Where</span><div class="bug-select" data-id="bug-category-control"><button class="bug-select-button" type="button" data-id="bug-category" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="bug-where-label bug-category-value"><span id="bug-category-value" data-id="bug-category-value">Floating mode and islands</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="bug-select-menu" data-id="bug-category-menu" role="listbox" aria-labelledby="bug-where-label" hidden><button class="bug-option" type="button" role="option" data-value="layout" aria-selected="true">Floating mode and islands</button><button class="bug-option" type="button" role="option" data-value="arrange" aria-selected="false">Arrange</button><button class="bug-option" type="button" role="option" data-value="theme" aria-selected="false">Theme and colors</button><button class="bug-option" type="button" role="option" data-value="panels" aria-selected="false">Panels and windows</button><button class="bug-option" type="button" role="option" data-value="menu" aria-selected="false">Right-click menu</button><button class="bug-option" type="button" role="option" data-value="addons" aria-selected="false">Another script</button><button class="bug-option" type="button" role="option" data-value="speed" aria-selected="false">Speed</button><button class="bug-option" type="button" role="option" data-value="other" aria-selected="false">Something else</button></div></div></div>
+        <div class="bug-field"><span id="bug-where-label">Where</span><div class="bug-select" data-id="bug-category-control"><button class="bug-select-button" type="button" data-id="bug-category" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="bug-where-label bug-category-value"><span id="bug-category-value" data-id="bug-category-value" class="bug-placeholder">Select an option</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="bug-select-menu" data-id="bug-category-menu" role="listbox" aria-labelledby="bug-where-label" hidden><button class="bug-option" type="button" role="option" data-value="layout" aria-selected="false">Floating mode and islands</button><button class="bug-option" type="button" role="option" data-value="arrange" aria-selected="false">Arrange</button><button class="bug-option" type="button" role="option" data-value="theme" aria-selected="false">Theme and colors</button><button class="bug-option" type="button" role="option" data-value="panels" aria-selected="false">Panels and windows</button><button class="bug-option" type="button" role="option" data-value="menu" aria-selected="false">Right-click menu</button><button class="bug-option" type="button" role="option" data-value="addons" aria-selected="false">Another script</button><button class="bug-option" type="button" role="option" data-value="speed" aria-selected="false">Speed</button><button class="bug-option" type="button" role="option" data-value="other" aria-selected="false">Something else</button></div></div></div>
         <label class="bug-field"><span>Another way to reach you <small>(optional)</small></span><input data-id="bug-contact" type="text" maxlength="120" placeholder="Forum name or email"></label>
       </div>
       <label class="bug-field"><span>Steps to see it again <small>(optional)</small></span><textarea data-id="bug-steps" rows="2" maxlength="2000" placeholder="1. Open Arrange  2. …"></textarea></label>
@@ -17026,6 +17841,18 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
   <div class="fix-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
   <div class="fix-text"><strong data-id="fix-title">Your bug report was fixed</strong><div class="fix-list" data-id="fix-list"></div></div>
   <div class="fix-actions"><button class="reset" type="button" data-id="fix-update" hidden>Get the update</button><button class="reset primary" type="button" data-id="fix-ok">Got it</button></div>
+</div>
+<div class="fix-notice log-notice" data-id="log-notice" role="status" aria-live="polite" hidden>
+  <div class="fix-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg></div>
+  <div class="fix-text"><strong>What's changed</strong><span class="log-version" data-id="log-version" data-ws-keep></span><ul class="log-list" data-id="log-list"></ul></div>
+  <div class="fix-actions"><button class="reset" type="button" data-id="log-all">See all changes</button><button class="reset primary" type="button" data-id="log-ok">Got it</button></div>
+</div>
+<div class="bug-backdrop" data-id="log-backdrop" hidden>
+  <div class="bug-dialog log-dialog" role="dialog" aria-modal="true" aria-labelledby="log-title">
+    <div class="bug-head"><div><h3 id="log-title">Changelog</h3><p>Every fix and change, version by version.</p></div><button class="bug-close" type="button" data-id="log-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="bug-body log-body" data-id="log-body"></div>
+    <div class="bug-foot"><span class="bug-note"></span><button class="reset primary" type="button" data-id="log-done">Close</button></div>
+  </div>
 </div>`;
     (document.documentElement || document).appendChild(host);
 
@@ -17037,6 +17864,10 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     const status = q('[data-id="status"]');
     const config = globalThis.WMEStudioSettings;
     let current = { ...config.defaults };
+    // Until the saved settings are read, "current" holds the defaults: the dialog built without being opened (for a
+    // "report fixed" note or the changelog) used to set the language from them, back to Automatic, for the session.
+    let currentRead = false;
+    config.read().then(value => { if (!currentRead) { current = value; currentRead = true; } }).catch(() => {});
     let activePage = 'workspace';
     let presetUndo = null, presetBusy = false;
     const workspaces = globalThis.WMEStudioWorkspaces;
@@ -17278,6 +18109,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       if (event.key === 'Escape') {
         event.preventDefault();
         if (q('[data-id="color-picker"]').matches(':popover-open')) closeColorPicker();
+        else if (!q('[data-id="log-backdrop"]').hidden) closeChangelog();
         else if (!q('[data-id="bug-backdrop"]').hidden) { if (bug.category.open) bug.category.close(); else closeBugDialog(); }
         else close();
         return;
@@ -17324,7 +18156,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         languageValue.toggleAttribute('data-ws-keep', option.dataset.value !== 'auto');
         languageValue.textContent = option.dataset.label;
       }
-      globalThis.WMEStudioI18n.setLanguage(current.language);
+      if (currentRead) globalThis.WMEStudioI18n.setLanguage(current.language);
       paintShortcut();
       for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu']) q(`[data-id="${key}"]`).checked = current[key];
       paintSchedule();
@@ -17677,7 +18509,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       document.addEventListener('keydown', modalKeydown, true);
       setLauncherActive(true);
       panel.focus({ preventScroll: true });
-      config.read().then(v => { current = v; render(); savedStatus(); }).catch((studioError) => { reportStudioError("open",studioError); return setStatus('Could not load preferences.', 'error'); });
+      config.read().then(v => { current = v; currentRead = true; render(); savedStatus(); }).catch((studioError) => { reportStudioError("open",studioError); return setStatus('Could not load preferences.', 'error'); });
       refreshProfiles();
     }
     function close() {
@@ -17795,7 +18627,8 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     bug.category = (() => {
       const button = q('[data-id="bug-category"]'), menu = q('[data-id="bug-category-menu"]'), label = q('[data-id="bug-category-value"]');
       const options = () => [...menu.querySelectorAll('.bug-option')];
-      let value = 'layout';
+      // Nothing is chosen at first: a report filed under a default nobody picked said nothing about where it was.
+      let value = '';
       const setOpen = open => {
         if (open) {
           // Drawn over the dialog (fixed), so its scrolling body never cuts the list off: below the button when
@@ -17811,9 +18644,12 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         button.setAttribute('aria-expanded', String(open));
       };
       const choose = next => {
-        value = options().some(option => option.dataset.value === next) ? next : 'layout';
+        value = options().some(option => option.dataset.value === next) ? next : '';
         for (const option of options()) option.setAttribute('aria-selected', String(option.dataset.value === value));
-        label.textContent = options().find(option => option.dataset.value === value)?.textContent || '';
+        label.textContent = options().find(option => option.dataset.value === value)?.textContent || translate('Select an option');
+        label.classList.toggle('bug-placeholder', !value);
+        const field = button.closest('.bug-field');
+        if (value && field.classList.contains('invalid')) { field.classList.remove('invalid'); showBugError(''); }
       };
       button.addEventListener('click', () => setOpen(menu.hidden));
       menu.addEventListener('click', event => { const option = event.target.closest('.bug-option'); if (!option) return; choose(option.dataset.value); setOpen(false); button.focus({ preventScroll: true }); });
@@ -17832,7 +18668,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       bug.backdrop.addEventListener('pointerdown', event => { if (!menu.hidden && !event.composedPath().includes(q('[data-id="bug-category-control"]'))) setOpen(false); });
       q('.bug-body').addEventListener('scroll', () => { if (!menu.hidden) setOpen(false); }, { passive: true });
       window.addEventListener('resize', () => { if (!menu.hidden) setOpen(false); }, { passive: true });
-      return { get value() { return value; }, set value(next) { choose(next); }, get open() { return !menu.hidden; }, close() { setOpen(false); button.focus({ preventScroll: true }); }, keydown };
+      return { get value() { return value; }, set value(next) { choose(next); }, get open() { return !menu.hidden; }, close() { setOpen(false); button.focus({ preventScroll: true }); }, focus() { button.focus({ preventScroll: true }); }, keydown };
     })();
     const endpointReady = /^https:\/\/[^/\s]+/.test(BUG_REPORT_ENDPOINT);
     // The settings panel is localized from its DOM (see WMEStudioI18n.localize), so text is set in English here.
@@ -17844,13 +18680,13 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         .replace('**What happened:** (describe it here)', `**What happened:** ${what || '(not filled in)'}`)
         .replace('**What you expected:** \n', '')
         .replace('**Steps to reproduce:** ', `**Steps to reproduce:** ${steps || '(not filled in)'}`)
-        .replace('\n---\n', `\n**Where:** ${CATEGORY_LABELS[bug.category.value] || 'Something else'}\n---\n`);
+        .replace('\n---\n', `\n**Where:** ${CATEGORY_LABELS[bug.category.value] || '(not chosen)'}\n---\n`);
     }
     function refreshBugDiag() { bug.diag.textContent = bugReport().split('\n---\n')[1] || ''; }
     function showBugError(text) { bug.error.textContent = text || ''; bug.error.hidden = !text; }
     function openBugDialog() {
       bug.opener = shadow.activeElement;
-      bug.done.hidden = true; showBugError(''); bug.what.closest('.bug-field').classList.remove('invalid');
+      bug.done.hidden = true; showBugError(''); bug.what.closest('.bug-field').classList.remove('invalid'); q('[data-id="bug-category-control"]').closest('.bug-field').classList.remove('invalid');
       bug.note.textContent = translate(endpointReady ? 'Sent to the author of WME Studio.' : 'Copied for the feedback page.');
       bug.send.textContent = translate(endpointReady ? 'Send report' : 'Copy & open feedback page');
       const user = wmeUserName();
@@ -17867,7 +18703,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       bug.opener?.focus?.({ preventScroll: true });
     }
     function resetBugDialog() {
-      bug.what.value = ''; bug.steps.value = ''; bug.contact.value = ''; bug.category.value = 'layout';
+      bug.what.value = ''; bug.steps.value = ''; bug.contact.value = ''; bug.category.value = '';
       clearScreenshot();
     }
     function clearScreenshot() {
@@ -17919,7 +18755,9 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       if (bug.sending) return;
       const what = bug.what.value.trim();
       if (what.length < 5) { bug.what.closest('.bug-field').classList.add('invalid'); showBugError(translate('Please say what happened first.')); bug.what.focus(); return; }
-      bug.what.closest('.bug-field').classList.remove('invalid'); showBugError('');
+      bug.what.closest('.bug-field').classList.remove('invalid');
+      if (!bug.category.value) { q('[data-id="bug-category-control"]').closest('.bug-field').classList.add('invalid'); showBugError(translate('Please choose where it happened.')); bug.category.focus(); return; }
+      showBugError('');
       const text = bugText();
       if (!endpointReady) {
         window.open(BUG_REPORT_FALLBACK_URL, '_blank', 'noopener');
@@ -17991,12 +18829,12 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       bugApi('POST', '/api/updates/ack', { user: fix.user, ids }).catch(() => { /* told next time */ });
       fix.items = [];
     }
-    async function checkBugFixes(manual = false) {
+    async function checkBugFixes(manual = false, force = false) {
       if (!endpointReady) return;
       const user = wmeUserName();
       if (!user) { if (manual) setStatus(translate('Sign in to the editor first.'), 'error'); return; }
       const state = await readFixState();
-      if (!manual && state.checked && Date.now() - state.checked < BUG_CHECK_EVERY) return;
+      if (!manual && !force && state.checked && Date.now() - state.checked < BUG_CHECK_EVERY) return;
       if (manual) setStatus(translate('Checking…'), 'saving');
       let data;
       try { data = await bugApi('GET', `/api/updates?user=${encodeURIComponent(user)}&v=${encodeURIComponent(USERSCRIPT_VERSION)}`); }
@@ -18014,6 +18852,57 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     fix.ok.addEventListener('click', () => { dismissFixNotice(); });
     fix.update.addEventListener('click', () => { window.open('https://greasyfork.org/scripts/599569', '_blank', 'noopener'); dismissFixNotice(); });
     q('[data-id="bug-check"]').addEventListener('click', () => { checkBugFixes(true); });
+    studioUIFixes = { check: checkBugFixes };
+    // Changelog: the card after an update (this version's changes) and the full list from Settings › Studio.
+    const log = { box: q('[data-id="log-notice"]'), list: q('[data-id="log-list"]'), version: q('[data-id="log-version"]'), backdrop: q('[data-id="log-backdrop"]'), body: q('[data-id="log-body"]'), opener: null };
+    function changelogItems(list, items) {
+      list.replaceChildren(...items.map(text => Object.assign(document.createElement('li'), { textContent: text })));
+    }
+    function showChangelog(mode = 'new') {
+      if (mode === 'new') {
+        const release = STUDIO_CHANGELOG[0];
+        log.version.textContent = `WME Studio ${USERSCRIPT_VERSION}`;
+        changelogItems(log.list, release.items);
+        // Over the "report fixed" note when both show.
+        log.box.style.setProperty('--ws-log-lift', fix.box.hidden ? '0px' : `${Math.ceil(fix.box.getBoundingClientRect().height) + 12}px`);
+        log.box.hidden = false;
+        return;
+      }
+      log.box.hidden = true;
+      log.body.replaceChildren(...STUDIO_CHANGELOG.map((release, index) => {
+        const section = document.createElement('section'); section.className = 'log-release';
+        const title = document.createElement('h4'), number = document.createElement('b');
+        number.textContent = release.version; number.setAttribute('data-ws-keep', ''); title.append(number);
+        if (index === 0 && release.version === USERSCRIPT_VERSION) title.append(Object.assign(document.createElement('span'), { textContent: translate('This version') }));
+        const list = document.createElement('ul'); changelogItems(list, release.items);
+        section.append(title, list);
+        return section;
+      }));
+      log.opener = shadow.activeElement;
+      log.backdrop.hidden = false;
+      document.addEventListener('keydown', changelogKey, true);
+      log.body.scrollTop = 0;
+      requestAnimationFrame(() => q('[data-id="log-done"]').focus({ preventScroll: true }));
+      markChangelogSeen();
+    }
+    // Escape closes the list (also when the settings are not open), and keys stay out of the editor meanwhile.
+    function changelogKey(event) {
+      if (log.backdrop.hidden) { document.removeEventListener('keydown', changelogKey, true); return; }
+      if (event.key === 'Escape') { event.preventDefault(); closeChangelog(); }
+      if (!event.ctrlKey && !event.metaKey) event.stopImmediatePropagation();
+    }
+    function closeChangelog() {
+      if (log.backdrop.hidden) return;
+      document.removeEventListener('keydown', changelogKey, true);
+      log.backdrop.hidden = true;
+      log.opener?.focus?.({ preventScroll: true }); log.opener = null;
+    }
+    q('[data-id="log-ok"]').addEventListener('click', () => { log.box.hidden = true; markChangelogSeen(); });
+    q('[data-id="log-all"]').addEventListener('click', () => showChangelog('all'));
+    for (const id of ['log-close', 'log-done']) q(`[data-id="${id}"]`).addEventListener('click', closeChangelog);
+    log.backdrop.addEventListener('pointerdown', event => { if (event.target === log.backdrop) closeChangelog(); });
+    q('[data-id="changelog"]').addEventListener('click', () => showChangelog('all'));
+    // The count of reports still waiting, shown on the Report a bug page, is refreshed now and then from here.
     if (endpointReady) setTimeout(() => { checkBugFixes(false).catch(error => reportStudioError('bug fixes check', error)); }, 12000);
     function bugDialogSending() { return !!bug.sending; }
     function hideBugDialog() { if (!bug.backdrop.hidden) bug.backdrop.hidden = true; }
@@ -18066,7 +18955,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         setTimeout(()=>row.removeAttribute('data-flash'),1400);
       });
     }
-    studioUI = { host, shadow, open, close, reveal };
+    studioUI = { host, shadow, open, close, reveal, showChangelog };
     return studioUI;
   }
 
@@ -19373,7 +20262,7 @@ ${studioSetupShellCSS()}
     <div class="top"><img src="${STUDIO_LOGO_DATA_URI}" alt=""><b>WME Studio</b><span class="count" data-id="count" aria-live="polite"></span></div>
     <div class="steps" data-id="steps">
       <div class="step" data-step="0">
-        <h2 id="studio-tour-title">What's new in 2.0.0.</h2>
+        <h2 id="studio-tour-title">What's new in 2.0.</h2>
         <p>The biggest Studio update yet. Here is a quick tour of what you can do now: six stops, two minutes.</p>
         <p>Everything here lives in Settings too, so skip whenever you like.</p>
       </div>
@@ -19423,9 +20312,9 @@ ${studioSetupShellCSS()}
       <div class="step" data-step="6" hidden>
         <h2>And the rest.</h2>
         <ul class="where">
-          <li><span><b>Custom scrollbars</b><small>Slim and rounded, in your theme colors.</small></span></li>
+          <li><span><b>The + menu, one click away</b><small>Roads, places and every category become buttons you can put in any island, in Arrange's Controls list.</small></span></li>
+          <li><span><b>The description stays in view</b><small>Scroll down a request and the reporter's description is pinned at the top.</small></span></li>
           <li><span><b>Nothing hidden under the panel</b><small>More map problems and requests move the map so their marker stays in view.</small></span></li>
-          <li><span><b>More add-ons themed</b><small>WME Segment Shift Utility, plus many layout and dark theme fixes.</small></span></li>
         </ul>
         <p class="note"><span>This tour can be run again from Settings, on the General page.</span><br><a href="#" data-id="settings">Open settings</a><a href="#" data-id="arrange" hidden>Open Arrange</a><a href="https://greasyfork.org/scripts/599569/versions" target="_blank" rel="noopener">Full release notes</a></p>
       </div>
@@ -19620,7 +20509,8 @@ ${studioSetupShellCSS()}
   const tourParts = value => String(value || '').split('.').map(part => parseInt(part, 10) || 0);
   function tourDue() {   // the installed version is newer than the one last toured (a reinstall of an older one shows nothing)
     if (tourSeen === null) return false;
-    const now = tourParts(USERSCRIPT_VERSION), seen = tourParts(tourSeen);
+    // By feature release (2.0, 2.1…): a fix release such as 2.0.1 does not bring the same tour back.
+    const now = tourParts(USERSCRIPT_VERSION).slice(0, 2), seen = tourParts(tourSeen).slice(0, 2);
     for (let i = 0; i < Math.max(now.length, seen.length); i += 1) { if ((now[i] || 0) !== (seen[i] || 0)) return (now[i] || 0) > (seen[i] || 0); }
     return false;
   }
@@ -19795,7 +20685,7 @@ ${studioControlsCSS()}
       visible.then(() => playStudioIntro(value)).catch((studioError) => { reportStudioError("maybeStartSetup",studioError);}).then(() => buildStudioSetup()?.open(value));
     }).catch((studioError) => { reportStudioError("maybeStartSetup",studioError);});
   }
-  Promise.all([studioKeep.get(SETUP_KEY, false), studioKeep.get(TOUR_KEY, '')]).then(([value, tour]) => { setupSeen = value === true; tourSeen = typeof tour === 'string' ? tour : ''; maybeStartSetup(); maybeStartTour(); }).catch((studioError) => { reportStudioError("Studio initialization",studioError); setupSeen = true; });
+  Promise.all([studioKeep.get(SETUP_KEY, false), studioKeep.get(TOUR_KEY, '')]).then(([value, tour]) => { setupSeen = value === true; tourSeen = typeof tour === 'string' ? tour : ''; maybeStartSetup(); maybeStartTour(); maybeShowChangelog().catch(studioError => reportStudioError('maybeShowChangelog', studioError)); }).catch((studioError) => { reportStudioError("Studio initialization",studioError); setupSeen = true; });
 
   function setLauncherActive(active) {
     const button = studioLauncher?.shadow?.querySelector('.launcher');
@@ -19891,6 +20781,42 @@ ${studioControlsCSS()}
   let launcherReadyObserver = null;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountStudioLauncher, { once: true });
   else mountStudioLauncher();
+
+  // "Was my report fixed?" is asked every time the editor loads (and every half hour while it stays open), without
+  // opening Studio's settings: one small request with the editor's user name. Only when there is news is the
+  // settings dialog built, to show the note; it used to be asked only from inside the settings, at most every six
+  // hours, so a fix could go unnoticed for days.
+  const BUG_FIXES_STORE = 'wmeStudio.bugFixes.v1', BUG_RECHECK_EVERY = 30 * 60 * 1000;
+  let bugFixesChecking = false;
+  function fetchBugUpdates(user) {
+    return new Promise((resolve, reject) => {
+      const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/updates?user=${encodeURIComponent(user)}&v=${encodeURIComponent(USERSCRIPT_VERSION)}`;
+      const done = (status, text) => { let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ } (status >= 200 && status < 300 && data?.ok ? resolve : reject)(data); };
+      if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, timeout: 20000, anonymous: true, onload: response => done(response.status, response.responseText || ''), onerror: reject, ontimeout: reject });
+      else fetch(url, { mode: 'cors' }).then(async response => done(response.status, await response.text())).catch(reject);
+    });
+  }
+  async function autoCheckBugFixes() {
+    if (bugFixesChecking || !/^https:\/\/[^/\s]+/.test(BUG_REPORT_ENDPOINT) || !uiRouteAllowed() || window.top !== window.self || document.hidden) return;
+    const user = wmeUserName();
+    if (!user) return false;
+    bugFixesChecking = true;
+    try {
+      const data = await fetchBugUpdates(user);
+      const saved = await Promise.resolve(studioKeep.get(BUG_FIXES_STORE, null)).catch(() => null);
+      const seen = Array.isArray(saved?.seen) ? saved.seen : [];
+      const fresh = (Array.isArray(data?.fixed) ? data.fixed : []).filter(item => item && Number.isInteger(item.id) && !seen.includes(item.id));
+      if (fresh.length && buildStudioUI()) await studioUIFixes?.check(false, true);
+    } catch (_) { /* asked again next time */ } finally { bugFixesChecking = false; }
+    return true;
+  }
+  (() => {
+    let tries = 0;
+    // The editor's user name shows up a little after the page: asked for again until it does (about a minute).
+    const first = async () => { if (await autoCheckBugFixes() === false && ++tries < 30) setTimeout(first, 2000); };
+    setTimeout(first, 5000);
+    setInterval(() => { autoCheckBugFixes(); }, BUG_RECHECK_EVERY);
+  })();
 
   refreshStudioLauncher = () => {
     if (uiRouteAllowed()) mountStudioLauncher();
@@ -20157,8 +21083,86 @@ ${studioControlsCSS()}
         for (const date of panel.querySelectorAll('.conversation-view .comment .date')) setShort(date, shortDate(date.textContent));
       } catch (_) { reportStudioError("shorten",_);}
     };
+    // The reporter's description stays in reach while you read down the conversation: once it scrolls out of
+    // sight, a short copy of it is pinned to the top of the request. Clicking it scrolls back up to it.
+    const pins = new Map();   // panel -> {wrap, card, label, text, scroller, description}
+    let pinStyle = null;
+    const PIN_CSS = `
+      .ws-ur-pin { position: sticky; top: 0; z-index: 4; display: block; height: 0; margin: 0; padding: 0; pointer-events: none; }
+      .ws-ur-pin > button {
+        position: absolute; left: 0; right: 0; top: 0; display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 8px var(--ws-pad, 14px) 9px;
+        border: 0; border-bottom: 1px solid var(--wme-studio-border, #d5d7db); border-radius: 0 0 12px 12px; text-align: start; cursor: pointer;
+        background: var(--wme-studio-surface, #fff); color: var(--wme-studio-text, #202830); box-shadow: 0 8px 18px -10px #00000059;
+        font: 13px/18px var(--ws-font, system-ui, sans-serif); pointer-events: auto;
+        opacity: 0; visibility: hidden; transform: translateY(-6px); transition: opacity 160ms ease, transform 180ms ease, visibility 0s linear 180ms;
+      }
+      .ws-ur-pin[data-on] > button { opacity: 1; visibility: visible; transform: none; transition: opacity 160ms ease, transform 180ms ease, visibility 0s; }
+      .ws-ur-pin > button:hover { background: color-mix(in srgb, var(--wme-studio-text, #202830) 6%, var(--wme-studio-surface, #fff)); }
+      .ws-ur-pin > button:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: -2px; }
+      .ws-ur-pin b { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; font: 600 11px/16px var(--ws-font, system-ui, sans-serif); letter-spacing: .06em; text-transform: uppercase; color: var(--wme-studio-text-secondary, #57616d); }
+      .ws-ur-pin b::after { content: ""; width: 7px; height: 7px; margin-inline-start: auto; border: solid currentColor; border-width: 1.6px 1.6px 0 0; transform: translateY(2px) rotate(-45deg); opacity: .7; }
+      .ws-ur-pin span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; white-space: pre-line; }
+      .ws-ur-pin > button:hover span { -webkit-line-clamp: 12; }
+      html[data-wme-studio-motion="reduced"] .ws-ur-pin > button { transition: none; }
+      html:not([data-wme-studio="on"]) .ws-ur-pin { display: none !important; }`;
+    const scrollerOf = (node, stop) => {
+      for (let element = node.parentElement; element && element !== stop?.parentElement; element = element.parentElement) {
+        const overflow = getComputedStyle(element).overflowY;
+        if (/^(auto|scroll|overlay)$/.test(overflow) && element.scrollHeight > element.clientHeight + 1) return element;
+      }
+      return null;
+    };
+    const pinCheck = state => {
+      state.frame = 0;
+      if (!state.wrap.isConnected || !state.description.isConnected) return;
+      const view = state.scroller.getBoundingClientRect(), own = state.description.getBoundingClientRect();
+      const away = own.height > 0 && own.bottom < view.top + 6;
+      if (away !== state.wrap.hasAttribute('data-on')) state.wrap.toggleAttribute('data-on', away);
+    };
+    const unpin = panel => {
+      const state = pins.get(panel);
+      if (!state) return;
+      state.scroller?.removeEventListener('scroll', state.onScroll);
+      state.wrap.remove(); pins.delete(panel);
+    };
+    const pinDescription = panel => {
+      try {
+        const description = panel.querySelector('.problem-data > .section[class*="description"]') || panel.querySelector('.section[class*="description"]');
+        const body = description?.querySelector('.content') || description;
+        const text = (body?.innerText || body?.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+        const win = panel.closest('[data-issues-tracker-window],[id^="ISSUE_WINDOW"],[data-testid="floating-window"]') || panel;
+        const scroller = description && text ? scrollerOf(description, win) : null;
+        let state = pins.get(panel);
+        if (!scroller) { unpin(panel); return; }
+        if (state && state.scroller !== scroller) { unpin(panel); state = null; }
+        if (!state) {
+          if (!pinStyle) { pinStyle = typeof GM_addStyle === 'function' ? GM_addStyle(PIN_CSS) : Object.assign(document.createElement('style'), { textContent: PIN_CSS }); if (!pinStyle.isConnected) document.head.append(pinStyle); }
+          const wrap = document.createElement('div'); wrap.className = 'ws-ur-pin';
+          const card = document.createElement('button'); card.type = 'button';
+          const label = document.createElement('b'), copy = document.createElement('span');
+          card.append(label, copy); wrap.append(card);
+          state = { wrap, card, label, text: copy, scroller, description, frame: 0 };
+          state.onScroll = () => { if (!state.frame) state.frame = requestAnimationFrame(() => pinCheck(state)); };
+          card.addEventListener('click', () => {
+            const top = state.description.getBoundingClientRect().top - state.scroller.getBoundingClientRect().top;
+            state.scroller.scrollBy({ top: top - 4, behavior: document.documentElement.getAttribute('data-wme-studio-motion') === 'reduced' ? 'instant' : 'smooth' });
+          });
+          scroller.addEventListener('scroll', state.onScroll, { passive: true });
+          pins.set(panel, state);
+        }
+        state.description = description;
+        if (state.wrap.parentElement !== scroller || scroller.firstChild !== state.wrap) scroller.prepend(state.wrap);
+        const title = (description.querySelector(':scope > .title')?.textContent || '').replace(/\s+/g, ' ').trim() || globalThis.WMEStudioI18n?.translate?.('Description') || 'Description';
+        if (state.label.textContent !== title) state.label.textContent = title;
+        if (state.text.textContent !== text) state.text.textContent = text;
+        state.card.title = globalThis.WMEStudioI18n?.translate?.('Back to the description') || 'Back to the description';
+        state.onScroll();
+      } catch (_) { reportStudioError('pinDescription', _); }
+    };
     const scan = () => {
       queued = false;
+      for (const panel of [...pins.keys()]) if (!panel.isConnected) unpin(panel);
+      for (const panel of document.querySelectorAll('.problem-edit, .place-update-edit')) pinDescription(panel);
       if (isCompact()) for (const panel of document.querySelectorAll('.problem-edit, .place-update-edit')) shorten(panel);
       const nextComments = new Set();
       for (const list of document.querySelectorAll(LIST)) {
