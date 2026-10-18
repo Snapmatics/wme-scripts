@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.0.2
+// @version      2.0.3
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -150,7 +150,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.0.2';
+  const USERSCRIPT_VERSION = '2.0.3';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -3488,6 +3488,12 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     overflow-x: hidden !important; overflow-y: auto !important; overscroll-behavior: contain;
     transition: opacity 150ms ease !important;
     transform: none !important; translate: none !important; margin: 0 !important;
+  }
+  /* Safari clips a submenu drawn beside the list (Roads, Place, Hazard under +) to the list's scroll box, so it
+     opened out of sight and looked as if pointing at the item did nothing. While a submenu is open the list stops
+     scrolling, so the submenu shows. */
+  :host-context(html[data-wme-studio="on"][data-wme-studio-safari="on"][data-wme-studio-compact="on"]) .options-wrapper:is(.wz-menu[data-wme-studio-nav-menu="on"][data-wme-studio-nav-sub-open="on"] > .options-container > *) {
+    overflow: visible !important;
   }
   }
 }
@@ -6843,6 +6849,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     const positioner = state.positioner;
     if (!positioner) return;
     if (positioner.hasAttribute('data-wme-studio-nav-menu')) positioner.removeAttribute('data-wme-studio-nav-menu');
+    if (positioner.hasAttribute('data-wme-studio-nav-sub-open')) positioner.removeAttribute('data-wme-studio-nav-sub-open');
     for (const name of ['--ws-nav-menu-left','--ws-nav-menu-top','--ws-nav-menu-width','--ws-nav-menu-height','--ws-nav-menu-offset-x','--ws-nav-menu-offset-y']) {
       if (positioner.style.getPropertyValue(name)) positioner.style.removeProperty(name);
     }
@@ -6933,6 +6940,9 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       const level = location.anchor === location.rail ? '1' : '2';
       if (positioner.getAttribute('data-wme-studio-nav-level') !== level) positioner.setAttribute('data-wme-studio-nav-level', level);
       if (!positioner.hasAttribute('data-wme-studio-nav-menu')) positioner.setAttribute('data-wme-studio-nav-menu', 'on');
+      if (positioner.hasAttribute('data-wme-studio-nav-sub-open') !== nestedOpen) {
+        if (nestedOpen) positioner.setAttribute('data-wme-studio-nav-sub-open', 'on'); else positioner.removeAttribute('data-wme-studio-nav-sub-open');
+      }
       const actual = positioner.getBoundingClientRect();
       for (const [key, name, delta] of [['offsetX','--ws-nav-menu-offset-x',placed.left - actual.left],['offsetY','--ws-nav-menu-offset-y',placed.top - actual.top]]) {
         if (Math.abs(delta) < .5) continue;
@@ -17267,8 +17277,12 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.0.2-2026-10-18b';
+  const STUDIO_BUILD = '2.0.3-2026-10-18';
   const STUDIO_CHANGELOG = Object.freeze([
+    { version: '2.0.3', items: [
+      'Safari and iPad: the + menu’s submenus (Roads, Place, Hazard) open again when you point at or tap them.',
+      'What’s new in Settings shows this version’s changes instead of the tour.'
+    ] },
     { version: '2.0.2', items: [
       'New: search in the Controls list, by name or by + menu path.',
       'New: this changelog. It shows once after an update, and stays in Settings › Studio.',
@@ -17714,7 +17728,7 @@ ${studioControlsCSS()}
         <div class="group"><h3 class="section-label">General</h3><div class="card rows">
           <div class="srow" data-row="language"><div class="srow-text"><strong>Language</strong><span class="small">Language of Studio's own menus and messages.</span></div><div class="language" data-id="language-control"><button class="language-button" data-id="language" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Language"><span data-id="language-value"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="language-menu" data-id="language-menu" role="listbox" aria-label="Language" hidden></div></div></div>
           <div class="srow" data-row="changelog"><div class="srow-text"><strong>Changelog</strong><span class="small">Every fix and change, version by version.</span></div><div class="actions"><button class="reset" data-id="changelog" type="button">Show changelog</button></div></div>
-          <div class="srow" data-row="tour"><div class="srow-text"><strong>What's new</strong><span class="small">A short tour of what this version of Studio can do.</span></div><div class="actions"><button class="reset" data-id="tour" type="button">Show the tour</button></div></div>
+          <div class="srow" data-row="tour"><div class="srow-text"><strong>What's new</strong><span class="small">The changes in this version of Studio.</span></div><div class="actions"><button class="reset" data-id="tour" type="button">Show what's new</button></div></div>
           <div class="srow" data-row="shortcut"><div class="srow-text"><strong>Command palette shortcut</strong><span class="small" data-id="shortcut-hint">Opens the search for settings and commands from anywhere in the editor.</span></div><div class="actions"><button class="reset" data-id="shortcut-default" type="button" hidden>Default</button><button class="reset shortcut" data-id="shortcut" type="button" aria-label="Change shortcut"></button></div></div>
         </div></div>
         <div class="group"><h3 class="section-label">Your settings</h3><div class="card rows">
@@ -18663,9 +18677,10 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         close();requestAnimationFrame(()=>requestAnimationFrame(()=>globalThis.WMEStudioCompactLayout.open()));
       } catch (studioError) { reportStudioError("buildStudioUI",studioError);setStatus('Could not save preferences.','error');}
     }));
-    const showTour = event => { event.preventDefault(); close(); requestAnimationFrame(() => globalThis.WMEStudioTour?.open()); };
-    q('[data-id="tour"]').addEventListener('click', showTour);
-    q('[data-id="whats-new"]').addEventListener('click', showTour);
+    // What's new: this version's changes (the tour still opens by itself after a feature release).
+    const showWhatsNew = event => { event.preventDefault(); close(); requestAnimationFrame(() => showChangelog('new')); };
+    q('[data-id="tour"]').addEventListener('click', showWhatsNew);
+    q('[data-id="whats-new"]').addEventListener('click', showWhatsNew);
     q('[data-id="reset"]').addEventListener('click', () => {
       Promise.resolve(globalThis.WMEStudioCompactLayout?.reset?.()).catch((studioError) => { reportStudioError("buildStudioUI",studioError);});
       change({ ...config.defaults });
