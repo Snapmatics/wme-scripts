@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.0.3
+// @version      2.0.4
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -150,7 +150,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.0.3';
+  const USERSCRIPT_VERSION = '2.0.4';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -1628,6 +1628,12 @@ $root #panel-urce-comments .URCE-divComment.URCE-solvedLink::before, $root #pane
 $root #panel-urce-comments .URCE-divComment.URCE-niLink::before, $root #panel-urce-comments .URCE-divComment.URCE-niLink::after { background-color: var(--wme-studio-urce-ni) !important; }
 $root #panel-urce-comments .URCE-divComment.hover:not(.URCE-blankLine):hover { background: var(--wme-studio-hover) !important; border-radius: 3px; }
 $root #panel-urce-comments .URCE-divCCLinks .URCE-Comments { color: var(--wme-studio-accent) !important; }
+/* URC-E builds every comment entry with a fixed 225px name box (and 230px tagline boxes), so the list stays narrow
+   when the panel is widened. Let the name take the free width; the double-click icon stays at the end of the row. */
+$root #panel-urce-comments .URCE-divComment { display: flex !important; align-items: center; min-width: 0; }
+$root #panel-urce-comments .URCE-divComment > div[style*="width:225px"] { flex: 1 1 auto; width: auto !important; min-width: 0; }
+$root #panel-urce-comments .URCE-divComment > .URCE-divDoubleClick { flex: 0 0 auto; margin-inline-start: auto; }
+$root textarea.URCE-textInput[style*="width:230px"] { width: 100% !important; max-width: 100%; box-sizing: border-box; }
 $root .URCE-spreadsheetLink a[href] { color: var(--wme-studio-accent) !important; }
 $root#urceDiv { color: var(--wme-studio-text) !important; background: var(--wme-studio-surface-3) !important; border-color: var(--wme-studio-border-strong) !important; box-shadow: var(--wme-studio-shadow) !important; }
 $root#urceDiv .urceDivCloseButton { color: var(--wme-studio-text) !important; background: var(--wme-studio-surface-3) !important; border-color: var(--wme-studio-border-strong) !important; box-shadow: var(--wme-studio-shadow) !important; }
@@ -17277,8 +17283,15 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.0.3-2026-10-18';
+  const STUDIO_BUILD = '2.0.4-2026-10-19';
   const STUDIO_CHANGELOG = Object.freeze([
+    { version: '2.0.4', items: [
+      'URO+ hover popups and alerts follow your theme instead of staying white.',
+      'Compact requests: comment dates show their time again (URC-E users lost it).',
+      'URC-E: the comment list fills the width of its panel.',
+      'Report a bug: attach an MP4 video (up to 25 MB) instead of a screenshot.',
+      'Report a bug: you also hear when the author starts on your report (under construction).'
+    ] },
     { version: '2.0.3', items: [
       'Safari and iPad: the + menu’s submenus (Roads, Place, Hazard) open again when you point at or tap them.',
       'What’s new in Settings shows this version’s changes instead of the tour.'
@@ -17598,14 +17611,22 @@ ${studioControlsCSS()}
   .bug-done{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px;text-align:center;background:var(--surface);animation:bug-in 180ms ease}
   .bug-as{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--text);font-size:12px;line-height:1.35}.bug-as svg{flex:none;width:15px;height:15px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.bug-as b{font-weight:700}
   .fix-notice{--accent:var(--wme-studio-accent,#0099ff);--on-accent:var(--wme-studio-on-accent,#fff);--surface:var(--wme-studio-surface,#fff);--surface2:var(--wme-studio-surface-2,#f5f7fa);--text:var(--wme-studio-text,#202830);--muted:var(--wme-studio-text-muted,#72767d);--line:var(--wme-studio-border,#d5d7db);--hover:var(--wme-studio-hover,#e8eaed);
-    position:fixed;left:50%;bottom:44px;translate:-50% 0;z-index:4;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;width:min(460px,calc(100vw - 32px));padding:14px 16px 12px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);box-shadow:0 18px 50px rgba(0,0,0,.32);font:13px/1.4 var(--ws-font,system-ui,sans-serif);pointer-events:auto;will-change:transform,opacity;animation:notice-in 240ms cubic-bezier(.2,.8,.2,1) both}
+    position:fixed;left:0;right:0;bottom:44px;margin-inline:auto;z-index:4;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;width:min(460px,calc(100vw - 32px));padding:14px 16px 12px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);box-shadow:0 18px 50px rgba(0,0,0,.32);font:13px/1.4 var(--ws-font,system-ui,sans-serif);pointer-events:auto;animation:notice-in 240ms cubic-bezier(.2,.8,.2,1) backwards}
   .fix-icon{grid-row:1/3;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center}.fix-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
   .fix-text strong{display:block;font-size:14px;line-height:1.3}.fix-list{display:flex;flex-direction:column;gap:6px;margin-top:5px;color:var(--muted);font-size:12.5px}
   .fix-item q{quotes:"\\201C" "\\201D";color:var(--text)}.fix-item .fix-version{color:var(--text);font-weight:600}.fix-item .fix-note{display:block;margin-top:2px;padding-left:8px;border-left:2px solid var(--line);font-style:italic}
-  /* Centred on the screen. The centring is its own "translate", so the entrance (opacity and a small scale on
-     "transform") never fights it: with both on "transform", the card was drawn off to one side while it faded in,
-     then jumped into place. */
-  .log-notice{top:50%;bottom:auto;translate:-50% -50%;width:min(480px,calc(100vw - 32px));animation-name:notice-pop}
+  /* Centred on the screen with auto margins, not translate(-50%,-50%): with an odd height the card sat on a half
+     pixel and its text looked blurry (2.0.4). The entrance (opacity and a small scale on "transform") has nothing
+     to fight, so the card no longer jumps into place either. */
+  .log-notice{top:16px;bottom:auto;max-height:calc(100dvh - 32px);overflow:auto;width:min(480px,calc(100vw - 32px));animation-name:notice-pop}
+  /* Whole pixels, always. Text on a half pixel looks soft, and an entrance that kept its last frame ("both")
+     kept the card on a graphics layer of its own at that half pixel, which made it blurry. The entrance now
+     leaves nothing behind ("backwards"), and the card is placed on whole pixels: across here, and down by
+     placeChangelog() for the centred one. */
+  @supports (left:round(down,1px,1px)){
+    .fix-notice{right:auto;margin-inline:0;left:round(down,calc((100vw - min(460px,calc(100vw - 32px))) / 2),1px)}
+    .log-notice{left:round(down,calc((100vw - min(480px,calc(100vw - 32px))) / 2),1px)}
+  }
   @keyframes notice-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
   @keyframes notice-pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
   html[data-wme-studio-motion="reduced"] .fix-notice,:host-context(html[data-wme-studio-motion="reduced"]) .fix-notice{animation:none}
@@ -17938,8 +17959,9 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         <label class="bug-field"><span>Another way to reach you <small>(optional)</small></span><input data-id="bug-contact" type="text" maxlength="120" placeholder="Forum name or email"></label>
       </div>
       <label class="bug-field"><span>Steps to see it again <small>(optional)</small></span><textarea data-id="bug-steps" rows="2" maxlength="2000" placeholder="1. Open Arrange  2. …"></textarea></label>
-      <div class="bug-shot"><button class="reset" type="button" data-id="bug-shot-pick">Add a screenshot</button><input data-id="bug-shot-file" type="file" accept="image/*" hidden><span class="bug-shot-name" data-id="bug-shot-name">Optional. You can also paste or drop an image here.</span><button class="bug-shot-clear" type="button" data-id="bug-shot-clear" hidden aria-label="Remove screenshot">✕</button></div>
+      <div class="bug-shot"><button class="reset" type="button" data-id="bug-shot-pick">Add a screenshot or video</button><input data-id="bug-shot-file" type="file" accept="image/*,video/mp4,.mp4" hidden><span class="bug-shot-name" data-id="bug-shot-name">Optional. You can also paste or drop an image or an MP4 video here.</span><button class="bug-shot-clear" type="button" data-id="bug-shot-clear" hidden aria-label="Remove screenshot">✕</button></div>
       <img class="bug-preview" data-id="bug-preview" alt="" hidden>
+      <video class="bug-preview" data-id="bug-video" controls muted playsinline preload="metadata" hidden></video>
       <details class="bug-details"><summary>What else is sent</summary><pre data-id="bug-diag"></pre></details>
       <p class="bug-error" data-id="bug-error" role="alert" hidden></p>
     </div>
@@ -17948,7 +17970,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
   </form>
 </div>
 <div class="fix-notice" data-id="fix-notice" role="status" aria-live="polite" hidden>
-  <div class="fix-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
+  <div class="fix-icon" data-id="fix-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
   <div class="fix-text"><strong data-id="fix-title">Your bug report was fixed</strong><div class="fix-list" data-id="fix-list"></div></div>
   <div class="fix-actions"><button class="reset" type="button" data-id="fix-update" hidden>Get the update</button><button class="reset primary" type="button" data-id="fix-ok">Got it</button></div>
 </div>
@@ -18731,6 +18753,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       shotClear: q('[data-id="bug-shot-clear"]'), preview: q('[data-id="bug-preview"]'), diag: q('[data-id="bug-diag"]'), error: q('[data-id="bug-error"]'),
       note: q('[data-id="bug-note"]'), send: q('[data-id="bug-send"]'), done: q('[data-id="bug-done"]'), doneText: q('[data-id="bug-done-text"]'),
       as: q('[data-id="bug-as"]'), asText: q('[data-id="bug-as-text"]'),
+      video: q('[data-id="bug-video"]'), clip: null, clipUrl: '',
       screenshot: null, sending: false, opener: null
     };
     // The editor account's user name: the author can then tell the person, inside the editor, when a report is fixed.
@@ -18817,13 +18840,39 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       bug.what.value = ''; bug.steps.value = ''; bug.contact.value = ''; bug.category.value = '';
       clearScreenshot();
     }
+    function clearVideo() {
+      bug.clip = null;
+      if (bug.clipUrl) { URL.revokeObjectURL(bug.clipUrl); bug.clipUrl = ''; }
+      bug.video.hidden = true; bug.video.removeAttribute('src'); try { bug.video.load(); } catch (_) { /* nothing loaded */ }
+    }
     function clearScreenshot() {
       bug.screenshot = null; bug.file.value = '';
       bug.preview.hidden = true; bug.preview.removeAttribute('src');
-      bug.shotClear.hidden = true; bug.shotName.textContent = translate('Optional. You can also paste or drop an image here.');
+      clearVideo();
+      bug.shotClear.hidden = true; bug.shotName.textContent = translate('Optional. You can also paste or drop an image or an MP4 video here.');
+    }
+    // A video (2.0.4) goes as it is: MP4 only, up to BUG_VIDEO_MAX. It is uploaded on its own after the report,
+    // so a slow upload never holds the report back. One attachment at a time: a video replaces a screenshot.
+    const BUG_VIDEO_MAX = 25 * 1024 * 1024;
+    const isBugVideo = file => Boolean(file) && (file.type === 'video/mp4' || (!file.type && /\.mp4$/i.test(file.name || '')));
+    function loadVideo(file) {
+      if (file.size > BUG_VIDEO_MAX) { showBugError(translate('Videos must be MP4 files of up to 25 MB.')); bug.file.value = ''; return; }
+      showBugError('');
+      bug.screenshot = null; bug.preview.hidden = true; bug.preview.removeAttribute('src');
+      clearVideo();
+      bug.clip = file;
+      try {
+        bug.clipUrl = URL.createObjectURL(file);
+        bug.video.onerror = () => { bug.video.hidden = true; };   // no preview (a page policy may block it); the file still goes
+        bug.video.src = bug.clipUrl; bug.video.hidden = false;
+      } catch (_) { bug.video.hidden = true; }
+      bug.shotClear.hidden = false;
+      bug.shotName.textContent = `${file.name || 'video.mp4'} · ${(file.size / 1048576).toFixed(1)} MB`;
     }
     // A screenshot is shrunk to at most 1600px and about 300 KB in the browser before it is sent.
     function loadScreenshot(file) {
+      if (isBugVideo(file)) { loadVideo(file); return; }
+      if (file && /^video\//.test(file.type)) { showBugError(translate('Videos must be MP4 files of up to 25 MB.')); bug.file.value = ''; return; }
       if (!file || !/^image\//.test(file.type)) return;
       const url = URL.createObjectURL(file), image = new Image();
       image.onload = () => {
@@ -18834,6 +18883,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
         let quality = .85, data = canvas.toDataURL('image/jpeg', quality);
         while (data.length > 420000 && quality > .4) { quality -= .1; data = canvas.toDataURL('image/jpeg', quality); }
+        clearVideo();
         bug.screenshot = data;
         bug.preview.src = data; bug.preview.hidden = false; bug.shotClear.hidden = false;
         bug.shotName.textContent = `${file.name || 'screenshot'} · ${Math.round(data.length * 3 / 4 / 1024)} KB`;
@@ -18862,6 +18912,29 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         }
       });
     }
+    // The video goes as raw MP4 bytes to the report it belongs to: POST /api/report/<id>/video.
+    function bugUploadVideo(id, file) {
+      return new Promise((resolve, reject) => {
+        const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/report/${encodeURIComponent(id)}/video`;
+        const limit = Math.max(60000, Math.min(600000, 30000 + file.size / 50));   // about 50 KB/s at worst, 1 to 10 minutes
+        const guard = setTimeout(() => reject(new Error(translate('The server took too long'))), limit + 5000);
+        const finish = (status, text) => {
+          clearTimeout(guard);
+          let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+          if (status >= 200 && status < 300 && data?.ok) resolve(data);
+          else reject(new Error(data?.error || (status ? `${translate('The server answered')} ${status}` : translate('No answer from the server'))));
+        };
+        const headers = { 'Content-Type': 'video/mp4', 'X-File-Name': encodeURIComponent(file.name || 'video.mp4') };
+        if (typeof GM_xmlhttpRequest === 'function') {
+          GM_xmlhttpRequest({ method: 'POST', url, data: file, headers, timeout: limit, anonymous: true,
+            onload: response => finish(response.status, response.responseText || ''),
+            onerror: () => { clearTimeout(guard); reject(new Error(translate('Could not reach the server'))); }, ontimeout: () => { clearTimeout(guard); reject(new Error(translate('The server took too long'))); } });
+        } else {
+          fetch(url, { method: 'POST', headers, body: file, mode: 'cors' })
+            .then(async response => finish(response.status, await response.text())).catch(() => { clearTimeout(guard); reject(new Error(translate('Could not reach the server'))); });
+        }
+      });
+    }
     async function submitBugReport() {
       if (bug.sending) return;
       const what = bug.what.value.trim();
@@ -18880,7 +18953,17 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       try {
         const result = await bugApi('POST', '/api/report', { report: text, version: USERSCRIPT_VERSION, editor: `${location.hostname}${location.pathname}`, browser: navigator.userAgent,
           summary: what.slice(0, 200), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.category.value, screenshot: bug.screenshot || '' });
-        bug.doneText.textContent = (result.id ? translate('Your report #{0} was sent to the author of WME Studio.') : translate('Your report was sent to the author of WME Studio.')).replace('{0}', String(result.id || ''));
+        let doneText = (result.id ? translate('Your report #{0} was sent to the author of WME Studio.') : translate('Your report was sent to the author of WME Studio.')).replace('{0}', String(result.id || ''));
+        if (bug.clip) {
+          bug.send.textContent = translate('Uploading video…');
+          try {
+            if (!result.id) throw new Error('no report id');
+            await bugUploadVideo(result.id, bug.clip);
+          } catch (error) {
+            doneText += ` ${translate('The video could not be uploaded')}: ${error.message}.`;
+          }
+        }
+        bug.doneText.textContent = doneText;
         bug.done.hidden = false; resetBugDialog();
       } catch (error) {
         showBugError(`${translate('The report could not be sent')}: ${error.message}. ${translate('Use "Copy report" and paste it on the feedback page instead.')}`);
@@ -18897,7 +18980,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
     // ---- Fixed reports: a note inside the editor when the author marks a report of this person as fixed --------
     const BUG_FIXES_KEY = 'wmeStudio.bugFixes.v1', BUG_CHECK_EVERY = 6 * 3600 * 1000;
-    const fix = { box: q('[data-id="fix-notice"]'), list: q('[data-id="fix-list"]'), update: q('[data-id="fix-update"]'), ok: q('[data-id="fix-ok"]'), title: q('[data-id="fix-title"]'), items: [], user: '' };
+    const fix = { box: q('[data-id="fix-notice"]'), list: q('[data-id="fix-list"]'), update: q('[data-id="fix-update"]'), ok: q('[data-id="fix-ok"]'), title: q('[data-id="fix-title"]'), icon: q('[data-id="fix-icon"]'), items: [], working: [], user: '' };
     const fixesRow = q('[data-row="bugFixes"]'), fixesText = q('[data-id="bug-fixes-text"]');
     fixesRow.hidden = !endpointReady;
     const versionParts = text => String(text || '').split(/[.-]/).map(part => parseInt(part, 10) || 0);
@@ -18908,17 +18991,33 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
     async function readFixState() {
       const saved = await Promise.resolve(studioKeep.get(BUG_FIXES_KEY, null)).catch(() => null);
-      return saved && typeof saved === 'object' ? { checked: saved.checked || 0, seen: Array.isArray(saved.seen) ? saved.seen.slice(-200) : [] } : { checked: 0, seen: [] };
+      // seenWorking holds "id@time" keys: a report put under construction again later is news again.
+      return saved && typeof saved === 'object' ? { checked: saved.checked || 0, seen: Array.isArray(saved.seen) ? saved.seen.slice(-200) : [], seenWorking: Array.isArray(saved.seenWorking) ? saved.seenWorking.slice(-200) : [] } : { checked: 0, seen: [], seenWorking: [] };
     }
     function setBugBadge(count) {
       const badge = q('[data-id="bug-badge"]');
       badge.textContent = count ? String(count) : ''; badge.hidden = !count;
     }
-    function showFixNotice(items, user) {
-      fix.items = items; fix.user = user;
-      setBugBadge(items.length);
-      fix.title.textContent = translate(items.length > 1 ? 'Your bug reports were fixed' : 'Your bug report was fixed');
+    const workingKey = item => `${item.id}@${item.working_at || ''}`;
+    const FIX_ICONS = { fixed: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', working: '<path d="M10 3h4l5 16H5z"/><path d="M8 11h8M6.8 15h10.4M3 21h18"/>' };
+    // One card for both kinds of news (2.0.4): reports that were fixed, and reports the author has started on
+    // ("under construction").
+    function showFixNotice(items, user, working = []) {
+      fix.items = items; fix.working = working; fix.user = user;
+      setBugBadge(items.length + working.length);
+      fix.title.textContent = translate(items.length && working.length ? 'News about your bug reports'
+        : items.length ? (items.length > 1 ? 'Your bug reports were fixed' : 'Your bug report was fixed')
+        : (working.length > 1 ? 'Your bug reports are under construction' : 'Your bug report is under construction'));
+      fix.icon.querySelector('svg').innerHTML = items.length ? FIX_ICONS.fixed : FIX_ICONS.working;
       fix.list.textContent = '';
+      for (const item of working) {
+        const row = document.createElement('div'); row.className = 'fix-item';
+        const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.id).slice(0, 120);
+        const state = document.createElement('span'); state.className = 'fix-version'; state.textContent = translate('under construction');
+        row.append(quote, ' — ', state);
+        if (item.note) { const note = document.createElement('span'); note.className = 'fix-note'; note.textContent = item.note.slice(0, 300); row.append(note); }
+        fix.list.append(row);
+      }
       for (const item of items) {
         const row = document.createElement('div'); row.className = 'fix-item';
         const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.id).slice(0, 120);
@@ -18933,12 +19032,13 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
     async function dismissFixNotice() {
       fix.box.hidden = true; setBugBadge(0);
-      const ids = fix.items.map(item => item.id);
+      const ids = fix.items.map(item => item.id), working = fix.working.map(item => item.id);
       const state = await readFixState();
       state.seen = [...new Set([...state.seen, ...ids])].slice(-200);
+      state.seenWorking = [...new Set([...state.seenWorking, ...fix.working.map(workingKey)])].slice(-200);
       try { await Promise.resolve(studioKeep.set(BUG_FIXES_KEY, state)); } catch (_) { /* the server keeps the mark too */ }
-      bugApi('POST', '/api/updates/ack', { user: fix.user, ids }).catch(() => { /* told next time */ });
-      fix.items = [];
+      bugApi('POST', '/api/updates/ack', { user: fix.user, ids, working }).catch(() => { /* told next time */ });
+      fix.items = []; fix.working = [];
     }
     async function checkBugFixes(manual = false, force = false) {
       if (!endpointReady) return;
@@ -18954,7 +19054,9 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       try { await Promise.resolve(studioKeep.set(BUG_FIXES_KEY, state)); } catch (_) { /* checked again next time */ }
       const fixed = Array.isArray(data?.fixed) ? data.fixed.filter(item => item && Number.isInteger(item.id)) : [];
       const fresh = fixed.filter(item => !state.seen.includes(item.id));
-      if (fresh.length) { showFixNotice(fresh, user); if (manual) savedStatus(); }
+      const working = Array.isArray(data?.working) ? data.working.filter(item => item && Number.isInteger(item.id)) : [];
+      const freshWorking = working.filter(item => !state.seenWorking.includes(workingKey(item)));
+      if (fresh.length || freshWorking.length) { showFixNotice(fresh, user, freshWorking); if (manual) savedStatus(); }
       else if (manual) setStatus(translate(fixed.length ? 'Nothing new since last time.' : 'No fixed reports for {0} yet.').replace('{0}', user), 'saved');
       const open = Number.isInteger(data?.open) ? data.open : 0;
       fixesText.textContent = open ? translate('{0} report(s) of yours are waiting. A note shows up here in the editor when one is fixed.').replace('{0}', String(open))
@@ -18969,12 +19071,19 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     function changelogItems(list, items) {
       list.replaceChildren(...items.map(text => Object.assign(document.createElement('li'), { textContent: text })));
     }
+    // Centred down the screen on a whole pixel (offsetHeight ignores the entrance's scale).
+    function placeChangelog() {
+      if (log.box.hidden) { removeEventListener('resize', placeChangelog); return; }
+      log.box.style.top = `${Math.max(16, Math.floor((innerHeight - log.box.offsetHeight) / 2))}px`;
+      addEventListener('resize', placeChangelog);
+    }
     function showChangelog(mode = 'new') {
       if (mode === 'new') {
         const release = STUDIO_CHANGELOG[0];
         log.version.textContent = `WME Studio ${USERSCRIPT_VERSION}`;
         changelogItems(log.list, release.items);
         log.box.hidden = false;
+        placeChangelog();
         return;
       }
       log.box.hidden = true;
@@ -19025,7 +19134,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     q('[data-id="bug-shot-pick"]').addEventListener('click', () => bug.file.click());
     bug.file.addEventListener('change', () => loadScreenshot(bug.file.files?.[0]));
     bug.shotClear.addEventListener('click', clearScreenshot);
-    bug.form.addEventListener('paste', event => { const item = [...(event.clipboardData?.items || [])].find(entry => entry.type.startsWith('image/')); if (item) { event.preventDefault(); loadScreenshot(item.getAsFile()); } });
+    bug.form.addEventListener('paste', event => { const item = [...(event.clipboardData?.items || [])].find(entry => entry.kind === 'file' && (entry.type.startsWith('image/') || entry.type === 'video/mp4')); if (item) { event.preventDefault(); loadScreenshot(item.getAsFile()); } });
     bug.form.addEventListener('dragover', event => { event.preventDefault(); });
     bug.form.addEventListener('drop', event => { event.preventDefault(); loadScreenshot(event.dataTransfer?.files?.[0]); });
     languageButton.addEventListener('click', () => setLanguageMenu(languageMenu.hidden));
@@ -20914,8 +21023,10 @@ ${studioControlsCSS()}
       const data = await fetchBugUpdates(user);
       const saved = await Promise.resolve(studioKeep.get(BUG_FIXES_STORE, null)).catch(() => null);
       const seen = Array.isArray(saved?.seen) ? saved.seen : [];
+      const seenWorking = Array.isArray(saved?.seenWorking) ? saved.seenWorking : [];
       const fresh = (Array.isArray(data?.fixed) ? data.fixed : []).filter(item => item && Number.isInteger(item.id) && !seen.includes(item.id));
-      if (fresh.length && buildStudioUI()) {
+      const freshWorking = (Array.isArray(data?.working) ? data.working : []).filter(item => item && Number.isInteger(item.id) && !seenWorking.includes(`${item.id}@${item.working_at || ''}`));
+      if ((fresh.length || freshWorking.length) && buildStudioUI()) {
         await new Promise(ok => (window.requestIdleCallback || setTimeout)(() => ok(), { timeout: 600 }));
         await studioUIFixes?.check(false, true);
       }
@@ -21168,18 +21279,22 @@ ${studioControlsCSS()}
       return at > 0 && at < 40 ? clean.slice(at + 2).trim() : '';
     };
     const shortDates = new Map();
+    // A comment's date keeps its time of day (2.0.4: the short form used to drop it, so URC-E users lost the
+    // time stamps in the conversation). All-number dates such as 12/10/2026 are left exactly as WME wrote them:
+    // the browser reads them month-first, which is wrong for most locales.
     const shortDate = text => {
       const clean = String(text || '').trim();
       if (!clean) return '';
       const year = new Date().getFullYear(), key = `${year}|${document.documentElement.lang}|${clean}`;
       let short = shortDates.get(key);
       if (short === undefined) {
-        const date = new Date(clean);
-        if (Number.isNaN(date.getTime())) short = '';
+        const date = /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/.test(clean) ? null : new Date(clean);
+        if (!date || Number.isNaN(date.getTime())) short = '';
         else {
           const options = { day: 'numeric', month: 'short' };
           if (date.getFullYear() !== year) options.year = 'numeric';
-          try { short = date.toLocaleDateString(document.documentElement.lang || undefined, options); } catch (_) { reportStudioError("shortDate",_); short = ''; }
+          if (/\d{1,2}[:.]\d{2}/.test(clean)) Object.assign(options, { hour: 'numeric', minute: '2-digit' });
+          try { short = date.toLocaleString(document.documentElement.lang || undefined, options); } catch (_) { reportStudioError("shortDate",_); short = ''; }
         }
         if (shortDates.size > 400) shortDates.clear();
         shortDates.set(key, short);
