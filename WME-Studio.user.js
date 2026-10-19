@@ -17290,7 +17290,8 @@ ${studioControlsCSS()}
       'Compact requests: comment dates show their time again (URC-E users lost it).',
       'URC-E: the comment list fills the width of its panel.',
       'Report a bug: attach an MP4 video (up to 25 MB) instead of a screenshot.',
-      'Report a bug: you also hear when the author starts on your report (under construction).'
+      'Report a bug: you also hear when the author starts on your report (under construction).',
+      'Report a bug: My reports lists every report you sent and where each one stands.'
     ] },
     { version: '2.0.3', items: [
       'Safari and iPad: the + menu’s submenus (Roads, Place, Hazard) open again when you point at or tap them.',
@@ -17635,6 +17636,16 @@ ${studioControlsCSS()}
   .log-list li::marker{color:var(--accent)}
   .log-body{gap:16px;padding-bottom:16px}.log-release h4{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;font-size:13.5px}.log-release h4 span{padding:1px 7px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:10.5px;font-weight:700}
   .log-release ul{display:flex;flex-direction:column;gap:5px;margin:0;padding-left:18px;font-size:12.5px;line-height:1.45}.log-release li::marker{color:var(--accent)}
+  .mine-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+  .mine-item{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}
+  .mine-top{display:flex;align-items:center;gap:8px;min-width:0}
+  .mine-state{--c:var(--muted);flex:none;display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:999px;background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) 78%,var(--text));font-size:11px;font-weight:700;line-height:1}
+  .mine-state::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .mine-state[data-s="seen"]{--c:#2f8fe6}.mine-state[data-s="working"]{--c:#8b5cf6}.mine-state[data-s="fixed"]{--c:#22a35a}
+  .mine-when{margin-left:auto;color:var(--muted);font-size:11.5px;white-space:nowrap}
+  .mine-sum{color:var(--text);font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+  .mine-note{margin-top:2px;padding-left:8px;border-left:2px solid var(--line);color:var(--muted);font-size:12px;font-style:italic;overflow-wrap:anywhere}
+  .mine-empty{padding:18px 4px;color:var(--muted);text-align:center}
   .fix-actions{grid-column:2;display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
   .bug-done-icon{width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:26px;font-weight:700;margin-bottom:6px}.bug-done h3{margin:0;font-size:17px}.bug-done p{margin:0 0 14px;color:var(--muted);max-width:360px}
   @media(max-width:760px){.panel{width:calc(100vw - 24px);height:min(660px,calc(100dvh - 24px));grid-template-columns:64px minmax(0,1fr)}.head{padding:16px 14px 12px 20px}.chips{padding-inline:20px}.body{padding:4px 20px 20px}.sidebar{align-items:center;gap:8px;padding:14px 0 12px}.brand{padding:0}.brand-text{display:none}.search-trigger{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.search-trigger span{display:none}.nav{width:100%;justify-items:center;gap:4px}.nav-group{display:none}.nav-item{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.nav-item span{display:none}.nav-item .nav-badge{display:grid;position:absolute;top:4px;right:4px;min-width:8px;height:8px;padding:0;font-size:0}.nav-item{position:relative}.sidebar-footer{padding:0}.power-text{display:none}.notice{width:28px;padding:0;justify-content:center}.notice [data-id="status"]{display:none}.srow{flex-wrap:wrap;row-gap:8px}.srow:has(>input[type="range"]) .srow-text,.srow:has(>.actions) .srow-text,.srow:has(>.swatches) .srow-text{flex-basis:100%}.srow input[type="range"]{flex:1 1 160px;width:auto}.stack-main{flex-wrap:wrap;row-gap:8px}.modes{grid-template-columns:1fr}.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.themes{gap:8px}}
@@ -17761,6 +17772,7 @@ ${studioControlsCSS()}
         <div class="group"><h3 class="section-label">Something not right?</h3><div class="card rows">
           <div class="srow" data-row="bugReport"><div class="srow-text"><strong>Report a bug</strong><span class="small">Tell the author what went wrong. Your report includes your Studio version, settings, the last errors Studio caught and your Waze username, so you can be told when it is fixed. Never your edits.</span></div><div class="actions"><button class="reset primary" data-id="bug-report" type="button">Report a bug</button></div></div>
           <div class="srow" data-row="bugFixes" hidden><div class="srow-text"><strong>Fixed reports</strong><span class="small" data-id="bug-fixes-text">When a report of yours is fixed, a note shows up here in the editor.</span></div><div class="actions"><button class="reset" data-id="bug-check" type="button">Check now</button></div></div>
+          <div class="srow" data-row="bugMine" hidden><div class="srow-text"><strong>My reports</strong><span class="small">Every report you sent from this editor account, and where each one stands.</span></div><div class="actions"><button class="reset" data-id="bug-mine" type="button">See my reports</button></div></div>
           <div class="srow"><div class="srow-text"><strong>Copy the details instead</strong><span class="small">Copies the same technical details as text, for a forum post or a message.</span></div><div class="actions"><button class="reset" data-id="bug-copy" type="button">Copy report</button></div></div>
         </div></div>
         <div class="group"><h3 class="section-label">Before you report</h3><div class="card doc">
@@ -17984,6 +17996,13 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     <div class="bug-head"><div><h3 id="log-title">Changelog</h3><p>Every fix and change, version by version.</p></div><button class="bug-close" type="button" data-id="log-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="bug-body log-body" data-id="log-body"></div>
     <div class="bug-foot"><span class="bug-note"></span><button class="reset primary" type="button" data-id="log-done">Close</button></div>
+  </div>
+</div>
+<div class="bug-backdrop" data-id="mine-backdrop" hidden>
+  <div class="bug-dialog log-dialog" role="dialog" aria-modal="true" aria-labelledby="mine-title">
+    <div class="bug-head"><div><h3 id="mine-title">My reports</h3><p data-id="mine-sub">Newest first.</p></div><button class="bug-close" type="button" data-id="mine-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="bug-body" data-id="mine-body"></div>
+    <div class="bug-foot"><span class="bug-note"></span><button class="reset" type="button" data-id="mine-reload">Refresh</button><button class="reset primary" type="button" data-id="mine-done">Close</button></div>
   </div>
 </div>`;
     (document.documentElement || document).appendChild(host);
@@ -18242,6 +18261,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         event.preventDefault();
         if (q('[data-id="color-picker"]').matches(':popover-open')) closeColorPicker();
         else if (!q('[data-id="log-backdrop"]').hidden) closeChangelog();
+        else if (!q('[data-id="mine-backdrop"]').hidden) closeMyReports();
         else if (!q('[data-id="bug-backdrop"]').hidden) { if (bug.category.open) bug.category.close(); else closeBugDialog(); }
         else close();
         return;
@@ -19066,6 +19086,60 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     fix.update.addEventListener('click', () => { window.open('https://greasyfork.org/scripts/599569', '_blank', 'noopener'); dismissFixNotice(); });
     q('[data-id="bug-check"]').addEventListener('click', () => { checkBugFixes(true); });
     studioUIFixes = { check: checkBugFixes };
+    // "My reports" (2.0.4): every report this editor account sent, with where it stands, from GET /api/mine.
+    const mine = { backdrop: q('[data-id="mine-backdrop"]'), body: q('[data-id="mine-body"]'), sub: q('[data-id="mine-sub"]'), opener: null, loading: false };
+    q('[data-row="bugMine"]').hidden = !endpointReady;
+    const mineDate = iso => { const date = new Date(iso); if (Number.isNaN(date.getTime())) return ''; try { return date.toLocaleDateString(document.documentElement.lang || undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch (_) { return date.toISOString().slice(0, 10); } };
+    const mineMessage = text => { const box = document.createElement('p'); box.className = 'mine-empty'; box.textContent = text; mine.body.replaceChildren(box); };
+    function mineState(report) {
+      if (report.status === 'fixed') return translate('Fixed in {0}').replace('{0}', report.fixed_version || '?');
+      return translate({ new: 'Sent', seen: 'Seen by the author', working: 'under construction', closed: 'Closed' }[report.status] || 'Sent');
+    }
+    async function loadMyReports() {
+      if (mine.loading) return;
+      const user = wmeUserName();
+      if (!user) { mine.sub.textContent = ''; mineMessage(translate('Sign in to the editor first.')); return; }
+      mine.sub.textContent = translate('Sent as {0}, newest first.').replace('{0}', user);
+      mine.loading = true; mineMessage(translate('Loading…'));
+      try {
+        const data = await bugApi('GET', `/api/mine?user=${encodeURIComponent(user)}`);
+        const reports = Array.isArray(data?.reports) ? data.reports.filter(item => item && Number.isInteger(item.id)) : [];
+        if (!reports.length) { mineMessage(translate('No reports from {0} yet.').replace('{0}', user)); return; }
+        const list = document.createElement('ul'); list.className = 'mine-list';
+        for (const report of reports) {
+          const item = document.createElement('li'); item.className = 'mine-item';
+          const top = document.createElement('div'); top.className = 'mine-top';
+          const state = document.createElement('span'); state.className = 'mine-state'; state.dataset.s = report.status; state.textContent = mineState(report);
+          if (report.status === 'working') state.textContent = state.textContent.charAt(0).toLocaleUpperCase() + state.textContent.slice(1);
+          const when = document.createElement('span'); when.className = 'mine-when'; when.setAttribute('data-ws-keep', ''); when.textContent = `#${report.id} · ${mineDate(report.created_at)}`;
+          top.append(state, when);
+          const summary = document.createElement('div'); summary.className = 'mine-sum'; summary.setAttribute('data-ws-keep', ''); summary.textContent = report.summary || `${translate('Report')} #${report.id}`;
+          item.append(top, summary);
+          const noteText = report.status === 'fixed' ? report.fixed_note : report.status === 'working' ? report.working_note : '';
+          if (noteText) { const note = document.createElement('div'); note.className = 'mine-note'; note.setAttribute('data-ws-keep', ''); note.textContent = noteText.slice(0, 500); item.append(note); }
+          list.append(item);
+        }
+        mine.body.replaceChildren(list);
+      } catch (error) {
+        mineMessage(`${translate('Could not load your reports')}: ${error?.message || error}`);
+      } finally { mine.loading = false; }
+    }
+    function openMyReports() {
+      mine.opener = shadow.activeElement;
+      mine.backdrop.hidden = false;
+      mine.body.scrollTop = 0;
+      requestAnimationFrame(() => q('[data-id="mine-done"]').focus({ preventScroll: true }));
+      loadMyReports();
+    }
+    function closeMyReports() {
+      if (mine.backdrop.hidden) return;
+      mine.backdrop.hidden = true;
+      mine.opener?.focus?.({ preventScroll: true }); mine.opener = null;
+    }
+    q('[data-id="bug-mine"]').addEventListener('click', openMyReports);
+    q('[data-id="mine-reload"]').addEventListener('click', loadMyReports);
+    for (const id of ['mine-close', 'mine-done']) q(`[data-id="${id}"]`).addEventListener('click', closeMyReports);
+    mine.backdrop.addEventListener('pointerdown', event => { if (event.target === mine.backdrop) closeMyReports(); });
     // Changelog: the card after an update (this version's changes) and the full list from Settings › Studio.
     const log = { box: q('[data-id="log-notice"]'), list: q('[data-id="log-list"]'), version: q('[data-id="log-version"]'), backdrop: q('[data-id="log-backdrop"]'), body: q('[data-id="log-body"]'), opener: null };
     function changelogItems(list, items) {
