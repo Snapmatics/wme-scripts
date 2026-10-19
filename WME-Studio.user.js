@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.0.4
+// @version      2.0.5
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -150,7 +150,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.0.4';
+  const USERSCRIPT_VERSION = '2.0.5';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -465,7 +465,7 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
     'wmeStudio.workspaceProfiles.v1','wmeStudio.scriptTabPins.v1','wmeStudio.panelSizes.v1','wmeStudio.chatPanelOffset.v3','wmeStudio.streetViewWindow.v1',
     'wmeStudio.enabled','wmeStudio.theme','wmeStudio.corners','wmeStudio.accent',
     'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.compactRequests','wmeStudio.commandShortcut',
-    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.islandControls.v1'
+    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.islandControls.v1'
   ];
   const emitStorage = changes => {
     if (!Object.keys(changes).length) return;
@@ -874,7 +874,10 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
     // The theme schedule only runs from Light: Light by day, themeNight (Dark or Full black) at night.
     themeSchedule: 'off', themeNight: 'dark', themeDayStart: '07:00', themeNightStart: '20:00',
     eyeSaverSchedule: 'off', eyeSaverStart: '21:00', eyeSaverEnd: '07:00', eyeSaverFade: true,
-    customScrollbars: true, contextMenu: true
+    customScrollbars: true, contextMenu: true,
+    // 2.0.5: the + menu opens only on a click (not when the pointer passes over it), and the header search box can
+    // be given its own width in Arrange (0 = Studio's default width).
+    createMenuClick: false, searchWidth: 0
   });
   // A shortcut is stored as its modifiers plus the physical key ("Shift+KeyP"), so it is the same key on a Greek
   // or any other keyboard layout. '' means the shortcut is off. A letter, number or symbol key needs a modifier;
@@ -902,8 +905,8 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
   }
   globalThis.WMEStudioShortcut = { normalize: normalizeShortcut, fromEvent: shortcutFromEvent, label: shortcutLabel, recording: false };
   const choices = { theme: ['light', 'dark', 'black'], themeNight: ['dark', 'black'], themeSchedule: ['off', 'sun', 'custom'], eyeSaverSchedule: ['off', 'sun', 'custom'], corners: ['flat', 'soft'], layerColumns: ['one', 'two'], language: ['auto','en','el','es','pt','fr','de','it','nl','pl','ru','tr'] };
-  const ranges = { compactHeaderWidth: [0, 100], compactIslandOpacity: [20, 100], eyeSaver: [0, 100], satelliteBrightness: [0, 100], viewportBrightness: [0, 100], gpsOpacity: [0, 100], hudScale: [70, 100], panelScale: [70, 100], fontScale: [85, 120], discussionVisible: [1, 10] };
-  const steps = { compactHeaderWidth: 1, discussionVisible: 1 };
+  const ranges = { compactHeaderWidth: [0, 100], compactIslandOpacity: [20, 100], eyeSaver: [0, 100], satelliteBrightness: [0, 100], viewportBrightness: [0, 100], gpsOpacity: [0, 100], hudScale: [70, 100], panelScale: [70, 100], fontScale: [85, 120], discussionVisible: [1, 10], searchWidth: [0, 900] };
+  const steps = { compactHeaderWidth: 1, discussionVisible: 1, searchWidth: 1 };
   const clockTimes = new Set(['themeDayStart', 'themeNightStart', 'eyeSaverStart', 'eyeSaverEnd']);
   const CLOCK = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
   const prefix = 'wmeStudio.';
@@ -3825,6 +3828,9 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
 }
 
 
+/* "Open the + menu on click" (2.0.5): WME's + menu opens itself on hover in ways no event reaches, so its list is
+   kept out of sight until Studio has seen a click on + (or opens the menu itself for a + menu shortcut). */
+:host-context(html[data-wme-studio="on"][data-wme-studio-create-click="on"]):host([data-wme-studio-create-host]:not([data-wme-studio-create-open])) .wz-menu > .options-container { display: none !important; }
 `;
 
 
@@ -6177,6 +6183,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       if (!ready || !settings.enabled || !Number.isFinite(value)) return false;
       if (key === 'hudScale') { rootStyle('--ws-hud-zoom', String(value / 100)); scheduleIslandControls(); }
       else if (key === 'compactHeaderWidth') { rootStyle('--ws-header-width-extension', String(value / 100)); attr('header-width', value > 0 ? 'custom' : null); scheduleIslandControls(); }
+      else if (key === 'searchWidth') { rootStyle('--ws-search-width', value ? `${value}px` : ''); attr('search-width', value ? 'custom' : null); }
       else return false;
       quickPreviewUntil = performance.now() + 300;
       return true;
@@ -6233,6 +6240,8 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       rootStyle('--ws-gps-opacity', String(settings.gpsOpacity / 100));
       rootStyle('--ws-hud-zoom', String(settings.hudScale / 100));
       rootStyle('--ws-header-width-extension', String(settings.compactHeaderWidth / 100));
+      rootStyle('--ws-search-width', settings.searchWidth ? `${settings.searchWidth}px` : '');
+      attr('search-width', settings.searchWidth ? 'custom' : null);
       syncFontScale();
       rootStyle('--ws-panel-zoom', String(settings.panelScale / 100));
       rootStyle('--ws-viewport-overlay-opacity', String((100 - settings.viewportBrightness) / 100));
@@ -6247,6 +6256,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       attr('layer-columns', settings.layerColumns);
       attr('requests', settings.compactRequests ? 'compact' : null);
       attr('scrollbars', settings.customScrollbars ? 'on' : null);
+      attr('create-click', settings.createMenuClick ? 'on' : null);
       attr('page', standaloneSignin ? 'signin' : editorProfile ? 'profile' : 'editor');
       attr('', 'on');
       if (affects('enabled', 'compactMode', 'compactHeaderFullWidth', 'compactHeaderWidth', 'hudScale', 'compactIslandLayout.v1', 'layerColumns')) applyCompactLayoutVariables();
@@ -6277,7 +6287,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     if (affects('enabled')) betaMapLayers.refresh();
     if (affects('enabled', 'compactMode', 'layerColumns')) syncMapLayerWindows(true);
     if (affects('enabled', 'compactMode', 'compactIslandLayout.v1')) queueStreetViewWindow();
-    if (affects('enabled', 'addons', 'compactMode', 'compactHeaderFullWidth', 'compactHeaderWidth', 'hudScale')) syncFloatingHeader(true);
+    if (affects('enabled', 'addons', 'compactMode', 'compactHeaderFullWidth', 'compactHeaderWidth', 'hudScale', 'searchWidth')) syncFloatingHeader(true);
     if (affects('enabled', 'compactMode')) queueProfileMenus();
     if (affects('enabled', 'compactMode')) syncTileBuildFeed();
     if (affects('enabled', 'compactMode', 'hudScale', 'panelScale', 'theme')) scheduleIslandControls();
@@ -10202,6 +10212,100 @@ ${studioRangeCSS('.picker-hue')}
     }
     return null;
   }
+  // "Open the + menu on click" (2.0.5, like FUME's option): WME opens the + menu as soon as the pointer passes over
+  // the + control. With the setting on, the pointer's arrival at the control is kept from WME, so only a click
+  // opens it. Moving inside an open menu is left alone (its submenus open on hover as usual), and so is Studio
+  // itself opening the menu for a + menu shortcut.
+  // The + button sits inside WME's own wz-menu element, so "inside the menu" means inside a menu that is open
+  // (expanded), never just inside the wz-menu element. A menu that still opens without a click (WME changing how
+  // it listens, say) is closed again at once.
+  let createHoverHost = null, createHoverMenu = null, createHoverButton = null, createHoverLookedAt = -1e9, createHoverObserver = null, createHoverMissing = false;
+  const createMenuOpen = node => node?.nodeType === 1 && node.matches?.(CREATE_MENU)
+    && (node.localName === 'wz-menu' ? node.hasAttribute('expanded') : createShown(node));
+  // The + menu itself: the outermost wz-menu of the + control that holds the menu's items. It can sit inside other
+  // components' shadow roots, so it is looked for there too.
+  function findCreateMenu(host) {
+    const menus = [host.matches?.('wz-menu') ? host : null, ...createDeepAll(host, 'wz-menu')].filter(Boolean);
+    const outer = menus.filter(menu => !menus.some(other => other !== menu && other.contains(menu)));
+    return outer.find(menu => menu.querySelector(CREATE_ITEM) || createDeepAll(menu, CREATE_ITEM).length) || outer[0] || null;
+  }
+  // Is this click on + itself? The + button is the one Studio's + menu shortcuts press (it can sit inside the
+  // menu element or next to it); failing that, anything of the + control that is not the open list or an item.
+  function isCreateButtonClick(path) {
+    if (createHoverButton?.isConnected && path.includes(createHoverButton)) return true;
+    if (!path.includes(createHoverHost) && !path.includes(createHoverMenu)) return false;
+    const list = createHoverMenu?.shadowRoot?.querySelector('.options-container');
+    return !(list && path.includes(list)) && !path.some(node => node?.nodeType === 1 && node.matches?.(CREATE_ITEM));
+  }
+  // Studio decides when the list shows: WME keeps opening the menu by itself on hover, and fighting that made a
+  // click close it again. So WME is left alone, and the list is simply out of sight unless + was clicked
+  // (data-wme-studio-create-open). The rule lives in the menu's own shadow root, only while the setting is on.
+  const CREATE_CLICK_CSS = ':host(:not([data-wme-studio-create-open])) .options-container { display: none !important; }';
+  function syncCreateClickStyle() {
+    const root = createHoverMenu?.shadowRoot;
+    if (!root) return;
+    let style = root.querySelector('style[data-wme-studio-create-click]');
+    const on = !!(settings.createMenuClick && settings.enabled);
+    if (on && !style) { style = document.createElement('style'); style.setAttribute('data-wme-studio-create-click', ''); style.textContent = CREATE_CLICK_CSS; root.append(style); }
+    else if (!on && style) style.remove();
+    else if (on && style !== root.lastElementChild) root.append(style);   // stays last, so nothing added later wins over it
+  }
+  function createHoverTarget() {
+    if (createHoverHost?.isConnected && createHoverMenu?.isConnected) { syncCreateClickStyle(); return createHoverHost; }
+    if (performance.now() - createHoverLookedAt < 1500) return null;   // not found a moment ago: look again later
+    createHoverLookedAt = performance.now();
+    createHoverMenu?.removeAttribute('data-wme-studio-create-host');
+    const trigger = createTrigger();
+    createHoverHost = trigger?.element || document.getElementById('drawer') || null;
+    createHoverButton = trigger?.button || null;
+    createHoverMenu = createHoverHost ? findCreateMenu(createHoverHost) : null;
+    createHoverObserver?.disconnect(); createHoverObserver = null;
+    if (!createHoverMenu) {
+      if (!createHoverMissing && settings.createMenuClick) { createHoverMissing = true; console.info('[WME Studio] Open the + menu on click: the + menu was not found yet.'); }
+      return null;
+    }
+    createHoverMissing = false;
+    createHoverMenu.setAttribute('data-wme-studio-create-host', '');
+    syncCreateClickStyle();
+    if (typeof MutationObserver === 'function') {
+      // When WME closes the menu (an item picked, a click elsewhere, Escape), the click that opened it is over.
+      createHoverObserver = new MutationObserver(() => {
+        if (createHoverMenu && !createHoverMenu.hasAttribute('expanded')) createHoverMenu.removeAttribute('data-wme-studio-create-open');
+      });
+      createHoverObserver.observe(createHoverMenu, { attributes: true, attributeFilter: ['expanded'] });
+    }
+    return createHoverHost;
+  }
+  // A click on + opens the list, a second click closes it. WME's own click on + may have toggled its menu either
+  // way (it was often already open from the hover), so once WME is done the menu is set to match.
+  function onCreateClick(event) {
+    if (!settings.createMenuClick || !settings.enabled || !createHoverTarget()) return;
+    const menu = createHoverMenu, path = event.composedPath();
+    if (!menu || !isCreateButtonClick(path)) return;
+    const opening = !menu.hasAttribute('data-wme-studio-create-open');
+    setTimeout(() => {
+      if (!menu.isConnected) return;
+      try {
+        if (opening) {
+          menu.setAttribute('data-wme-studio-create-open', '');
+          if (!menu.hasAttribute('expanded')) { if ('expanded' in menu) menu.expanded = true; else menu.setAttribute('expanded', ''); }
+          menu.setAttribute('data-wme-studio-create-open', '');
+        } else {
+          menu.removeAttribute('data-wme-studio-create-open');
+          if (menu.hasAttribute('expanded')) { if ('expanded' in menu) menu.expanded = false; else menu.removeAttribute('expanded'); }
+        }
+      } catch (studioError) { reportStudioError('createMenuClick', studioError); }
+    }, 0);
+  }
+  window.addEventListener('click', onCreateClick, { capture: true, passive: true });
+  // The menu is found and marked as soon as it exists (looked for every few seconds for the first minutes), so the
+  // rule is in place before the pointer first passes over +. Turning the setting off takes the rule away at once.
+  (() => { let tries = 0; const look = () => { if (createHoverTarget() || ++tries > 60) return; setTimeout(look, 3000); }; setTimeout(look, 2500); })();
+  try {
+    chrome.storage.onChanged.addListener(changes => {
+      if (changes['wmeStudio.createMenuClick'] || changes['wmeStudio.enabled']) setTimeout(() => { if (createHoverMenu?.isConnected) syncCreateClickStyle(); else createHoverTarget(); }, 0);
+    });
+  } catch (_) { /* checked again the next time + is clicked */ }
   // The menu's items on screen now: inside the + control, and, while the menu is open, in a menu WME draws
   // elsewhere on the page (never another menu that happens to be open, a header menu say).
   let createSession = null, createClickedAt = -1e9;
@@ -11834,6 +11938,10 @@ ${studioControlsCSS()}
       .ctx[hidden]{display:none}.ctx-name{padding:0 9px 0 7px;font-weight:700}
       .ctx-rename{width:150px;height:30px;margin:0 4px 0 2px;padding:0 9px;border:1px solid var(--wme-studio-accent,#0099ff);border-radius:9px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff);font:inherit;font-weight:700;outline:none}.ctx-hint{padding:0 9px;color:var(--wme-studio-text-muted,#99a4ae)}
       .ctx-sep{width:1px;height:22px;margin:0 3px;background:var(--wme-studio-border,#4b5560)}
+      .ctx-width{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 6px 0 8px;white-space:nowrap;cursor:default}
+      .ctx-width input{width:150px;margin:0;accent-color:var(--wme-studio-accent,#0099ff);cursor:pointer}
+      .ctx-width output{min-width:54px;color:var(--wme-studio-text-muted,#9aa3ad);font-variant-numeric:tabular-nums}
+      .ctx-width output.capped{color:var(--ws-change-alert,#e5a50a);cursor:help;text-decoration:underline dotted}
       .ctx-action{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 9px;border:0;border-radius:9px;background:transparent;color:var(--wme-studio-text,#fff);font:inherit;cursor:pointer}
       .ctx-action.ctx-icon{padding:0;width:30px;justify-content:center}.ctx-action:hover:not(:disabled){background:var(--wme-studio-hover,#363c42)}.ctx-action:disabled{opacity:.38;cursor:default}.ctx-action.danger{color:var(--ws-change-alert,#ff8f8f)}
       .replace-menu{position:fixed;z-index:27;width:280px;max-height:min(420px,calc(100vh - 40px));overflow:auto;padding:6px;border:1px solid var(--wme-studio-border,#4b5560);border-radius:14px;background:var(--wme-studio-surface,#292d31);box-shadow:0 14px 34px #0008;pointer-events:auto}
@@ -12507,6 +12615,7 @@ ${studioControlsCSS()}
           parts.push(ctxButton(tr('Edit link'), 'M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4', () => openLinkForm(id)));
           parts.push(ctxButton(tr('Delete link'), 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', () => deleteLink(id), { danger: true }));
         }
+        if (entry.element?.id === 'search-autocomplete') parts.push(sep(), ...searchWidthControls(key));
         const homeHere = info.kind === 'custom' ? info.island.home === entry.island : info.id === entry.island;
         if (entry.island === 'create' && info.kind === 'custom') parts.push(ctxButton(tr('Take off the island'), 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', () => {
           commitIslands(model => removeControlKey(model, key), `${tr(entry.label)}: ${tr('taken off the island')}`);
@@ -12538,6 +12647,52 @@ ${studioControlsCSS()}
       const ring = key && controlRect(key);
       controlRing.hidden = !ring;
       if (ring) Object.assign(controlRing.style, { left: `${ring.left - 3}px`, top: `${ring.top - 3}px`, width: `${ring.width + 6}px`, height: `${ring.height + 6}px` });
+    }
+    // The header search box's width (2.0.5, like FUME's "Expand search box"): a slider in the toolbar of the
+    // selected Search control. It previews as it moves and is saved when it rests; "Default width" goes back to
+    // Studio's own width. The box still gives way when the header has no room for it.
+    function searchWidthControls(key) {
+      const wrap = document.createElement('label'); wrap.className = 'ctx-width';
+      const caption = document.createElement('span'); caption.textContent = tr('Search width');
+      const range = document.createElement('input'); range.type = 'range'; range.min = '160'; range.max = '900'; range.step = '1';
+      const output = document.createElement('output');
+      const current = settings.searchWidth || Math.round(controlRect(key)?.width || 220);
+      range.value = String(Math.min(900, Math.max(160, current)));
+      // The box gives way when the header is full, so the label shows the width it really got, and says why.
+      const show = () => {
+        output.title = ''; output.classList.remove('capped');
+        if (!settings.searchWidth && !range.dataset.moved) { output.textContent = tr('Default'); return; }
+        const wanted = Number(range.value), got = Math.round(controlRect(key)?.width || wanted);
+        if (got < wanted - 8) {
+          output.textContent = `${got} px`; output.classList.add('capped');
+          output.title = tr('The header is full. Make it wider in Settings › Layout › Header width to give the search box more room.');
+        } else output.textContent = `${wanted} px`;
+      };
+      const ringNow = () => {
+        show();
+        const box = controlRect(key);
+        if (!box || controlRing.hidden) return;
+        Object.assign(controlRing.style, { left: `${box.left - 3}px`, top: `${box.top - 3}px`, width: `${box.width + 6}px`, height: `${box.height + 6}px` });
+      };
+      const ring = () => requestAnimationFrame(ringNow);
+      range.setAttribute('aria-label', tr('Search width'));
+      // A drag sends many input events per frame: only the last one of each frame is applied, and the label and
+      // ring are measured once, after it.
+      let frame = 0;
+      range.addEventListener('input', () => {
+        range.dataset.moved = '1';
+        if (frame) return;
+        frame = requestAnimationFrame(() => { frame = 0; globalThis.WMEStudioPreview?.quick('searchWidth', Number(range.value)); ringNow(); });
+      });
+      range.addEventListener('change', () => { globalThis.WMEStudioSettings?.write({ searchWidth: Number(range.value) }).then(ring).catch(error => reportStudioError('Saving the search width', error)); });
+      show();
+      wrap.append(caption, range, output);
+      const reset = ctxButton(tr('Default width'), 'M4 12a8 8 0 1 0 2.4-5.7M4 4v5h5', () => {
+        delete range.dataset.moved;
+        globalThis.WMEStudioPreview?.quick('searchWidth', 0);
+        globalThis.WMEStudioSettings?.write({ searchWidth: 0 }).then(() => { renderCtx(); ring(); }).catch(error => reportStudioError('Saving the search width', error));
+      }, { disabled: !settings.searchWidth });
+      return [wrap, reset];
     }
     function rotateIsland(targetId) {
       commitIslands(model => {
@@ -13599,6 +13754,12 @@ ${studioControlsCSS()}
         if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeLinkForm(); }
         // Enter saves straight away, whatever the page does with the key afterwards.
         else if (event.key === 'Enter' && shadow.activeElement.matches('input')) { event.preventDefault(); event.stopImmediatePropagation(); saveLinkForm(); }
+        return;
+      }
+      // Arrow keys on the search width slider move the slider, not the selected control.
+      if (shadow.activeElement?.closest?.('.ctx-width')) {
+        if (event.key === 'Escape') { event.preventDefault(); shadow.activeElement.blur(); }
+        event.stopImmediatePropagation();
         return;
       }
       // Typing in the Controls search stays in the search: the editor's own shortcuts never see the keys.
@@ -17283,8 +17444,13 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.0.4-2026-10-19';
+  const STUDIO_BUILD = '2.0.5-2026-10-19';
   const STUDIO_CHANGELOG = Object.freeze([
+    { version: '2.0.5', items: [
+      'Settings › Map › Menus: the + menu can open on click only, instead of when the pointer passes over it.',
+      'Arrange: select the Search box in the header to give it the width you like.',
+      'Right-click menu: Copy coordinates is there with a segment or place selected too.'
+    ] },
     { version: '2.0.4', items: [
       'URO+ hover popups and alerts follow your theme instead of staying white.',
       'Compact requests: comment dates show their time again (URC-E users lost it).',
@@ -17462,6 +17628,13 @@ ${studioControlsCSS()}
   .rows>*+*{border-top:1px solid var(--line)}.rows>fieldset{display:block}
   .srow{display:flex;align-items:center;gap:16px;min-height:60px;padding:11px 16px}
   .srow-text{flex:1 1 0;min-width:0}.srow strong{display:block;font-size:13px;font-weight:650}
+  /* Text that names the + button shows WME's + button itself (2.0.5). The words stay in the original element, out of
+     sight but read aloud and translated; the copy beside it draws each "+" as the button. */
+  [data-ws-plus]{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%);white-space:nowrap}
+  /* Centred on the capital letters of the text around it: the box's bottom is its baseline, lowered by half its
+     height and raised by half a capital's height. */
+  .ws-plus-icon{display:inline-block;position:relative;width:1.35em;height:1.35em;margin:0 .14em;border-radius:.4em;background:var(--accent,#0099ff);color:var(--on-accent,#fff);vertical-align:-.3em;vertical-align:calc(.5cap - .675em);box-shadow:0 1px 2px #0000002e}
+  .ws-plus-icon svg{display:block;position:absolute;inset:0;margin:auto;width:.9em;height:.9em;fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:round}
   .small{display:block;margin-top:3px;color:var(--muted);font-size:11.5px;line-height:1.4}
   .togrow{cursor:pointer}
   .value{flex:0 0 auto;min-width:46px;text-align:right;white-space:nowrap;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -17741,7 +17914,8 @@ ${studioControlsCSS()}
           <div class="srow"><div class="srow-text"><strong>GPS points opacity</strong><span class="small">100% keeps GPS points unchanged. Lower values make them more transparent.</span></div><input data-id="gpsOpacity" type="range" min="0" max="100" step="5" value="100" aria-label="GPS points opacity"><span class="value" data-id="gpsOpacity-value">100%</span></div>
           <label class="srow togrow"><span class="srow-text"><strong>GPS points below roads</strong><span class="small">Keep road segments above GPS points.</span></span><span class="switch"><input data-id="gpsBelowRoads" type="checkbox"><i></i></span></label>
         </div></div>
-        <div class="group"><h3 class="section-label">Right-click</h3><div class="card rows">
+        <div class="group"><h3 class="section-label">Menus</h3><div class="card rows">
+          <label class="srow togrow" data-row="createMenuClick"><span class="srow-text"><strong data-ws-plus>Open the + menu on click</strong><span class="small" data-ws-plus>The menu for adding roads, places and hazards opens only when you click +, not as soon as the pointer passes over it.</span></span><span class="switch"><input data-id="createMenuClick" type="checkbox"><i></i></span></label>
           <label class="srow togrow" data-row="contextMenu"><span class="srow-text"><strong>Studio right-click menu</strong><span class="small">Right-click the map for coordinates, links, selection and editor actions, and Studio shortcuts. Shift + right-click opens the browser menu. While on, it is used instead of the RightClick Functions menu.</span></span><span class="switch"><input data-id="contextMenu" type="checkbox"><i></i></span></label>
         </div></div>
       </fieldset></section>
@@ -18009,6 +18183,28 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
 
     const q = sel => shadow.querySelector(sel);
     const qa = sel => [...shadow.querySelectorAll(sel)];
+    // "+" drawn as WME's + button (see [data-ws-plus] in the styles). The copy is rebuilt whenever the words change
+    // (another language), so it always says what the original says.
+    const PLUS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg>';
+    function drawPlus(original) {
+      let copy = original.nextElementSibling?.classList.contains('ws-plus-rich') ? original.nextElementSibling : null;
+      if (!copy) {
+        copy = document.createElement(original.localName);
+        copy.className = `${original.className} ws-plus-rich`.trim();
+        copy.setAttribute('aria-hidden', 'true'); copy.setAttribute('data-ws-keep', '');
+        original.after(copy);
+      }
+      const nodes = [];
+      original.textContent.split('+').forEach((part, index) => {
+        if (index) { const icon = document.createElement('span'); icon.className = 'ws-plus-icon'; icon.innerHTML = PLUS_ICON; nodes.push(icon); }
+        if (part) nodes.push(document.createTextNode(part));
+      });
+      copy.replaceChildren(...nodes);
+    }
+    for (const original of qa('[data-ws-plus]')) {
+      drawPlus(original);
+      new MutationObserver(() => drawPlus(original)).observe(original, { subtree: true, childList: true, characterData: true });
+    }
     const panel = q('.panel');
     const fieldsets = qa('fieldset[data-preferences]');
     const backdrop = q('.backdrop');
@@ -18310,7 +18506,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       }
       if (currentRead) globalThis.WMEStudioI18n.setLanguage(current.language);
       paintShortcut();
-      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu']) q(`[data-id="${key}"]`).checked = current[key];
+      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick']) q(`[data-id="${key}"]`).checked = current[key];
       paintSchedule();
       fieldsets.forEach(fieldset => { fieldset.disabled = !current.enabled || profilesBusy; });
       qa('input[name="workspace-mode"]').forEach(input => { input.checked = (input.value === 'compact') === current.compactMode; });
@@ -18698,7 +18894,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     q('[data-id="preset-undo"]').addEventListener('click',undoPreset);
     arrangeViewport.addEventListener('change',()=>{if(studioPanelOpen)render();});
     qa('[data-setting]').forEach(button => button.addEventListener('click', () => change(settingPatch(button.dataset.setting, button.dataset.value), true)));
-    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
+    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
     qa('[data-time]').forEach(input => input.addEventListener('change', () => { if (/^\d\d:\d\d$/.test(input.value)) change({ [input.dataset.time]: input.value }); else paintSchedule(); }));
     setInterval(() => { if (studioPanelOpen) paintSchedule(); }, 30000);
     qa('input[name="workspace-mode"]').forEach(input => input.addEventListener('change', e => {
@@ -19344,7 +19540,7 @@ ${studioControlsCSS()}
         commands = [page('Open settings','layout','settings options preferences'),page('Saved workspaces','layout','profiles presets layouts save','workspace-profiles'),page('Backup & restore','studio','import export backup restore','backup-tools'),page('Report a bug','bug','bug report issue problem feedback support help','bugReport'),
           setting('Presets','layout','preset-current','starting layout balanced left-handed review desk wide header'),setting('Header width','layout','compactHeaderWidth','floating header extend full page'),setting('HUD size','layout','hudScale','floating scale islands header'),
           setting('Accent colour','look','accent','color highlight custom'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','look','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','look','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
-          setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),
+          setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Open the + menu on click','map','createMenuClick','plus add create hover click menu roads places'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),
           setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
           setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script authors','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
           {label:translate('Arrange layout'),category:'Workspace',keywords:'move position panels islands controls hide split custom island buttons',disabled:!prefs.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches,run:async()=>{await cfg.write({compactMode:true});globalThis.WMEStudioCompactLayout.open();}},
@@ -19795,6 +19991,9 @@ kbd,.count{flex:none;font:600 10.5px/1 var(--ws-font,system-ui,sans-serif);color
         if (picked.type === 'segment') item('street', labels.length > 1 ? 'Copy street names' : 'Copy street name', () => copied(labels.join(', '), 'Street name copied'), { disabled: !labels.length });
         if (picked.type === 'venue') item('street', labels.length > 1 ? 'Copy names' : 'Copy name', () => copied(labels.join(', '), 'Name copied'), { disabled: !labels.length });
         item('link', 'Copy permalink', () => copied(permalink(middle || null, picked), 'Permalink copied'));
+        // The spot that was right-clicked, also with something selected (2.0.5), so there is no need to deselect
+        // first or go through Map options here.
+        item('copy', 'Copy coordinates', () => copied(`${fmt(point.lat)}, ${fmt(point.lon)}`, 'Coordinates copied'), { disabled: !point });
         sep();
         item('focus', 'Zoom to selection', () => { if (!zoomToSelection(picked)) toast(t('Selection is not loaded'), at.x, at.y, true); }, { disabled: !area });
         item('gmaps', 'Open in Google Maps', () => window.open(`https://www.google.com/maps/search/?api=1&query=${fmt(middle.lat)},${fmt(middle.lon)}`, '_blank', 'noopener'), { disabled: !middle });
