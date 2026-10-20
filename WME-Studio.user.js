@@ -5534,13 +5534,29 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   }
 
   // 2.2.2: WME keeps Messages in a fixed box along the right of the window. Studio moves only the panel inside it,
-  // so once the panel was dragged away the empty box still caught every click and drag on the map beneath it (the
-  // map seemed dead to the right of the panel). The box now lets the pointer through; only the panel takes it.
+  // so once the panel was dragged away the empty box still caught clicks and drags on the map beneath it, and its
+  // shadow stayed on screen as an empty outlined box. Every box around the panel now lets the pointer through and
+  // draws nothing; only the panel itself takes the pointer, and not while the map is being dragged under it.
   function markChatHost(frame, on) {
-    const host = frame.parentElement;
-    if (!host || host.id === 'waze-chat-container' || host === frame.ownerDocument.body) return;
-    if (on) { if (host.getAttribute('data-wme-studio-chat-host') !== 'on') host.setAttribute('data-wme-studio-chat-host', 'on'); }
-    else host.removeAttribute('data-wme-studio-chat-host');
+    const doc = frame.ownerDocument;
+    for (const node of doc.querySelectorAll('[data-wme-studio-chat-host]')) if (!on || !node.contains(frame)) node.removeAttribute('data-wme-studio-chat-host');
+    if (!on) return;
+    for (let node = frame.parentElement, depth = 0; node && depth < 4; node = node.parentElement, depth++) {
+      if (node.id === 'waze-chat-container' || node === doc.body || node === doc.documentElement) break;
+      if (node.getAttribute('data-wme-studio-chat-host') !== 'on') node.setAttribute('data-wme-studio-chat-host', 'on');
+    }
+    if (markChatHost.watching) return;
+    markChatHost.watching = true;
+    // A drag that starts on the map keeps going when it passes over the panel (the panel's page would take it).
+    const root = doc.documentElement;
+    const stop = () => { if (root.hasAttribute('data-wme-studio-map-panning')) root.removeAttribute('data-wme-studio-map-panning'); };
+    doc.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      const target = event.composedPath?.()[0] || event.target;
+      if (target?.closest?.('.olMapViewport')) root.setAttribute('data-wme-studio-map-panning', 'on');
+    }, true);
+    for (const type of ['pointerup', 'pointercancel', 'mouseup']) doc.addEventListener(type, stop, true);
+    (doc.defaultView || window).addEventListener('blur', stop);
   }
   function chatPanelIsVisible(state) {
     if (state.target.checkVisibility?.({ checkOpacity: true, checkVisibilityCSS: true }) === false) return false;
@@ -11250,9 +11266,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     /* With WME's map tools taken over by an island, every one of its buttons has a place in an island: one WME has
        just drawn again stays unseen for the moment until it is in that place, instead of showing where WME keeps it. */
     html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons[data-wme-studio-island-absorbed] .overlay-buttons-container > :is(.overlay-button,wz-basic-tooltip,wz-tooltip,.zoom-bar-container):not([data-wme-studio-island-control],[data-wme-studio-control-hidden]) { visibility: hidden !important; }
-    /* 2.2.2: the box WME keeps Messages in lets clicks through to the map; only the panel in it takes them. */
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] [data-wme-studio-chat-host="on"] { pointer-events: none !important; }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] [data-wme-studio-chat-host="on"] > * { pointer-events: auto !important; }
+    /* 2.2.2: the boxes WME keeps Messages in let clicks through to the map and draw nothing; only the panel takes clicks, and not while the map is dragged under it. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] [data-wme-studio-chat-host="on"] { pointer-events: none !important; box-shadow: none !important; background: transparent !important; border-color: transparent !important; outline: 0 !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] iframe[data-wme-studio-chat-panel="on"]:not([data-wme-studio-chat-closing="on"]) { pointer-events: auto !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-map-panning="on"] iframe[data-wme-studio-chat-panel="on"] { pointer-events: none !important; }
     html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons[data-wme-studio-island-managed] :is(.overlay-buttons-container,.zoom-bar-container) {
       border: 0 !important; padding: 0 !important; margin: 0 !important; min-height: 0 !important;
     }
@@ -17701,7 +17718,8 @@ ${studioControlsCSS()}
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
     { version: '2.2.2', groups: [
       { title: 'Fixes', items: [
-        'Messages: with the panel moved away from the right edge, the map beside it takes clicks and drags again.'
+        'Messages: with the panel moved away from the right edge, the map beside it takes clicks and drags again, and no empty outlined box is left there.',
+        'Messages: dragging the map across the panel no longer stops the drag.'
       ] }
     ] },
     { version: '2.2.1', groups: [
