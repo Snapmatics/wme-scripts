@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.1.0
+// @version      2.1.1
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -150,7 +150,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.1.0';
+  const USERSCRIPT_VERSION = '2.1.1';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -730,8 +730,28 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
   // The page stylesheet lives in the WME Studio Resources library (see @require). Without it Studio has no theme.
   const studioResources = globalThis.WMEStudioResources;
   if (!studioResources?.pageSheet) console.error('[WME Studio] The WME Studio Resources library did not load. Check the @require line in the script header.');
-  else if (studioResources.version !== USERSCRIPT_VERSION) console.warn(`[WME Studio] Resources ${studioResources.version} loaded with Studio ${USERSCRIPT_VERSION}; update both scripts together.`);
+  // A fix release (2.1.1) can come without a new Resources: only a different feature release (2.1 vs 2.2) is a mismatch.
+  else if (String(studioResources.version).split('.').slice(0, 2).join('.') !== USERSCRIPT_VERSION.split('.').slice(0, 2).join('.')) console.warn(`[WME Studio] Resources ${studioResources.version} loaded with Studio ${USERSCRIPT_VERSION}; update both scripts together.`);
   globalThis.WMEStudioPageStyle = GM_addStyle(globalThis.WMEStudioSafari.page(studioResources?.pageSheet ? studioResources.pageSheet({ studioAIHelperTokensCSS, studioButtonMotionCSS, studioGlassFeedbackCSS, studioHeaderAddonCSS, studioKeyedList, studioRangeCSS }) : ''));
+  // Plain form fields in other scripts' panels and dialogs (2.1.1). WME's own stylesheet gives every input, select
+  // and textarea dark grey text (rgb(61, 61, 61)), which nearly disappears on Dark and Full black. Here they take the
+  // theme's text, field and border colours instead, and the browser's own parts (the list of a select, a date
+  // picker) follow the dark theme too. The rules weigh exactly as much as WME's own and come after its stylesheet, so
+  // they win over WME, while a script that colours its own fields (a rule of its own, added later) keeps its colours.
+  const STUDIO_FORM_FIELDS = ':is(input:not([type]),input[type="text"],input[type="email"],input[type="number"],input[type="password"],input[type="search"],input[type="url"],input[type="tel"],input[type="date"],input[type="time"],input[type="datetime-local"],select,textarea,.form-control)';
+  const STUDIO_DARK = ':where(html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"]))';
+  globalThis.WMEStudioFormStyle = GM_addStyle(`
+${STUDIO_DARK} ${STUDIO_FORM_FIELDS} { color: var(--wme-studio-text); caret-color: var(--wme-studio-text); background-color: var(--wme-studio-input); border-color: var(--wme-studio-border); color-scheme: dark; }
+${STUDIO_DARK} ${STUDIO_FORM_FIELDS}::placeholder { color: var(--wme-studio-text-muted); opacity: 1; }
+${STUDIO_DARK} ${STUDIO_FORM_FIELDS}:disabled { color: var(--wme-studio-text-muted); }
+${STUDIO_DARK} :is(select, datalist) option, ${STUDIO_DARK} select optgroup { background-color: var(--wme-studio-surface); color: var(--wme-studio-text); }
+${STUDIO_DARK} select option:checked { background-color: color-mix(in srgb, var(--wme-studio-accent) 34%, var(--wme-studio-surface)); color: var(--wme-studio-text); }
+${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
+`);
+  // After WME's stylesheet, which the page lists after this script has started.
+  const lastFormStyle = () => { const style = globalThis.WMEStudioFormStyle; if (style?.parentNode && document.head && style !== document.head.lastElementChild) document.head.append(style); };
+  document.addEventListener('DOMContentLoaded', lastFormStyle, { once: true });
+  window.addEventListener('load', lastFormStyle, { once: true });
 
 
 (() => {
@@ -1792,6 +1812,20 @@ $root.qr-emoji-pop .qr-emoji:hover { background: var(--wme-studio-hover) !import
 $root { background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; box-shadow: none !important; border-radius: var(--wme-studio-radius) !important; }
 $root :where(h1,h2,h3,h4,h5,h6,p,span,div,label,b,strong) { color: var(--wme-studio-text) !important; }
 $root a[href] { color: var(--wme-studio-accent) !important; }
+` }, true);
+    // WME Color Errors (2.1.1): its settings sections have light grey headers of their own (#f5f7fa, #e8edf5 when
+    // open) under Studio's light text, so on Dark and Full black the section names could not be read.
+    registerCompatibilityAdapter({ id: 'color-errors', selectors: ['.ce-section'], css: String.raw`
+$root { border-color: var(--wme-studio-border) !important; background: transparent !important; }
+$root .ce-section-header { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
+$root .ce-section-header:hover { background: var(--wme-studio-hover) !important; }
+$root .ce-section-header.open { background: var(--wme-studio-active) !important; border-bottom-color: var(--wme-studio-border) !important; }
+$root .ce-section-header :where(span,b,strong,label,i) { color: inherit !important; }
+$root .ce-arrow { color: var(--wme-studio-text-muted) !important; }
+$root #ce-ignored-badge { background: var(--wme-studio-surface-3) !important; color: var(--wme-studio-text) !important; }
+/* Its notes are drawn in fixed greys (#666, #888…) and its delete buttons in a dark red (#c00): too faint on a dark panel. */
+$root [style*="color:#555"],$root [style*="color: #555"],$root [style*="color:#666"],$root [style*="color: #666"],$root [style*="color:#777"],$root [style*="color: #777"],$root [style*="color:#888"],$root [style*="color: #888"],$root [style*="color:#999"],$root [style*="color: #999"],$root [style*="color:#aaa"],$root [style*="color: #aaa"] { color: var(--wme-studio-text-muted) !important; }
+$root [style*="color:#c00"],$root [style*="color: #c00"],$root [style*="color:#cc0000"],$root [style*="color: #cc0000"],$root [style*="color:#d00"],$root [style*="color: #d00"],$root [style*="color:#e00"],$root [style*="color: #e00"] { color: color-mix(in srgb, #ff5c5c 85%, var(--wme-studio-text)) !important; border-color: currentColor !important; }
 ` }, true);
     registerCompatibilityAdapter({ id: 'wazetoastr-updates', selectors: ['#WTSU-Container'], css: String.raw`
 $root {
@@ -10305,9 +10339,15 @@ ${studioRangeCSS('.picker-hue')}
   }
   // Is this click on + itself? The + button is the one Studio's + menu shortcuts press (it can sit inside the
   // menu element or next to it); failing that, anything of the + control that is not the open list or an item.
+  // When the + control itself was not found, the side panel's whole tab rail stands in for it (createHoverTarget), and
+  // every click on that rail (a script's tab, say) counted as a click on +, which opened the + menu (2.1.1). So the
+  // rail never counts: only the + button, the + control, or the + menu itself; another tab never does.
   function isCreateButtonClick(path) {
     if (createHoverButton?.isConnected && path.includes(createHoverButton)) return true;
-    if (!path.includes(createHoverHost) && !path.includes(createHoverMenu)) return false;
+    const drawer = document.getElementById('drawer');
+    const scope = createHoverHost && createHoverHost !== drawer ? createHoverHost : createHoverMenu;
+    if (!scope || !path.includes(scope)) return false;
+    if (path.some(node => node?.nodeType === 1 && node.matches?.('wz-navigation-item,[role="tab"]') && !node.contains(createHoverMenu) && !createHoverMenu?.contains(node))) return false;
     const list = createHoverMenu?.shadowRoot?.querySelector('.options-container');
     return !(list && path.includes(list)) && !path.some(node => node?.nodeType === 1 && node.matches?.(CREATE_ITEM));
   }
@@ -17518,9 +17558,16 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.1.0-2026-10-20';
+  const STUDIO_BUILD = '2.1.1-2026-10-20';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '2.1.1', groups: [
+      { title: 'Fixes', items: [
+        'Open the + menu on click: clicking another tab of the side panel (a script\'s settings, say) no longer opens the + menu.',
+        'Dark and Full black: text fields, lists and boxes in other scripts\' panels and dialogs are readable (they had dark grey text).',
+        'WME Color Errors: the section headers in its settings follow the theme (they were light grey with light text).'
+      ] }
+    ] },
     { version: '2.1.0', groups: [
       { title: 'Requests', items: [
         'Show on map moves the map so the request is not hidden under the panel.',
