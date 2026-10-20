@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.2.0
+// @version      2.2.1
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -150,7 +150,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.2.0';
+  const USERSCRIPT_VERSION = '2.2.1';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -17682,9 +17682,19 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.2.0-2026-10-20';
+  const STUDIO_BUILD = '2.2.1-2026-10-20';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '2.2.1', groups: [
+      { title: 'Report a bug', items: [
+        'My reports are private to your WME Studio: a user name alone no longer shows them to anyone.',
+        'The author can write to you about a report, and you can answer from My reports.',
+        'When a report will not be fixed (not a bug, or another script\'s), you are told why.'
+      ] },
+      { title: 'Fixes', items: [
+        'Translations: GPS points opacity, the layout presets and a few other texts were in English (or Greek only) in the other languages.'
+      ] }
+    ] },
     { version: '2.2.0', groups: [
       { title: 'Map', items: [
         'Online editors: a badge on the button shows whether other editors can see you (a green dot) or you are invisible.',
@@ -18092,10 +18102,23 @@ ${studioControlsCSS()}
   .mine-top{display:flex;align-items:center;gap:8px;min-width:0}
   .mine-state{--c:var(--muted);flex:none;display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:999px;background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) 78%,var(--text));font-size:11px;font-weight:700;line-height:1}
   .mine-state::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
-  .mine-state[data-s="seen"]{--c:#2f8fe6}.mine-state[data-s="working"]{--c:#8b5cf6}.mine-state[data-s="fixed"]{--c:#22a35a}
+  .mine-state[data-s="seen"]{--c:#2f8fe6}.mine-state[data-s="working"]{--c:#8b5cf6}.mine-state[data-s="fixed"]{--c:#22a35a}.mine-state[data-s="rejected"]{--c:#d9534f}
   .mine-when{margin-left:auto;color:var(--muted);font-size:11.5px;white-space:nowrap}
   .mine-sum{color:var(--text);font-size:13px;line-height:1.4;overflow-wrap:anywhere}
   .mine-note{margin-top:2px;padding-left:8px;border-left:2px solid var(--line);color:var(--muted);font-size:12px;font-style:italic;overflow-wrap:anywhere}
+  /* The conversation with the author (2.2.1): the author's messages on the left, yours on the right. */
+  .mine-thread{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+  .mine-msg{max-width:88%;padding:7px 10px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:12.5px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
+  .mine-msg[data-from="you"]{align-self:flex-end;background:color-mix(in srgb,var(--accent) 14%,var(--surface));border-color:color-mix(in srgb,var(--accent) 30%,var(--line));border-bottom-right-radius:4px}
+  .mine-msg[data-from="author"]{align-self:flex-start;border-bottom-left-radius:4px}
+  .mine-msg small{display:block;margin-bottom:2px;color:var(--muted);font-size:11px;font-weight:600}
+  .mine-reply{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+  .mine-reply textarea{width:100%;min-height:58px;padding:7px 9px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font:inherit;font-size:12.5px;resize:vertical;box-sizing:border-box}
+  .mine-reply textarea:focus{outline:none;border-color:var(--accent)}
+  .mine-reply-row{display:flex;align-items:center;gap:8px}.mine-reply-row .mine-reply-error{color:var(--danger,#e5484d);font-size:12px}
+  .mine-reply-open{align-self:flex-start;margin-top:6px}
+  .mine-item[data-focus]{box-shadow:0 0 0 2px var(--accent)}
+  .fix-reply{margin-top:4px;align-self:flex-start;height:26px;padding:0 10px;font-size:12px}
   .mine-empty{padding:18px 4px;color:var(--muted);text-align:center}
   .fix-actions{grid-column:2;display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
   .bug-done-icon{width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:26px;font-weight:700;margin-bottom:6px}.bug-done h3{margin:0;font-size:17px}.bug-done p{margin:0 0 14px;color:var(--muted);max-width:360px}
@@ -19421,9 +19444,12 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       if (refused) showBugError(translate('Up to 4 images can be attached.'));
       bug.file.value = '';
     }
-    function bugApi(method, path, payload) {
+    // Every request carries this installation's private reporter key (2.2.1): only it reads the reports back.
+    async function bugApi(method, path, payload) {
+      const key = await studioReporterKey();
       return new Promise((resolve, reject) => {
         const body = payload ? JSON.stringify(payload) : undefined, url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`;
+        const headers = { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(key ? { 'X-Reporter-Token': key } : {}) };
         // Whatever the script manager does, the dialog never stays on "Sending…" for good.
         const guard = setTimeout(() => reject(new Error(translate('The server took too long'))), 25000);
         const finish = (status, text) => {
@@ -19433,11 +19459,11 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
           else reject(new Error(data?.error || (status ? `${translate('The server answered')} ${status}` : translate('No answer from the server'))));
         };
         if (typeof GM_xmlhttpRequest === 'function') {
-          GM_xmlhttpRequest({ method, url, data: body, headers: body ? { 'Content-Type': 'application/json' } : {}, timeout: 20000, anonymous: true,
+          GM_xmlhttpRequest({ method, url, data: body, headers, timeout: 20000, anonymous: true,
             onload: response => finish(response.status, response.responseText || ''),
             onerror: () => { clearTimeout(guard); reject(new Error(translate('Could not reach the server'))); }, ontimeout: () => { clearTimeout(guard); reject(new Error(translate('The server took too long'))); } });
         } else {
-          fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body, mode: 'cors' })
+          fetch(url, { method, headers, body, mode: 'cors' })
             .then(async response => finish(response.status, await response.text())).catch(() => { clearTimeout(guard); reject(new Error(translate('Could not reach the server'))); });
         }
       });
@@ -19482,7 +19508,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       bug.sending = true; bug.send.disabled = true; bug.send.textContent = translate('Sending…');
       try {
         const result = await bugApi('POST', '/api/report', { report: text, version: USERSCRIPT_VERSION, editor: `${location.hostname}${location.pathname}`, browser: navigator.userAgent,
-          summary: what.slice(0, 200), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.category.value, screenshot: bug.shots[0]?.data || '', screenshots: bug.shots.map(shot => shot.data) });
+          summary: what.slice(0, 200), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.category.value, screenshot: bug.shots[0]?.data || '', screenshots: bug.shots.map(shot => shot.data), token: await studioReporterKey() });
         let doneText = (result.id ? translate('Your report #{0} was sent to the author of WME Studio.') : translate('Your report was sent to the author of WME Studio.')).replace('{0}', String(result.id || ''));
         if (bug.clip) {
           bug.send.textContent = translate('Uploading video…');
@@ -19522,24 +19548,48 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     async function readFixState() {
       const saved = await Promise.resolve(studioKeep.get(BUG_FIXES_KEY, null)).catch(() => null);
       // seenWorking holds "id@time" keys: a report put under construction again later is news again.
-      return saved && typeof saved === 'object' ? { checked: saved.checked || 0, seen: Array.isArray(saved.seen) ? saved.seen.slice(-200) : [], seenWorking: Array.isArray(saved.seenWorking) ? saved.seenWorking.slice(-200) : [] } : { checked: 0, seen: [], seenWorking: [] };
+      return saved && typeof saved === 'object' ? { checked: saved.checked || 0, seen: Array.isArray(saved.seen) ? saved.seen.slice(-200) : [], seenWorking: Array.isArray(saved.seenWorking) ? saved.seenWorking.slice(-200) : [], seenMessages: Array.isArray(saved.seenMessages) ? saved.seenMessages.slice(-300) : [], seenRejected: Array.isArray(saved.seenRejected) ? saved.seenRejected.slice(-200) : [] } : { checked: 0, seen: [], seenWorking: [], seenMessages: [], seenRejected: [] };
     }
     function setBugBadge(count) {
       const badge = q('[data-id="bug-badge"]');
       badge.textContent = count ? String(count) : ''; badge.hidden = !count;
     }
     const workingKey = item => `${item.id}@${item.working_at || ''}`;
-    const FIX_ICONS = { fixed: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', working: '<path d="M10 3h4l5 16H5z"/><path d="M8 11h8M6.8 15h10.4M3 21h18"/>' };
+    const FIX_ICONS = { fixed: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', working: '<path d="M10 3h4l5 16H5z"/><path d="M8 11h8M6.8 15h10.4M3 21h18"/>', message: '<path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>', rejected: '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>' };
     // One card for both kinds of news (2.0.4): reports that were fixed, and reports the author has started on
     // ("under construction").
-    function showFixNotice(items, user, working = []) {
-      fix.items = items; fix.working = working; fix.user = user;
-      setBugBadge(items.length + working.length);
-      fix.title.textContent = translate(items.length && working.length ? 'News about your bug reports'
+    function showFixNotice(items, user, working = [], messages = [], rejected = []) {
+      fix.items = items; fix.working = working; fix.messages = messages; fix.rejected = rejected; fix.user = user;
+      setBugBadge(items.length + working.length + messages.length + rejected.length);
+      const kinds = [items.length, working.length, messages.length, rejected.length].filter(Boolean).length;
+      fix.title.textContent = translate(kinds > 1 ? 'News about your bug reports'
         : items.length ? (items.length > 1 ? 'Your bug reports were fixed' : 'Your bug report was fixed')
-        : (working.length > 1 ? 'Your bug reports are under construction' : 'Your bug report is under construction'));
-      fix.icon.querySelector('svg').innerHTML = items.length ? FIX_ICONS.fixed : FIX_ICONS.working;
+        : working.length ? (working.length > 1 ? 'Your bug reports are under construction' : 'Your bug report is under construction')
+        : rejected.length ? (rejected.length > 1 ? 'Your bug reports will not be fixed' : 'Your bug report will not be fixed')
+        : 'The author of WME Studio wrote to you');
+      fix.icon.querySelector('svg').innerHTML = items.length ? FIX_ICONS.fixed : working.length ? FIX_ICONS.working : rejected.length ? FIX_ICONS.rejected : FIX_ICONS.message;
       fix.list.textContent = '';
+      // Reports the author will not fix (2.2.1): not a bug, or another script's, with the reason.
+      for (const item of rejected) {
+        const row = document.createElement('div'); row.className = 'fix-item';
+        const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.id).slice(0, 120);
+        const state = document.createElement('span'); state.className = 'fix-version'; state.textContent = translate('will not be fixed');
+        row.append(quote, ' — ', state);
+        if (item.note) { const note = document.createElement('span'); note.className = 'fix-note'; note.setAttribute('data-ws-keep', ''); note.textContent = item.note.slice(0, 300); row.append(note); }
+        fix.list.append(row);
+      }
+      // The author's messages (2.2.1), each with a button to answer in My reports.
+      for (const item of messages) {
+        const row = document.createElement('div'); row.className = 'fix-item';
+        const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.report_id).slice(0, 120);
+        const state = document.createElement('span'); state.className = 'fix-version'; state.textContent = translate('the author wrote');
+        row.append(quote, ' — ', state);
+        const note = document.createElement('span'); note.className = 'fix-note'; note.setAttribute('data-ws-keep', ''); note.textContent = String(item.body || '').slice(0, 600); row.append(note);
+        const answer = document.createElement('button'); answer.type = 'button'; answer.className = 'reset fix-reply'; answer.textContent = translate('Answer');
+        answer.addEventListener('click', () => { dismissFixNotice(); openMyReports(item.report_id); });
+        row.append(answer);
+        fix.list.append(row);
+      }
       for (const item of working) {
         const row = document.createElement('div'); row.className = 'fix-item';
         const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.id).slice(0, 120);
@@ -19562,13 +19612,15 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
     async function dismissFixNotice() {
       fix.box.hidden = true; setBugBadge(0);
-      const ids = fix.items.map(item => item.id), working = fix.working.map(item => item.id);
+      const ids = fix.items.map(item => item.id), working = fix.working.map(item => item.id), messages = (fix.messages || []).map(item => item.id), rejected = (fix.rejected || []).map(item => item.id);
       const state = await readFixState();
       state.seen = [...new Set([...state.seen, ...ids])].slice(-200);
       state.seenWorking = [...new Set([...state.seenWorking, ...fix.working.map(workingKey)])].slice(-200);
+      state.seenMessages = [...new Set([...state.seenMessages, ...messages])].slice(-300);
+      state.seenRejected = [...new Set([...state.seenRejected, ...(fix.rejected || []).map(item => `${item.id}@${item.rejected_at || ''}`)])].slice(-200);
       try { await Promise.resolve(studioKeep.set(BUG_FIXES_KEY, state)); } catch (_) { /* the server keeps the mark too */ }
-      bugApi('POST', '/api/updates/ack', { user: fix.user, ids, working }).catch(() => { /* told next time */ });
-      fix.items = []; fix.working = [];
+      bugApi('POST', '/api/updates/ack', { user: fix.user, ids, working, messages, rejected }).catch(() => { /* told next time */ });
+      fix.items = []; fix.working = []; fix.messages = []; fix.rejected = [];
     }
     async function checkBugFixes(manual = false, force = false) {
       if (!endpointReady) return;
@@ -19586,7 +19638,11 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       const fresh = fixed.filter(item => !state.seen.includes(item.id));
       const working = Array.isArray(data?.working) ? data.working.filter(item => item && Number.isInteger(item.id)) : [];
       const freshWorking = working.filter(item => !state.seenWorking.includes(workingKey(item)));
-      if (fresh.length || freshWorking.length) { showFixNotice(fresh, user, freshWorking); if (manual) savedStatus(); }
+      const messages = Array.isArray(data?.messages) ? data.messages.filter(item => item && Number.isInteger(item.id) && Number.isInteger(item.report_id)) : [];
+      const freshMessages = messages.filter(item => !state.seenMessages.includes(item.id));
+      const rejected = Array.isArray(data?.rejected) ? data.rejected.filter(item => item && Number.isInteger(item.id)) : [];
+      const freshRejected = rejected.filter(item => !state.seenRejected.includes(`${item.id}@${item.rejected_at || ''}`));
+      if (fresh.length || freshWorking.length || freshMessages.length || freshRejected.length) { showFixNotice(fresh, user, freshWorking, freshMessages, freshRejected); if (manual) savedStatus(); }
       else if (manual) setStatus(translate(fixed.length ? 'Nothing new since last time.' : 'No fixed reports for {0} yet.').replace('{0}', user), 'saved');
       const open = Number.isInteger(data?.open) ? data.open : 0;
       fixesText.textContent = open ? translate('{0} report(s) of yours are waiting. A note shows up here in the editor when one is fixed.').replace('{0}', String(open))
@@ -19597,13 +19653,13 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     q('[data-id="bug-check"]').addEventListener('click', () => { checkBugFixes(true); });
     studioUIFixes = { check: checkBugFixes };
     // "My reports" (2.0.4): every report this editor account sent, with where it stands, from GET /api/mine.
-    const mine = { backdrop: q('[data-id="mine-backdrop"]'), body: q('[data-id="mine-body"]'), sub: q('[data-id="mine-sub"]'), opener: null, loading: false };
+    const mine = { backdrop: q('[data-id="mine-backdrop"]'), body: q('[data-id="mine-body"]'), sub: q('[data-id="mine-sub"]'), opener: null, loading: false, focus: null };
     q('[data-row="bugMine"]').hidden = !endpointReady;
     const mineDate = iso => { const date = new Date(iso); if (Number.isNaN(date.getTime())) return ''; try { return date.toLocaleDateString(document.documentElement.lang || undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch (_) { return date.toISOString().slice(0, 10); } };
     const mineMessage = text => { const box = document.createElement('p'); box.className = 'mine-empty'; box.textContent = text; mine.body.replaceChildren(box); };
     function mineState(report) {
       if (report.status === 'fixed') return translate('Fixed in {0}').replace('{0}', report.fixed_version || '?');
-      return translate({ new: 'Sent', seen: 'Seen by the author', working: 'under construction', closed: 'Closed' }[report.status] || 'Sent');
+      return translate({ new: 'Sent', seen: 'Seen by the author', working: 'under construction', rejected: 'Will not be fixed', closed: 'Closed' }[report.status] || 'Sent');
     }
     async function loadMyReports() {
       if (mine.loading) return;
@@ -19625,16 +19681,60 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
           top.append(state, when);
           const summary = document.createElement('div'); summary.className = 'mine-sum'; summary.setAttribute('data-ws-keep', ''); summary.textContent = report.summary || `${translate('Report')} #${report.id}`;
           item.append(top, summary);
-          const noteText = report.status === 'fixed' ? report.fixed_note : report.status === 'working' ? report.working_note : '';
+          const noteText = report.status === 'fixed' ? report.fixed_note : report.status === 'working' ? report.working_note : report.status === 'rejected' ? report.rejected_note : '';
           if (noteText) { const note = document.createElement('div'); note.className = 'mine-note'; note.setAttribute('data-ws-keep', ''); note.textContent = noteText.slice(0, 500); item.append(note); }
+          item.dataset.report = String(report.id);
+          const messages = Array.isArray(report.messages) ? report.messages : [];
+          if (messages.length) {
+            const thread = document.createElement('div'); thread.className = 'mine-thread';
+            for (const message of messages) {
+              const bubble = document.createElement('div'); bubble.className = 'mine-msg'; bubble.dataset.from = message.author === 'you' ? 'you' : 'author';
+              const who = document.createElement('small'); who.textContent = `${translate(message.author === 'you' ? 'You' : 'The author')} · ${mineDate(message.created_at)}`;
+              const text = document.createElement('span'); text.setAttribute('data-ws-keep', ''); text.textContent = String(message.body || '');
+              bubble.append(who, text); thread.append(bubble);
+            }
+            item.append(thread);
+          }
+          if (report.can_reply) item.append(mineReply(report, messages.length > 0));
           list.append(item);
         }
         mine.body.replaceChildren(list);
+        const focus = mine.focus != null && list.querySelector(`[data-report="${mine.focus}"]`);
+        if (focus) {
+          focus.setAttribute('data-focus', '');
+          focus.scrollIntoView({ block: 'center' });
+          focus.querySelector('.mine-reply-open')?.click();
+          mine.focus = null;
+        }
       } catch (error) {
         mineMessage(`${translate('Could not load your reports')}: ${error?.message || error}`);
       } finally { mine.loading = false; }
     }
-    function openMyReports() {
+    // Answering the author (2.2.1): a button that opens a box under the report.
+    function mineReply(report, answered) {
+      const box = document.createElement('div');
+      const open = document.createElement('button'); open.type = 'button'; open.className = 'reset mine-reply-open'; open.textContent = translate(answered ? 'Answer' : 'Write to the author');
+      const form = document.createElement('div'); form.className = 'mine-reply'; form.hidden = true;
+      const field = document.createElement('textarea'); field.maxLength = 2000; field.placeholder = translate('Your answer…');
+      const row = document.createElement('div'); row.className = 'mine-reply-row';
+      const send = document.createElement('button'); send.type = 'button'; send.className = 'reset primary'; send.textContent = translate('Send');
+      const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'reset'; cancel.textContent = translate('Cancel');
+      const error = document.createElement('span'); error.className = 'mine-reply-error';
+      row.append(send, cancel, error); form.append(field, row); box.append(open, form);
+      open.addEventListener('click', () => { open.hidden = true; form.hidden = false; field.focus(); });
+      cancel.addEventListener('click', () => { form.hidden = true; open.hidden = false; error.textContent = ''; });
+      field.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) send.click(); });
+      send.addEventListener('click', async () => {
+        const text = field.value.trim();
+        if (!text) { field.focus(); return; }
+        send.disabled = true; error.textContent = '';
+        try { await bugApi('POST', `/api/report/${encodeURIComponent(report.id)}/reply`, { body: text }); mine.focus = report.id; loadMyReports(); }
+        catch (problem) { error.textContent = problem?.message || String(problem); send.disabled = false; }
+      });
+      return box;
+    }
+    function openMyReports(focusId = null) {
+      mine.focus = Number.isInteger(focusId) ? focusId : null;
       mine.opener = shadow.activeElement;
       mine.backdrop.hidden = false;
       mine.body.scrollTop = 0;
@@ -19646,7 +19746,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       mine.backdrop.hidden = true;
       mine.opener?.focus?.({ preventScroll: true }); mine.opener = null;
     }
-    q('[data-id="bug-mine"]').addEventListener('click', openMyReports);
+    q('[data-id="bug-mine"]').addEventListener('click', () => openMyReports());
     q('[data-id="mine-reload"]').addEventListener('click', loadMyReports);
     for (const id of ['mine-close', 'mine-done']) q(`[data-id="${id}"]`).addEventListener('click', closeMyReports);
     mine.backdrop.addEventListener('pointerdown', event => { if (event.target === mine.backdrop) closeMyReports(); });
@@ -21601,13 +21701,29 @@ ${studioControlsCSS()}
   // settings dialog built, to show the note; it used to be asked only from inside the settings, at most every six
   // hours, so a fix could go unnoticed for days.
   const BUG_FIXES_STORE = 'wmeStudio.bugFixes.v1', BUG_RECHECK_EVERY = 30 * 60 * 1000;
+  // This installation's private reporter key (2.2.1): random, made once and kept with Studio's data. It goes with
+  // every report and every check, and only it reads the reports back: a user name alone shows nothing to anyone.
+  const REPORTER_KEY_STORE = 'wmeStudio.reporterKey.v1';
+  let reporterKeyPromise = null;
+  function studioReporterKey() {
+    return reporterKeyPromise ||= (async () => {
+      let key = await Promise.resolve(studioKeep.get(REPORTER_KEY_STORE, '')).catch(() => '');
+      if (!/^[a-f0-9]{48}$/.test(key || '')) {
+        key = [...crypto.getRandomValues(new Uint8Array(24))].map(byte => byte.toString(16).padStart(2, '0')).join('');
+        try { await Promise.resolve(studioKeep.set(REPORTER_KEY_STORE, key)); } catch (_) { /* used for this session only */ }
+      }
+      return key;
+    })();
+  }
   let bugFixesChecking = false;
-  function fetchBugUpdates(user) {
+  async function fetchBugUpdates(user) {
+    const key = await studioReporterKey();
     return new Promise((resolve, reject) => {
       const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/updates?user=${encodeURIComponent(user)}&v=${encodeURIComponent(USERSCRIPT_VERSION)}`;
+      const headers = key ? { 'X-Reporter-Token': key } : {};
       const done = (status, text) => { let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ } (status >= 200 && status < 300 && data?.ok ? resolve : reject)(data); };
-      if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, timeout: 20000, anonymous: true, onload: response => done(response.status, response.responseText || ''), onerror: reject, ontimeout: reject });
-      else fetch(url, { mode: 'cors' }).then(async response => done(response.status, await response.text())).catch(reject);
+      if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, headers, timeout: 20000, anonymous: true, onload: response => done(response.status, response.responseText || ''), onerror: reject, ontimeout: reject });
+      else fetch(url, { mode: 'cors', headers }).then(async response => done(response.status, await response.text())).catch(reject);
     });
   }
   async function autoCheckBugFixes() {
@@ -21622,7 +21738,11 @@ ${studioControlsCSS()}
       const seenWorking = Array.isArray(saved?.seenWorking) ? saved.seenWorking : [];
       const fresh = (Array.isArray(data?.fixed) ? data.fixed : []).filter(item => item && Number.isInteger(item.id) && !seen.includes(item.id));
       const freshWorking = (Array.isArray(data?.working) ? data.working : []).filter(item => item && Number.isInteger(item.id) && !seenWorking.includes(`${item.id}@${item.working_at || ''}`));
-      if ((fresh.length || freshWorking.length) && buildStudioUI()) {
+      const seenMessages = Array.isArray(saved?.seenMessages) ? saved.seenMessages : [];
+      const freshMessages = (Array.isArray(data?.messages) ? data.messages : []).filter(item => item && Number.isInteger(item.id) && !seenMessages.includes(item.id));
+      const seenRejected = Array.isArray(saved?.seenRejected) ? saved.seenRejected : [];
+      const freshRejected = (Array.isArray(data?.rejected) ? data.rejected : []).filter(item => item && Number.isInteger(item.id) && !seenRejected.includes(`${item.id}@${item.rejected_at || ''}`));
+      if ((fresh.length || freshWorking.length || freshMessages.length || freshRejected.length) && buildStudioUI()) {
         await new Promise(ok => (window.requestIdleCallback || setTimeout)(() => ok(), { timeout: 600 }));
         await studioUIFixes?.check(false, true);
       }
@@ -22253,6 +22373,7 @@ ${studioControlsCSS()}
       if (globalThis.WMEStudioVectorWatch) globalThis.WMEStudioVectorWatch.watch(observe, { childList: true, subtree: true, characterData: true });
       else new MutationObserver(observe).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
       new MutationObserver(queue).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio-requests'] });
+
       document.addEventListener('click', event => {
         if (!event.target?.closest?.('.problem-edit, .place-update-edit')) return;
         queue(); setTimeout(queue, 450);
@@ -22262,4 +22383,4 @@ ${studioControlsCSS()}
     if (document.documentElement) start();
     else document.addEventListener('DOMContentLoaded', start, { once: true });
   })();
-})()
+})();
