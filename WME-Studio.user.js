@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.0.5
+// @version      2.1.0
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -150,7 +150,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.0.5';
+  const USERSCRIPT_VERSION = '2.1.0';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -465,7 +465,7 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
     'wmeStudio.workspaceProfiles.v1','wmeStudio.scriptTabPins.v1','wmeStudio.panelSizes.v1','wmeStudio.chatPanelOffset.v3','wmeStudio.streetViewWindow.v1',
     'wmeStudio.enabled','wmeStudio.theme','wmeStudio.corners','wmeStudio.accent',
     'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.compactRequests','wmeStudio.commandShortcut',
-    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.islandControls.v1'
+    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.closeAfterReply','wmeStudio.islandControls.v1'
   ];
   const emitStorage = changes => {
     if (!Object.keys(changes).length) return;
@@ -877,7 +877,9 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
     customScrollbars: true, contextMenu: true,
     // 2.0.5: the + menu opens only on a click (not when the pointer passes over it), and the header search box can
     // be given its own width in Arrange (0 = Studio's default width).
-    createMenuClick: false, searchWidth: 0
+    createMenuClick: false, searchWidth: 0,
+    // 2.0.5: a request (UR, MP or PUR) closes by itself once your reply has been sent.
+    closeAfterReply: false
   });
   // A shortcut is stored as its modifiers plus the physical key ("Shift+KeyP"), so it is the same key on a Greek
   // or any other keyboard layout. '' means the shortcut is off. A letter, number or symbol key needs a modifier;
@@ -1631,6 +1633,11 @@ $root #panel-urce-comments .URCE-divComment.URCE-solvedLink::before, $root #pane
 $root #panel-urce-comments .URCE-divComment.URCE-niLink::before, $root #panel-urce-comments .URCE-divComment.URCE-niLink::after { background-color: var(--wme-studio-urce-ni) !important; }
 $root #panel-urce-comments .URCE-divComment.hover:not(.URCE-blankLine):hover { background: var(--wme-studio-hover) !important; border-radius: 3px; }
 $root #panel-urce-comments .URCE-divCCLinks .URCE-Comments { color: var(--wme-studio-accent) !important; }
+/* URC-E settings: a label is an inline-block, so a label too long for the line dropped under its checkbox as a
+   whole. The checkbox now sits in the row's margin and the words wrap one by one beside it (2.0.5). */
+$root #panel-urce-settings div:has(> input[type="checkbox"][id^="_cb"]:not([id$="_useDefault"]) + label.URCE-label) { position: relative !important; padding-left: 22px !important; }
+$root #panel-urce-settings div:has(> input[type="checkbox"][id^="_cb"]:not([id$="_useDefault"]) + label.URCE-label) > input[type="checkbox"]:first-child { position: absolute !important; left: 0; top: 2px; top: calc(.5lh - 8.5px); margin: 2px !important; }
+$root #panel-urce-settings div:has(> input[type="checkbox"][id^="_cb"]:not([id$="_useDefault"]) + label.URCE-label) > label.URCE-label { display: inline !important; padding-left: 0 !important; }
 /* URC-E builds every comment entry with a fixed 225px name box (and 230px tagline boxes), so the list stays narrow
    when the panel is widened. Let the name take the free width; the double-click icon stays at the end of the row. */
 $root #panel-urce-comments .URCE-divComment { display: flex !important; align-items: center; min-width: 0; }
@@ -2758,6 +2765,8 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   display: block !important; box-sizing: border-box !important;
   width: 100% !important; min-width: 0 !important; max-width: 100% !important;
   margin-inline: 0 !important;
+  /* Scrolls after 4 lines (2.0.5). */
+  padding-block: 8px !important; max-height: calc(4lh + 16px) !important; overflow-y: auto !important;
 }
 :host-context(html[data-wme-studio="on"]):host-context(:is(.problem-edit,.place-update-edit)):host(wz-textarea.new-comment-text) { min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; }
 :host-context(html[data-wme-studio="on"]):host-context(:is(.problem-edit,.place-update-edit)):host(wz-textarea.new-comment-text) :where(.wz-textarea):is(.wz-textarea,.wz-textarea-inner-container),
@@ -3298,7 +3307,7 @@ ${studioRangeCSS(':host-context(html[data-wme-studio="on"]) input[type="range"]'
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host-context(.preferences-container) .wz-badge { font: 12px/16px var(--ws-font) !important; color: var(--wme-studio-text-secondary) !important; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.comment) .wz-list-item { padding: 5px 10px !important; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) textarea {
-  display: block; box-sizing: border-box; height: auto !important; min-height: 32px !important; max-height: 120px;
+  display: block; box-sizing: border-box; height: auto !important; min-height: 32px !important; max-height: 84px !important;   /* 4 lines */
   padding: 6px 10px !important; line-height: 18px !important; resize: none !important; field-sizing: content;
 }
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) :where(.wz-textarea):is(.wz-textarea,.wz-textarea-inner-container),
@@ -7804,6 +7813,50 @@ ${studioRangeCSS('.picker-hue')}
     globalThis.WMEStudioFume = Object.freeze({ paused: () => [...paused], values: () => ({ ...values }), options: () => [...ALL], sync });
     return Object.freeze({ sync });
   })();
+  // Close the request after replying (2.0.5): a press of the reply's send button (or Enter in the field) with text in
+  // it is remembered; once the field has emptied and the reply shows in the discussion, the request is closed. If the
+  // reply never shows up (it failed, or Enter only made a new line), nothing happens.
+  const closeAfterReply = (() => {
+    const PANEL = '.problem-edit, .place-update-edit';
+    let pending = null;
+    const fieldOf = panel => panel?.querySelector('wz-textarea.new-comment-text') || panel?.querySelector('.new-comment-form textarea');
+    const textOf = panel => { const field = fieldOf(panel); return String(field?.value ?? field?.shadowRoot?.querySelector('textarea')?.value ?? ''); };
+    const countOf = panel => panel.querySelectorAll('.comment-list > *, [data-wme-studio-comment-list] > *').length;
+    const closeOf = panel => {
+      const win = panel.closest(REQUEST_WINDOW_SELECTOR);
+      return panel.querySelector('[class*="closePanel--"]') || win?.querySelector('[aria-roledescription="draggable"] :is(wz-button,button)[aria-label="Close"]') || null;
+    };
+    function watch(entry) {
+      if (pending !== entry) return;
+      const { panel } = entry;
+      if (!panel.isConnected || performance.now() - entry.started > 12000) { pending = null; return; }
+      if (!textOf(panel).trim() && countOf(panel) > entry.count) {
+        pending = null;
+        setTimeout(() => {
+          try { if (panel.isConnected && settings.enabled && settings.closeAfterReply && !textOf(panel).trim()) closeOf(panel)?.click(); }
+          catch (error) { reportStudioError('closeAfterReply', error); }
+        }, 350);
+        return;
+      }
+      setTimeout(() => watch(entry), 200);
+    }
+    function arm(panel) {
+      if (!panel || !settings.enabled || !settings.closeAfterReply || !textOf(panel).trim()) return;
+      const entry = { panel, count: countOf(panel), started: performance.now() };
+      pending = entry;
+      setTimeout(() => watch(entry), 200);
+    }
+    document.addEventListener('click', event => {
+      const button = event.target?.closest?.('.new-comment-form :is(wz-button,button)');
+      if (button) arm(button.closest(PANEL));
+    }, true);
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+      const form = event.target?.closest?.('.new-comment-form');
+      if (form) arm(form.closest(PANEL));
+    }, true);
+    return Object.freeze({ arm });
+  })();
   const requestReveal = (() => {
     let timers = [];
     let placePanel = null, placeKey = '', placeSDK = null, placeSDKStop = null;
@@ -7934,7 +7987,11 @@ ${studioRangeCSS('.picker-hue')}
       if (first.rect.width >= 40 && (!second || area(first) >= 1.3 * area(second))) return { marker: first, why: 'enlarged marker' };
       return { marker: null, why: `no marker stands out: ${describe(sorted)}` };
     }
-    let lastShown = -Infinity, ownPanUntil = 0, movesHooked = null;
+    let lastShown = -Infinity, ownPanUntil = 0, movesHooked = null, requestClick = -Infinity, showTimer = 0, shownModel = null;
+    window.addEventListener('click', event => {
+      if (!event.target?.closest?.(REQUEST_WINDOW_SELECTOR)) return;
+      requestClick = performance.now(); hookMoves();
+    }, { capture: true, passive: true });
     const moves = [], seenPanels = new WeakSet();
     function hookMoves() {
       const map = olMap();
@@ -7945,7 +8002,22 @@ ${studioRangeCSS('.picker-hue')}
           if (performance.now() < ownPanUntil) return;
           try {
             const center = map.getCenter?.();
-            if (Number.isFinite(center?.lon) && Number.isFinite(center?.lat)) { moves.push({ time: performance.now(), lon: center.lon, lat: center.lat }); if (moves.length > 8) moves.shift(); }
+            if (Number.isFinite(center?.lon) && Number.isFinite(center?.lat)) {
+              moves.push({ time: performance.now(), lon: center.lon, lat: center.lat }); if (moves.length > 8) moves.shift();
+              // "Show on map" (or anything else in a request that moves the map): the editor flies there in several
+              // steps, so nothing is done until the map has been still for a while, and then the request's own
+              // position is used (not the map's centre, which is only where the flight happened to stop).
+              if (performance.now() - requestClick < 4000) {
+                clearTimeout(showTimer);
+                showTimer = setTimeout(() => {
+                  requestClick = -Infinity;
+                  if (pressed || requestHeaderDrag || !shownModel) return;
+                  let result;
+                  try { result = reveal(shownModel); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
+                  note('show-on-map', `after the editor moved the map: ${result}`);
+                }, 800);
+              }
+            }
           } catch (_) { /* the map is still loading */ }
         });
       } catch (error) { reportStudioError('requestReveal', error); }
@@ -7965,7 +8037,8 @@ ${studioRangeCSS('.picker-hue')}
           const id = `panel:${move.lon.toFixed(1)},${move.lat.toFixed(1)}`;
           if (done.id === id && performance.now() - done.time < 30000) { handled = true; return; }
           let result;
-          try { result = reveal({ id, getOLGeometry: () => ({ x: move.lon, y: move.lat }) }); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
+          shownModel = { id, getOLGeometry: () => ({ x: move.lon, y: move.lat }) };
+          try { result = reveal(shownModel); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
           note(id, `centred by the editor: ${result}`);
           if (result.startsWith('moved')) { done = { id, time: performance.now() }; handled = true; }
           return;
@@ -8060,6 +8133,7 @@ ${studioRangeCSS('.picker-hue')}
         let id = '';
         try { id = String(model?.getID?.() ?? model?.id ?? model?.attributes?.id ?? ''); } catch (_) { id = ''; }
         if (!id.startsWith('placeUpdateRequest:')) lastShown = performance.now();
+        shownModel = model;
         hookMoves();
         for (const timer of timers) clearTimeout(timer);
         timers = [];
@@ -17444,12 +17518,31 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.0.5-2026-10-19';
+  const STUDIO_BUILD = '2.1.0-2026-10-20';
   const STUDIO_CHANGELOG = Object.freeze([
-    { version: '2.0.5', items: [
-      'Settings › Map › Menus: the + menu can open on click only, instead of when the pointer passes over it.',
-      'Arrange: select the Search box in the header to give it the width you like.',
-      'Right-click menu: Copy coordinates is there with a segment or place selected too.'
+    // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '2.1.0', groups: [
+      { title: 'Requests', items: [
+        'Show on map moves the map so the request is not hidden under the panel.',
+        'New setting: close the request after replying (Settings › Panels › Requests).',
+        'The reply box stays at the bottom of the window, and folding Discussion makes the window shorter.',
+        'The reply field scrolls after 4 lines.'
+      ] },
+      { title: 'Fixes', items: [
+        'Folding Discussion with its arrow works again.',
+        'Even space above and below the reply field, also with URC-E Shortcuts.',
+        'Report a bug: the note under Add images or a video is no longer cut off.'
+      ] }
+    ] },
+    { version: '2.0.5', groups: [
+      { title: 'Map', items: [
+        'The + menu can open on click only, instead of when the pointer passes over it (Settings › Map › Menus).',
+        'Arrange: select the Search box in the header to give it the width you like.',
+        'Right-click menu: Copy coordinates is there with a segment or place selected too.'
+      ] },
+      { title: 'Report a bug', items: [
+        'Attach up to 4 images and an MP4 video.'
+      ] }
     ] },
     { version: '2.0.4', items: [
       'URO+ hover popups and alerts follow your theme instead of staying white.',
@@ -17495,14 +17588,13 @@ ${studioControlsCSS()}
   function markChangelogSeen() {
     try { Promise.resolve(studioKeep.set(CHANGELOG_KEY, STUDIO_BUILD)).catch(studioError => reportStudioError('markChangelogSeen', studioError)); } catch (studioError) { reportStudioError('markChangelogSeen', studioError); }
   }
-  // Once the setup and tour state are known: a fresh install gets the setup, a new feature release the tour, and
-  // any other update this card, once.
+  // Once the setup and tour state are known: a fresh install gets the setup, and every update this card, once.
   async function maybeShowChangelog() {
     if (changelogStarted || setupSeen === null || tourSeen === null || !uiRouteAllowed() || window.top !== window.self) return;
     changelogStarted = true;
     const seen = await Promise.resolve(studioKeep.get(CHANGELOG_KEY, '')).catch(() => STUDIO_BUILD);
     if (seen === STUDIO_BUILD) return;
-    if (setupSeen === false || tourDue()) { markChangelogSeen(); return; }
+    if (setupSeen === false) { markChangelogSeen(); return; }
     await new Promise(ok => { const go = () => setTimeout(ok, 3500); if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true }); });
     if (document.visibilityState !== 'visible') await new Promise(ok => document.addEventListener('visibilitychange', function shown() { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', shown); ok(); } }));
     const value = await globalThis.WMEStudioSettings.read().catch(() => null);
@@ -17776,9 +17868,15 @@ ${studioControlsCSS()}
   .bug-option[aria-selected="true"]{font-weight:700}.bug-option[aria-selected="true"]::before{content:"\\2713"}
   .bug-option:hover,.bug-option:focus-visible{background:var(--surface2);outline:none}
   .bug-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:520px){.bug-two{grid-template-columns:1fr}}
-  .bug-shot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.bug-shot-name{color:var(--muted);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .bug-shot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.bug-shot-name{color:var(--muted);font-size:12px;line-height:1.4;min-width:160px;white-space:normal;overflow-wrap:anywhere;flex:1 1 0}
   .bug-shot-clear{width:26px;height:26px;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--muted);font-size:12px}
   .bug-preview{max-width:100%;max-height:160px;border:1px solid var(--line);border-radius:10px;object-fit:contain;background:var(--surface2);align-self:flex-start}
+  .bug-thumbs{display:flex;flex-wrap:wrap;gap:8px}
+  .bug-thumb{position:relative;width:92px;height:68px;margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface2)}
+  .bug-thumb img,.bug-thumb video{display:block;width:100%;height:100%;object-fit:cover}
+  .bug-thumb-remove{position:absolute;top:4px;right:4px;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:#000000a6;color:#fff;font-size:10px;line-height:20px;cursor:pointer}
+  .bug-thumb-remove:hover{background:#000000d9}
+  .bug-thumb-tag{position:absolute;left:4px;bottom:4px;padding:1px 6px;border-radius:6px;background:#000000a6;color:#fff;font:600 10px/14px var(--ws-font,system-ui,sans-serif);pointer-events:none}
   .bug-details summary{cursor:pointer;color:var(--muted);font-size:12px}.bug-details pre{margin:8px 0 0;max-height:160px;overflow:auto;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
   .bug-error{margin:0;padding:8px 10px;border-radius:10px;background:rgba(255,107,107,.14);color:#ff6b6b;font-size:12px}
   .bug-foot{display:flex;align-items:center;gap:8px;padding:12px 20px 18px}.bug-note{flex:1;color:var(--muted);font-size:11.5px;min-width:0}
@@ -17805,8 +17903,11 @@ ${studioControlsCSS()}
   @keyframes notice-pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
   html[data-wme-studio-motion="reduced"] .fix-notice,:host-context(html[data-wme-studio-motion="reduced"]) .fix-notice{animation:none}
   .log-version{display:block;margin-top:1px;color:var(--muted);font-size:11.5px}
-  .log-list{display:flex;flex-direction:column;gap:5px;max-height:min(42vh,340px);overflow:auto;margin:8px 0 0;padding:0 4px 0 16px;color:var(--text);font-size:12.5px;line-height:1.4;scrollbar-width:thin}
+  .log-list{display:flex;flex-direction:column;gap:10px;max-height:min(46vh,380px);overflow:auto;margin:10px 0 0;padding:0 4px 0 0;color:var(--text);font-size:12.5px;line-height:1.4;scrollbar-width:thin}
+  .log-list ul{display:flex;flex-direction:column;gap:5px;margin:0;padding-left:16px}
   .log-list li::marker{color:var(--accent)}
+  .log-group h5{margin:0 0 4px;color:var(--muted);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .log-release .log-group + .log-group{margin-top:8px}
   .log-body{gap:16px;padding-bottom:16px}.log-release h4{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;font-size:13.5px}.log-release h4 span{padding:1px 7px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:10.5px;font-weight:700}
   .log-release ul{display:flex;flex-direction:column;gap:5px;margin:0;padding-left:18px;font-size:12.5px;line-height:1.45}.log-release li::marker{color:var(--accent)}
   .mine-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
@@ -17922,6 +18023,7 @@ ${studioControlsCSS()}
       <section class="settings-page" id="studio-page-panels" data-page="panels" role="tabpanel" aria-labelledby="studio-tab-panels" hidden><fieldset data-preferences>
         <div class="group"><h3 class="section-label">Requests</h3><div class="card rows">
           <label class="srow togrow"><span class="srow-text"><strong>Compact request panel</strong><span class="small">Use a shorter window for update requests and place update requests. Works with either workspace mode.</span></span><span class="switch"><input data-id="compactRequests" type="checkbox"><i></i></span></label>
+          <label class="srow togrow" data-row="closeAfterReply"><span class="srow-text"><strong>Close the request after replying</strong><span class="small">Once your reply has been sent, the request window closes by itself.</span></span><span class="switch"><input data-id="closeAfterReply" type="checkbox"><i></i></span></label>
           <div class="srow"><div class="srow-text"><strong>Visible discussion messages</strong><span class="small">Messages shown before the discussion becomes scrollable, in either request layout.</span></div><input data-id="discussionVisible" type="range" min="1" max="10" step="1" value="2" aria-label="Messages shown before the discussion scrolls"><span class="value" data-id="discussionVisible-value">2</span></div>
         </div></div>
         <div class="group"><h3 class="section-label">Size and columns</h3><div class="card rows">
@@ -18145,9 +18247,8 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         <label class="bug-field"><span>Another way to reach you <small>(optional)</small></span><input data-id="bug-contact" type="text" maxlength="120" placeholder="Forum name or email"></label>
       </div>
       <label class="bug-field"><span>Steps to see it again <small>(optional)</small></span><textarea data-id="bug-steps" rows="2" maxlength="2000" placeholder="1. Open Arrange  2. …"></textarea></label>
-      <div class="bug-shot"><button class="reset" type="button" data-id="bug-shot-pick">Add a screenshot or video</button><input data-id="bug-shot-file" type="file" accept="image/*,video/mp4,.mp4" hidden><span class="bug-shot-name" data-id="bug-shot-name">Optional. You can also paste or drop an image or an MP4 video here.</span><button class="bug-shot-clear" type="button" data-id="bug-shot-clear" hidden aria-label="Remove screenshot">✕</button></div>
-      <img class="bug-preview" data-id="bug-preview" alt="" hidden>
-      <video class="bug-preview" data-id="bug-video" controls muted playsinline preload="metadata" hidden></video>
+      <div class="bug-shot"><button class="reset" type="button" data-id="bug-shot-pick">Add images or a video</button><input data-id="bug-shot-file" type="file" accept="image/*,video/mp4,.mp4" multiple hidden><span class="bug-shot-name" data-id="bug-shot-name">Optional: up to 4 images and 1 MP4 video. You can also paste or drop them here.</span><button class="bug-shot-clear" type="button" data-id="bug-shot-clear" hidden aria-label="Remove all attachments">✕</button></div>
+      <div class="bug-thumbs" data-id="bug-thumbs" hidden></div>
       <details class="bug-details"><summary>What else is sent</summary><pre data-id="bug-diag"></pre></details>
       <p class="bug-error" data-id="bug-error" role="alert" hidden></p>
     </div>
@@ -18162,7 +18263,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
 </div>
 <div class="fix-notice log-notice" data-id="log-notice" role="status" aria-live="polite" hidden>
   <div class="fix-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg></div>
-  <div class="fix-text"><strong>What's changed</strong><span class="log-version" data-id="log-version" data-ws-keep></span><ul class="log-list" data-id="log-list"></ul></div>
+  <div class="fix-text"><strong>What's changed</strong><span class="log-version" data-id="log-version" data-ws-keep></span><div class="log-list" data-id="log-list"></div></div>
   <div class="fix-actions"><button class="reset" type="button" data-id="log-all">See all changes</button><button class="reset primary" type="button" data-id="log-ok">Got it</button></div>
 </div>
 <div class="bug-backdrop" data-id="log-backdrop" hidden>
@@ -18506,7 +18607,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       }
       if (currentRead) globalThis.WMEStudioI18n.setLanguage(current.language);
       paintShortcut();
-      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick']) q(`[data-id="${key}"]`).checked = current[key];
+      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick','closeAfterReply']) q(`[data-id="${key}"]`).checked = current[key];
       paintSchedule();
       fieldsets.forEach(fieldset => { fieldset.disabled = !current.enabled || profilesBusy; });
       qa('input[name="workspace-mode"]').forEach(input => { input.checked = (input.value === 'compact') === current.compactMode; });
@@ -18894,7 +18995,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     q('[data-id="preset-undo"]').addEventListener('click',undoPreset);
     arrangeViewport.addEventListener('change',()=>{if(studioPanelOpen)render();});
     qa('[data-setting]').forEach(button => button.addEventListener('click', () => change(settingPatch(button.dataset.setting, button.dataset.value), true)));
-    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
+    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick','closeAfterReply']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
     qa('[data-time]').forEach(input => input.addEventListener('change', () => { if (/^\d\d:\d\d$/.test(input.value)) change({ [input.dataset.time]: input.value }); else paintSchedule(); }));
     setInterval(() => { if (studioPanelOpen) paintSchedule(); }, 30000);
     qa('input[name="workspace-mode"]').forEach(input => input.addEventListener('change', e => {
@@ -18969,7 +19070,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       shotClear: q('[data-id="bug-shot-clear"]'), preview: q('[data-id="bug-preview"]'), diag: q('[data-id="bug-diag"]'), error: q('[data-id="bug-error"]'),
       note: q('[data-id="bug-note"]'), send: q('[data-id="bug-send"]'), done: q('[data-id="bug-done"]'), doneText: q('[data-id="bug-done-text"]'),
       as: q('[data-id="bug-as"]'), asText: q('[data-id="bug-as-text"]'),
-      video: q('[data-id="bug-video"]'), clip: null, clipUrl: '',
+      thumbs: q('[data-id="bug-thumbs"]'), shots: [], pending: 0, clip: null, clipUrl: '',
       screenshot: null, sending: false, opener: null
     };
     // The editor account's user name: the author can then tell the person, inside the editor, when a report is fixed.
@@ -19056,56 +19157,92 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       bug.what.value = ''; bug.steps.value = ''; bug.contact.value = ''; bug.category.value = '';
       clearScreenshot();
     }
+    // Attachments (2.0.5): up to BUG_IMAGES_MAX images and one MP4 video. Images are shrunk in the browser (at most
+    // 1600px, about 300 KB each) and go with the report; the video is uploaded on its own afterwards, so a slow upload
+    // never holds the report back.
+    const BUG_IMAGES_MAX = 4, BUG_VIDEO_MAX = 25 * 1024 * 1024;
+    const isBugVideo = file => Boolean(file) && (file.type === 'video/mp4' || (!file.type && /\.mp4$/i.test(file.name || '')));
+    function renderAttachments() {
+      const nodes = [];
+      const remove = (label, run) => {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'bug-thumb-remove';
+        button.textContent = '✕'; button.setAttribute('aria-label', label); button.addEventListener('click', run);
+        return button;
+      };
+      bug.shots.forEach((shot, index) => {
+        const figure = document.createElement('figure'); figure.className = 'bug-thumb';
+        const image = document.createElement('img'); image.src = shot.data; image.alt = shot.name;
+        figure.append(image, remove(translate('Remove'), () => { bug.shots.splice(index, 1); renderAttachments(); }));
+        nodes.push(figure);
+      });
+      if (bug.clip) {
+        const figure = document.createElement('figure'); figure.className = 'bug-thumb video';
+        const video = document.createElement('video'); video.muted = true; video.playsInline = true; video.preload = 'metadata';
+        video.onerror = () => video.remove();   // no preview (a page policy may block it); the file still goes
+        if (bug.clipUrl) video.src = bug.clipUrl;
+        const tag = document.createElement('span'); tag.className = 'bug-thumb-tag'; tag.textContent = `MP4 · ${(bug.clip.size / 1048576).toFixed(1)} MB`;
+        figure.append(video, tag, remove(translate('Remove'), () => { clearVideo(); renderAttachments(); }));
+        nodes.push(figure);
+      }
+      bug.thumbs.replaceChildren(...nodes);
+      bug.thumbs.hidden = !nodes.length;
+      bug.shotClear.hidden = !nodes.length;
+      const parts = [];
+      if (bug.shots.length) parts.push(`${translate('Images')} ${bug.shots.length}/${BUG_IMAGES_MAX}`);
+      if (bug.clip) parts.push(translate('Video'));
+      bug.shotName.textContent = parts.length ? parts.join(' · ') : translate('Optional: up to 4 images and 1 MP4 video. You can also paste or drop them here.');
+    }
     function clearVideo() {
       bug.clip = null;
       if (bug.clipUrl) { URL.revokeObjectURL(bug.clipUrl); bug.clipUrl = ''; }
-      bug.video.hidden = true; bug.video.removeAttribute('src'); try { bug.video.load(); } catch (_) { /* nothing loaded */ }
     }
-    function clearScreenshot() {
-      bug.screenshot = null; bug.file.value = '';
-      bug.preview.hidden = true; bug.preview.removeAttribute('src');
+    function clearScreenshot() {   // every attachment
+      bug.shots = []; bug.file.value = '';
       clearVideo();
-      bug.shotClear.hidden = true; bug.shotName.textContent = translate('Optional. You can also paste or drop an image or an MP4 video here.');
+      renderAttachments();
     }
-    // A video (2.0.4) goes as it is: MP4 only, up to BUG_VIDEO_MAX. It is uploaded on its own after the report,
-    // so a slow upload never holds the report back. One attachment at a time: a video replaces a screenshot.
-    const BUG_VIDEO_MAX = 25 * 1024 * 1024;
-    const isBugVideo = file => Boolean(file) && (file.type === 'video/mp4' || (!file.type && /\.mp4$/i.test(file.name || '')));
     function loadVideo(file) {
-      if (file.size > BUG_VIDEO_MAX) { showBugError(translate('Videos must be MP4 files of up to 25 MB.')); bug.file.value = ''; return; }
-      showBugError('');
-      bug.screenshot = null; bug.preview.hidden = true; bug.preview.removeAttribute('src');
-      clearVideo();
+      if (file.size > BUG_VIDEO_MAX) { showBugError(translate('Videos must be MP4 files of up to 25 MB.')); return; }
+      clearVideo();   // one video: a new one takes the place of the old
       bug.clip = file;
-      try {
-        bug.clipUrl = URL.createObjectURL(file);
-        bug.video.onerror = () => { bug.video.hidden = true; };   // no preview (a page policy may block it); the file still goes
-        bug.video.src = bug.clipUrl; bug.video.hidden = false;
-      } catch (_) { bug.video.hidden = true; }
-      bug.shotClear.hidden = false;
-      bug.shotName.textContent = `${file.name || 'video.mp4'} · ${(file.size / 1048576).toFixed(1)} MB`;
+      try { bug.clipUrl = URL.createObjectURL(file); } catch (_) { bug.clipUrl = ''; }
+      renderAttachments();
     }
-    // A screenshot is shrunk to at most 1600px and about 300 KB in the browser before it is sent.
-    function loadScreenshot(file) {
-      if (isBugVideo(file)) { loadVideo(file); return; }
-      if (file && /^video\//.test(file.type)) { showBugError(translate('Videos must be MP4 files of up to 25 MB.')); bug.file.value = ''; return; }
-      if (!file || !/^image\//.test(file.type)) return;
-      const url = URL.createObjectURL(file), image = new Image();
-      image.onload = () => {
-        URL.revokeObjectURL(url);
-        const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(image.naturalWidth * scale); canvas.height = Math.round(image.naturalHeight * scale);
-        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-        let quality = .85, data = canvas.toDataURL('image/jpeg', quality);
-        while (data.length > 420000 && quality > .4) { quality -= .1; data = canvas.toDataURL('image/jpeg', quality); }
-        clearVideo();
-        bug.screenshot = data;
-        bug.preview.src = data; bug.preview.hidden = false; bug.shotClear.hidden = false;
-        bug.shotName.textContent = `${file.name || 'screenshot'} · ${Math.round(data.length * 3 / 4 / 1024)} KB`;
-      };
-      image.onerror = () => { URL.revokeObjectURL(url); showBugError(translate('That image could not be read.')); };
-      image.src = url;
+    function shrinkImage(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file), image = new Image();
+        image.onload = () => {
+          URL.revokeObjectURL(url);
+          const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(image.naturalWidth * scale); canvas.height = Math.round(image.naturalHeight * scale);
+          canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+          let quality = .85, data = canvas.toDataURL('image/jpeg', quality);
+          while (data.length > 420000 && quality > .4) { quality -= .1; data = canvas.toDataURL('image/jpeg', quality); }
+          resolve(data);
+        };
+        image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('unreadable')); };
+        image.src = url;
+      });
+    }
+    // Files picked, pasted or dropped, several at once: images up to the limit, and a video.
+    async function loadScreenshot(files) {
+      const list = (files?.length !== undefined ? [...files] : [files]).filter(Boolean);
+      let refused = false;
+      showBugError('');
+      for (const file of list) {
+        if (isBugVideo(file)) { loadVideo(file); continue; }
+        if (/^video\//.test(file.type)) { showBugError(translate('Videos must be MP4 files of up to 25 MB.')); continue; }
+        if (!/^image\//.test(file.type)) continue;
+        if (bug.shots.length + bug.pending >= BUG_IMAGES_MAX) { refused = true; continue; }
+        bug.pending += 1;
+        try { bug.shots.push({ data: await shrinkImage(file), name: file.name || 'screenshot' }); }
+        catch (_) { showBugError(translate('That image could not be read.')); }
+        finally { bug.pending -= 1; }
+        renderAttachments();
+      }
+      if (refused) showBugError(translate('Up to 4 images can be attached.'));
+      bug.file.value = '';
     }
     function bugApi(method, path, payload) {
       return new Promise((resolve, reject) => {
@@ -19168,7 +19305,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       bug.sending = true; bug.send.disabled = true; bug.send.textContent = translate('Sending…');
       try {
         const result = await bugApi('POST', '/api/report', { report: text, version: USERSCRIPT_VERSION, editor: `${location.hostname}${location.pathname}`, browser: navigator.userAgent,
-          summary: what.slice(0, 200), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.category.value, screenshot: bug.screenshot || '' });
+          summary: what.slice(0, 200), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.category.value, screenshot: bug.shots[0]?.data || '', screenshots: bug.shots.map(shot => shot.data) });
         let doneText = (result.id ? translate('Your report #{0} was sent to the author of WME Studio.') : translate('Your report was sent to the author of WME Studio.')).replace('{0}', String(result.id || ''));
         if (bug.clip) {
           bug.send.textContent = translate('Uploading video…');
@@ -19341,6 +19478,17 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     function changelogItems(list, items) {
       list.replaceChildren(...items.map(text => Object.assign(document.createElement('li'), { textContent: text })));
     }
+    // A release's changes: under a small heading per group when the release has groups, else one list.
+    function changelogRelease(release) {
+      const groups = release.groups || [{ title: '', items: release.items || [] }];
+      return groups.map(group => {
+        const box = document.createElement('div'); box.className = 'log-group';
+        if (group.title) box.append(Object.assign(document.createElement('h5'), { textContent: group.title }));
+        const list = document.createElement('ul'); changelogItems(list, group.items);
+        box.append(list);
+        return box;
+      });
+    }
     // Centred down the screen on a whole pixel (offsetHeight ignores the entrance's scale).
     function placeChangelog() {
       if (log.box.hidden) { removeEventListener('resize', placeChangelog); return; }
@@ -19351,7 +19499,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       if (mode === 'new') {
         const release = STUDIO_CHANGELOG[0];
         log.version.textContent = `WME Studio ${USERSCRIPT_VERSION}`;
-        changelogItems(log.list, release.items);
+        log.list.replaceChildren(...changelogRelease(release));
         log.box.hidden = false;
         placeChangelog();
         return;
@@ -19362,8 +19510,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         const title = document.createElement('h4'), number = document.createElement('b');
         number.textContent = release.version; number.setAttribute('data-ws-keep', ''); title.append(number);
         if (index === 0 && release.version === USERSCRIPT_VERSION) title.append(Object.assign(document.createElement('span'), { textContent: translate('This version') }));
-        const list = document.createElement('ul'); changelogItems(list, release.items);
-        section.append(title, list);
+        section.append(title, ...changelogRelease(release));
         return section;
       }));
       log.opener = shadow.activeElement;
@@ -19402,11 +19549,14 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     bug.form.addEventListener('submit', event => { event.preventDefault(); submitBugReport(); });
     bug.what.addEventListener('input', () => { if (bug.what.value.trim().length >= 5) { bug.what.closest('.bug-field').classList.remove('invalid'); showBugError(''); } });
     q('[data-id="bug-shot-pick"]').addEventListener('click', () => bug.file.click());
-    bug.file.addEventListener('change', () => loadScreenshot(bug.file.files?.[0]));
+    bug.file.addEventListener('change', () => loadScreenshot(bug.file.files));
     bug.shotClear.addEventListener('click', clearScreenshot);
-    bug.form.addEventListener('paste', event => { const item = [...(event.clipboardData?.items || [])].find(entry => entry.kind === 'file' && (entry.type.startsWith('image/') || entry.type === 'video/mp4')); if (item) { event.preventDefault(); loadScreenshot(item.getAsFile()); } });
+    bug.form.addEventListener('paste', event => {
+      const files = [...(event.clipboardData?.items || [])].filter(entry => entry.kind === 'file' && (entry.type.startsWith('image/') || entry.type === 'video/mp4')).map(entry => entry.getAsFile()).filter(Boolean);
+      if (files.length) { event.preventDefault(); loadScreenshot(files); }
+    });
     bug.form.addEventListener('dragover', event => { event.preventDefault(); });
-    bug.form.addEventListener('drop', event => { event.preventDefault(); loadScreenshot(event.dataTransfer?.files?.[0]); });
+    bug.form.addEventListener('drop', event => { event.preventDefault(); loadScreenshot(event.dataTransfer?.files); });
     languageButton.addEventListener('click', () => setLanguageMenu(languageMenu.hidden));
     languageMenu.addEventListener('click', event => {
       const option = event.target.closest('.language-option');
@@ -19541,7 +19691,7 @@ ${studioControlsCSS()}
           setting('Presets','layout','preset-current','starting layout balanced left-handed review desk wide header'),setting('Header width','layout','compactHeaderWidth','floating header extend full page'),setting('HUD size','layout','hudScale','floating scale islands header'),
           setting('Accent colour','look','accent','color highlight custom'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','look','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','look','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
           setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Open the + menu on click','map','createMenuClick','plus add create hover click menu roads places'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),
-          setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
+          setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
           setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script authors','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
           {label:translate('Arrange layout'),category:'Workspace',keywords:'move position panels islands controls hide split custom island buttons',disabled:!prefs.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches,run:async()=>{await cfg.write({compactMode:true});globalThis.WMEStudioCompactLayout.open();}},
           ...[['Standard',false],['Floating compact',true]].map(([label,value])=>({label:translate(label),category:'Workspace',keywords:'workspace mode layout',disabled:!prefs.enabled,run:()=>cfg.write({compactMode:value})})),
@@ -20996,7 +21146,7 @@ ${studioSetupShellCSS()}
     buildStudioTour()?.open();
   }
   globalThis.WMEStudioTour = Object.freeze({ open: openStudioTour });
-  // Editors who already ran the setup get the tour once per version; a fresh install sees the setup instead.
+  // The tour is opened from Settings; updates show the What's changed card instead (see maybeStartTour).
   const tourParts = value => String(value || '').split('.').map(part => parseInt(part, 10) || 0);
   function tourDue() {   // the installed version is newer than the one last toured (a reinstall of an older one shows nothing)
     if (tourSeen === null) return false;
@@ -21005,16 +21155,12 @@ ${studioSetupShellCSS()}
     for (let i = 0; i < Math.max(now.length, seen.length); i += 1) { if ((now[i] || 0) !== (seen[i] || 0)) return (now[i] || 0) > (seen[i] || 0); }
     return false;
   }
+  // An update no longer opens the tour by itself (2.1.0): the What's changed card tells what is new, and the tour
+  // stays in Settings for anyone who wants it. The version is only marked as toured.
   function maybeStartTour() {
-    if (tourStarted || !tourDue() || setupSeen !== true || !uiRouteAllowed() || window.top !== window.self) return;
-    if (!document.getElementById('app-head') || !document.querySelector('.overlay-buttons-container,#overlay-buttons')) return;
+    if (tourStarted || !tourDue() || setupSeen !== true) return;
     tourStarted = true;
-    const settled = new Promise(ok => { const go = () => setTimeout(ok, 2500); if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true }); });
-    Promise.all([globalThis.WMEStudioSettings.read(), settled]).then(([value]) => {
-      if (!value.enabled || !tourDue() || studioSetup?.isOpen?.()) return;
-      const visible = document.visibilityState === 'visible' ? Promise.resolve() : new Promise(ok => document.addEventListener('visibilitychange', function shown() { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', shown); ok(); } }));
-      visible.then(() => { if (!document.documentElement.hasAttribute('data-wme-studio-layout-editing')) buildStudioTour()?.open(); }).catch((studioError) => { reportStudioError("maybeStartTour",studioError);});
-    }).catch((studioError) => { reportStudioError("maybeStartTour",studioError);});
+    markTourSeen();
   }
   function playStudioIntro(value) {
     const preview = globalThis.WMEStudioPreview;
@@ -21522,20 +21668,71 @@ ${studioControlsCSS()}
     const LIST = '.problem-edit .comment-list';
     const settingsApi = globalThis.WMEStudioSettings;
     let visible = settingsApi?.defaults?.discussionVisible ?? 2;
+    // The messages' list is whatever element holds the messages (2.0.5): WME's class names for the list and for a
+    // message are not relied on. A message is a .comment or a wz-list-item of the request's discussion; the element
+    // holding them is the list. Each list found is marked, and the stylesheet limits marked lists.
+    const COMMENT_ITEM = '.comment, wz-list-item';
+    const commentItems = list => [...list.children].filter(node => node.matches?.(COMMENT_ITEM));
+    let commentListMissing = false;
+    // When the messages get less room (the reply box growing as you type), the newest messages stay in view: the list
+    // keeps its bottom where it was instead of its top, so the box pushes the messages up rather than covering them.
+    const listHeights = new WeakMap();
+    const listKeeper = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
+      for (const { target } of entries) {
+        const before = listHeights.get(target), now = target.clientHeight;
+        if (before && now < before) target.scrollTop += before - now;
+        listHeights.set(target, now);
+      }
+    }) : null;
+    const commentLists = () => {
+      const lists = new Set();
+      for (const panel of document.querySelectorAll('.problem-edit')) {
+        const found = panel.querySelectorAll('.comment-list > *, :is(.conversation, .conversation-view) :is(.comment, wz-list-item)');
+        for (const item of found) {
+          if (!item.matches(COMMENT_ITEM)) continue;
+          const list = item.parentElement;
+          if (!list || list.matches(COMMENT_ITEM) || list.closest('.new-comment-form')) continue;
+          lists.add(list);
+        }
+        // Said once in the console when a discussion with messages shows but no list was found, with the shape of the
+        // discussion, so the cause can be seen from a report.
+        const section = panel.querySelector('.conversation, .conversation-view');
+        if (!found.length && section && !commentListMissing && section.textContent.trim().length > 40) {
+          commentListMissing = true;
+          const shape = (node, depth) => depth > 3 ? '' : [...node.children].slice(0, 4).map(child => `${child.localName}${child.classList.length ? '.' + [...child.classList].join('.') : ''}${child.children.length ? ' > [' + shape(child, depth + 1) + ']' : ''}`).join(', ');
+          console.info('[WME Studio] Visible discussion messages: no message list found in', shape(section, 0));
+        }
+      }
+      for (const list of lists) {
+        if (!list.hasAttribute('data-wme-studio-comment-list')) list.setAttribute('data-wme-studio-comment-list', 'on');
+        listKeeper?.observe(list);
+      }
+      return lists;
+    };
     const fit = list => {
       try {
-        const items = list.querySelectorAll(':scope > .comment');
-        if (items.length <= visible) { if (list.style.getPropertyValue('--ws-ur-list-max')) list.style.removeProperty('--ws-ur-list-max'); return; }
+        const items = commentItems(list);
+        // The limit is written on the list itself (2.0.5), so no stylesheet rule can switch it off: a rule for request
+        // windows sized by hand did exactly that, and it also works whichever Resources library is loaded.
+        const clear = () => {
+          for (const name of ['--ws-ur-list-max', 'max-height', 'overflow-y', 'overscroll-behavior']) if (list.style.getPropertyValue(name)) list.style.removeProperty(name);
+        };
+        if (items.length <= visible) { clear(); return; }
         const height = Math.ceil(items[visible - 1].getBoundingClientRect().bottom - items[0].getBoundingClientRect().top);
         const value = Math.ceil(height / (list.currentCSSZoom || 1)) + 'px';
-        if (height > 0 && list.style.getPropertyValue('--ws-ur-list-max') !== value) list.style.setProperty('--ws-ur-list-max', value);
+        if (!(height > 0)) return;
+        if (list.style.getPropertyValue('--ws-ur-list-max') !== value) list.style.setProperty('--ws-ur-list-max', value);
+        if (list.style.getPropertyValue('max-height') !== value || list.style.getPropertyPriority('max-height') !== 'important') list.style.setProperty('max-height', value, 'important');
+        if (list.style.getPropertyValue('overflow-y') !== 'auto') list.style.setProperty('overflow-y', 'auto', 'important');
+        // Scrolling the messages stays in the messages: reaching their end no longer starts scrolling the whole request.
+        if (list.style.getPropertyValue('overscroll-behavior') !== 'contain') list.style.setProperty('overscroll-behavior', 'contain');
       } catch (_) { reportStudioError("fit",_);}
     };
     const observedComments = new Set();
     const resize = typeof ResizeObserver === 'function'
       ? new ResizeObserver(entries => {
           const lists = new Set();
-          for (const entry of entries) { const list = entry.target.closest?.('.comment-list'); if (list) lists.add(list); }
+          for (const entry of entries) { const list = entry.target.parentElement?.closest?.('[data-wme-studio-comment-list],.comment-list'); if (list) lists.add(list); }
           lists.forEach(fit);
         })
       : null;
@@ -21588,11 +21785,14 @@ ${studioControlsCSS()}
     const pins = new Map();   // panel -> {wrap, card, label, text, scroller, description}
     let pinStyle = null;
     const PIN_CSS = `
-      .ws-ur-pin { position: sticky; top: 0; z-index: 4; display: block; height: 0; margin: 0; padding: 0; pointer-events: none; }
+      .ws-ur-pin { position: sticky; top: 0; z-index: 40; isolation: isolate; display: block; height: 0; margin: 0; padding: 0; pointer-events: none; }
       .ws-ur-pin > button {
         position: absolute; left: 0; right: 0; top: 0; display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 8px var(--ws-pad, 14px) 9px;
         border: 0; border-bottom: 1px solid var(--wme-studio-border, #d5d7db); border-radius: 0 0 12px 12px; text-align: start; cursor: pointer;
-        background: var(--wme-studio-surface, #fff); color: var(--wme-studio-text, #202830); box-shadow: 0 8px 18px -10px #00000059;
+        background: var(--wme-studio-surface, #fff); color: var(--wme-studio-text, #202830);
+        /* The first shadow is a solid strip of the window's colour above the card: where the window keeps some room
+           above the scrolling part, text passing under the card showed through there and ran into the card (2.0.5). */
+        box-shadow: 0 -40px 0 0 var(--wme-studio-surface, #fff), 0 8px 18px -10px #00000059;
         font: 13px/18px var(--ws-font, system-ui, sans-serif); pointer-events: auto;
         opacity: 0; visibility: hidden; transform: translateY(-6px); transition: opacity 160ms ease, transform 180ms ease, visibility 0s linear 180ms;
       }
@@ -21601,8 +21801,18 @@ ${studioControlsCSS()}
       .ws-ur-pin > button:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: -2px; }
       .ws-ur-pin b { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; font: 600 11px/16px var(--ws-font, system-ui, sans-serif); letter-spacing: .06em; text-transform: uppercase; color: var(--wme-studio-text-secondary, #57616d); }
       .ws-ur-pin b::after { content: ""; width: 7px; height: 7px; margin-inline-start: auto; border: solid currentColor; border-width: 1.6px 1.6px 0 0; transform: translateY(2px) rotate(-45deg); opacity: .7; }
-      .ws-ur-pin span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; white-space: pre-line; }
-      .ws-ur-pin > button:hover span { -webkit-line-clamp: 12; }
+      /* The card's own text, kept in the card: the request window's styles for its spans took this one out of the
+         card's layout, so the card was only as tall as its title and the text ran into the messages below (2.0.5). */
+      .ws-ur-pin > button > span {
+        display: -webkit-box !important; -webkit-box-orient: vertical !important; -webkit-line-clamp: 3; max-height: 54px;
+        position: static !important; float: none !important; inset: auto !important; transform: none !important;
+        width: auto !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important;
+        overflow: hidden !important; overflow-wrap: anywhere; white-space: pre-line !important;
+        font: 13px/18px var(--ws-font, system-ui, sans-serif) !important; color: inherit !important; background: none !important;
+      }
+      .ws-ur-pin > button:hover > span { -webkit-line-clamp: 12; max-height: 216px; }
+      .ws-ur-pin > button > b { position: static !important; float: none !important; height: auto !important; }
+      .ws-ur-pin > button { display: block !important; height: auto !important; min-height: 0 !important; max-height: none !important; }
       html[data-wme-studio-motion="reduced"] .ws-ur-pin > button { transition: none; }
       html:not([data-wme-studio="on"]) .ws-ur-pin { display: none !important; }`;
     const scrollerOf = (node, stop) => {
@@ -21659,15 +21869,170 @@ ${studioControlsCSS()}
         state.onScroll();
       } catch (_) { reportStudioError('pinDescription', _); }
     };
+    // The reply box sits at the bottom of the request all the time (2.0.5): at the very bottom when the request is
+    // short, and stuck there while you scroll when it is long, edge to edge. Every box between it and the request's
+    // scrolling area becomes a column that fills the free height, so the reply box can be pushed to the bottom; boxes
+    // that cut off their content (WME's open sections) are let through, so the stickiness reaches the scrolling area.
+    let replyStyle = null;
+    const REPLY_CSS = `
+      html[data-wme-studio="on"] [data-wme-studio-reply-scroller] {
+        display: flex !important; flex-direction: column !important; overflow-anchor: none !important; overflow-x: hidden !important;
+        padding-bottom: 0 !important;
+      }
+      html[data-wme-studio="on"] [data-wme-studio-reply-scroller] > * { flex: 0 0 auto; }
+      /* The request itself does not scroll: the column down to the messages may shrink, and the messages take what is
+         left and scroll on their own (still no taller than "Visible discussion messages" allows). */
+      html[data-wme-studio="on"] [data-wme-studio-reply-path] {
+        display: flex !important; flex-direction: column !important; align-items: stretch !important; flex: 1 1 auto !important; min-height: 0 !important;
+        padding-bottom: 0 !important; margin-bottom: 0 !important;   /* nothing between the reply box and the bottom edge */
+      }
+      html[data-wme-studio="on"] [data-wme-studio-reply-path] > * { flex-shrink: 0; }
+      html[data-wme-studio="on"] [data-wme-studio-reply-path] > [data-wme-studio-reply-path] { flex-shrink: 1 !important; }
+      html[data-wme-studio="on"] [data-wme-studio-reply-path] > [data-wme-studio-comment-list] {
+        flex: 0 1 auto !important; min-height: 64px !important; overflow-y: auto !important; overscroll-behavior: contain;
+      }
+      html[data-wme-studio="on"] [data-wme-studio-comment-list] > * { flex-shrink: 0 !important; }   /* messages keep their height; the list scrolls */
+      html[data-wme-studio="on"] [data-wme-studio-sticky-path] { overflow: visible !important; }
+      /* Wider than its column on both sides by the same amount it is padded, so the field and button keep their usual
+         width while the background reaches the window's edges; the scrolling area trims the rest. */
+      html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .new-comment-form[data-wme-studio-sticky-reply][data-wme-studio-sticky-reply] {
+        position: sticky !important; bottom: var(--ws-reply-bottom, 0px); z-index: 3;
+        margin: auto -64px 0 !important; padding: var(--ws-reply-pad-top, 8px) 64px var(--ws-reply-pad-bottom, 8px) !important;
+        width: auto !important; min-width: 0 !important; max-width: none !important; box-sizing: border-box !important;
+        align-self: stretch !important;
+        background: var(--ws-reply-bg, var(--wme-studio-surface, #fff)) !important;
+        box-shadow: 0 -10px 14px -12px #00000066 !important;
+      }
+      /* A request window sized by hand takes that height as its least height: a long reply makes the window grow
+         downwards, down to the bottom of the screen, instead of taking the messages' room. */
+      html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-height="on"][data-wme-studio-reply-grow] {
+        height: auto !important; min-height: min(var(--ws-user-height), var(--ws-reply-room, 100vh)) !important; max-height: var(--ws-reply-room, none) !important;
+      }
+      html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-height="on"][data-wme-studio-reply-folded] {
+        height: auto !important; min-height: 0 !important; max-height: var(--ws-user-height) !important;
+      }
+      html:not([data-wme-studio="on"]) .new-comment-form[data-wme-studio-sticky-reply] { position: static !important; }`;
+    const stickReply = panel => {
+      try {
+        const form = panel.querySelector('.new-comment-form');
+        const marks = ['data-wme-studio-sticky-path', 'data-wme-studio-reply-path'];
+        const marked = [...panel.querySelectorAll(marks.map(name => `[${name}]`).join(','))];
+        const win = panel.closest('[data-issues-tracker-window],[id^="ISSUE_WINDOW"],[data-testid="floating-window"]') || panel;
+        const section = form?.closest('.section');
+        // The request's scrolling area: the nearest box that may scroll, whether or not it scrolls right now (waiting for
+        // it to scroll made the box switch on and off, so it jumped).
+        let scroller = null;
+        // A folded Discussion (its arrow): WME hides the content with an inline display:none or marks a box as collapsed.
+        // The column rules below would show it again, so a folded section is left alone.
+        let folded = !!section && (section.classList.contains('collapsed') || !!section.querySelector(':scope > .collapsed, :scope > [aria-expanded="false"]'));
+        for (let node = form?.parentElement; node && node !== section && !folded; node = node.parentElement) {
+          if (node.classList.contains('collapsed') || /display:\s*none/.test(node.getAttribute('style') || '')) folded = true;
+        }
+        if (form && !folded) {
+          for (let node = form.parentElement; node && node !== win.parentElement; node = node.parentElement) {
+            if (node.hasAttribute('data-wme-studio-sticky-path')) continue;
+            if (/^(auto|scroll|overlay)$/.test(getComputedStyle(node).overflowY)) { scroller = node; break; }
+          }
+        }
+        const clearScroller = () => { for (const node of panel.querySelectorAll('[data-wme-studio-reply-scroller]')) node.removeAttribute('data-wme-studio-reply-scroller'); };
+        const popup = (form || panel).closest('[data-wme-studio-popup-kind]');
+        // A folded Discussion lets a window sized by hand shrink to what is left (never taller than the size chosen).
+        if (popup) {
+          if (folded && form) { if (!popup.hasAttribute('data-wme-studio-reply-folded')) popup.setAttribute('data-wme-studio-reply-folded', ''); }
+          else popup.removeAttribute('data-wme-studio-reply-folded');
+        }
+        if (!scroller) {
+          popup?.removeAttribute('data-wme-studio-reply-grow');
+          form?.removeAttribute('data-wme-studio-sticky-reply');
+          for (const node of marked) for (const name of marks) node.removeAttribute(name);
+          clearScroller();
+          return;
+        }
+        if (!replyStyle) { replyStyle = typeof GM_addStyle === 'function' ? GM_addStyle(REPLY_CSS) : Object.assign(document.createElement('style'), { textContent: REPLY_CSS }); if (!replyStyle.isConnected) document.head.append(replyStyle); }
+        const path = [], clip = new Set();
+        for (let node = form.parentElement; node && node !== scroller; node = node.parentElement) {
+          path.push(node);
+          const style = getComputedStyle(node);
+          if (node.hasAttribute('data-wme-studio-sticky-path') || style.overflowY !== 'visible' || style.overflowX !== 'visible') clip.add(node);
+        }
+        for (const node of marked) {
+          if (!path.includes(node)) for (const name of marks) node.removeAttribute(name);
+          else if (!clip.has(node)) node.removeAttribute('data-wme-studio-sticky-path');
+        }
+        for (const node of path) {
+          if (!node.hasAttribute('data-wme-studio-reply-path')) node.setAttribute('data-wme-studio-reply-path', '');
+          if (clip.has(node) && !node.hasAttribute('data-wme-studio-sticky-path')) node.setAttribute('data-wme-studio-sticky-path', '');
+        }
+        for (const node of panel.querySelectorAll('[data-wme-studio-reply-scroller]')) if (node !== scroller) node.removeAttribute('data-wme-studio-reply-scroller');
+        if (!scroller.hasAttribute('data-wme-studio-reply-scroller')) scroller.setAttribute('data-wme-studio-reply-scroller', '');
+        // The window's own colour behind the box, made solid (it can be see-through in Floating mode).
+        let paint = '';
+        for (let node = scroller; node && !paint; node = node.parentElement) {
+          const color = getComputedStyle(node).backgroundColor;
+          if (color && !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(color)) paint = color;
+        }
+        const solid = paint.replace(/^rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)$/, 'rgb($1, $2, $3)');
+        if (solid && form.style.getPropertyValue('--ws-reply-bg') !== solid) form.style.setProperty('--ws-reply-bg', solid);
+        // Stuck to the very bottom: a sticky box stops at the area's bottom padding, so it is moved past that padding.
+        const bottom = `${-(parseFloat(getComputedStyle(scroller).paddingBottom) || 0)}px`;
+        if (form.style.getPropertyValue('--ws-reply-bottom') !== bottom) form.style.setProperty('--ws-reply-bottom', bottom);
+        for (const name of ['--ws-reply-ml', '--ws-reply-mr']) if (form.style.getPropertyValue(name)) form.style.removeProperty(name);
+        if (!form.hasAttribute('data-wme-studio-sticky-reply')) form.setAttribute('data-wme-studio-sticky-reply', '');
+        // Even spacing: the space under the field (down to the window's bottom bar) matches the space above it (up to
+        // whatever shows right above the box). Hidden or empty boxes above are passed over: measuring from one of them
+        // (it sits at the top of the window) made the bottom padding as large as it goes, so there was room for nothing.
+        const field = form.querySelector('wz-textarea, textarea, .new-comment-text');
+        // URC-E puts its Shortcuts inside the box, above the field, so the search starts at the field and goes up.
+        const shown = node => { while (node && node.getBoundingClientRect().height < 1) node = node.previousElementSibling; return node; };
+        let above = null;
+        for (let node = field; node && node !== form && !above; node = node.parentElement) above = shown(node.previousElementSibling);
+        if (!above) above = shown(form.previousElementSibling);
+        const bar = panel.querySelector('[class*="footer--"]') || win.querySelector('[class*="footer--"]');
+        const setPad = (top, bottom) => {
+          for (const [name, value] of [['--ws-reply-pad-top', `${Math.round(top)}px`], ['--ws-reply-pad-bottom', `${Math.round(bottom)}px`]]) {
+            if (form.style.getPropertyValue(name) !== value) form.style.setProperty(name, value);
+          }
+        };
+        if (field && above && bar) {
+          const zoom = form.currentCSSZoom || 1, own = getComputedStyle(form);
+          const padTop = parseFloat(own.paddingTop) || 0, padBottom = parseFloat(own.paddingBottom) || 0;
+          const fieldBox = field.getBoundingClientRect();
+          // The space each side would have without the box's own padding, in the box's units. Above, the free room that
+          // pushes the box down to the bottom (its automatic top margin, as laid out) does not count.
+          // Below, from the lowest thing in the box (the field, or a row under it).
+          const lowest = Math.max(fieldBox.bottom, ...[...form.children].map(child => child.getBoundingClientRect()).filter(box => box.height >= 1).map(box => box.bottom));
+          const baseBelow = Math.max(0, (bar.getBoundingClientRect().top - lowest) / zoom - padBottom);
+          const gap = (fieldBox.top - above.getBoundingClientRect().bottom) / zoom;
+          if (form.contains(above)) {
+            // The space above is inside the box (under URC-E's Shortcuts) and stays as it is: only the bottom matches it.
+            setPad(8, gap >= 0 && gap < 60 ? Math.min(40, Math.max(0, gap - baseBelow)) : 8);
+          } else {
+            const pushed = Math.max(0, parseFloat(own.marginTop) || 0);
+            const baseAbove = Math.max(0, gap - padTop - pushed);
+            if (baseAbove < 60 && baseBelow < 60) {
+              const even = Math.max(baseAbove, baseBelow) + 8;   // at least 8px of the box's own each side
+              setPad(Math.min(40, even - baseAbove), Math.min(40, even - baseBelow));
+            } else setPad(8, 8);
+          }
+        } else setPad(8, 8);
+        // The room the window may grow into: from its top down to the bottom of the screen, in its own (zoomed) units.
+        if (popup) {
+          const top = popup.getBoundingClientRect().top, zoom = popup.currentCSSZoom || 1;
+          const room = `${Math.max(200, Math.floor((innerHeight - Math.max(0, top) - 12) / zoom))}px`;
+          if (popup.style.getPropertyValue('--ws-reply-room') !== room) popup.style.setProperty('--ws-reply-room', room);
+          if (!popup.hasAttribute('data-wme-studio-reply-grow')) popup.setAttribute('data-wme-studio-reply-grow', '');
+        }
+      } catch (_) { reportStudioError('stickReply', _); }
+    };
     const scan = () => {
       queued = false;
       for (const panel of [...pins.keys()]) if (!panel.isConnected) unpin(panel);
-      for (const panel of document.querySelectorAll('.problem-edit, .place-update-edit')) pinDescription(panel);
+      for (const panel of document.querySelectorAll('.problem-edit, .place-update-edit')) { pinDescription(panel); stickReply(panel); }
       if (isCompact()) for (const panel of document.querySelectorAll('.problem-edit, .place-update-edit')) shorten(panel);
       const nextComments = new Set();
-      for (const list of document.querySelectorAll(LIST)) {
+      for (const list of commentLists()) {
         fit(list);
-        if (resize) for (const item of Array.from(list.querySelectorAll(':scope > .comment')).slice(0, visible)) nextComments.add(item);
+        if (resize) for (const item of commentItems(list).slice(0, visible)) nextComments.add(item);
       }
       for (const item of observedComments) if (!nextComments.has(item)) {
         resize.unobserve(item); observedComments.delete(item);
@@ -21711,6 +22076,12 @@ ${studioControlsCSS()}
       if (globalThis.WMEStudioVectorWatch) globalThis.WMEStudioVectorWatch.watch(observe, { childList: true, subtree: true, characterData: true });
       else new MutationObserver(observe).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
       new MutationObserver(queue).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio-requests'] });
+      // Folding a section changes only a class or a style, which the watcher above does not see: look again after a
+      // click in a request, and once more when WME's slide has finished.
+      document.addEventListener('click', event => {
+        if (!event.target?.closest?.('.problem-edit, .place-update-edit')) return;
+        queue(); setTimeout(queue, 450);
+      }, true);
       queue();
     };
     if (document.documentElement) start();
