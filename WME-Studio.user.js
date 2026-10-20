@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.2.1
+// @version      2.2.2
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -150,7 +150,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.2.1';
+  const USERSCRIPT_VERSION = '2.2.2';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -5533,6 +5533,15 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     return {x:placed.left - baseLeft,y:placed.top - baseTop};
   }
 
+  // 2.2.2: WME keeps Messages in a fixed box along the right of the window. Studio moves only the panel inside it,
+  // so once the panel was dragged away the empty box still caught every click and drag on the map beneath it (the
+  // map seemed dead to the right of the panel). The box now lets the pointer through; only the panel takes it.
+  function markChatHost(frame, on) {
+    const host = frame.parentElement;
+    if (!host || host.id === 'waze-chat-container' || host === frame.ownerDocument.body) return;
+    if (on) { if (host.getAttribute('data-wme-studio-chat-host') !== 'on') host.setAttribute('data-wme-studio-chat-host', 'on'); }
+    else host.removeAttribute('data-wme-studio-chat-host');
+  }
   function chatPanelIsVisible(state) {
     if (state.target.checkVisibility?.({ checkOpacity: true, checkVisibilityCSS: true }) === false) return false;
     const rect = state.target.getBoundingClientRect(), view = state.target.ownerDocument.defaultView || window;
@@ -5637,6 +5646,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     }
     if (state?.collisionHeightOriginal) for (const [name,[value,priority]] of Object.entries(state.collisionHeightOriginal)) { if (value) frame.style.setProperty(name,value,priority); else frame.style.removeProperty(name); }
     chatPanelStates.delete(frame);
+    markChatHost(frame, false);
     frame.removeAttribute('data-wme-studio-chat-panel');
     frame.removeAttribute('data-wme-studio-chat-dragging');
     frame.removeAttribute('data-wme-studio-chat-closing');
@@ -5654,6 +5664,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       resetChatPanel(frame); return;
     }
     frame.setAttribute('data-wme-studio-chat-panel', 'on');
+    markChatHost(frame, true);
     bindChatResize(frame, doc);
     const previous = chatPanelStates.get(frame);
     if (previous?.doc === doc && previous.handle?.isConnected) return;
@@ -11239,6 +11250,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     /* With WME's map tools taken over by an island, every one of its buttons has a place in an island: one WME has
        just drawn again stays unseen for the moment until it is in that place, instead of showing where WME keeps it. */
     html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons[data-wme-studio-island-absorbed] .overlay-buttons-container > :is(.overlay-button,wz-basic-tooltip,wz-tooltip,.zoom-bar-container):not([data-wme-studio-island-control],[data-wme-studio-control-hidden]) { visibility: hidden !important; }
+    /* 2.2.2: the box WME keeps Messages in lets clicks through to the map; only the panel in it takes them. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] [data-wme-studio-chat-host="on"] { pointer-events: none !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] [data-wme-studio-chat-host="on"] > * { pointer-events: auto !important; }
     html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons[data-wme-studio-island-managed] :is(.overlay-buttons-container,.zoom-bar-container) {
       border: 0 !important; padding: 0 !important; margin: 0 !important; min-height: 0 !important;
     }
@@ -17682,9 +17696,14 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.2.1-2026-10-20';
+  const STUDIO_BUILD = '2.2.2-2026-10-21';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '2.2.2', groups: [
+      { title: 'Fixes', items: [
+        'Messages: with the panel moved away from the right edge, the map beside it takes clicks and drags again.'
+      ] }
+    ] },
     { version: '2.2.1', groups: [
       { title: 'Report a bug', items: [
         'My reports are private to your WME Studio: a user name alone no longer shows them to anyone.',
