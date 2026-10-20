@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.1.1
+// @version      2.2.0
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -150,7 +150,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.1.1';
+  const USERSCRIPT_VERSION = '2.2.0';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -730,10 +730,10 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
   // The page stylesheet lives in the WME Studio Resources library (see @require). Without it Studio has no theme.
   const studioResources = globalThis.WMEStudioResources;
   if (!studioResources?.pageSheet) console.error('[WME Studio] The WME Studio Resources library did not load. Check the @require line in the script header.');
-  // A fix release (2.1.1) can come without a new Resources: only a different feature release (2.1 vs 2.2) is a mismatch.
+  // A fix release (2.2.1, say) can come without a new Resources: only a different feature release (2.1 vs 2.2) is a mismatch.
   else if (String(studioResources.version).split('.').slice(0, 2).join('.') !== USERSCRIPT_VERSION.split('.').slice(0, 2).join('.')) console.warn(`[WME Studio] Resources ${studioResources.version} loaded with Studio ${USERSCRIPT_VERSION}; update both scripts together.`);
   globalThis.WMEStudioPageStyle = GM_addStyle(globalThis.WMEStudioSafari.page(studioResources?.pageSheet ? studioResources.pageSheet({ studioAIHelperTokensCSS, studioButtonMotionCSS, studioGlassFeedbackCSS, studioHeaderAddonCSS, studioKeyedList, studioRangeCSS }) : ''));
-  // Plain form fields in other scripts' panels and dialogs (2.1.1). WME's own stylesheet gives every input, select
+  // Plain form fields in other scripts' panels and dialogs (2.2.0). WME's own stylesheet gives every input, select
   // and textarea dark grey text (rgb(61, 61, 61)), which nearly disappears on Dark and Full black. Here they take the
   // theme's text, field and border colours instead, and the browser's own parts (the list of a select, a date
   // picker) follow the dark theme too. The rules weigh exactly as much as WME's own and come after its stylesheet, so
@@ -1813,7 +1813,7 @@ $root { background: var(--wme-studio-input) !important; color: var(--wme-studio-
 $root :where(h1,h2,h3,h4,h5,h6,p,span,div,label,b,strong) { color: var(--wme-studio-text) !important; }
 $root a[href] { color: var(--wme-studio-accent) !important; }
 ` }, true);
-    // WME Color Errors (2.1.1): its settings sections have light grey headers of their own (#f5f7fa, #e8edf5 when
+    // WME Color Errors (2.2.0): its settings sections have light grey headers of their own (#f5f7fa, #e8edf5 when
     // open) under Studio's light text, so on Dark and Full black the section names could not be read.
     registerCompatibilityAdapter({ id: 'color-errors', selectors: ['.ce-section'], css: String.raw`
 $root { border-color: var(--wme-studio-border) !important; background: transparent !important; }
@@ -4331,7 +4331,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   }
   // Beside an island Studio draws: next to an upright island, level with the button; above or below a flat one.
   function onlinePanelBesideIsland(moved, size, obstacles = []) {
-    const own = moved.control.getBoundingClientRect(), island = moved.island, gap = 8, edge = 12;
+    const own = moved.control.getBoundingClientRect(), island = moved.island, gap = ONLINE_PANEL_GAP, edge = 12;
     const footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
     const bottom = (footer ? Math.min(innerHeight, footer.top) : innerHeight) - edge;
     const height = Math.min(size.height, bottom - edge);
@@ -4348,8 +4348,10 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     if (!obstacles.length || compactRectClear(placed, obstacles, gap)) return placed;
     return compactFreePosition(placed, obstacles, { width: innerWidth, height: bottom + edge }) || placed;
   }
+  // The online editors list keeps clear of its button (2.2.0): it sat right against it.
+  const ONLINE_PANEL_GAP = 10;
   function compactOnlinePanelPlacement(anchor, size, obstacles, viewport = { width: innerWidth, height: innerHeight }) {
-    const gap = COMPACT_ISLAND_GAP;
+    const gap = ONLINE_PANEL_GAP;
     const opensRight = anchor.left + anchor.width / 2 <= viewport.width / 2;
     const left = opensRight ? anchor.left : anchor.left + anchor.width - size.width;
     for (const height of [...new Set([size.height, Math.min(size.height, 240), Math.min(size.height, 180), Math.min(size.height, 128)])]) {
@@ -7891,6 +7893,128 @@ ${studioRangeCSS('.picker-hue')}
     }, true);
     return Object.freeze({ arm });
   })();
+  // Your own online status on the online editors button (2.2.0, suggested by Thynamelessone). The button's number
+  // counts every editor online, you included, so it never told you whether others can see you. Like the status on an
+  // avatar, a small badge sits at the icon's lower corner: a green dot while others can see you, a grey badge with a
+  // crossed-out eye (and a dimmed icon) while you are invisible. Your status is read from the online editors list: its row for you while the list is open
+  // (the eye or "invisible" icon, and the dimmed level badge), and the list's own state otherwise, which WME keeps
+  // even while the list is closed. A click on your eye button changes the button at once; the list confirms it after.
+  const onlineSelf = (() => {
+    const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
+    let predicted = null, predictedUntil = 0, frame = 0, watched = null, watcher = null;
+    function fromRow() {
+      const row = document.querySelector('#online-editors .special-item') || document.querySelector('#online-editors .logged-in-editor')?.closest('wz-list-item');
+      if (!row) return null;
+      if (row.querySelector('img.editor-level.offline, i.w-icon-invisible')) return false;
+      if (row.querySelector('i[class*="w-icon-eye"]')) return true;
+      return null;
+    }
+    function fromList() {
+      try {
+        // The page's own copy of the button: React's notes on it live in the page, not in this script's view of it.
+        const bubble = page.document?.querySelector?.('.online-editors-bubble');
+        const key = bubble && Object.keys(bubble).find(name => name.startsWith('__reactFiber'));
+        for (let fiber = key ? bubble[key] : null, depth = 0; fiber && depth < 14; fiber = fiber.return, depth++) {
+          for (let hook = fiber.memoizedState, i = 0; hook && typeof hook === 'object' && 'memoizedState' in hook && i < 40; hook = hook.next, i++) {
+            const value = hook.memoizedState;
+            if (value && typeof value === 'object' && typeof value.isVisible === 'boolean') return value.isVisible;
+          }
+        }
+      } catch (_) { /* WME changed how the list is built: nothing is shown */ }
+      return null;
+    }
+    function place(bubble) {
+      // The stroke goes across the icon, wherever the current look puts it.
+      const icon = bubble.querySelector('img[slot="left-icon"]');
+      const box = bubble.getBoundingClientRect(), rect = icon?.getBoundingClientRect(), zoom = bubble.currentCSSZoom || 1;
+      if (!rect?.width || !box.width) return;
+      // The badge's centre: the icon's lower right corner, pulled a little in.
+      const size = Math.max(rect.width, rect.height) / zoom;
+      const values = [['--ws-me-x', `${Math.round((rect.right - box.left) / zoom - size * .12)}px`], ['--ws-me-y', `${Math.round((rect.bottom - box.top) / zoom - size * .12)}px`], ['--ws-me-icon', `${Math.round(size)}px`]];
+      for (const [name, value] of values) if (bubble.style.getPropertyValue(name) !== value) bubble.style.setProperty(name, value);
+    }
+    function sync() {
+      frame = 0;
+      const bubble = document.querySelector('.online-editors-bubble');
+      if (!bubble) return;
+      watch();
+      const known = fromRow() ?? fromList();
+      // Right after your click the list may not have caught up yet: the click's answer stands for a moment.
+      if (predicted !== null && performance.now() < predictedUntil && known !== predicted) return;
+      predicted = null;
+      const state = !settings?.enabled || known === null ? null : known ? 'visible' : 'invisible';
+      apply(bubble, state);
+    }
+    function apply(bubble, state) {
+      if (state) place(bubble);
+      if ((bubble.getAttribute('data-wme-studio-me') || null) !== state) {
+        if (state) bubble.setAttribute('data-wme-studio-me', state); else bubble.removeAttribute('data-wme-studio-me');
+      }
+      const label = state === 'invisible' ? (globalThis.WMEStudioI18n?.t?.('You are invisible to other editors') || 'You are invisible to other editors') : '';
+      if (label) { if (bubble.getAttribute('title') !== label) bubble.setAttribute('title', label); bubble.setAttribute('data-wme-studio-me-title', ''); }
+      else if (bubble.hasAttribute('data-wme-studio-me-title')) { bubble.removeAttribute('title'); bubble.removeAttribute('data-wme-studio-me-title'); }
+    }
+    const soon = () => { if (!frame) frame = requestAnimationFrame(sync); };
+    // The list re-renders when your status changes, when it opens and when editors come and go.
+    function watch() {
+      const box = document.getElementById('online-editors');
+      if (!box || box === watched) return;
+      watcher?.disconnect(); watched = box;
+      watcher = new MutationObserver(soon);
+      watcher.observe(box, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+    }
+    document.addEventListener('click', event => {
+      const path = event.composedPath();
+      if (!path.some(node => node?.id === 'online-editors')) return;
+      const eye = path.some(node => node?.nodeType === 1 && node.matches?.('[slot="actions"]')) && path.some(node => node?.nodeType === 1 && node.matches?.('.special-item'));
+      if (eye) {
+        const bubble = document.querySelector('.online-editors-bubble'), now = fromRow() ?? fromList();
+        if (bubble && now !== null && settings?.enabled) { predicted = !now; predictedUntil = performance.now() + 2500; apply(bubble, predicted ? 'visible' : 'invisible'); }
+      }
+      setTimeout(soon, 120); setTimeout(soon, 700);
+    }, true);
+    // A press anywhere else closes the open list, like any other menu (2.2.0). The list, its button, the chat it can
+    // open and any dialog are left alone; so is Arrange.
+    document.addEventListener('pointerdown', event => {
+      if (!settings?.enabled || event.button > 0 || document.documentElement.hasAttribute('data-wme-studio-layout-editing')) return;
+      const box = document.getElementById('online-editors');
+      if (!box?.querySelector('.online-editors-list-wrapper')) return;
+      const path = event.composedPath();
+      if (path.includes(box) || path.some(node => node?.nodeType === 1 && node.matches?.('iframe,[role="dialog"],wz-dialog,#wz-dialog-container,[class*="chat" i]'))) return;
+      box.querySelector('.online-editors-bubble')?.click();
+    }, true);
+    addEventListener('resize', soon, { passive: true });
+    setInterval(soon, 1000);   // a change made elsewhere (another tab, the chat window) while the list is closed
+    GM_addStyle(`
+html[data-wme-studio="on"]:not([data-wme-studio-compact="on"]) .online-editors-bubble[data-wme-studio-me] { position: relative; }
+html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me] > img[slot="left-icon"] { transition: opacity 240ms ease !important; }
+html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me="invisible"] > img[slot="left-icon"] { opacity: .5 !important; }
+/* WME's own little dot in the standard layout gives way to the badge. */
+html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me] > .online-icon { opacity: 0 !important; }
+/* The badge: a green dot while others see you; a grey badge with a crossed-out eye while you are invisible. It grows
+   from the dot to the badge (and back) with a small spring, ringed in the button's own colour so it stands clear of
+   the icon on any theme. */
+html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me]::before {
+  --ws-me-badge: max(8px, calc(var(--ws-me-icon, 20px) * .42));
+  content: ''; position: absolute; z-index: 2; left: var(--ws-me-x, 70%); top: var(--ws-me-y, 70%);
+  width: var(--ws-me-badge); height: var(--ws-me-badge); box-sizing: border-box; border-radius: 50%; pointer-events: none;
+  translate: -50% -50%; background: #34c759 center / 0 no-repeat;
+  box-shadow: 0 0 0 2px var(--wme-studio-surface, #fff), 0 1px 3px #0000004d;
+  transition: width 260ms cubic-bezier(.34, 1.56, .64, 1), height 260ms cubic-bezier(.34, 1.56, .64, 1),
+    background-color 200ms ease, background-size 260ms cubic-bezier(.34, 1.56, .64, 1);
+  animation: ws-me-in 320ms cubic-bezier(.34, 1.56, .64, 1) backwards;
+}
+html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me="invisible"]::before {
+  --ws-me-badge: max(13px, calc(var(--ws-me-icon, 20px) * .74));
+  background-color: color-mix(in srgb, var(--wme-studio-text-muted, #7c838c) 88%, #000);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.7 5.1A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.7 2.7'/%3E%3Cpath d='M6.6 6.6A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.4-1.6'/%3E%3Cpath d='M9.9 9.9a3 3 0 0 0 4.2 4.2'/%3E%3Cpath d='M2 2l20 20'/%3E%3C/svg%3E"); background-size: 64%;
+}
+@keyframes ws-me-in { from { scale: 0; } }
+html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bubble[data-wme-studio-me]::before,
+html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bubble[data-wme-studio-me] > img[slot="left-icon"] { transition: none !important; animation: none !important; }
+`);
+    return Object.freeze({ sync: soon, state: () => document.querySelector('.online-editors-bubble')?.getAttribute('data-wme-studio-me') || null });
+  })();
   const requestReveal = (() => {
     let timers = [];
     let placePanel = null, placeKey = '', placeSDK = null, placeSDKStop = null;
@@ -10340,7 +10464,7 @@ ${studioRangeCSS('.picker-hue')}
   // Is this click on + itself? The + button is the one Studio's + menu shortcuts press (it can sit inside the
   // menu element or next to it); failing that, anything of the + control that is not the open list or an item.
   // When the + control itself was not found, the side panel's whole tab rail stands in for it (createHoverTarget), and
-  // every click on that rail (a script's tab, say) counted as a click on +, which opened the + menu (2.1.1). So the
+  // every click on that rail (a script's tab, say) counted as a click on +, which opened the + menu (2.2.0). So the
   // rail never counts: only the + button, the + control, or the + menu itself; another tab never does.
   function isCreateButtonClick(path) {
     if (createHoverButton?.isConnected && path.includes(createHoverButton)) return true;
@@ -17558,9 +17682,15 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.1.1-2026-10-20';
+  const STUDIO_BUILD = '2.2.0-2026-10-20';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '2.2.0', groups: [
+      { title: 'Map', items: [
+        'Online editors: a badge on the button shows whether other editors can see you (a green dot) or you are invisible.',
+        'Online editors: the list keeps a little space from its button, and a click anywhere else closes it.'
+      ] }
+    ] },
     { version: '2.1.1', groups: [
       { title: 'Fixes', items: [
         'Open the + menu on click: clicking another tab of the side panel (a script\'s settings, say) no longer opens the + menu.',
@@ -22123,8 +22253,6 @@ ${studioControlsCSS()}
       if (globalThis.WMEStudioVectorWatch) globalThis.WMEStudioVectorWatch.watch(observe, { childList: true, subtree: true, characterData: true });
       else new MutationObserver(observe).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
       new MutationObserver(queue).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio-requests'] });
-      // Folding a section changes only a class or a style, which the watcher above does not see: look again after a
-      // click in a request, and once more when WME's slide has finished.
       document.addEventListener('click', event => {
         if (!event.target?.closest?.('.problem-edit, .place-update-edit')) return;
         queue(); setTimeout(queue, 450);
@@ -22134,4 +22262,4 @@ ${studioControlsCSS()}
     if (document.documentElement) start();
     else document.addEventListener('DOMContentLoaded', start, { once: true });
   })();
-})();
+})()
