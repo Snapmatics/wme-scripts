@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.2.2
+// @version      2.2.3
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -26,6 +26,7 @@
 // @exclude      https://beta.waze.com/*/editor/sdk*
 // @require      https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
 // @require      https://update.greasyfork.org/scripts/600831/WME%20Studio%20Resources.js
+// @require      https://update.greasyfork.org/scripts/601144/WME%20Studio%20Screen%20Displays.js
 // @run-at       document-start
 // @noframes
 // @grant        unsafeWindow
@@ -150,7 +151,7 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.2.2';
+  const USERSCRIPT_VERSION = '2.2.3';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -465,7 +466,7 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
     'wmeStudio.workspaceProfiles.v1','wmeStudio.scriptTabPins.v1','wmeStudio.panelSizes.v1','wmeStudio.chatPanelOffset.v3','wmeStudio.streetViewWindow.v1',
     'wmeStudio.enabled','wmeStudio.theme','wmeStudio.corners','wmeStudio.accent',
     'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.compactRequests','wmeStudio.commandShortcut',
-    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.closeAfterReply','wmeStudio.islandControls.v1'
+    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.closeAfterReply','wmeStudio.screenDisplays','wmeStudio.screenLongPress','wmeStudio.screenRoadButton','wmeStudio.screenShapeButton','wmeStudio.screenDrawButton','wmeStudio.islandControls.v1'
   ];
   const emitStorage = changes => {
     if (!Object.keys(changes).length) return;
@@ -759,7 +760,7 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
 
   if (globalThis.WMEStudioI18n) return;
   const pageWindow = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
-  const NAMES = [["en", "English"], ["el", "Ελληνικά"], ["es", "Español"], ["pt", "Português"], ["fr", "Français"], ["de", "Deutsch"], ["it", "Italiano"], ["nl", "Nederlands"], ["pl", "Polski"], ["ru", "Русский"], ["tr", "Türkçe"]];
+  const NAMES = [["en", "English"], ["el", "Ελληνικά"], ["es", "Español"], ["pt", "Português"], ["fr", "Français"], ["de", "Deutsch"], ["it", "Italiano"], ["nl", "Nederlands"], ["pl", "Polski"], ["ru", "Русский"], ["tr", "Türkçe"], ["ka", "ქართული"]];
   // KEYS and PACKS come from the WME Studio Resources library (see @require). Without it Studio speaks English only.
   const { KEYS, PACKS } = globalThis.WMEStudioResources?.languages || { KEYS: [], PACKS: {} };
   const index = new Map(KEYS.map((key, position) => [key, position]));
@@ -899,7 +900,11 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     // be given its own width in Arrange (0 = Studio's default width).
     createMenuClick: false, searchWidth: 0,
     // 2.0.5: a request (UR, MP or PUR) closes by itself once your reply has been sent.
-    closeAfterReply: false
+    closeAfterReply: false,
+    // 2.2.1: Screen displays (touch screens, iPad first): finger control of the map and map buttons to select
+    // several things, the road between two segments, shape a road and draw a road. The feature lives in the WME Studio
+    // Screen Displays library.
+    screenDisplays: false, screenLongPress: true, screenRoadButton: true, screenShapeButton: true, screenDrawButton: true
   });
   // A shortcut is stored as its modifiers plus the physical key ("Shift+KeyP"), so it is the same key on a Greek
   // or any other keyboard layout. '' means the shortcut is off. A letter, number or symbol key needs a modifier;
@@ -926,7 +931,7 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     return value.split('+').map(part => names[part] || part.replace(/^(?:Key|Digit)/, '').replace(/^Numpad/, 'Num ')).join(' + ');
   }
   globalThis.WMEStudioShortcut = { normalize: normalizeShortcut, fromEvent: shortcutFromEvent, label: shortcutLabel, recording: false };
-  const choices = { theme: ['light', 'dark', 'black'], themeNight: ['dark', 'black'], themeSchedule: ['off', 'sun', 'custom'], eyeSaverSchedule: ['off', 'sun', 'custom'], corners: ['flat', 'soft'], layerColumns: ['one', 'two'], language: ['auto','en','el','es','pt','fr','de','it','nl','pl','ru','tr'] };
+  const choices = { theme: ['light', 'dark', 'black'], themeNight: ['dark', 'black'], themeSchedule: ['off', 'sun', 'custom'], eyeSaverSchedule: ['off', 'sun', 'custom'], corners: ['flat', 'soft'], layerColumns: ['one', 'two'], language: ['auto','en','el','es','pt','fr','de','it','nl','pl','ru','tr','ka'] };
   const ranges = { compactHeaderWidth: [0, 100], compactIslandOpacity: [20, 100], eyeSaver: [0, 100], satelliteBrightness: [0, 100], viewportBrightness: [0, 100], gpsOpacity: [0, 100], hudScale: [70, 100], panelScale: [70, 100], fontScale: [85, 120], discussionVisible: [1, 10], searchWidth: [0, 900] };
   const steps = { compactHeaderWidth: 1, discussionVisible: 1, searchWidth: 1 };
   const clockTimes = new Set(['themeDayStart', 'themeNightStart', 'eyeSaverStart', 'eyeSaverEnd']);
@@ -6329,6 +6334,11 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       attr('requests', settings.compactRequests ? 'compact' : null);
       attr('scrollbars', settings.customScrollbars ? 'on' : null);
       attr('create-click', settings.createMenuClick ? 'on' : null);
+      attr('screen-displays', settings.screenDisplays ? 'on' : null);
+      attr('sd-longpress', settings.screenDisplays && settings.screenLongPress ? 'on' : null);
+      attr('sd-road', settings.screenDisplays && settings.screenRoadButton ? 'on' : null);
+      attr('sd-shape', settings.screenDisplays && settings.screenShapeButton ? 'on' : null);
+      attr('sd-draw', settings.screenDisplays && settings.screenDrawButton ? 'on' : null);
       attr('page', standaloneSignin ? 'signin' : editorProfile ? 'profile' : 'editor');
       attr('', 'on');
       if (affects('enabled', 'compactMode', 'compactHeaderFullWidth', 'compactHeaderWidth', 'hudScale', 'compactIslandLayout.v1', 'layerColumns')) applyCompactLayoutVariables();
@@ -17713,10 +17723,27 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.2.2-2026-10-21';
+  const STUDIO_BUILD = '2.2.3-2026-10-21';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '2.2.3', groups: [
+      { title: 'Languages', items: [
+        'New language: Georgian (ქართული). Pick it in Settings › General › Language, or let Studio follow the editor.'
+      ] }
+    ] },
     { version: '2.2.2', groups: [
+      { title: 'Screen displays', items: [
+        'New: a Screen displays section in Settings, for touch screens.',
+        'Finger control: a tap selects what is nearest your finger, dragging keeps the selection, two fingers zoom only the map.',
+        'Select several: a map button to add segments, places or nodes to the selection by tapping them.',
+        'Road between two segments: tap two segments to select every segment between them.',
+        'Long-press on the map opens the right-click menu.',
+        'Turn arrows: tap one to allow or disallow the turn, as a click does. A tap close to an arrow counts.',
+        'Shape a road: big handles to move, add and delete the points of the selected road and move its junctions, with snapping, and Undo and Redo beside it.',
+        'Draw a road: the editor\'s own road tool by finger. Each tap adds a point, snapped to a junction or road close by so the road joins it; tap the last point again or Finish to end it.',
+        'The Screen displays buttons have their own island at the bottom of the map. Fold it and it slides out of sight, leaving a handle that rises towards your pointer.',
+        'Select several and Road between work with a mouse or a pen too: a click does what a tap does.'
+      ] },
       { title: 'Fixes', items: [
         'Messages: with the panel moved away from the right edge, the map beside it takes clicks and drags again, and no empty outlined box is left there.',
         'Messages: dragging the map across the panel no longer stops the drag.'
@@ -17952,6 +17979,8 @@ ${studioControlsCSS()}
   .ws-plus-icon{display:inline-block;position:relative;width:1.35em;height:1.35em;margin:0 .14em;border-radius:.4em;background:var(--accent,#0099ff);color:var(--on-accent,#fff);vertical-align:-.3em;vertical-align:calc(.5cap - .675em);box-shadow:0 1px 2px #0000002e}
   .ws-plus-icon svg{display:block;position:absolute;inset:0;margin:auto;width:.9em;height:.9em;fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:round}
   .small{display:block;margin-top:3px;color:var(--muted);font-size:11.5px;line-height:1.4}
+  .small.warn{color:color-mix(in srgb,#e8a33d 82%,var(--text));font-weight:600}
+  .sd-status{flex:1 1 100%;margin:0;max-height:240px;overflow:auto;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:var(--text);font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;user-select:text;-webkit-user-select:text}
   .togrow{cursor:pointer}
   .value{flex:0 0 auto;min-width:46px;text-align:right;white-space:nowrap;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
   .srow:has(>input[type="range"]+.value+.seg)>input[type="range"]{flex:0 1 150px;width:150px}
@@ -18175,6 +18204,7 @@ ${studioControlsCSS()}
       <div class="nav-group" aria-hidden="true">Editor</div>
       <button class="nav-item" type="button" role="tab" id="studio-tab-map" data-page-target="map" aria-controls="studio-page-map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg><span>Map</span></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-panels" data-page-target="panels" aria-controls="studio-page-panels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7l-5 3v-3H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 9h10M7 13h6"/></svg><span>Panels</span></button>
+      <button class="nav-item" type="button" role="tab" id="studio-tab-screens" data-page-target="screens" aria-controls="studio-page-screens"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M10.5 18h3"/><path d="M9.5 10.5 12 8l2.5 2.5"/></svg><span>Screen displays</span></button>
       <div class="nav-group" aria-hidden="true" data-ws-keep>Studio</div>
       <button class="nav-item" type="button" role="tab" id="studio-tab-studio" data-page-target="studio" aria-controls="studio-page-studio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>General</span></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-bug" data-page-target="bug" aria-controls="studio-page-bug"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7a4 4 0 0 1 8 0v1a4 4 0 0 1-8 0V7Z"/><path d="M6 12h12M5 17c1.5-.8 2.5-2.5 2.5-4.5M19 17c-1.5-.8-2.5-2.5-2.5-4.5M8 12v4a4 4 0 0 0 8 0v-4M10 5 8 3M14 5l2-2"/></svg><span>Report a bug</span><b class="nav-badge" data-id="bug-badge" hidden></b></button>
@@ -18269,6 +18299,19 @@ ${studioControlsCSS()}
           <label class="srow togrow"><span class="srow-text"><strong>Two-column Map Layers</strong><span class="small">Use two balanced columns in the floating Map Layers panel.</span></span><span class="switch"><input data-id="layerColumnsToggle" type="checkbox"><i></i></span></label>
         </div></div>
       </fieldset></section>
+      <section class="settings-page" id="studio-page-screens" data-page="screens" role="tabpanel" aria-labelledby="studio-tab-screens" hidden><fieldset data-preferences>
+        <div class="group"><h3 class="section-label">Screen displays</h3><div class="card rows">
+          <label class="srow togrow" data-row="screenDisplays"><span class="srow-text"><strong>Enable Screen displays</strong><span class="small">For touch screens such as an iPad. A finger on the map is handled by Studio: a tap selects what is nearest your finger (a road within a fingertip counts), dragging moves the map without losing the selection, two fingers zoom only the map and a double-tap zooms in. Its buttons sit in their own island at the bottom of the map, which you can fold away. While Select several is pressed, each tap or click adds what is under it to the selection or takes it out.</span><span class="small warn" data-id="screenDisplays-missing" hidden>The WME Studio Screen Displays library did not load. Update WME Studio to get it.</span></span><span class="switch"><input data-id="screenDisplays" type="checkbox"><i></i></span></label>
+          <label class="srow togrow" data-row="screenRoadButton"><span class="srow-text"><strong>Road between two segments</strong><span class="small">A second map button: press it, tap a segment, then one further along, and every segment between them is selected, along the same street when it can.</span></span><span class="switch"><input data-id="screenRoadButton" type="checkbox"><i></i></span></label>
+          <label class="srow togrow" data-row="screenShapeButton"><span class="srow-text"><strong>Shape a road</strong><span class="small">A button that puts big handles on the selected road. Drag a point to move it, drag a + between two points to add one, tap a point to delete it, and drag an end to move it, or drop it on another junction or road to join them. Tap an end, or the middle of an intersection, to move the whole intersection. Undo and Redo sit beside it while it is pressed.</span></span><span class="switch"><input data-id="screenShapeButton" type="checkbox"><i></i></span></label>
+          <label class="srow togrow" data-row="screenDrawButton"><span class="srow-text"><strong>Draw a road</strong><span class="small">A button that starts the editor's own road tool, as + › Roads › Roads does. While the tool draws (however it was started), each tap adds a point, moved onto a junction or road close by so the new road joins it, you can move and zoom the map between taps, and tapping the last point again (or Finish) ends the road. Undo point and Cancel sit beside it.</span></span><span class="switch"><input data-id="screenDrawButton" type="checkbox"><i></i></span></label>
+          <label class="srow togrow" data-row="screenLongPress"><span class="srow-text"><strong>Long-press for the right-click menu</strong><span class="small">Hold a finger still on the map to open the right-click menu there.</span></span><span class="switch"><input data-id="screenLongPress" type="checkbox"><i></i></span></label>
+        </div></div>
+      </fieldset>
+        <div class="group"><h3 class="section-label">Status</h3><div class="card rows">
+          <div class="srow wrap"><div class="srow-text"><strong>What Screen displays sees</strong><span class="small">Whether the library loaded, and what your last taps did. Copy it into a bug report if something does not work.</span></div><div class="actions"><button class="reset" data-id="sd-status-refresh" type="button">Refresh</button><button class="reset" data-id="sd-status-copy" type="button">Copy</button></div><pre class="sd-status" data-id="sd-status"></pre></div>
+        </div></div>
+      </section>
       <section class="settings-page" id="studio-page-studio" data-page="studio" role="tabpanel" aria-labelledby="studio-tab-studio" hidden><div class="page-stack">
         <div class="group"><h3 class="section-label">General</h3><div class="card rows">
           <div class="srow" data-row="language"><div class="srow-text"><strong>Language</strong><span class="small">Language of Studio's own menus and messages.</span></div><div class="language" data-id="language-control"><button class="language-button" data-id="language" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Language"><span data-id="language-value"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="language-menu" data-id="language-menu" role="listbox" aria-label="Language" hidden></div></div></div>
@@ -18590,8 +18633,8 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     let returnFocus = null;
     const sliderTimers = new Map();
     let rangeDrag = null;
-    const pages = { layout: 'Layout', look: 'Look', map: 'Map', panels: 'Panels', studio: 'General', bug: 'Report a bug', developers: 'Developers' };
-    const pageSubtitles = { layout: 'Mode, size and where the islands go.', look: 'Theme, accent and comfort.', map: 'Brightness, GPS points and the right-click menu.', panels: 'Requests, size and columns.', studio: 'Language, backups and defaults.', bug: 'Tell the author what went wrong.', developers: 'For script authors.' };
+    const pages = { layout: 'Layout', look: 'Look', map: 'Map', panels: 'Panels', screens: 'Screen displays', studio: 'General', bug: 'Report a bug', developers: 'Developers' };
+    const pageSubtitles = { layout: 'Mode, size and where the islands go.', look: 'Theme, accent and comfort.', map: 'Brightness, GPS points and the right-click menu.', panels: 'Requests, size and columns.', screens: 'Touch screen tools.', studio: 'Language, backups and defaults.', bug: 'Tell the author what went wrong.', developers: 'For script authors.' };
     // Earlier page names, so older callers still land on the right section.
     const pageAliases = { workspace: 'layout', presets: 'layout', appearance: 'look', addons: 'look', requests: 'panels', help: 'studio' };
 
@@ -18610,6 +18653,16 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       q('[data-id="page-title"]').textContent = pages[name];
       q('[data-id="page-sub"]').textContent = pageSubtitles[name] || '';
       renderChips(name);
+      if (name === 'screens') renderScreenStatus();
+    }
+    // Settings › Screen displays › Status: what the library reports (an iPad has no console to ask).
+    function renderScreenStatus() {
+      const box = q('[data-id="sd-status"]');
+      if (!box) return;
+      const api = globalThis.WMEStudioScreenDisplays;
+      if (!api?.status) { box.textContent = api ? `Library ${api.version || '?'} loaded, but it is an older build without a status report. Update WME Studio.` : 'The WME Studio Screen Displays library did not load.'; return; }
+      const info = api.status(), yes = value => (value ? 'yes' : 'no');
+      box.textContent = [`Library build: ${info.build}`, `Switched on: ${yes(info.on)}`, `Finger control: ${info.fingers ? 'Studio' : info.wmeMobile ? 'left to WME Mobile' : 'off'}`, `Map found: ${yes(info.map)}`, `Connected to the editor: ${info.editor || 'not yet'}`, `Pressed: ${['multi', 'road', 'shape', 'draw'].filter(kind => info[kind]).join(', ') || 'none'}`, `Selected: ${info.selected?.type || 'nothing'} ${info.selected?.ids?.length ? `[${info.selected.ids.join(', ')}]` : ''}`, '', ...(info.log.length ? info.log.slice(-25) : ['(nothing happened yet)'])].join('\n');
     }
     // Section chips: one per section of the page, under its title. A click scrolls to the section; the chip of
     // the section at the top of the view is marked as the page scrolls.
@@ -18844,7 +18897,8 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       }
       if (currentRead) globalThis.WMEStudioI18n.setLanguage(current.language);
       paintShortcut();
-      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick','closeAfterReply']) q(`[data-id="${key}"]`).checked = current[key];
+      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick','closeAfterReply','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).checked = current[key];
+      q('[data-id="screenDisplays-missing"]').hidden = !current.screenDisplays || !!globalThis.WMEStudioScreenDisplays;
       paintSchedule();
       fieldsets.forEach(fieldset => { fieldset.disabled = !current.enabled || profilesBusy; });
       qa('input[name="workspace-mode"]').forEach(input => { input.checked = (input.value === 'compact') === current.compactMode; });
@@ -19215,6 +19269,8 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     q('.close').addEventListener('click', close);
     backdrop.addEventListener('click', close);
     qa('[data-page-target]').forEach(button => button.addEventListener('click', () => selectPage(button.dataset.pageTarget)));
+    q('[data-id="sd-status-refresh"]')?.addEventListener('click', renderScreenStatus);
+    q('[data-id="sd-status-copy"]')?.addEventListener('click', event => { renderScreenStatus(); const text = q('[data-id="sd-status"]').textContent; Promise.resolve(navigator.clipboard?.writeText(text)).then(() => { event.target.textContent = translate('Copied'); setTimeout(() => { event.target.textContent = translate('Copy'); }, 1400); }).catch(() => {}); });
     q('[data-page="developers"]').addEventListener('click', async event => {
       const jump = event.target.closest('[data-dev-jump]');
       if (jump) { q(`[data-dev="${jump.dataset.devJump}"]`)?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); return; }
@@ -19232,7 +19288,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     q('[data-id="preset-undo"]').addEventListener('click',undoPreset);
     arrangeViewport.addEventListener('change',()=>{if(studioPanelOpen)render();});
     qa('[data-setting]').forEach(button => button.addEventListener('click', () => change(settingPatch(button.dataset.setting, button.dataset.value), true)));
-    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick','closeAfterReply']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
+    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick','closeAfterReply','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
     qa('[data-time]').forEach(input => input.addEventListener('change', () => { if (/^\d\d:\d\d$/.test(input.value)) change({ [input.dataset.time]: input.value }); else paintSchedule(); }));
     setInterval(() => { if (studioPanelOpen) paintSchedule(); }, 30000);
     qa('input[name="workspace-mode"]').forEach(input => input.addEventListener('change', e => {
@@ -19999,13 +20055,13 @@ ${studioControlsCSS()}
         const cfg = globalThis.WMEStudioSettings, api = globalThis.WMEStudioWorkspaces, [prefs,profiles] = await Promise.all([cfg.read(),api.list()]);
         if (host.hidden || token !== generation) return;
         const page = (label,target,keywords,section)=>({label:translate(label),category:'Settings',keywords,run:()=>openStudioUI(target,section)});
-        const sections = {layout:'Layout',look:'Look',map:'Map',panels:'Panels',studio:'General',bug:'Report a bug',developers:'Developers'};
+        const sections = {layout:'Layout',look:'Look',map:'Map',panels:'Panels',screens:'Screen displays',studio:'General',bug:'Report a bug',developers:'Developers'};
         const setting = (label,target,section,keywords)=>({label:translate(label),category:sections[target],keywords,run:()=>openStudioUI(target,section)});
         commands = [page('Open settings','layout','settings options preferences'),page('Saved workspaces','layout','profiles presets layouts save','workspace-profiles'),page('Backup & restore','studio','import export backup restore','backup-tools'),page('Report a bug','bug','bug report issue problem feedback support help','bugReport'),
           setting('Presets','layout','preset-current','starting layout balanced left-handed review desk wide header'),setting('Header width','layout','compactHeaderWidth','floating header extend full page'),setting('HUD size','layout','hudScale','floating scale islands header'),
           setting('Accent colour','look','accent','color highlight custom'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','look','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','look','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
           setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Open the + menu on click','map','createMenuClick','plus add create hover click menu roads places'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),
-          setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
+          setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Enable Screen displays','screens','screenDisplays','touch screen tablet tap select multiple segments places nodes several'),setting('Draw a road','screens','screenDrawButton','touch draw new road segment create add points snap junction finish'),setting('Shape a road','screens','screenShapeButton','touch shape geometry points vertex vertices move add delete junction node drag snap undo redo'),setting('Road between two segments','screens','screenRoadButton','touch select road path street between segments'),setting('Long-press for the right-click menu','screens','screenLongPress','touch hold press context menu right click'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
           setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script authors','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
           {label:translate('Arrange layout'),category:'Workspace',keywords:'move position panels islands controls hide split custom island buttons',disabled:!prefs.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches,run:async()=>{await cfg.write({compactMode:true});globalThis.WMEStudioCompactLayout.open();}},
           ...[['Standard',false],['Floating compact',true]].map(([label,value])=>({label:translate(label),category:'Workspace',keywords:'workspace mode layout',disabled:!prefs.enabled,run:()=>cfg.write({compactMode:value})})),
