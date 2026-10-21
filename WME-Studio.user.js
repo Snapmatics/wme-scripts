@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.2.3
+// @version      2.3.0
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -38,6 +38,11 @@
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
+// @grant        GM.getValue
+// @grant        GM.setValue
+// @grant        GM.deleteValue
+// @grant        GM.listValues
+// @grant        GM.xmlHttpRequest
 // @connect      update.greasyfork.org
 // @connect      workers.dev
 // @downloadURL https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js
@@ -68,7 +73,217 @@
  * SOFTWARE.
  */
 
-(() => {
+// ---- Userscripts on iPhone and iPad (2.3.0) -------------------------------------------------------------------------
+// Tampermonkey runs Studio with GM_getValue and the other GM_ functions, and with unsafeWindow to reach the editor.
+// The Userscripts app for Safari only has the newer GM.getValue, GM.setValue… (they answer later, with a promise),
+// and runs a script that uses them walled off from the page, where the editor's own objects (W, the WME SDK) cannot
+// be seen. The editor's Content Security Policy also turns away scripts the page did not mark as its own.
+//
+// So with such a manager Studio does not run where it was started. It reads everything it has stored there, and puts
+// itself (Resources and Screen displays too) into the page as a script carrying the page's own nonce, which the
+// policy lets through. There it gets the GM_ functions it is written for, kept by this part of the script:
+//   GM_getValue, GM_listValues    answered at once from what was read before starting
+//   GM_setValue, GM_deleteValue   answered at once, then saved with GM.setValue / GM.deleteValue
+//   GM_addValueChangeListener     told when another editor tab changes a value
+//   GM_xmlhttpRequest             sent from here (the page's policy does not apply here), with GM.xmlHttpRequest
+//                                 when the site does not answer the page directly
+//   GM_addStyle, GM_info, unsafeWindow
+// With Tampermonkey, Violentmonkey and the like none of this runs.
+const WME_STUDIO_BRIDGE_NEEDED = typeof GM_getValue !== 'function' && typeof GM === 'object' && GM !== null && typeof GM.getValue === 'function';
+
+// A small note at the bottom left while Studio starts this way, so a start that goes wrong can be seen on an iPad
+// (there is no console there). It shows only when something fails, or always with #wmeStudioDebug in the address.
+function wmeStudioBridgeNote(text, bad) {
+  try {
+    const verbose = globalThis.WME_STUDIO_BRIDGE_VERBOSE === true || /wmeStudioDebug/i.test(location.hash);
+    if (!bad && !verbose) return;
+    const show = () => {
+      let box = document.getElementById('wme-studio-bridge-note');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'wme-studio-bridge-note';
+        box.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:2147483647;max-width:min(520px,calc(100vw - 24px));padding:9px 13px;border-radius:12px;font:13px/1.4 -apple-system,system-ui,sans-serif;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.35);pointer-events:auto;white-space:pre-wrap';
+        box.addEventListener('click', () => box.remove());
+        (document.body || document.documentElement).append(box);
+      }
+      box.style.background = bad ? 'rgba(180,35,35,.95)' : 'rgba(25,30,36,.92)';
+      box.textContent = `WME Studio: ${text}`;
+      clearTimeout(box.wsTimer);
+      if (!bad) box.wsTimer = setTimeout(() => box.remove(), 6000);
+    };
+    if (document.documentElement) show(); else document.addEventListener('DOMContentLoaded', show, { once: true });
+  } catch (_) { /* nothing more can be shown */ }
+}
+
+function wmeStudioStartBridge(main) {
+  wmeStudioBridgeNote(`starting for ${(typeof GM_info === 'object' && GM_info?.scriptHandler) || GM?.info?.scriptHandler || 'this manager'}…`);
+  const token = `ws${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  const say = (...parts) => console.info('[WME Studio]', ...parts);
+  const resourcesCode = globalThis.WMEStudioResourcesCode, screenDisplaysCode = globalThis.WMEStudioScreenDisplaysCode;
+  if (typeof resourcesCode !== 'function') say('the Resources library did not load: Studio starts without its theme and languages');
+  const ALLOWED = /^https:\/\/(?:update\.greasyfork\.org|greasyfork\.org|[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev)\//i;
+
+  // Requests from the page copy, answered here.
+  const requests = new Map();
+  const answer = (id, kind, response) => window.postMessage({ wsBridge: token, from: 'content', op: 'xhr', id, kind, response }, '*');
+  async function send(id, details) {
+    const url = String(details.url || '');
+    if (!ALLOWED.test(url)) { answer(id, 'error', { status: 0, statusText: 'Not allowed', responseText: '' }); return; }
+    const method = String(details.method || 'GET').toUpperCase();
+    const body = details.buffer ? new Blob([details.buffer], { type: details.bufferType || '' }) : details.data;
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = details.timeout > 0 ? setTimeout(() => { timedOut = true; controller.abort(); }, details.timeout) : 0;
+    requests.set(id, controller);
+    try {
+      const response = await fetch(url, { method, headers: details.headers || {}, body: method === 'GET' || method === 'HEAD' ? undefined : body,
+        credentials: details.anonymous ? 'omit' : 'include', signal: controller.signal, cache: 'no-store' });
+      const responseText = await response.text();
+      const responseHeaders = [...response.headers].map(([name, value]) => `${name}: ${value}`).join('\r\n');
+      answer(id, 'load', { status: response.status, statusText: response.statusText, responseText, response: responseText, responseHeaders, finalUrl: response.url, readyState: 4 });
+    } catch (error) {
+      if (timedOut) answer(id, 'timeout', { status: 0, statusText: '', responseText: '' });
+      else if (controller.signal.aborted) answer(id, 'abort', { status: 0, statusText: '', responseText: '' });
+      else if (typeof GM.xmlHttpRequest === 'function' && typeof body !== 'object') {
+        // The site did not let the page read it (no CORS): the manager asks for it instead.
+        GM.xmlHttpRequest({ method, url, headers: details.headers || {}, data: body, timeout: details.timeout || 0, anonymous: !!details.anonymous,
+          onload: r => answer(id, 'load', { status: r.status, statusText: r.statusText, responseText: r.responseText, response: r.responseText, responseHeaders: r.responseHeaders || '', finalUrl: r.finalUrl || url, readyState: 4 }),
+          onerror: () => answer(id, 'error', { status: 0, statusText: '', responseText: '' }),
+          ontimeout: () => answer(id, 'timeout', { status: 0, statusText: '', responseText: '' }),
+          onabort: () => answer(id, 'abort', { status: 0, statusText: '', responseText: '' }) });
+      } else answer(id, 'error', { status: 0, statusText: String(error?.message || ''), responseText: '' });
+    } finally { clearTimeout(timer); requests.delete(id); }
+  }
+  window.addEventListener('message', event => {
+    const message = event.data;
+    if (!message || message.wsBridge !== token || message.from !== 'page') return;
+    try {
+      if (message.op === 'set') Promise.resolve(GM.setValue(message.key, message.value)).catch(error => say('could not save', message.key, error));
+      else if (message.op === 'delete') Promise.resolve(GM.deleteValue?.(message.key)).catch(() => {});
+      else if (message.op === 'xhr') send(message.id, message.details);
+      else if (message.op === 'abort') requests.get(message.id)?.abort();
+    } catch (error) { say('bridge', error); }
+  });
+
+  // Everything stored, read once before starting: the page copy answers GM_getValue from it at once.
+  const readStore = async () => {
+    const values = {};
+    try {
+      const keys = await GM.listValues();
+      await Promise.all((Array.isArray(keys) ? keys : []).map(async key => { values[key] = await GM.getValue(key); }));
+    } catch (error) { say('could not read the stored settings', error); }
+    return values;
+  };
+  const info = (() => {
+    const source = (typeof GM_info === 'object' && GM_info) || GM.info || {};
+    const script = source.script || {};
+    return { script: { name: String(script.name || 'WME Studio'), namespace: String(script.namespace || ''), version: String(script.version || ''), icon: String(script.icon || ''), description: String(script.description || '') },
+      scriptHandler: String(source.scriptHandler || 'Userscripts'), version: String(source.version || '') };
+  })();
+
+  // The page marks its own scripts with a nonce: the copy carries the same one.
+  const nonceOf = () => { for (const script of document.getElementsByTagName('script')) { const nonce = script.nonce || script.getAttribute('nonce'); if (nonce) return nonce; } return ''; };
+  const pageReady = () => new Promise(resolve => {
+    // Declared first: when the page's scripts are already there, done() runs before the watchers are set up.
+    let settled = false, observer = null, timer = 0;
+    const done = () => { if (settled) return; settled = true; observer?.disconnect(); clearTimeout(timer); resolve(); };
+    if (nonceOf() || document.readyState !== 'loading') { done(); return; }
+    observer = typeof MutationObserver === 'function' ? new MutationObserver(() => { if (nonceOf()) done(); }) : null;
+    observer?.observe(document, { childList: true, subtree: true });
+    document.addEventListener('DOMContentLoaded', done, { once: true });
+    timer = setTimeout(done, 15000);
+  });
+
+  const pageCode = values => `(function (seed) {
+  const TOKEN = seed.token, unsafeWindow = window, GM_info = seed.info;
+  const store = seed.values, listeners = new Map();
+  const copy = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
+  const post = message => window.postMessage(Object.assign({ wsBridge: TOKEN, from: 'page' }, message), '*');
+  const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('wme-studio-gm') : null;
+  const tell = (key, oldValue, newValue, remote) => { for (const listener of listeners.get(key) || []) { try { listener(key, oldValue, newValue, remote); } catch (error) { console.error(error); } } };
+  if (channel) channel.onmessage = event => {
+    const { key, value, gone } = event.data || {};
+    if (typeof key !== 'string') return;
+    const oldValue = store[key];
+    if (gone) delete store[key]; else store[key] = value;
+    tell(key, copy(oldValue), copy(value), true);
+  };
+  function GM_getValue(key, fallback) { return Object.prototype.hasOwnProperty.call(store, key) ? copy(store[key]) : fallback; }
+  function GM_listValues() { return Object.keys(store); }
+  function GM_setValue(key, value) {
+    if (value === undefined) { GM_deleteValue(key); return; }
+    const oldValue = store[key], kept = copy(value);
+    store[key] = kept;
+    post({ op: 'set', key, value: kept });
+    channel?.postMessage({ key, value: kept });
+    setTimeout(() => tell(key, copy(oldValue), copy(kept), false), 0);
+  }
+  function GM_deleteValue(key) {
+    const oldValue = store[key];
+    delete store[key];
+    post({ op: 'delete', key });
+    channel?.postMessage({ key, gone: true });
+    setTimeout(() => tell(key, copy(oldValue), undefined, false), 0);
+  }
+  function GM_addValueChangeListener(key, listener) {
+    if (!listeners.has(key)) listeners.set(key, new Set());
+    listeners.get(key).add(listener);
+    return listener;
+  }
+  function GM_removeValueChangeListener(handle) { for (const set of listeners.values()) set.delete(handle); }
+  function GM_addStyle(css) {
+    const style = document.createElement('style');
+    style.textContent = String(css);
+    (document.head || document.documentElement).append(style);
+    return style;
+  }
+  const calls = new Map();
+  let lastCall = 0;
+  window.addEventListener('message', event => {
+    const message = event.data;
+    if (!message || message.wsBridge !== TOKEN || message.from !== 'content' || message.op !== 'xhr') return;
+    const details = calls.get(message.id);
+    if (!details) return;
+    calls.delete(message.id);
+    const handler = details['on' + message.kind];
+    try { handler?.(message.response); } catch (error) { console.error(error); }
+    try { details.onloadend?.(message.response); } catch (error) { console.error(error); }
+  });
+  function GM_xmlhttpRequest(details) {
+    const id = ++lastCall;
+    calls.set(id, details);
+    const plain = { method: details.method, url: String(details.url), headers: details.headers, timeout: details.timeout, anonymous: details.anonymous };
+    const data = details.data;
+    if (data instanceof Blob) data.arrayBuffer().then(buffer => post({ op: 'xhr', id, details: Object.assign(plain, { buffer, bufferType: data.type }) }));
+    else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) post({ op: 'xhr', id, details: Object.assign(plain, { buffer: data instanceof ArrayBuffer ? data : data.buffer }) });
+    else post({ op: 'xhr', id, details: Object.assign(plain, { data: data == null ? undefined : String(data) }) });
+    return { abort() { post({ op: 'abort', id }); } };
+  }
+  document.documentElement.setAttribute('data-wme-studio-bridge', 'on');
+  try { (${typeof resourcesCode === 'function' ? String(resourcesCode) : 'function () {}'})(); } catch (error) { console.error('[WME Studio] Resources', error); }
+  try { (${typeof screenDisplaysCode === 'function' ? String(screenDisplaysCode) : 'function () {}'})(); } catch (error) { console.error('[WME Studio] Screen displays', error); }
+  (${String(main)})();
+})(${JSON.stringify({ token, info, values })});`;
+
+  let blocked = '';
+  document.addEventListener('securitypolicyviolation', event => { if (!blocked) blocked = `${event.violatedDirective || event.effectiveDirective || ''} ${event.blockedURI || ''}`.trim(); }, true);
+  Promise.all([readStore(), pageReady()]).then(([values]) => {
+    const script = document.createElement('script');
+    const nonce = nonceOf();
+    if (nonce) script.nonce = nonce;
+    wmeStudioBridgeNote(`read ${Object.keys(values).length} saved settings; starting in the page (${nonce ? 'with' : 'WITHOUT'} the page's nonce)…`);
+    script.textContent = pageCode(values);
+    (document.head || document.documentElement).append(script);
+    script.remove();
+    if (document.documentElement.getAttribute('data-wme-studio-bridge') !== 'on') {
+      const why = nonce ? 'the editor turned the script away' : 'no nonce could be read from the page, so the editor turned the script away';
+      console.error(`[WME Studio] could not start in the page: ${why}.`, blocked);
+      wmeStudioBridgeNote(`could not start: ${why} (Content Security Policy${blocked ? ': ' + blocked : ''}). Tap to close.`, true);
+    } else wmeStudioBridgeNote(`running (Resources ${typeof resourcesCode === 'function' ? 'loaded' : 'MISSING'}, Screen displays ${typeof screenDisplaysCode === 'function' ? 'loaded' : 'MISSING'}).`, typeof resourcesCode !== 'function');
+  }).catch(error => wmeStudioBridgeNote(`could not start: ${error?.message || error}`, true));
+}
+
+const wmeStudioMain = () => {
   'use strict';
 
   if (globalThis.__WME_STUDIO_USER_SCRIPT__) return;
@@ -151,11 +366,53 @@
     }
   };
 
-  const USERSCRIPT_VERSION = '2.2.3';
+  const USERSCRIPT_VERSION = '2.3.0';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
   const BUG_REPORT_FALLBACK_URL = 'https://greasyfork.org/scripts/599569/feedback';
+  // The WME SDK, for what Studio reads from and does to the editor (2.2.4). Every caller asks it first and keeps
+  // its older way as a backup, so nothing stops working where the SDK is missing, not ready yet or gives no answer.
+  const studioSDK = (() => {
+    let handle = null, waiting = false, initialized = false;
+    const page = () => (typeof unsafeWindow === 'undefined' ? window : unsafeWindow);
+    function get() {
+      if (handle) return handle;
+      const win = page();
+      if (typeof win.getWmeSdk !== 'function') return null;
+      const started = win.SDK_INITIALIZED;
+      if (started?.then && !initialized) {
+        if (!waiting) { waiting = true; Promise.resolve(started).then(() => { initialized = true; }, () => { waiting = false; }); }
+        return null;
+      }
+      try { handle = win.getWmeSdk({ scriptId: 'wme-studio-core', scriptName: 'WME Studio' }); } catch (_) { handle = null; }
+      return handle;
+    }
+    // read(api) answers, or the backup does: an error, nothing, or a number that is not a number all count as no answer.
+    function value(read, backup) {
+      const api = get();
+      if (api) {
+        try {
+          const result = read(api);
+          if (result !== undefined && result !== null && !(typeof result === 'number' && !Number.isFinite(result))) return result;
+        } catch (_) { /* the backup below */ }
+      }
+      return typeof backup === 'function' ? backup() : backup;
+    }
+    // A map layer's element, found through the SDK: the layer's z-index, which OpenLayers also writes on the layer's
+    // own element. Only an answer that points at exactly one layer counts.
+    function layerElement(layerName) {
+      return value(api => {
+        const z = api.Map.getLayerZIndex({ layerName });
+        if (!Number.isFinite(Number(z))) return null;
+        const viewport = api.Map.getMapViewportElement?.() || document;
+        const found = [...viewport.querySelectorAll('.olLayerDiv')].filter(element => element.style.zIndex === String(z));
+        return found.length === 1 ? found[0] : null;
+      }, null);
+    }
+    get();
+    return Object.freeze({ get, value, layerElement });
+  })();
   const studioResourceRecovery = (() => {
     const styles = new Map(), repairedImages = new WeakSet(), errorEvents = new WeakMap();
     function release(link,state) {
@@ -280,7 +537,10 @@
     try { active = !CSS.supports('selector(:host-context(html))'); } catch (studioError) { reportStudioError("Studio initialization",studioError); active = true; }
     const desktopViewport = '(min-width: 1180px) and (min-height: 640px)';
     if (!active) return Object.freeze({active:false,viewport:desktopViewport,page:text=>text,css:text=>text,bind:(_host,text)=>text,release:()=>{}});
-    const viewport = '(min-width: 768px) and (min-height: 500px)';
+    // On a touch screen a phone held sideways is laid out 980 wide and only some 450 high (see Screen displays):
+    // Studio's layout still fits there.
+    const touchLayout = navigator.maxTouchPoints > 0 && matchMedia('(any-pointer: coarse)').matches;
+    const viewport = touchLayout ? '(min-width: 740px) and (min-height: 400px)' : '(min-width: 768px) and (min-height: 500px)';
     const viewportCSS = text => text.replace(/\(min-width:\s*1180px\)\s+and\s+\(min-height:\s*640px\)/g,viewport);
     const attribute = 'data-wme-studio-safari-context';
     const selectors = new Map(), compiled = new Map(), hosts = new Map(), ancestors = new Map();
@@ -419,6 +679,17 @@
     const page = text => viewportCSS(text) + `
 html[data-wme-studio="on"][data-wme-studio-safari="on"] { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 html[data-wme-studio="on"][data-wme-studio-safari="on"] [aria-roledescription="draggable"] { touch-action:none; }
+/* Safari drew two thin light lines across the Online Editors island, along the top and bottom of its icon: the
+   icon's colour showed past the edges of its mask. The icon box is kept to the icon's own 20px square, the mask is
+   spelled out in full and the icon is drawn on a layer of its own, so nothing shows outside the icon's shape. */
+html[data-wme-studio="on"][data-wme-studio-safari="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble > img[slot="left-icon"] {
+  flex: 0 0 20px !important; max-width: 20px !important; min-width: 20px !important; overflow: hidden !important;
+  -webkit-mask-repeat: no-repeat !important; mask-repeat: no-repeat !important;
+  -webkit-mask-position: center !important; mask-position: center !important;
+  -webkit-mask-size: 20px 20px !important; mask-size: 20px 20px !important;
+  -webkit-mask-clip: border-box !important; mask-clip: border-box !important;
+  -webkit-transform: translateZ(0); transform: translateZ(0); border: 0 !important; outline: 0 !important; box-shadow: none !important;
+}
 @media (hover:none) {
   html[data-wme-studio="on"][data-wme-studio-safari="on"][data-wme-studio-compact="on"] { --ws-compact-hover-opacity:var(--ws-compact-opacity,60%) !important; }
 }
@@ -1025,6 +1296,11 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
   // visit; before the map has loaded the first time, a rough guess from the computer's time zone.
   let place = null, placeRead = 0;
   function mapCenter() {
+    const fromSDK = studioSDK.value(api => {
+      const center = api.Map.getMapCenter();
+      return Number.isFinite(center?.lon) && Number.isFinite(center?.lat) && (center.lon || center.lat) && Math.abs(center.lat) <= 90 ? { lat: center.lat, lon: center.lon } : null;
+    }, null);
+    if (fromSDK) return fromSDK;
     try {
       const map = pageWindow.W?.map, ol = map?.getOLMap?.() || map?.olMap || null;
       const center = ol?.getCenter?.();
@@ -3892,6 +4168,254 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   const config = globalThis.WMEStudioSettings;
   const schedule = globalThis.WMEStudioSchedule;
 
+  // ---- iPhone and iPad: only the map zooms, and what you type shows above the keyboard (2.3.0) -------------------
+  // Safari zooms the whole page when two fingers land on something that is not the map (a header, an island, a
+  // panel), on a double tap, and on its own when a text field smaller than 16px gets the focus. Those are stopped, so
+  // only the map zooms (the map reads the fingers itself, which still works). Safari keeps laying the page out and
+  // turning it as it always did. While the on-screen keyboard is up, a bar just above it shows the field's text and
+  // caret as you type. Islands are drawn a little larger on a touch screen, for a finger.
+  const touchScreen = navigator.maxTouchPoints > 0 && matchMedia('(any-pointer: coarse)').matches && window.top === window.self;
+  // On a touch screen islands are a little larger (up to 15%) where there is room for them, and smaller where the
+  // page is short (a phone held sideways is some 450 high), so the side rails and the header still fit.
+  const touchHudZoom = () => {
+    if (!touchScreen) return 1;
+    const height = document.documentElement?.clientHeight || innerHeight;
+    return Math.round(Math.max(.78, Math.min(1.15, height / 560)) * 20) / 20;
+  };
+  const hudZoomOf = scale => Math.round((scale || 100) / 100 * touchHudZoom() * 1000) / 1000;
+  (() => {
+    if (!touchScreen || standaloneSignin) return;
+    const root = document.documentElement;
+    root.setAttribute('data-wme-studio-touch', 'on');
+
+    // Two fingers or a double tap never zoom the page. Safari's page zoom comes from its gesture events; the map's
+    // own pinch comes from the touch events, which are left to run.
+    const block = event => { if (event.cancelable) event.preventDefault(); };
+    const options = { capture: true, passive: false };
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, block, options);
+    document.addEventListener('touchmove', event => { if (event.touches.length > 1) block(event); }, options);
+    const touchStyle = document.createElement('style');
+    touchStyle.textContent = 'html[data-wme-studio-touch="on"],html[data-wme-studio-touch="on"] body{touch-action:pan-x pan-y}';
+    (document.head || root).append(touchStyle);
+
+    // The page's width. Studio's layout needs a page at least 740 wide: on a phone the page is laid out 980 wide, as
+    // Safari does for a desktop site, and Safari fits it to the screen and turns it itself. Every iPad (an iPad mini
+    // included) keeps the page exactly as Safari lays it out: the page size, height and scale are left alone there.
+    // A text field about to get the focus: for as long as it has it, the page may not grow past its scale right now,
+    // which is what keeps Safari from zooming into the field. It is let go again when the field is left.
+    const whenReady = action => { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', action, { once: true }); else action(); };
+    const PHONE_WIDTH = 980;
+    const phone = Math.min(screen.width, screen.height) < 600;
+    if (phone) root.setAttribute('data-wme-studio-phone', 'on');
+    const view = { meta: null, original: undefined, hold: 0, width: 0, written: null };
+    function applyViewport() {
+      const head = document.head;
+      if (!head) return;
+      const metas = [...document.querySelectorAll('meta[name="viewport"]')];
+      let meta = metas.filter(item => !item.hasAttribute('data-wme-studio-made')).pop() || metas[0] || null;
+      if (view.original === undefined) view.original = meta ? meta.getAttribute('content') || '' : null;
+      if (!phone && !view.hold) {
+        // Nothing to change: put back what the page had.
+        if (!view.meta) return;
+        if (view.meta.hasAttribute('data-wme-studio-made')) view.meta.remove(); else view.meta.setAttribute('content', view.original || '');
+        view.meta = null; view.written = null;
+        return;
+      }
+      if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; meta.setAttribute('data-wme-studio-made', ''); head.append(meta); }
+      view.meta = meta;
+      const original = view.original || '';
+      const kept = original.split(',').map(part => part.trim()).filter(part => part && !/^(?:width|initial-scale|minimum-scale|maximum-scale|user-scalable)\s*=/i.test(part));
+      const ownWidth = original.split(',').map(part => part.trim()).find(part => /^width\s*=/i.test(part));
+      const parts = [];
+      if (phone) parts.push(`width=${PHONE_WIDTH}`);
+      else if (ownWidth) parts.push(ownWidth, ...original.split(',').map(part => part.trim()).filter(part => /^initial-scale\s*=/i.test(part)));
+      else parts.push(`width=${view.width || root.clientWidth || PHONE_WIDTH}`);   // the width it has now, kept while held
+      if (view.hold) parts.push(`maximum-scale=${view.hold}`);
+      const content = [...parts, ...kept].join(', ');
+      view.written = content;
+      if (meta.getAttribute('content') !== content) meta.setAttribute('content', content);
+    }
+    function holdScale() {
+      const scale = window.visualViewport?.scale;
+      if (!scale) return;
+      // An iPad lays a page without a width of its own out as a desktop page and does not zoom into its fields.
+      // Giving it a viewport tag, even for a moment, makes Safari lay the page out again, smaller: leave it be.
+      if (!phone) return;
+      if (!view.hold) view.width = root.clientWidth;
+      view.hold = Math.ceil(scale * 1000) / 1000;
+      applyViewport();
+    }
+    function releaseScale() {
+      if (!view.hold) return;
+      view.hold = 0; view.width = 0;
+      applyViewport();
+    }
+    // As early as the page has a head, and again should the page change the tag itself.
+    const watchViewport = () => {
+      applyViewport();
+      new MutationObserver(() => {
+        // The page's own tag arrived after Studio's: Studio's goes, and the page's is the one changed from now on.
+        const own = [...document.querySelectorAll('meta[name="viewport"]')].filter(meta => !meta.hasAttribute('data-wme-studio-made')).pop();
+        if (own && own !== view.meta) {
+          if (view.meta?.hasAttribute('data-wme-studio-made')) view.meta.remove();
+          view.meta = null; view.written = null; view.original = own.getAttribute('content') || '';
+        } else if (own && own === view.meta && own.getAttribute('content') !== view.written) view.original = own.getAttribute('content') || '';
+        else if (!own && !view.meta?.isConnected) view.meta = null;
+        applyViewport();
+      }).observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content'] });
+    };
+    if (document.head) watchViewport();
+    else {
+      const waitHead = new MutationObserver(() => { if (document.head) { waitHead.disconnect(); watchViewport(); } });
+      waitHead.observe(root, { childList: true });
+    }
+
+    // What you type, just above the keyboard.
+    const TEXT_TYPES = new Set(['', 'text', 'search', 'email', 'url', 'tel', 'password', 'number']);
+    const typable = node => {
+      if (!node || node.nodeType !== 1 || node.disabled || node.readOnly) return false;
+      if (node.localName === 'textarea') return true;
+      if (node.localName === 'input') return TEXT_TYPES.has((node.getAttribute('type') || '').toLowerCase());
+      return node.isContentEditable === true;
+    };
+    const deepActive = () => { let node = document.activeElement; while (node?.shadowRoot?.activeElement) node = node.shadowRoot.activeElement; return node; };
+    const bar = { host: null, box: null, label: null, text: null, field: null, timer: 0, frame: 0, tall: 0, shownAt: 0 };
+    function makeBar() {
+      if (bar.host) return;
+      bar.host = document.createElement('div');
+      bar.host.id = 'wme-studio-typing-bar';
+      bar.host.setAttribute('aria-hidden', 'true');
+      bar.host.style.cssText = 'position:fixed;left:0;top:0;z-index:2147483646;pointer-events:none;transform-origin:0 0;display:none';
+      const shadow = bar.host.attachShadow({ mode: 'open' });
+      shadow.innerHTML = `<style>
+        .box{box-sizing:border-box;width:100%;padding:8px 14px 9px;border-radius:16px;
+          background:color-mix(in srgb,var(--wme-studio-surface,#1f2226) 78%,transparent);
+          border:1px solid var(--wme-studio-border,rgba(255,255,255,.14));color:var(--wme-studio-text,#f2f4f6);
+          -webkit-backdrop-filter:blur(22px) saturate(1.6);backdrop-filter:blur(22px) saturate(1.6);
+          box-shadow:0 10px 30px rgba(0,0,0,.28);font:15px/1.35 var(--ws-font,-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif);
+          opacity:0;translate:0 6px;transition:opacity .16s ease,translate .22s cubic-bezier(.32,.72,0,1)}
+        .box.on{opacity:1;translate:0 0}
+        .label{font-size:11px;line-height:1.3;color:var(--wme-studio-text-muted,#9aa5af);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+        .label:empty{display:none}
+        .text{white-space:pre;overflow:hidden;min-height:1.35em}
+        .text.lines{white-space:pre-wrap;word-break:break-word;max-height:4.05em}
+        .caret{display:inline-block;width:2px;height:1.15em;margin:0 -1px;vertical-align:-.2em;border-radius:1px;
+          background:var(--wme-studio-accent,#0a84ff);animation:blink 1s steps(1) infinite}
+        @keyframes blink{50%{opacity:0}}
+        @media (prefers-reduced-motion:reduce){.box{transition:none}.caret{animation:none}}
+      </style><div class="box"><div class="label"></div><div class="text"></div></div>`;
+      bar.box = shadow.querySelector('.box'); bar.label = shadow.querySelector('.label'); bar.text = shadow.querySelector('.text');
+      (document.body || root).append(bar.host);
+    }
+    const keyboardUp = () => {
+      const view = visualViewport;
+      if (!view) return true;
+      // The keyboard takes a good part of the screen; a hardware keyboard takes none, and then no bar is needed.
+      bar.tall = Math.max(bar.tall, view.height * view.scale);
+      return view.height * view.scale < bar.tall * 0.82;
+    };
+    function labelOf(field) {
+      const own = field.getAttribute('placeholder') || field.getAttribute('aria-label') || field.getAttribute('title');
+      if (own) return own;
+      const host = field.getRootNode?.()?.host;
+      return host?.getAttribute?.('placeholder') || host?.getAttribute?.('label') || host?.getAttribute?.('aria-label') || field.labels?.[0]?.textContent?.trim() || '';
+    }
+    function paintBar() {
+      bar.frame = 0;
+      const field = bar.field;
+      if (!field || !field.isConnected || deepActive() !== field) { hideBar(); return; }
+      if (!keyboardUp()) { bar.host && (bar.host.style.display = 'none'); return; }
+      makeBar();
+      const view = visualViewport, scale = view?.scale || 1, margin = 8;
+      const width = Math.min(640, (view ? view.width * scale : innerWidth) - margin * 2);
+      bar.host.style.display = 'block';
+      bar.host.style.width = `${width}px`;
+      const height = bar.box.offsetHeight || 52;
+      const left = (view?.offsetLeft || 0) + ((view ? view.width : innerWidth) - width / scale) / 2;
+      const top = (view?.offsetTop || 0) + (view ? view.height : innerHeight) - (height + margin) / scale;
+      bar.host.style.transform = `translate(${left}px, ${top}px) scale(${1 / scale})`;
+      const label = labelOf(field);
+      if (bar.label.textContent !== label) bar.label.textContent = label;
+      const lines = field.localName === 'textarea' || field.isContentEditable;
+      bar.text.classList.toggle('lines', lines);
+      let value = field.isContentEditable ? field.innerText : String(field.value ?? '');
+      if ((field.getAttribute('type') || '').toLowerCase() === 'password') value = '•'.repeat(value.length);
+      let at = value.length;
+      try { if (!field.isContentEditable && typeof field.selectionStart === 'number') at = field.selectionStart; } catch (_) { /* email and number fields have no caret position */ }
+      bar.text.replaceChildren();
+      if (!value) bar.text.append(Object.assign(document.createElement('span'), { className: 'caret' }));
+      else {
+        const caret = Object.assign(document.createElement('span'), { className: 'caret' });
+        bar.text.append(document.createTextNode(value.slice(0, at)), caret, document.createTextNode(value.slice(at)));
+        // Keep the caret in sight in a long text.
+        bar.text.scrollLeft = Math.max(0, caret.offsetLeft - bar.text.clientWidth + 24);
+        bar.text.scrollTop = Math.max(0, caret.offsetTop - bar.text.clientHeight + caret.offsetHeight + 2);
+      }
+      if (!bar.box.classList.contains('on')) requestAnimationFrame(() => bar.box?.classList.add('on'));
+    }
+    const queueBar = () => { if (bar.field && !bar.frame) bar.frame = requestAnimationFrame(paintBar); };
+    function hideBar() {
+      bar.field = null;
+      clearInterval(bar.timer); bar.timer = 0;
+      if (bar.frame) { cancelAnimationFrame(bar.frame); bar.frame = 0; }
+      if (bar.host) { bar.box.classList.remove('on'); bar.host.style.display = 'none'; }
+    }
+    document.addEventListener('touchstart', event => { if (typable(event.composedPath?.()[0] || event.target)) holdScale(); }, { capture: true, passive: true });
+    document.addEventListener('focusin', event => {
+      const field = event.composedPath?.()[0] || event.target;
+      if (!typable(field)) return;
+      holdScale();
+      bar.field = field;
+      clearInterval(bar.timer);
+      // Values set by the page (a suggestion picked, a field cleared) send no event: look again now and then.
+      bar.timer = setInterval(queueBar, 250);
+      queueBar(); setTimeout(queueBar, 350);
+    }, true);
+    document.addEventListener('focusout', () => {
+      setTimeout(() => {
+        const now = deepActive();
+        if (typable(now)) { bar.field = now; queueBar(); return; }
+        hideBar();
+        releaseScale();
+        // Safari may leave the page pushed up after the keyboard: put it back.
+        if (scrollX || scrollY) scrollTo(0, 0);
+      }, 60);
+    }, true);
+    for (const type of ['input', 'keyup', 'selectionchange', 'compositionupdate']) document.addEventListener(type, queueBar, true);
+    visualViewport?.addEventListener('resize', () => { if (!bar.field && visualViewport.height * visualViewport.scale > bar.tall) bar.tall = visualViewport.height * visualViewport.scale; queueBar(); });
+    visualViewport?.addEventListener('scroll', queueBar);
+    const measureTall = () => { if (visualViewport && !bar.field) bar.tall = visualViewport.height * visualViewport.scale; };
+    whenReady(measureTall);
+    addEventListener('orientationchange', () => { bar.tall = 0; setTimeout(measureTall, 400); });
+
+    // The page's height. After the phone turns, Safari can leave the editor's own full height worked out for the old
+    // shape, so the map stopped short of the bottom of the screen (with the islands, placed by the window, hanging
+    // below it). The editor is given the height Safari shows, and the map is told to measure itself again.
+    const heightStyle = document.createElement('style');
+    heightStyle.textContent = 'html[data-wme-studio-phone="on"],html[data-wme-studio-phone="on"] body,html[data-wme-studio-phone="on"] body>.app{height:var(--ws-touch-height,100%)!important;min-height:0!important;max-height:var(--ws-touch-height,none)!important}html[data-wme-studio-phone="on"],html[data-wme-studio-phone="on"] body{overflow:hidden!important}';
+    (document.head || root).append(heightStyle);
+    let heightTimer = 0;
+    function fitHeight() {
+      heightTimer = 0;
+      if (!phone) return;
+      // The keyboard comes and goes over the page; the page keeps its height meanwhile.
+      if (typable(deepActive())) return;
+      const height = Math.round(innerHeight);
+      if (!height) return;
+      const value = `${height}px`;
+      if (root.style.getPropertyValue('--ws-touch-height') === value) return;
+      root.style.setProperty('--ws-touch-height', value);
+      if (scrollX || scrollY) scrollTo(0, 0);
+      // After Studio has started (the map tools are set up further down).
+      setTimeout(() => { try { resizeMap(true); } catch (_) { /* the editor measures on its own */ } }, 0);
+    }
+    const fitHeightSoon = () => { clearTimeout(heightTimer); heightTimer = setTimeout(fitHeight, 120); };
+    whenReady(fitHeight);
+    addEventListener('resize', fitHeightSoon, { passive: true });
+    addEventListener('orientationchange', () => { fitHeightSoon(); setTimeout(fitHeight, 600); });
+    visualViewport?.addEventListener('resize', fitHeightSoon);
+  })();
+
   // Custom scrollbars: slim, rounded and in the theme's colours everywhere in the editor. Chromium draws them
   // from ::-webkit-scrollbar only where no element asks for the standard thin scrollbar, so those requests are
   // switched off while this is on; Firefox gets the standard thin scrollbar in the same colours.
@@ -4133,7 +4657,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     return null;
   }
   function compactHeaderWidth(viewportWidth = innerWidth) {
-    const zoom = (settings.hudScale || 100) / 100;
+    const zoom = hudZoomOf(settings.hudScale);
     const inset = root.getAttribute('data-wme-studio-safari') === 'on' ? 72 : Math.min(240, Math.max(96, viewportWidth * .1));
     const base = Math.min(1280 * zoom, viewportWidth - 2 * inset);
     return settings.compactHeaderFullWidth ? base + (viewportWidth - base) * settings.compactHeaderWidth / 100 : base;
@@ -5314,8 +5838,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     const map=pageWindow.W?.map, native=map?.wazeMap || map, ids=new Set();
     for (const name of SATELLITE_LAYER_NAMES) {
       try {
-        const layer=map?.getLayerByUniqueName?.(name) || map?.getLayerByName?.(name) || native?.getLayerByName?.(name);
-        const element=layer?.getRootElement?.() || layer?.div;
+        let element=studioSDK.layerElement(name);
+        if (!element) { const layer=map?.getLayerByUniqueName?.(name) || map?.getLayerByName?.(name) || native?.getLayerByName?.(name); element=layer?.getRootElement?.() || layer?.div; }
         if (element?.isConnected && element.id) ids.add(`#${CSS.escape(element.id)}`);
       } catch (studioError) { reportStudioError("applySatelliteLayerBrightness",studioError);}
     }
@@ -5337,9 +5861,9 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     if (!settings.gpsBelowRoads && settings.gpsOpacity===100) { mapOrderSheet?.remove();mapOrderSheet=null;return; }
     const map = pageWindow.W?.map, native = map?.wazeMap || map;
     const roads = map?.getLayerByUniqueName?.('roads');
-    const gps = map?.getLayerByUniqueName?.('gps_points') || map?.getLayerByName?.('gps_points') || native?.getLayerByName?.('gps_points');
-    const element = gps?.getRootElement?.() || gps?.div;
-    const roadZ = Number(roads?.getZIndex?.());
+    let element = studioSDK.layerElement('gps_points');
+    if (!element) { const gps = map?.getLayerByUniqueName?.('gps_points') || map?.getLayerByName?.('gps_points') || native?.getLayerByName?.('gps_points'); element = gps?.getRootElement?.() || gps?.div; }
+    const roadZ = Number(studioSDK.value(api => api.Map.getLayerZIndex({ layerName: 'roads' }), () => roads?.getZIndex?.()));
     const rules = [];
     if (settings.gpsBelowRoads && Number.isFinite(roadZ)) rules.push(`z-index: ${roadZ - 1} !important;`);
     if (settings.gpsOpacity!==100) rules.push('opacity: var(--ws-gps-opacity,1) !important;');
@@ -5443,8 +5967,16 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       notifyingMapResize = true;
       try {
         const map = pageWindow.W?.map;
-        if (preferNative && document.getElementById('WazeMap') && typeof map?.resize === 'function') {
-          try { map.resize(); return; } catch (studioError) { reportStudioError("resizeMap",studioError); }
+        if (preferNative && document.getElementById('WazeMap')) {
+          // The page's own "the window changed" first, as for any page; WME's resize only if the map did not follow.
+          window.dispatchEvent(new Event('resize'));
+          requestAnimationFrame(() => {
+            if (typeof map?.resize !== 'function' || mapSizeOnRecord(map)) return;
+            notifyingMapResize = true;
+            try { map.resize(); } catch (studioError) { reportStudioError("resizeMap",studioError); }
+            finally { notifyingMapResize = false; }
+          });
+          return;
         }
         // A "resize" event makes the editor and every script that listens for it measure the page again.
         // When the size OpenLayers has on record already equals the size of the map element (a floating
@@ -6258,7 +6790,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     // per step. The full pass runs once, when the value is saved as the slider rests.
     quick(key, value) {
       if (!ready || !settings.enabled || !Number.isFinite(value)) return false;
-      if (key === 'hudScale') { rootStyle('--ws-hud-zoom', String(value / 100)); scheduleIslandControls(); }
+      if (key === 'hudScale') { rootStyle('--ws-hud-zoom', String(hudZoomOf(value))); scheduleIslandControls(); }
       else if (key === 'compactHeaderWidth') { rootStyle('--ws-header-width-extension', String(value / 100)); attr('header-width', value > 0 ? 'custom' : null); scheduleIslandControls(); }
       else if (key === 'searchWidth') { rootStyle('--ws-search-width', value ? `${value}px` : ''); attr('search-width', value ? 'custom' : null); }
       else return false;
@@ -6297,7 +6829,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     if (!settings.enabled) {
       syncStudioPalette();
       root.removeAttribute('data-wme-studio-sidebar-entry');
-      for (const key of ['', 'page', 'theme', 'corners', 'addons', 'motion', 'compact', 'header-width', 'layer-columns', 'light-glass', 'eye-saver', 'satellite', 'viewport-overlay', 'requests', 'scrollbars']) attr(key, null);
+      for (const key of ['', 'page', 'theme', 'corners', 'addons', 'motion', 'compact', 'header-width', 'layer-columns', 'light-glass', 'eye-saver', 'satellite', 'viewport-overlay', 'requests', 'scrollbars', 'screen-displays', 'sd-longpress', 'sd-road', 'sd-shape', 'sd-draw']) attr(key, null);
       for (const name of ['--wme-studio-accent', '--wme-studio-on-accent', '--ws-on-accent-filter', '--ws-sidebar', '--ws-compact-drawer-top', '--ws-compact-drawer-height', '--ws-compact-drawer-left', '--ws-compact-opacity', '--ws-compact-hover-opacity', '--ws-compact-tools-border-width', '--ws-header-width-extension', '--ws-eye-saver-opacity', '--ws-satellite-brightness', '--ws-gps-opacity', '--ws-viewport-overlay-opacity']) root.style.removeProperty(name);
       clearCompactLayoutVariables();
       queueCompactAuxiliaryPlacement();
@@ -6315,7 +6847,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       syncEyeSaver();
       rootStyle('--ws-satellite-brightness', String(settings.satelliteBrightness / 100));
       rootStyle('--ws-gps-opacity', String(settings.gpsOpacity / 100));
-      rootStyle('--ws-hud-zoom', String(settings.hudScale / 100));
+      rootStyle('--ws-hud-zoom', String(hudZoomOf(settings.hudScale)));
       rootStyle('--ws-header-width-extension', String(settings.compactHeaderWidth / 100));
       rootStyle('--ws-search-width', settings.searchWidth ? `${settings.searchWidth}px` : '');
       attr('search-width', settings.searchWidth ? 'custom' : null);
@@ -7685,7 +8217,61 @@ ${studioRangeCSS('.picker-hue')}
       afterDiscover(()=>{awaitingPosition.delete(state);positionButton(state);});
     }
     window.addEventListener('resize',queuePositions,{passive:true});
+    // The SDK tells which update request opens and closes (sdkOpen: undefined until it has said anything). The request
+    // itself is read through the SDK; WME's own object is kept alongside when it is there, for its issue number (the
+    // SDK has no such number, and WME needs it to reopen the request).
+    let sdkOpen, sdkPanelsHooked = false;
+    function legacyRequest(id) { try { return pageWindow.W?.model?.mapUpdateRequests?.getObjectById?.(Number(id)) || null; } catch (_) { return null; } }
+    function requestFromSDK(id) {
+      const legacy = legacyRequest(id);
+      let data = null;
+      try { data = studioSDK.get()?.DataModel?.MapUpdateRequests?.getById?.({ mapUpdateRequestId: Number(id) }) || null; } catch (_) { data = null; }
+      const model = legacy || (data ? { id: String(id), type: 'mapUpdateRequest', getID: () => Number(id), getGeometry: () => data.geometry } : null);
+      return { type: 'mapUpdateRequest', id: String(id), mapIssueId: Number(legacy?.getMapIssueId?.() ?? NaN), model };
+    }
+    // Any other request the panel shows (a map problem, say): its position, for keeping it clear of the panels.
+    function problemFromSDK(event) {
+      const id = event?.id;
+      if (id == null) return null;
+      let data = null;
+      try { if (event.type === 'mapProblem') data = studioSDK.get()?.DataModel?.MapProblems?.getById?.({ mapProblemId: id }) || null; } catch (_) { data = null; }
+      if (data?.geometry) return { id: String(id), getID: () => String(id), getGeometry: () => data.geometry };
+      try { return pageWindow.W?.model?.mapProblems?.getObjectById?.(id) || null; } catch (_) { return null; }
+    }
+    function requestShown(next, revealModel = next?.model) {
+      if (revealModel) requestReveal.schedule(revealModel);
+      const previousPanel=currentPanel(),previousId=active?.id;
+      active=next;
+      for (const state of requestReplyForms.values()) startRequestOpeningScroll(state);
+      if (naming && naming.id!==active?.id) closeName();
+      if (!pendingRestore && active && items.has(active.id)) {
+        pendingRestore={item:items.get(active.id),swap:null,rollback:false,timer:0,previousPanel,previousId};
+        const operation=pendingRestore; operation.timer=setTimeout(()=>failedRestore(operation),5000);
+      }
+      queueRefresh();
+    }
+    function requestClosed() { saveCurrent(); active=null; closeName(); queueRefresh(); }
+    function hookPanelsSDK() {
+      if (sdkPanelsHooked) return true;
+      const api = studioSDK.get();
+      if (!api?.Events?.on) return false;
+      try {
+        api.Events.on({ eventName: 'wme-issue-tracker-panel-opened', eventHandler: event => {
+          if (event?.type === 'mapUpdateRequest' && event.id != null) { sdkOpen = String(event.id); requestShown(requestFromSDK(event.id)); }
+          else { sdkOpen = null; requestShown(null, problemFromSDK(event)); }
+        } });
+        api.Events.on({ eventName: 'wme-issue-tracker-panel-closed', eventHandler: () => { sdkOpen = null; requestClosed(); } });
+        sdkPanelsHooked = true;
+      } catch (_) { sdkPanelsHooked = false; }
+      return sdkPanelsHooked;
+    }
     function readCurrent() {
+      if (sdkOpen !== undefined) {
+        if (!sdkOpen) return;
+        const fresh = requestFromSDK(sdkOpen);
+        active = { ...(active?.id === fresh.id ? active : {}), ...fresh, mapIssueId: Number.isFinite(fresh.mapIssueId) ? fresh.mapIssueId : active?.mapIssueId };
+        return;
+      }
       let model;
       try { model=pageWindow.W?.problemsController?.getCurrentProblem?.(); } catch (_) { reportStudioError("readCurrent",_);}
       if (model) {
@@ -7751,24 +8337,17 @@ ${studioRangeCSS('.picker-hue')}
       try { trackStreetViewSDK(sdk); } catch (studioError) { reportStudioError("connect",studioError); }
       // connect() can run before requestReveal has been initialized further down this script.
       queueMicrotask(() => { try { requestReveal.connectPlaceUpdates(sdk); requestReveal.hookMoves(); } catch (studioError) { reportStudioError("connect",studioError); } });
+      if (hookPanelsSDK()) { queueRefresh(); return; }
       const app=pageWindow.W?.app;
       if (!app?.on) return;
       if (connectedApp===app) return;
       connectedApp=app; readCurrent();
       app.on('problems:shown',model=>{
-        requestReveal.schedule(model);
-        const previousPanel=currentPanel(),previousId=active?.id;
+        if (sdkPanelsHooked) return;
         const type=model?.type || model?.getType?.();
-        active=type==='mapUpdateRequest'?{type,id:String(model.getID()),mapIssueId:Number(model.getMapIssueId?.() ?? model.getID()),model}:null;
-        for (const state of requestReplyForms.values()) startRequestOpeningScroll(state);
-        if (naming && naming.id!==active?.id) closeName();
-        if (!pendingRestore && active && items.has(active.id)) {
-          pendingRestore={item:items.get(active.id),swap:null,rollback:false,timer:0,previousPanel,previousId};
-          const operation=pendingRestore; operation.timer=setTimeout(()=>failedRestore(operation),5000);
-        }
-        queueRefresh();
+        requestShown(type==='mapUpdateRequest'?{type,id:String(model.getID()),mapIssueId:Number(model.getMapIssueId?.() ?? model.getID()),model}:null, model);
       });
-      app.on('problems:closed',()=>{saveCurrent();active=null; closeName(); queueRefresh();});
+      app.on('problems:closed',()=>{ if (!sdkPanelsHooked) requestClosed(); });
       queueRefresh();
     }
     document.addEventListener('DOMContentLoaded',connect,{once:true}); window.addEventListener('load',connect,{once:true});
@@ -8057,6 +8636,23 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     let placePanel = null, placeKey = '', placeSDK = null, placeSDKStop = null;
     const olMap = () => { const map = pageWindow.W?.map; return map?.getOLMap?.() || map?.wazeMap || map?.olMap || map || null; };
     function screenPoint(model, map, view) {
+      // The SDK first: the request's position in degrees, and where that is on the map.
+      const fromSDK = studioSDK.value(api => {
+        let geometry = null;
+        try { geometry = model?.getGeometry?.(); } catch (_) { geometry = null; }
+        if (!Array.isArray(geometry?.coordinates)) geometry = model?.geometry || model?.attributes?.geometry;
+        let pair = geometry?.coordinates;
+        if (geometry?.type === 'Polygon') {
+          const ring = pair?.[0];
+          if (!Array.isArray(ring) || !ring.length) return null;
+          const lons = ring.map(p => p[0]), lats = ring.map(p => p[1]);
+          pair = [(Math.min(...lons) + Math.max(...lons)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
+        } else if (geometry?.type !== 'Point') return null;
+        if (!Array.isArray(pair) || !Number.isFinite(pair[0]) || !Number.isFinite(pair[1]) || Math.abs(pair[0]) > 180 || Math.abs(pair[1]) > 90) return null;
+        const pixel = api.Map.getPixelFromLonLat({ lonLat: { lon: pair[0], lat: pair[1] } });
+        return Number.isFinite(pixel?.x) && Number.isFinite(pixel?.y) ? { x: view.left + pixel.x, y: view.top + pixel.y } : null;
+      }, null);
+      if (fromSDK) return fromSDK;
       let x, y;
       try {
         const geometry = model?.getOLGeometry?.();
@@ -8095,6 +8691,19 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (!pixel || !Number.isFinite(pixel.x) || !Number.isFinite(pixel.y)) return null;
       return { x: view.left + pixel.x, y: view.top + pixel.y };
     }
+    // Moves the map by dx, dy pixels through the SDK (the centre moved to the point that many pixels away).
+    function sdkPanBy(dx, dy) {
+      const api = studioSDK.get();
+      if (!api) return false;
+      try {
+        const center = api.Map.getMapCenter(), here = api.Map.getPixelFromLonLat({ lonLat: center });
+        if (!Number.isFinite(here?.x) || !Number.isFinite(here?.y)) return false;
+        const to = api.Map.getLonLatFromPixel({ x: here.x + dx, y: here.y + dy });
+        if (!Number.isFinite(to?.lon) || !Number.isFinite(to?.lat)) return false;
+        api.Map.setMapCenter({ lonLat: { lon: to.lon, lat: to.lat } });
+        return true;
+      } catch (_) { return false; }
+    }
     // The largest rectangle inside "bounds" that touches none of the obstacles.
     function largestFree(bounds, obstacles) {
       const clip = value => Math.max(bounds.left, Math.min(bounds.right, value)), clipY = value => Math.max(bounds.top, Math.min(bounds.bottom, value));
@@ -8125,7 +8734,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const dx = Math.round(point.x - (free.left + free.width / 2)), dy = Math.round(point.y - (free.top + free.height / 2));
       if (Math.hypot(dx, dy) < 40) return 'visible';
       ownPanUntil = performance.now() + 600;
-      map.pan(dx, dy, { animate: false });
+      if (!sdkPanBy(dx, dy)) map.pan(dx, dy, { animate: false });
       return `moved ${dx},${dy}`;
     }
     // Map problems (and anything else the editor opens without announcing it) are found from their panel: the
@@ -8145,7 +8754,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const dx = Math.round(point.x - (free.left + free.width / 2)), dy = Math.round(point.y - (free.top + free.height / 2));
       if (Math.hypot(dx, dy) < 40) return 'visible';
       ownPanUntil = performance.now() + 600;
-      map.pan(dx, dy, { animate: false });
+      if (!sdkPanBy(dx, dy)) map.pan(dx, dy, { animate: false });
       return `moved ${dx},${dy}`;
     }
     // The marker of the request a panel shows: the editor draws the open request's marker enlarged (or marks it
@@ -8188,32 +8797,44 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       requestClick = performance.now(); hookMoves();
     }, { capture: true, passive: true });
     const moves = [], seenPanels = new WeakSet();
+    let movesSDK = false;
+    // The map stopped moving: lon/lat in degrees (from the SDK) or in the map's own units (OpenLayers).
+    function mapStopped(lon, lat, degrees) {
+      if (performance.now() < ownPanUntil) return;
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+      moves.push({ time: performance.now(), lon, lat, degrees }); if (moves.length > 8) moves.shift();
+      // "Show on map" (or anything else in a request that moves the map): the editor flies there in several
+      // steps, so nothing is done until the map has been still for a while, and then the request's own
+      // position is used (not the map's centre, which is only where the flight happened to stop).
+      if (performance.now() - requestClick < 4000) {
+        clearTimeout(showTimer);
+        showTimer = setTimeout(() => {
+          requestClick = -Infinity;
+          if (pressed || requestHeaderDrag || !shownModel) return;
+          let result;
+          try { result = reveal(shownModel); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
+          note('show-on-map', `after the editor moved the map: ${result}`);
+        }, 800);
+      }
+    }
     function hookMoves() {
+      if (movesSDK) return;
+      const api = studioSDK.get();
+      if (api) {
+        try {
+          api.Events.on({ eventName: 'wme-map-move-end', eventHandler: () => {
+            try { const center = api.Map.getMapCenter(); mapStopped(center?.lon, center?.lat, true); } catch (_) { /* the map is still loading */ }
+          } });
+          movesSDK = true;
+          return;
+        } catch (_) { /* OpenLayers below */ }
+      }
       const map = olMap();
       if (!map || movesHooked === map || typeof map.events?.register !== 'function') return;
       movesHooked = map;
       try {
         map.events.register('moveend', null, () => {
-          if (performance.now() < ownPanUntil) return;
-          try {
-            const center = map.getCenter?.();
-            if (Number.isFinite(center?.lon) && Number.isFinite(center?.lat)) {
-              moves.push({ time: performance.now(), lon: center.lon, lat: center.lat }); if (moves.length > 8) moves.shift();
-              // "Show on map" (or anything else in a request that moves the map): the editor flies there in several
-              // steps, so nothing is done until the map has been still for a while, and then the request's own
-              // position is used (not the map's centre, which is only where the flight happened to stop).
-              if (performance.now() - requestClick < 4000) {
-                clearTimeout(showTimer);
-                showTimer = setTimeout(() => {
-                  requestClick = -Infinity;
-                  if (pressed || requestHeaderDrag || !shownModel) return;
-                  let result;
-                  try { result = reveal(shownModel); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
-                  note('show-on-map', `after the editor moved the map: ${result}`);
-                }, 800);
-              }
-            }
-          } catch (_) { /* the map is still loading */ }
+          try { const center = map.getCenter?.(); mapStopped(center?.lon, center?.lat, false); } catch (_) { /* the map is still loading */ }
         });
       } catch (error) { reportStudioError('requestReveal', error); }
     }
@@ -8232,7 +8853,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
           const id = `panel:${move.lon.toFixed(1)},${move.lat.toFixed(1)}`;
           if (done.id === id && performance.now() - done.time < 30000) { handled = true; return; }
           let result;
-          shownModel = { id, getOLGeometry: () => ({ x: move.lon, y: move.lat }) };
+          shownModel = move.degrees ? { id, getGeometry: () => ({ type: 'Point', coordinates: [move.lon, move.lat] }) } : { id, getOLGeometry: () => ({ x: move.lon, y: move.lat }) };
           try { result = reveal(shownModel); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
           note(id, `centred by the editor: ${result}`);
           if (result.startsWith('moved')) { done = { id, time: performance.now() }; handled = true; }
@@ -8824,21 +9445,23 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       else if (resizeGrip && !resizeGrip.hidden && point.target !== resizeGrip) hideResizeGrip();
     });
   }
-  function windowEdgeAt(x, y) {
+  // slack: a finger gets a wider edge than a mouse (touch screens have no hover to show the grip first).
+  function windowEdgeAt(x, y, slack = 0) {
     if (!settings.enabled || compactLayoutEditing || requestHeaderDrag) return null;
     for (const element of [...headerGuardWindows.keys(),document.getElementById('sidebar')].filter(Boolean)) {
       if (!resizableWindow(element) || !element.isConnected) continue;
       const rect = element.getBoundingClientRect();
       const floatingSide = element.id === 'sidebar' && compactLayoutActive();
-      if (rect.width < 80 || rect.height < 80 || x < rect.left - 7 || x > rect.right + 7 || y < rect.top - (floatingSide ? 6 : 0) || y > rect.bottom + 7) continue;
+      if (rect.width < 80 || rect.height < 80 || x < rect.left - 7 - slack || x > rect.right + 7 + slack || y < rect.top - (floatingSide ? 6 + slack : 0) || y > rect.bottom + 7 + slack) continue;
       if (element.checkVisibility && !element.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true })) continue;
       const inSpan = x >= rect.left + 12 && x <= rect.right - 12, inColumn = y >= rect.top + 14 && y <= rect.bottom - 12;
       const dockedSide = element.id==='sidebar' && !compactLayoutActive();
       // A floating side panel moves by its top edge.
-      if (floatingSide && inSpan && y >= rect.top - 6 && y <= rect.top + 9) return { element, edge: 'move', rect };
-      if (!dockedSide && inSpan && y >= rect.bottom - 6 && y <= rect.bottom + 7) return { element, edge: 'bottom', rect };
-      if (inColumn && x >= rect.right - 4 && x <= rect.right + 7) return { element, edge: 'right', rect };
-      if (!dockedSide && inColumn && x <= rect.left + 4 && x >= rect.left - 7) return { element, edge: 'left', rect };
+      const inner = slack / 2;
+      if (floatingSide && inSpan && y >= rect.top - 6 - slack && y <= rect.top + 9 + inner) return { element, edge: 'move', rect };
+      if (!dockedSide && inSpan && y >= rect.bottom - 6 - inner && y <= rect.bottom + 7 + slack) return { element, edge: 'bottom', rect };
+      if (inColumn && x >= rect.right - 4 - inner && x <= rect.right + 7 + slack) return { element, edge: 'right', rect };
+      if (!dockedSide && inColumn && x <= rect.left + 4 + inner && x >= rect.left - 7 - slack) return { element, edge: 'left', rect };
     }
     return null;
   }
@@ -8897,6 +9520,30 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     try { resizeGrip.setPointerCapture(event.pointerId); } catch (_) { reportStudioError("startWindowResize",_);}
   }
   window.addEventListener('blur', () => { if (windowResize) endWindowResize(); });
+  // A finger or a pen (2.3.0). Nothing hovers on a touch screen, so the grip that moves and sizes a panel never
+  // showed: a finger put down on a panel's edge (a little wider than for a mouse) takes the edge at once, and the
+  // browser neither scrolls nor hands the touch to the map while the panel is moved or sized.
+  let touchGrab = null;
+  document.addEventListener('pointerdown', event => {
+    touchGrab = null;
+    if (event.pointerType === 'mouse' || windowResize || event.button !== 0 || event.isPrimary === false) return;
+    const hit = windowEdgeAt(event.clientX, event.clientY, 12);
+    if (!hit) return;
+    showResizeGrip(hit);
+    startWindowResize(event);
+    if (windowResize) touchGrab = event.pointerId;
+  }, true);
+  const holdTouch = event => {
+    // Only the touch that holds a panel's edge or a window's header: any other finger (scrolling a list, say) is left
+    // alone, even should a drag not have ended properly.
+    const grabbing = touchGrab !== null && windowResize;
+    const header = requestHeaderDrag && !requestHeaderDrag.finishing && event.composedPath().includes(requestHeaderDrag.handle);
+    if (!grabbing && !header) return;
+    if (event.cancelable) event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  for (const type of ['touchstart', 'touchmove']) window.addEventListener(type, holdTouch, { capture: true, passive: false });
+  window.addEventListener('touchend', event => { if (touchGrab !== null && windowResize) event.stopImmediatePropagation(); }, true);
   window.addEventListener('resize', () => {
     if (sidePanelResizing() && (innerWidth !== windowResize.viewportWidth || innerHeight !== windowResize.viewportHeight)) endWindowResize();
   });
@@ -9010,6 +9657,20 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     delete panelSizes[kind]; applyWindowSize(element); storePanelSizes(); queueHeaderGuardWindows(); hideResizeGrip();
   }
   globalThis.WMEStudioPanelSizes = Object.freeze({
+    // Changing "Visible discussion messages" (2.3.0): request windows give up the height dragged for them, so the new
+    // number shows straight away. The width dragged is kept; dragging the bottom edge again makes them taller.
+    forgetRequestHeights() {
+      let changed = false;
+      for (const kind of ['updateRequest', 'mapUpdateRequest', 'placeUpdateRequest', 'mapProblem']) {
+        const size = panelSizes[kind];
+        if (!size?.height) continue;
+        const { height, ...rest } = size;
+        if (Object.keys(rest).length) panelSizes[kind] = rest; else delete panelSizes[kind];
+        changed = true;
+      }
+      if (!changed) return;
+      applyPanelSizes(); storePanelSizes(); queueHeaderGuardWindows();
+    },
     reset() {
       panelSizes = {};
       applyPanelSizes(); storePanelSizes(); queueHeaderGuardWindows();
@@ -9340,7 +10001,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     floatingHeader.position = { x: placed.left, y: placed.top };
     const drag = floatingHeader.drag;
     if (drag && bounds === drag && drag.compositor) {
-      const hudZoom = (settings.hudScale || 100) / 100;
+      const hudZoom = hudZoomOf(settings.hudScale);
       const translate = `${(placed.left - drag.left) / hudZoom}px ${(placed.top - drag.top) / hudZoom}px`;
       if (floatingHeader.header.style.getPropertyValue('translate') !== translate) floatingHeader.header.style.setProperty('translate', translate, 'important');
       drag.translated = true; shiftHeaderControls();
@@ -10505,6 +11166,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   // rail never counts: only the + button, the + control, or the + menu itself; another tab never does.
   function isCreateButtonClick(path) {
     if (createHoverButton?.isConnected && path.includes(createHoverButton)) return true;
+    // The + button itself (its + icon), sitting next to the menu: a few boxes up from it is the box that holds the
+    // menu too. Recognised even before the + control is known.
+    const plus = path.find(node => node?.nodeType === 1 && node.matches?.('wz-button,button') && node.querySelector?.('.w-icon-plus'));
+    if (plus && createHoverMenu?.isConnected && !createHoverMenu.contains(plus)) {
+      for (let node = plus.parentElement, depth = 0; node && depth < 5; node = node.parentElement, depth++) if (node.contains(createHoverMenu)) return true;
+    }
     const drawer = document.getElementById('drawer');
     const scope = createHoverHost && createHoverHost !== drawer ? createHoverHost : createHoverMenu;
     if (!scope || !path.includes(scope)) return false;
@@ -10526,7 +11193,18 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     else if (on && style !== root.lastElementChild) root.append(style);   // stays last, so nothing added later wins over it
   }
   function createHoverTarget() {
-    if (createHoverHost?.isConnected && createHoverMenu?.isConnected) { syncCreateClickStyle(); return createHoverHost; }
+    if (createHoverHost?.isConnected && createHoverMenu?.isConnected) {
+      // The menu can be found before the + control around it is (the side panel's rail stands in for it then): until
+      // the + control itself is known, look for it again now and then, or a click on + is never recognised. That is
+      // what made the setting work only after a reload when it was switched on later (2.3.0).
+      const drawer = document.getElementById('drawer');
+      if ((createHoverHost === drawer || !createHoverButton?.isConnected) && performance.now() - createHoverLookedAt >= 1500) {
+        createHoverLookedAt = performance.now();
+        const trigger = createTrigger();
+        if (trigger?.element) { createHoverHost = trigger.element; createHoverButton = trigger.button || null; }
+      }
+      syncCreateClickStyle(); return createHoverHost;
+    }
     if (performance.now() - createHoverLookedAt < 1500) return null;   // not found a moment ago: look again later
     createHoverLookedAt = performance.now();
     createHoverMenu?.removeAttribute('data-wme-studio-create-host');
@@ -10554,7 +11232,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   // A click on + opens the list, a second click closes it. WME's own click on + may have toggled its menu either
   // way (it was often already open from the hover), so once WME is done the menu is set to match.
   function onCreateClick(event) {
-    if (!settings.createMenuClick || !settings.enabled || !createHoverTarget()) return;
+    if (!settings.createMenuClick || !settings.enabled) return;
+    if (createHoverHost === document.getElementById('drawer') || !createHoverButton?.isConnected) createHoverLookedAt = -1e9;   // look for the + control now
+    if (!createHoverTarget()) return;
     const menu = createHoverMenu, path = event.composedPath();
     if (!menu || !isCreateButtonClick(path)) return;
     const opening = !menu.hasAttribute('data-wme-studio-create-open');
@@ -11604,7 +12284,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   // The HUD size as it is drawn right now: while its slider moves, the live value is ahead of the saved one.
   function islandScale() {
     const live = parseFloat(root.style.getPropertyValue('--ws-hud-zoom'));
-    return Number.isFinite(live) && live > 0 ? live : (settings.hudScale || 100) / 100;
+    return Number.isFinite(live) && live > 0 ? live : hudZoomOf(settings.hudScale);
   }
   // bare: a control standing on its own has no island around it, so no padding and no minimum size either.
   function islandSlots(items, orient, natural, bare = false) {
@@ -12104,6 +12784,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   // Studio's own "the map changed size" notices (a side panel opening) leave the window as it was: the islands
   // are laid out for the window, so only a real resize lays them out again.
   window.addEventListener('resize', () => { if (!notifyingMapResize) scheduleIslandControls(80); });
+  // A touch screen turned: the islands take the size that fits the new shape.
+  if (touchScreen) addEventListener('resize', () => {
+    const zoom = String(hudZoomOf(settings.hudScale));
+    if (ready && settings.enabled && root.style.getPropertyValue('--ws-hud-zoom') !== zoom) apply(new Set(['hudScale']));
+  }, { passive: true });
   function setIslandControls(value) {
     islandControls = sanitizeIslandControls(value);
     watchIslandSources();
@@ -14149,7 +14834,9 @@ ${studioControlsCSS()}
         const toggle = document.querySelector('#product-icon .w-icon-hamburger-menu')?.closest('wz-button,button');
         (toggle || selected).click();
       }
-      pageWindow.W?.app?.closeSidePanel?.();
+      // An edit panel closes with the selection (SDK); WME's own call only if the panel is still open after that.
+      studioSDK.value(api => { if (api.Editing.getSelection()) api.Editing.clearSelection(); return true; }, null);
+      requestAnimationFrame(() => { if (document.querySelector('.app.show-sidebar')) pageWindow.W?.app?.closeSidePanel?.(); });
     }
     function closeArrangePanels() {
       const windows = document.querySelectorAll('[data-issues-tracker-window],[id^="ISSUE_WINDOW"],[data-testid="floating-window"]');
@@ -14906,7 +15593,7 @@ ${studioControlsCSS()}
   const tileBuildFeed = { region: null, snapshot: null, nextAt: 0, failures: 0, timer: 0, controller: null, generation: 0, readyHooked: false };
   function tileBuildRegion() {
     try {
-      const region = pageWindow.W?.app?.getAppRegionCode?.();
+      const region = studioSDK.value(api => api.Settings.getRegionCode(), () => pageWindow.W?.app?.getAppRegionCode?.());
       return Object.hasOwn(TILE_BUILD_FEEDS, region) ? region : null;
     } catch (studioError) { reportStudioError("tileBuildRegion",studioError); return null; }
   }
@@ -17323,6 +18010,140 @@ ${studioControlsCSS()}
       scheduleLaneSizing();
     }
   });
+  // ---- The author's switch (2.3.0) ------------------------------------------------------------------------------
+  // The WME Studio website can pause Studio for everyone (or only for versions up to one it names), or only Screen
+  // displays, when a change to WME breaks them. Studio asks when it starts and every 15 minutes, and keeps the last
+  // answer, so a paused Studio does not flash on at the next start. Without an answer (no connection, the site down)
+  // Studio runs as it is. Nothing of the person's own settings changes: they are simply not used while paused, and
+  // "Run anyway" lifts the pause in this tab until the author changes the switch again.
+  const REMOTE_SWITCH_KEY = 'wmeStudio.remoteSwitch.v1', REMOTE_OVERRIDE_KEY = 'wmeStudio.remoteSwitchOverride', REMOTE_SEEN_KEY = 'wmeStudio.remoteSwitchSeen';
+  let realSettings = settings;
+  const remoteSwitch = { state: null, timer: 0, checked: 0, host: null };
+  const sessionValue = (key, value) => {
+    try { if (value === undefined) return sessionStorage.getItem(key) || ''; sessionStorage.setItem(key, value); } catch (_) { /* no storage: the default */ }
+    return '';
+  };
+  // a <= b, where "2.2.4-beta.1" comes before "2.2.4" (and after "2.2.3").
+  function versionAtMost(a, b) {
+    const parse = value => {
+      const [base, pre] = String(value || '').trim().split('-');
+      return { parts: base.split('.').map(part => parseInt(part, 10) || 0), pre: pre ? parseInt(String(pre).replace(/\D+/g, ''), 10) || 0 : null };
+    };
+    const x = parse(a), y = parse(b);
+    for (let i = 0; i < Math.max(x.parts.length, y.parts.length); i += 1) {
+      const p = x.parts[i] || 0, q = y.parts[i] || 0;
+      if (p !== q) return p < q;
+    }
+    if (x.pre === null) return y.pre === null;
+    if (y.pre === null) return true;
+    return x.pre <= y.pre;
+  }
+  function remoteRules() {
+    const state = remoteSwitch.state;
+    if (!state) return { studio: false, sd: false };
+    let lifted = {};
+    try { lifted = JSON.parse(sessionValue(REMOTE_OVERRIDE_KEY) || '{}') || {}; } catch (_) { lifted = {}; }
+    if (lifted.stamp !== state.changed_at) lifted = {};
+    const forThisVersion = !state.studio.upTo || versionAtMost(USERSCRIPT_VERSION, state.studio.upTo);
+    const studio = state.studio.off && forThisVersion && !lifted.studio;
+    return { studio, sd: studio || (state.screenDisplays.off && !lifted.sd && !lifted.studio) };
+  }
+  function effectiveSettings(value) {
+    const rules = remoteRules();
+    if (!rules.studio && !rules.sd) return value;
+    return { ...value, enabled: rules.studio ? false : value.enabled, screenDisplays: rules.sd ? false : value.screenDisplays };
+  }
+  function refreshRemoteSwitch() {
+    if (ready) {
+      const next = effectiveSettings(realSettings);
+      if (next.enabled !== settings.enabled || next.screenDisplays !== settings.screenDisplays) {
+        settings = next;
+        try { apply(); } catch (error) { reportStudioError('remote switch', error); }
+      }
+    }
+    showRemoteNotice();
+  }
+  function setRemoteSwitch(data) {
+    const text = (value, max) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+    const state = {
+      studio: { off: data?.studio?.off === true, upTo: text(data?.studio?.upTo, 40), message: text(data?.studio?.message, 500) },
+      screenDisplays: { off: data?.screenDisplays?.off === true, message: text(data?.screenDisplays?.message, 500) },
+      changed_at: text(data?.changed_at, 40)
+    };
+    const same = JSON.stringify(state) === JSON.stringify(remoteSwitch.state);
+    remoteSwitch.state = state;
+    if (!same) { try { Promise.resolve(studioKeep.set(REMOTE_SWITCH_KEY, state)).catch(() => {}); } catch (_) { /* kept for this tab only */ } }
+    refreshRemoteSwitch();
+  }
+  function checkRemoteSwitch() {
+    if (standaloneSignin || editorProfile) return;
+    remoteSwitch.checked = Date.now();
+    const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/status?v=${encodeURIComponent(USERSCRIPT_VERSION)}`;
+    const done = body => { let data = null; try { data = JSON.parse(body); } catch (_) { /* not an answer */ } if (data?.ok) setRemoteSwitch(data); };
+    try {
+      if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, timeout: 10000, anonymous: true, onload: response => { if (response.status === 200) done(response.responseText || ''); } });
+      else fetch(url, { mode: 'cors', cache: 'no-store' }).then(response => (response.ok ? response.text() : '')).then(done).catch(() => {});
+    } catch (_) { /* Studio runs as it is */ }
+  }
+  // A small card at the bottom of the editor while something is paused, until it is closed in this tab.
+  function showRemoteNotice() {
+    const state = remoteSwitch.state, rules = remoteRules();
+    const kind = rules.studio && realSettings.enabled ? 'studio' : rules.sd && !rules.studio && realSettings.enabled && realSettings.screenDisplays ? 'sd' : '';
+    const stamp = kind ? `${kind}:${state.changed_at}` : '';
+    if (!kind || standaloneSignin || editorProfile || sessionValue(REMOTE_SEEN_KEY) === stamp) { remoteSwitch.host?.remove(); remoteSwitch.host = null; return; }
+    if (!document.body) { document.addEventListener('DOMContentLoaded', showRemoteNotice, { once: true }); return; }
+    if (remoteSwitch.host?.isConnected && remoteSwitch.host.dataset.stamp === stamp) return;
+    remoteSwitch.host?.remove();
+    const say = text => globalThis.WMEStudioI18n?.translate?.(text) || text;
+    const host = remoteSwitch.host = document.createElement('div');
+    host.id = 'wme-studio-remote-notice'; host.dataset.stamp = stamp; host.setAttribute('data-ws-keep', '');
+    host.style.cssText = 'position:fixed;left:50%;bottom:44px;transform:translateX(-50%);z-index:2147483600;width:min(440px,calc(100vw - 24px))';
+    const shadow = host.attachShadow({ mode: 'open' });
+    const message = kind === 'studio' ? state.studio.message : state.screenDisplays.message;
+    shadow.innerHTML = `<style>
+      .card{box-sizing:border-box;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:14px 16px;border-radius:16px;
+        background:rgba(32,36,40,.94);color:#eef2f5;border:1px solid rgba(255,255,255,.12);box-shadow:0 14px 40px rgba(0,0,0,.4);
+        -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+        animation:in .3s cubic-bezier(.32,.72,0,1)}
+      @keyframes in{from{opacity:0;transform:translateY(10px)}}
+      .icon{grid-row:span 3;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:#e8a33d26;color:#f0b24a}
+      .icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      b{font-size:13.5px} p{margin:0;color:#b9c3cc;overflow-wrap:anywhere}
+      .row{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+      button{all:unset;cursor:pointer;height:30px;padding:0 13px;border-radius:9px;font-weight:600;font-size:12.5px;display:inline-flex;align-items:center}
+      .run{color:#eef2f5;border:1px solid rgba(255,255,255,.18)} .run:hover{background:rgba(255,255,255,.08)}
+      .ok{background:#2ea6ff;color:#08111a} .ok:hover{filter:brightness(1.08)}
+      button:focus-visible{outline:2px solid #2ea6ff;outline-offset:2px}
+      @media (prefers-reduced-motion:reduce){.card{animation:none}}
+    </style><div class="card" role="status"><span class="icon"><svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 7.3a8 8 0 1 0 11.4 0"/></svg></span>
+      <b></b><p class="text"></p><div class="row"><button type="button" class="run"></button><button type="button" class="ok"></button></div></div>`;
+    shadow.querySelector('b').textContent = say(kind === 'studio' ? 'WME Studio is paused' : 'Screen displays are paused');
+    shadow.querySelector('.text').textContent = message || say('I\'ve paused WME Studio for a little while to fix something after a WME update. Your settings are safe.');
+    const run = shadow.querySelector('.run'), ok = shadow.querySelector('.ok');
+    run.textContent = say('Run anyway'); ok.textContent = say('OK');
+    run.addEventListener('click', () => {
+      sessionValue(REMOTE_OVERRIDE_KEY, JSON.stringify({ stamp: state.changed_at, studio: kind === 'studio', sd: true }));
+      sessionValue(REMOTE_SEEN_KEY, stamp);
+      host.remove(); remoteSwitch.host = null;
+      refreshRemoteSwitch();
+    });
+    ok.addEventListener('click', () => { sessionValue(REMOTE_SEEN_KEY, stamp); host.remove(); remoteSwitch.host = null; });
+    document.body.append(host);
+  }
+  try {
+    const take = value => {
+      if (!value || typeof value !== 'object' || remoteSwitch.state) return;
+      remoteSwitch.state = { studio: { off: value.studio?.off === true, upTo: String(value.studio?.upTo || ''), message: String(value.studio?.message || '') },
+        screenDisplays: { off: value.screenDisplays?.off === true, message: String(value.screenDisplays?.message || '') }, changed_at: String(value.changed_at || '') };
+      refreshRemoteSwitch();
+    };
+    const cached = studioKeep.get(REMOTE_SWITCH_KEY, null);
+    if (cached && typeof cached.then === 'function') cached.then(take, () => {}); else take(cached);
+  } catch (_) { /* no answer kept: Studio runs as it is until the first check */ }
+  checkRemoteSwitch();
+  remoteSwitch.timer = setInterval(checkRemoteSwitch, 15 * 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - remoteSwitch.checked > 5 * 60000) checkRemoteSwitch(); });
+
   chrome.storage.onChanged.addListener((items, area) => {
     if (area !== 'local' || !Object.keys(items).some(key => key.startsWith('wmeStudio.'))) return;
     if (Object.keys(items).every(key => key === 'wmeStudio.workspaceProfiles.v1' || key === 'wmeStudio.scriptTabPins.v1')) return;
@@ -17332,7 +18153,8 @@ ${studioControlsCSS()}
     const changedKeys = new Set(Object.keys(items)
       .filter(key => key.startsWith('wmeStudio.'))
       .map(key => key.slice('wmeStudio.'.length)));
-    const next = config.changes(settings, items);
+    realSettings = config.changes(realSettings, items);
+    const next = effectiveSettings(realSettings);
     const workspaceChanged = beginWorkspaceSwitch(next);
     settings = next; ready = true;
     apply(changedKeys);
@@ -17360,7 +18182,8 @@ ${studioControlsCSS()}
         const top = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
         return !top || screen === top || screen.contains(top);
       }
-      return !pageWindow.W?.map;   // no loading screen yet and no map yet: still starting
+      // no loading screen yet and no map yet: still starting (the SDK says so first, when it is there)
+      return studioSDK.value(api => (api.State.isInitialized() ? false : null), () => !pageWindow.W?.map);
     };
     (function poll() {
       const loading = loadingNow();
@@ -17628,12 +18451,13 @@ ${studioControlsCSS()}
     return Object.freeze(api);
   })();
   config.read().then(value => {
-    settings = value; ready = true;
+    realSettings = value; settings = effectiveSettings(value); ready = true;
     try { apply(); } catch (error) { console.error('[WME Studio] Appearance could not be applied.', error); }
+    showRemoteNotice();
   }, error => {
     console.error('[WME Studio] Appearance settings could not be loaded; using defaults for this tab.', error);
     if (!ready) {
-      settings = { ...config.defaults }; ready = true;
+      realSettings = { ...config.defaults }; settings = effectiveSettings(realSettings); ready = true;
       try { apply(); } catch (startupError) { console.error('[WME Studio] Default appearance could not be applied.', startupError); }
     }
   });
@@ -17703,6 +18527,7 @@ ${studioControlsCSS()}
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const text = value => (typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '').replace(/\s+/g, ' ').trim();
     const tries = [
+      () => studioSDK.value(api => api.State.getUserInfo()?.userName, null),
       () => (globalThis.WazeWrap || page.WazeWrap)?.User?.Username?.(),
       () => { const user = page.W?.loginManager?.user; return typeof user?.getUserName === 'function' ? user.getUserName() : null; },
       () => page.W?.loginManager?.user?.userName,
@@ -17723,12 +18548,38 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.2.3-2026-10-21';
+  const STUDIO_BUILD = '2.3.0-2026-10-21m';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
-    { version: '2.2.3', groups: [
+    { version: '2.3.0', groups: [
+      { title: 'Studio', items: [
+        'If a WME update breaks Studio, I can now turn it off for everyone until I fix it. You\'ll see a short note, and you can still press Run anyway.'
+      ] },
+      { title: 'UR panels', items: [
+        'Drag the handle at the bottom of a request window to make it taller. The messages fill the extra space.',
+        'Visible discussion messages shows the right number of messages again. Moving it also brings request windows back to their normal height, so you see the change right away.',
+        'On iPad and iPhone, long discussions show a small scrollbar and you can scroll them with your finger.'
+      ] },
+      { title: 'iPhone and iPad', beta: true, items: [
+        'Works in Safari with Tampermonkey or the free Userscripts app.',
+        'Pinching or double tapping outside the map doesn\'t zoom the whole page anymore. Only the map zooms.',
+        'Islands and the Screen displays buttons are a bit bigger on touch screens, and a bit smaller on a phone in landscape so everything fits.',
+        'Tapping a text field doesn\'t zoom the page in anymore.',
+        'iPad: typing in the search box doesn\'t shrink the page and the map anymore. The iPad mini in portrait gets the Studio layout too.',
+        'The Screen displays island stays clear of the home bar at the bottom of the screen.',
+        'iPhone: Studio fits the screen in both portrait and landscape.',
+        'iPhone: after you rotate the phone, the map reaches the bottom of the screen again.',
+        'Move and resize the side panel and other windows with your finger. Grab the top edge to move it, or a side or the bottom edge to resize it.',
+        'When the keyboard is open, a bar above it shows what you\'re typing.'
+      ] },
+      { title: 'WME SDK', items: [
+        'Studio now talks to WME through its official SDK for most things: the map, requests, layers, your selection and more. The old way is still there as a backup, so WME updates are less likely to break anything.'
+      ] },
+      { title: 'Fixes', items: [
+        'Open the + menu on click works right away now, no page refresh needed.'
+      ] },
       { title: 'Languages', items: [
-        'New language: Georgian (ქართული). Pick it in Settings › General › Language, or let Studio follow the editor.'
+        'Georgian (ქართული) is here. Pick it in Settings › General › Language, or let Studio follow the editor\'s language.'
       ] }
     ] },
     { version: '2.2.2', groups: [
@@ -17752,7 +18603,7 @@ ${studioControlsCSS()}
     { version: '2.2.1', groups: [
       { title: 'Report a bug', items: [
         'My reports are private to your WME Studio: a user name alone no longer shows them to anyone.',
-        'The author can write to you about a report, and you can answer from My reports.',
+        'I can message you about a report, and you can reply from My reports.',
         'When a report will not be fixed (not a bug, or another script\'s), you are told why.'
       ] },
       { title: 'Fixes', items: [
@@ -17800,7 +18651,7 @@ ${studioControlsCSS()}
       'Compact requests: comment dates show their time again (URC-E users lost it).',
       'URC-E: the comment list fills the width of its panel.',
       'Report a bug: attach an MP4 video (up to 25 MB) instead of a screenshot.',
-      'Report a bug: you also hear when the author starts on your report (under construction).',
+      'Report a bug: you\'ll also see when I start working on your report (under construction).',
       'Report a bug: My reports lists every report you sent and where each one stands.'
     ] },
     { version: '2.0.3', items: [
@@ -17839,17 +18690,243 @@ ${studioControlsCSS()}
   function markChangelogSeen() {
     try { Promise.resolve(studioKeep.set(CHANGELOG_KEY, STUDIO_BUILD)).catch(studioError => reportStudioError('markChangelogSeen', studioError)); } catch (studioError) { reportStudioError('markChangelogSeen', studioError); }
   }
+  // ---- Studio as a file to download (2.3.0) -------------------------------------------------------------------------
+  // The free Userscripts app for Safari installs a .user.js file saved in its folder. The buttons for it (the iPhone
+  // and iPad news, Settings › Screen displays) save this very script as WME-Studio.user.js: the copy the manager
+  // holds when it has one (Tampermonkey), else the one posted on Greasy Fork.
+  const STUDIO_USER_FILE_URL = 'https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js';
+  function studioUserFileText() {
+    const own = typeof GM_info === 'object' && typeof GM_info?.scriptSource === 'string' && GM_info.scriptSource.includes('==UserScript==') ? GM_info.scriptSource : '';
+    if (own) return Promise.resolve(own);
+    return new Promise((resolve, reject) => {
+      const take = (status, text) => (status === 200 && String(text).includes('==UserScript==') ? resolve(String(text)) : reject(new Error(`The server answered ${status}`)));
+      if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url: STUDIO_USER_FILE_URL, timeout: 30000, anonymous: true,
+        onload: response => take(response.status, response.responseText), onerror: () => reject(new Error('No answer')), ontimeout: () => reject(new Error('Too slow')) });
+      else fetch(STUDIO_USER_FILE_URL, { credentials: 'omit' }).then(async response => take(response.status, await response.text())).catch(reject);
+    });
+  }
+  async function downloadStudioUserFile(event) {
+    event?.preventDefault?.();
+    const button = event?.currentTarget;
+    if (button?.dataset.busy) return;
+    if (button) { button.dataset.busy = '1'; button.style.opacity = '.6'; }
+    try {
+      const text = await studioUserFileText();
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
+      const link = Object.assign(document.createElement('a'), { href: url, download: 'WME-Studio.user.js' });
+      link.style.display = 'none';
+      (document.body || document.documentElement).append(link);
+      link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      reportStudioError('download the .user.js file', error);
+      window.open(STUDIO_USER_FILE_URL, '_blank', 'noopener');   // the browser can still fetch it from Greasy Fork
+    } finally { if (button) { delete button.dataset.busy; button.style.opacity = ''; } }
+  }
+  // ---- iPhone and iPad: the news (2.3.0) --------------------------------------------------------------------------
+  // Shown once, just before the What's changed card of the update that brings Studio to iPhone and iPad: what it is,
+  // and that it is a first beta. Closing it (Continue, Escape or a click beside it) lets the card come up.
+  const MOBILE_NEWS_KEY = 'wmeStudio.mobileNews.v1';
+  function markMobileNewsSeen() {
+    try { Promise.resolve(studioKeep.set(MOBILE_NEWS_KEY, true)).catch(() => {}); } catch (_) { /* shown again next time */ }
+  }
+  async function maybeShowMobileNews() {
+    let seen = false;
+    try { seen = !!(await Promise.resolve(studioKeep.get(MOBILE_NEWS_KEY, false))); } catch (_) { seen = false; }
+    if (seen) return;
+    await new Promise(done => { try { showMobileNews(done); } catch (error) { reportStudioError('mobile news', error); done(); } });
+    markMobileNewsSeen();
+  }
+  const MOBILE_NEWS_IPHONE = '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';   // the iPhone frame, its screen left clear
+  // A real picture of WME for each screen (JPEG, base64); without one the screens show a drawn map.
+  const MOBILE_NEWS_SHOT_TALL = '', MOBILE_NEWS_SHOT_WIDE = '';
+  function showMobileNews(done) {
+    const say = text => globalThis.WMEStudioI18n?.translate?.(text) || text;
+    const root = document.documentElement;
+    const host = document.createElement('div');
+    host.id = 'wme-studio-mobile-news'; host.setAttribute('data-ws-keep', '');
+    host.style.cssText = 'position:fixed;inset:0;z-index:2147483646';
+    if (/^(dark|black)$/.test(root.getAttribute('data-wme-studio-theme') || '')) host.setAttribute('data-dark', '');
+    if (root.getAttribute('data-wme-studio-motion') === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches) host.setAttribute('data-still', '');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `<style>
+      :host{--accent:var(--wme-studio-accent,#0a84ff);--bg:#fff;--fg:#12161b;--muted:#5b6570;--ring:rgba(16,24,40,.09);--soft:#f2f4f7;--warn:#d88a06;
+        font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;color:var(--fg);-webkit-font-smoothing:antialiased}
+      :host([data-dark]){--bg:#1b1e23;--fg:#f2f4f6;--muted:#9ba5af;--ring:rgba(255,255,255,.09);--soft:#262a31;--warn:#f2b441}
+      *{box-sizing:border-box}
+      .veil{position:absolute;inset:0;background:rgba(9,12,18,.42);-webkit-backdrop-filter:blur(7px) saturate(1.2);backdrop-filter:blur(7px) saturate(1.2);animation:fade .35s ease both}
+      .card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);zoom:var(--fit,1);width:min(440px,calc((100vw - 28px) / var(--fit,1)));max-height:calc((100vh - 28px) / var(--fit,1));overflow:auto;overscroll-behavior:contain;
+        padding:8px;border-radius:30px;background:var(--bg);scrollbar-width:none;
+        box-shadow:0 0 0 1px var(--ring),inset 0 1px 0 rgba(255,255,255,.07),0 2px 4px rgba(0,0,0,.06),0 14px 28px -8px rgba(0,0,0,.22),0 44px 100px -24px rgba(0,0,0,.55);
+        animation:pop .6s cubic-bezier(.2,.9,.25,1.12) both}
+      .card::-webkit-scrollbar{display:none}
+      :host(.closing) .veil{animation:fade .2s ease reverse both} :host(.closing) .card{animation:out .2s ease-in both}
+      @keyframes fade{from{opacity:0}} @keyframes pop{from{opacity:0;scale:.9;translate:0 22px}} @keyframes out{to{opacity:0;scale:.96;translate:0 8px}}
+
+      .hero{position:relative;height:228px;border-radius:23px;overflow:hidden;isolation:isolate;
+        background:radial-gradient(110% 90% at 0% 0%,#4f7dff 0%,transparent 58%),radial-gradient(90% 100% at 100% 0%,#a463ff 0%,transparent 55%),
+          radial-gradient(120% 90% at 50% 130%,#14c4ff 0%,transparent 60%),#18203d;
+        box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),inset 0 -40px 60px -30px rgba(0,0,0,.35)}
+      .hero::before{content:"";position:absolute;inset:0;z-index:-1;opacity:.5;
+        background-image:linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.07) 1px,transparent 1px);background-size:22px 22px;
+        -webkit-mask-image:radial-gradient(80% 80% at 50% 45%,#000,transparent);mask-image:radial-gradient(80% 80% at 50% 45%,#000,transparent)}
+      .beta{position:absolute;top:14px;left:14px;z-index:3;display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 11px 0 9px;line-height:1;border-radius:999px;
+        color:#fff;font-size:11px;font-weight:750;letter-spacing:.09em;text-transform:uppercase;background:rgba(255,255,255,.14);
+        border:1px solid rgba(255,255,255,.26);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 6px 16px -6px rgba(0,0,0,.4)}
+      .beta i{width:7px;height:7px;border-radius:50%;background:#ffc24a;box-shadow:0 0 0 0 rgba(255,194,74,.7);animation:ping 2.2s ease-out infinite}
+      @keyframes ping{70%{box-shadow:0 0 0 7px rgba(255,194,74,0)}100%{box-shadow:0 0 0 0 rgba(255,194,74,0)}}
+
+      .scene{position:absolute;inset:0;perspective:900px;perspective-origin:50% 20%;scale:.9}
+      .dev{position:absolute;left:50%;top:50%;transform-style:preserve-3d;background:linear-gradient(150deg,#3a3f47 0%,#16181c 45%,#0b0c0e 100%);
+        box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.14),inset 0 -3px 4px rgba(0,0,0,.6),0 28px 40px -16px rgba(0,0,0,.65),0 8px 14px -6px rgba(0,0,0,.4)}
+      .tablet{width:212px;height:150px;margin:-66px 0 0 -164px;padding:7px;border-radius:19px;transform:rotateX(18deg) rotateY(26deg) rotateZ(-4deg);animation:floatA 7s ease-in-out infinite}
+      .phone{width:94px;height:194px;margin:-88px 0 0 36px;padding:0;background:none;box-shadow:none;transform:rotateX(14deg) rotateY(-22deg) rotateZ(5deg) translateZ(50px);filter:drop-shadow(0 26px 22px rgba(0,0,0,.5)) drop-shadow(0 6px 8px rgba(0,0,0,.35));animation:floatB 7s ease-in-out infinite -2.5s}
+      .phone .screen{position:absolute;left:4%;right:4%;top:1.5%;bottom:1.5%;width:auto;height:auto;border-radius:16% / 7.6%}
+      .phone .frame{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;-webkit-user-drag:none;user-select:none}
+      @keyframes floatA{50%{translate:0 -7px}} @keyframes floatB{50%{translate:0 -10px}}
+      .screen{position:relative;width:100%;height:100%;overflow:hidden;border-radius:13px;background:#262d35}
+      .screen::after{content:"";position:absolute;inset:0;background:linear-gradient(122deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,.04) 34%,transparent 50%);pointer-events:none}
+      .map{position:absolute;inset:-10%;transform:rotate(-8deg);
+        background:linear-gradient(90deg,transparent 46%,#f3c64e 46% 49%,transparent 49%),linear-gradient(0deg,transparent 58%,#e8ecf0 58% 60.5%,transparent 60.5%),
+          linear-gradient(34deg,transparent 47%,#5fd39a 47% 49.5%,transparent 49.5%),linear-gradient(-28deg,transparent 64%,#c18cff 64% 66%,transparent 66%),
+          repeating-linear-gradient(0deg,transparent 0 15px,rgba(255,255,255,.09) 15px 16px),repeating-linear-gradient(90deg,transparent 0 19px,rgba(255,255,255,.09) 19px 20px),#29313a}
+      .shot{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+      .dim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(6,10,18,.42),rgba(6,10,18,.58))}
+      .phone .dim{background:rgba(4,7,12,.62)}
+      .phone .map{inset:-60%;transform:rotate(-8deg) scale(.45)}
+      /* Studio's islands as they sit on an iPhone, drawn: the top bar, the two side islands, the toolbar and the two round buttons. */
+      .screen [class^="ui-"]{position:absolute;z-index:1;display:block;background:linear-gradient(180deg,#30353c,#1d2024);border-radius:999px;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.4),0 0 0 .5px rgba(255,255,255,.08),0 4px 9px rgba(0,0,0,.55),0 1px 2px rgba(0,0,0,.5)}
+      .ui-top{left:5%;right:5%;top:11%;height:6.4%}
+      .ui-left,.ui-right{top:37%;width:11%;height:29%;border-radius:9px!important}
+      .ui-left{left:3.5%} .ui-right{right:3.5%}
+      .ui-bar{left:32%;right:32%;bottom:3.2%;height:4.6%}
+      .ui-dot{bottom:3%;width:11%;aspect-ratio:1;border-radius:50%!important}
+      .ui-dot.l{left:3.5%} .ui-dot.r{right:3.5%}
+      .tablet .ui-top{left:3%;right:3%;top:5%;height:9%}
+      .tablet .ui-left,.tablet .ui-right{top:24%;width:6.5%;height:52%}
+      .tablet .ui-left{left:2.5%} .tablet .ui-right{right:2.5%}
+      .tablet .ui-bar{left:38%;right:38%;bottom:4%;height:8%}
+      .tablet .ui-dot{width:7%;bottom:4%} .tablet .ui-dot.l{left:2.5%} .tablet .ui-dot.r{right:2.5%}
+      .tablet .dim{background:rgba(4,7,12,.5)} .tablet .map{inset:-40%;transform:rotate(-8deg) scale(.6)}
+      .isl{position:absolute;display:block;background:rgba(255,255,255,.9);border-radius:999px;box-shadow:0 4px 10px rgba(0,0,0,.35),inset 0 -1px 0 rgba(0,0,0,.08)}
+      .tablet .top{left:22%;right:22%;top:7px;height:11px}
+      .tablet .side{left:7px;top:25px;width:13px;height:62px;border-radius:7px} .tablet .side.r{left:auto;right:7px;height:44px}
+      .tablet .dock{left:50%;bottom:8px;width:58px;height:15px;margin-left:-29px;border-radius:8px;background:var(--accent)}
+      .phone .top{left:14%;right:14%;top:24px;height:8px}
+      .phone .dock{left:20%;right:20%;bottom:12px;height:17px;border-radius:9px;background:var(--accent)}
+      .pin{position:absolute;width:10px;height:10px;border-radius:50%;background:#fff;border:2.5px solid var(--accent);box-shadow:0 0 0 0 rgba(10,132,255,.6);animation:pin 2.4s ease-out infinite}
+      .tablet .pin{left:56%;top:50%;z-index:2} .phone .pin{left:44%;top:30%;z-index:2;animation-delay:-1.2s}
+      @keyframes pin{70%{box-shadow:0 0 0 10px rgba(10,132,255,0)}100%{box-shadow:0 0 0 0 rgba(10,132,255,0)}}
+      .touch{position:absolute;z-index:2;left:60%;top:42%;width:22px;height:22px;margin:-11px;border-radius:50%;background:rgba(255,255,255,.35);border:1.5px solid rgba(255,255,255,.75);
+        box-shadow:0 4px 12px rgba(0,0,0,.3);animation:tap 3.2s ease-in-out infinite}
+      @keyframes tap{0%,100%{scale:.7;opacity:0}20%{scale:1;opacity:1}45%{scale:.86;opacity:1}70%{scale:1.25;opacity:0}}
+      .floor{position:absolute;bottom:6px;height:16px;border-radius:50%;background:rgba(0,0,0,.5);filter:blur(10px)}
+      .floor.a{left:16%;width:46%;animation:floorA 7s ease-in-out infinite} .floor.b{left:61%;width:20%;animation:floorA 7s ease-in-out infinite -2.5s}
+      @keyframes floorA{50%{opacity:.7;scale:.94}}
+
+      .body{padding:16px 16px 0}
+      h2{margin:0;font-size:21px;line-height:1.22;font-weight:760;letter-spacing:-.02em;text-wrap:balance}
+      .lead{margin:6px 0 0;color:var(--muted);font-size:13.5px;line-height:1.48}
+      .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+      .chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 8px;line-height:1;border-radius:9px;background:var(--soft);font-size:12px;font-weight:620;
+        box-shadow:inset 0 0 0 1px var(--ring)}
+      .chip svg{width:15px;height:15px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .note{display:grid;grid-template-columns:auto 1fr;gap:1px 11px;margin-top:14px;padding:10px 12px;border-radius:15px;
+        background:color-mix(in srgb,var(--warn) 11%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warn) 28%,transparent)}
+      .note .ico{grid-row:span 2;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
+      .note .ico svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .note b{font-size:13px} .note span{color:var(--muted);font-size:12px;line-height:1.42}
+      .note.need{--warn:var(--accent)} .note.need .ico{grid-row:span 3}
+      .note .get{justify-self:start;display:inline-flex;align-items:center;gap:6px;height:28px;margin-top:7px;padding:0 11px 0 9px;border-radius:9px;line-height:1;font-size:12px;font-weight:650;text-decoration:none!important;color:#fff!important;background:var(--accent);box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 4px 10px -4px color-mix(in srgb,var(--accent) 70%,transparent)}
+      .note .get svg{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+      .note .get>span{display:block;color:#fff;font-size:12px;line-height:1;text-box:trim-both cap alphabetic} .note .get:hover{filter:brightness(1.07)}
+      .note.need a{color:var(--accent);text-decoration:none} .note.need a:hover{text-decoration:underline} .note + .note{margin-top:6px}
+      .actions{position:sticky;bottom:-8px;z-index:2;margin:0 -16px;padding:14px 16px 18px;background:linear-gradient(transparent,var(--bg) 14px)}
+      button{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;line-height:1;width:100%;height:46px;margin:0;border-radius:15px;cursor:pointer;
+        color:#fff;font-size:15px;font-weight:650;letter-spacing:-.01em;background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 82%,#fff),var(--accent));
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -1px 0 rgba(0,0,0,.12),0 10px 24px -8px color-mix(in srgb,var(--accent) 70%,transparent),0 2px 4px rgba(0,0,0,.12);
+        transition:filter .15s,scale .15s}
+      button:hover{filter:brightness(1.06)} button:active{scale:.98} button:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:3px}
+      .beta-text,.chip>span,button>span{display:block;line-height:1;text-box:trim-both cap alphabetic}
+      .chip svg,.beta i{flex:none}
+      @media (max-height:700px),(max-width:400px){.hero{height:168px}.scene{scale:.7}.body{padding:14px 14px 0}.actions{margin:0 -14px;padding:12px 14px 16px}h2{font-size:19.5px}}
+      :host([data-still]) *,:host([data-still]) *::before{animation:none!important;transition:none!important}
+    </style><div class="veil"></div>
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="ws-mn-title">
+      <div class="hero" aria-hidden="true">
+        <span class="beta"><i></i><span class="beta-text"></span></span>
+        <div class="scene">
+          <div class="floor a"></div><div class="floor b"></div>
+          <div class="dev tablet"><div class="screen">${MOBILE_NEWS_SHOT_WIDE ? `<img class="shot" alt="" src="data:image/jpeg;base64,${MOBILE_NEWS_SHOT_WIDE}">` : '<div class="map"></div>'}<i class="dim"></i><i class="ui-top"></i><i class="ui-left"></i><i class="ui-right"></i><i class="ui-bar"></i><i class="ui-dot l"></i><i class="ui-dot r"></i><i class="pin"></i></div></div>
+          <div class="dev phone"><div class="screen">${MOBILE_NEWS_SHOT_TALL ? `<img class="shot" alt="" src="data:image/jpeg;base64,${MOBILE_NEWS_SHOT_TALL}">` : '<div class="map"></div>'}<i class="dim"></i><i class="ui-top"></i><i class="ui-left"></i><i class="ui-right"></i><i class="ui-bar"></i><i class="ui-dot l"></i><i class="ui-dot r"></i><i class="pin"></i><i class="touch"></i></div><img class="frame" alt="" draggable="false" src="data:image/png;base64,${MOBILE_NEWS_IPHONE}"></div>
+        </div>
+      </div>
+      <div class="body">
+        <h2 id="ws-mn-title"></h2>
+        <p class="lead"></p>
+        <div class="chips">
+          <span class="chip"><svg viewBox="0 0 24 24"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V10"/><path d="M12 9.5a1.5 1.5 0 0 1 3 0V11"/><path d="M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4 15.5a1.5 1.5 0 0 1 2.4-1.8L9 16"/></svg><span></span></span>
+          <span class="chip"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg><span></span></span>
+          <span class="chip"><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg><span></span></span>
+        </div>
+        <div class="note need"><span class="ico"><svg viewBox="0 0 24 24"><path d="M10 3.5a2 2 0 0 1 4 0V6h3.5A1.5 1.5 0 0 1 19 7.5V11h-2.5a2 2 0 0 0 0 4H19v3.5a1.5 1.5 0 0 1-1.5 1.5H14v-2.5a2 2 0 0 0-4 0V20H6.5A1.5 1.5 0 0 1 5 18.5V15h2.5a2 2 0 0 0 0-4H5V7.5A1.5 1.5 0 0 1 6.5 6H10z"/></svg></span><b data-ws-keep>Tampermonkey · <a href="https://apps.apple.com/us/app/userscripts/id1463298887" target="_blank" rel="noopener">Userscripts</a></b><span class="need-text"></span><a class="get" href="https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js" download="WME-Studio.user.js"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></svg><span class="get-text"></span></a></div>
+        <div class="note"><span class="ico"><svg viewBox="0 0 24 24"><path d="M8 2.5 9.5 5"/><path d="M16 2.5 14.5 5"/><path d="M9 7.5a3 3 0 0 1 6 0"/><rect x="7" y="7.5" width="10" height="12" rx="5"/><path d="M12 11v8.5M3.5 13H7M17 13h3.5M4.5 8.5 7 10M19.5 8.5 17 10M4.5 19 7 17M19.5 19 17 17"/></svg></span><b></b><span class="note-text"></span></div>
+        <div class="actions"><button type="button"><span></span></button></div>
+      </div>
+    </div>`;
+    const $ = selector => shadow.querySelector(selector);
+    $('.beta-text').textContent = say('Beta');
+    $('h2').textContent = say('WME Studio is now on iPhone and iPad');
+    $('.lead').textContent = say('Open the editor on your iPhone or iPad and Studio comes with it. Tap to select, drag panels around and pinch to zoom the map.');
+    const chips = shadow.querySelectorAll('.chip > span');
+    ['Touch controls', 'Portrait and landscape', 'Typing bar'].forEach((text, index) => { chips[index].textContent = say(text); });
+    $('.note:not(.need) b').textContent = say('This is the first beta');
+    $('.get-text').textContent = say('Download WME Studio (.user.js)');
+    $('.get').addEventListener('click', downloadStudioUserFile);
+    $('.need-text').textContent = say('Use one of two separate apps from the App Store: Tampermonkey, or the free Userscripts. You only need one. Turn it on for Safari, then add WME Studio to it.');
+    $('.note-text').textContent = say('There will be some bugs, and tapping hazards is turned off for now. If something looks off, send it to me from Settings › Report a bug and I\'ll sort it out.');
+    const button = $('button');
+    button.firstElementChild.textContent = say('Continue');
+    let closed = false;
+    const keys = event => {
+      if (event.key === 'Escape' || event.key === 'Enter') { event.preventDefault(); close(); }
+      if (!event.ctrlKey && !event.metaKey) event.stopImmediatePropagation();
+    };
+    function close() {
+      if (closed) return;
+      closed = true;
+      document.removeEventListener('keydown', keys, true);
+      const finish = () => { removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); host.remove(); done(); };
+      if (host.hasAttribute('data-still')) { finish(); return; }
+      host.classList.add('closing');
+      setTimeout(finish, 200);
+    }
+    button.addEventListener('click', close);
+    $('.veil').addEventListener('click', close);
+    document.addEventListener('keydown', keys, true);
+    // On an iPhone the page is laid out wider than the screen and shrunk to fit, which would shrink the card too: it
+    // is zoomed back to its own size there.
+    const fit = () => {
+      const view = window.visualViewport, shown = view ? view.width * view.scale : innerWidth;
+      host.style.setProperty('--fit', String(Math.round(Math.min(3, Math.max(1, innerWidth / Math.max(1, shown))) * 100) / 100));
+    };
+    fit(); addEventListener('resize', fit); window.visualViewport?.addEventListener('resize', fit);
+    (document.body || root).append(host);
+    requestAnimationFrame(() => button.focus({ preventScroll: true, focusVisible: false }));
+  }
   // Once the setup and tour state are known: a fresh install gets the setup, and every update this card, once.
   async function maybeShowChangelog() {
     if (changelogStarted || setupSeen === null || tourSeen === null || !uiRouteAllowed() || window.top !== window.self) return;
     changelogStarted = true;
     const seen = await Promise.resolve(studioKeep.get(CHANGELOG_KEY, '')).catch(() => STUDIO_BUILD);
     if (seen === STUDIO_BUILD) return;
-    if (setupSeen === false) { markChangelogSeen(); return; }
+    if (setupSeen === false) { markChangelogSeen(); markMobileNewsSeen(); return; }
     await new Promise(ok => { const go = () => setTimeout(ok, 3500); if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true }); });
     if (document.visibilityState !== 'visible') await new Promise(ok => document.addEventListener('visibilitychange', function shown() { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', shown); ok(); } }));
     const value = await globalThis.WMEStudioSettings.read().catch(() => null);
     if (!value?.enabled || studioSetup?.isOpen?.() || studioTour?.isOpen?.() || document.documentElement.hasAttribute('data-wme-studio-layout-editing')) { changelogStarted = false; return; }
+    await maybeShowMobileNews();   // the iPhone and iPad news comes first, once
     // Built first, shown a moment later: building the settings dialog is heavy, and a card that starts its
     // entrance during that work stutters.
     const ui = buildStudioUI();
@@ -17906,6 +18983,13 @@ ${studioControlsCSS()}
   .brand b{font-size:15px;letter-spacing:-.3px;white-space:nowrap}
   .brand-text{display:grid;gap:1px;min-width:0}.brand-sub{font-size:11px;color:var(--muted);white-space:nowrap}.brand-link{color:var(--accent);text-decoration:none}.brand-link:hover{text-decoration:underline}
   .nav-group{padding:8px 11px 4px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.nav-group:first-child{padding-top:0}
+  .nav-beta,.beta-tag{display:inline-flex;align-items:center;height:16px;padding:0 6px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:9.5px;font-style:normal;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1;text-box:trim-both cap alphabetic;flex:none}
+  .nav-beta>b,.beta-tag>b{display:block;font-weight:inherit;line-height:1;text-box:trim-both cap alphabetic}
+  .nav-beta{margin-left:auto;padding:0 5px;font-size:9px}
+  #studio-tab-screens{gap:9px} #studio-tab-screens span{white-space:nowrap}
+  @media(max-width:760px){.nav-beta{display:none}}
+  .actions.sd-all{margin:0;flex-wrap:wrap}
+  a.get-userjs{display:inline-flex;align-items:center;text-decoration:none;white-space:nowrap} a.get-userjs>b{display:block;font-weight:inherit;line-height:1;text-box:trim-both cap alphabetic}
   .nav-badge{min-width:18px;height:18px;margin-left:auto;padding:0 5px;border-radius:999px;background:#23a86b;color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center}
   .small-note{color:var(--muted);font-size:10.5px}
   .head-text{display:grid;gap:2px;min-width:0}.page-sub{margin:0;color:var(--muted);font-size:12px}.page-sub:empty{display:none}
@@ -17939,11 +19023,12 @@ ${studioControlsCSS()}
   .close{flex:0 0 32px;display:grid;place-items:center;width:32px;height:32px;margin:0;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);line-height:0}
   .close svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
   .close:hover{background:var(--hover);color:var(--text)}
-  .body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;scroll-behavior:auto;contain:layout paint;padding:4px 28px 24px;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+  .body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;scroll-behavior:auto;contain:layout paint;padding:18px 28px 24px;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
   .body::-webkit-scrollbar{width:7px}.body::-webkit-scrollbar-track{background:transparent}.body::-webkit-scrollbar-button{display:none;width:0;height:0}
   .body::-webkit-scrollbar-thumb{background:var(--line2);border:2px solid transparent;background-clip:content-box;border-radius:999px}
   fieldset{margin:0;padding:0;min-width:0;border:0}
   .settings-page>fieldset,.page-stack{display:grid;gap:22px}
+  .settings-page>fieldset~.group{margin-top:22px}   /* a section kept outside the settings (Screen displays › Status) gets the same gap */
   fieldset[data-preferences]:disabled,fieldset[data-compact-preferences]:disabled{opacity:.5}
   fieldset[data-preferences]:disabled fieldset[data-compact-preferences]{opacity:1}
   .group{display:grid;gap:10px;min-width:0}
@@ -18160,6 +19245,8 @@ ${studioControlsCSS()}
   .log-list ul{display:flex;flex-direction:column;gap:5px;margin:0;padding-left:16px}
   .log-list li::marker{color:var(--accent)}
   .log-group h5{margin:0 0 4px;color:var(--muted);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .log-group h5 .log-beta{display:inline-flex;align-items:center;height:16px;margin-left:7px;padding:0 7px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:9.5px;line-height:1;letter-spacing:.07em;vertical-align:middle}
+  .log-group h5 .log-beta>span{display:block;line-height:1;text-box:trim-both cap alphabetic}
   .log-release .log-group + .log-group{margin-top:8px}
   .log-body{gap:16px;padding-bottom:16px}.log-release h4{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;font-size:13.5px}.log-release h4 span{padding:1px 7px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:10.5px;font-weight:700}
   .log-release ul{display:flex;flex-direction:column;gap:5px;margin:0;padding-left:18px;font-size:12.5px;line-height:1.45}.log-release li::marker{color:var(--accent)}
@@ -18187,9 +19274,13 @@ ${studioControlsCSS()}
   .fix-reply{margin-top:4px;align-self:flex-start;height:26px;padding:0 10px;font-size:12px}
   .mine-empty{padding:18px 4px;color:var(--muted);text-align:center}
   .fix-actions{grid-column:2;display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+  /* The buttons under a notice share one size (2.3.0): the main one used to be taller, with other corners. */
+  .fix-actions{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;width:max-content;max-width:100%;justify-self:end;margin-left:auto}
+  .fix-actions>button{height:34px;min-width:92px;padding:0 16px;border:1px solid var(--line);border-radius:10px;font-size:12px;font-weight:650;white-space:nowrap}
+  .fix-actions>button[hidden]{display:none}
   .bug-done-icon{width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:26px;font-weight:700;margin-bottom:6px}.bug-done h3{margin:0;font-size:17px}.bug-done p{margin:0 0 14px;color:var(--muted);max-width:360px}
-  @media(max-width:760px){.panel{width:calc(100vw - 24px);height:min(660px,calc(100dvh - 24px));grid-template-columns:64px minmax(0,1fr)}.head{padding:16px 14px 12px 20px}.chips{padding-inline:20px}.body{padding:4px 20px 20px}.sidebar{align-items:center;gap:8px;padding:14px 0 12px}.brand{padding:0}.brand-text{display:none}.search-trigger{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.search-trigger span{display:none}.nav{width:100%;justify-items:center;gap:4px}.nav-group{display:none}.nav-item{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.nav-item span{display:none}.nav-item .nav-badge{display:grid;position:absolute;top:4px;right:4px;min-width:8px;height:8px;padding:0;font-size:0}.nav-item{position:relative}.sidebar-footer{padding:0}.power-text{display:none}.notice{width:28px;padding:0;justify-content:center}.notice [data-id="status"]{display:none}.srow{flex-wrap:wrap;row-gap:8px}.srow:has(>input[type="range"]) .srow-text,.srow:has(>.actions) .srow-text,.srow:has(>.swatches) .srow-text{flex-basis:100%}.srow input[type="range"]{flex:1 1 160px;width:auto}.stack-main{flex-wrap:wrap;row-gap:8px}.modes{grid-template-columns:1fr}.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.themes{gap:8px}}
-  @media(max-width:580px){.panel{border-radius:17px}.head{padding:14px 12px 10px 16px}.head h2{font-size:19px}.body{padding:4px 16px 18px}.theme{padding:8px;border-radius:12px}.preview{height:64px}.theme-desc{font-size:9.5px}.theme-name{font-size:11px}.swatches{gap:7px}}
+  @media(max-width:760px){.panel{width:calc(100vw - 24px);height:min(660px,calc(100dvh - 24px));grid-template-columns:64px minmax(0,1fr)}.head{padding:16px 14px 12px 20px}.chips{padding-inline:20px}.body{padding:16px 20px 20px}.sidebar{align-items:center;gap:8px;padding:14px 0 12px}.brand{padding:0}.brand-text{display:none}.search-trigger{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.search-trigger span{display:none}.nav{width:100%;justify-items:center;gap:4px}.nav-group{display:none}.nav-item{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.nav-item span{display:none}.nav-item .nav-badge{display:grid;position:absolute;top:4px;right:4px;min-width:8px;height:8px;padding:0;font-size:0}.nav-item{position:relative}.sidebar-footer{padding:0}.power-text{display:none}.notice{width:28px;padding:0;justify-content:center}.notice [data-id="status"]{display:none}.srow{flex-wrap:wrap;row-gap:8px}.srow:has(>input[type="range"]) .srow-text,.srow:has(>.actions) .srow-text,.srow:has(>.swatches) .srow-text{flex-basis:100%}.srow input[type="range"]{flex:1 1 160px;width:auto}.stack-main{flex-wrap:wrap;row-gap:8px}.modes{grid-template-columns:1fr}.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.themes{gap:8px}}
+  @media(max-width:580px){.panel{border-radius:17px}.head{padding:14px 12px 10px 16px}.head h2{font-size:19px}.body{padding:14px 16px 18px}.theme{padding:8px;border-radius:12px}.preview{height:64px}.theme-desc{font-size:9.5px}.theme-name{font-size:11px}.swatches{gap:7px}}
   @media(prefers-reduced-motion:reduce){.panel.open{animation:none}*,*::before,*::after{transition:none!important}}
 </style>
 <div class="backdrop" hidden aria-hidden="true"></div>
@@ -18204,7 +19295,7 @@ ${studioControlsCSS()}
       <div class="nav-group" aria-hidden="true">Editor</div>
       <button class="nav-item" type="button" role="tab" id="studio-tab-map" data-page-target="map" aria-controls="studio-page-map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg><span>Map</span></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-panels" data-page-target="panels" aria-controls="studio-page-panels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7l-5 3v-3H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 9h10M7 13h6"/></svg><span>Panels</span></button>
-      <button class="nav-item" type="button" role="tab" id="studio-tab-screens" data-page-target="screens" aria-controls="studio-page-screens"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M10.5 18h3"/><path d="M9.5 10.5 12 8l2.5 2.5"/></svg><span>Screen displays</span></button>
+      <button class="nav-item" type="button" role="tab" id="studio-tab-screens" data-page-target="screens" aria-controls="studio-page-screens"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M10.5 18h3"/><path d="M9.5 10.5 12 8l2.5 2.5"/></svg><span>Screen displays</span><i class="nav-beta"><b>Beta</b></i></button>
       <div class="nav-group" aria-hidden="true" data-ws-keep>Studio</div>
       <button class="nav-item" type="button" role="tab" id="studio-tab-studio" data-page-target="studio" aria-controls="studio-page-studio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>General</span></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-bug" data-page-target="bug" aria-controls="studio-page-bug"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7a4 4 0 0 1 8 0v1a4 4 0 0 1-8 0V7Z"/><path d="M6 12h12M5 17c1.5-.8 2.5-2.5 2.5-4.5M19 17c-1.5-.8-2.5-2.5-2.5-4.5M8 12v4a4 4 0 0 0 8 0v-4M10 5 8 3M14 5l2-2"/></svg><span>Report a bug</span><b class="nav-badge" data-id="bug-badge" hidden></b></button>
@@ -18291,7 +19382,7 @@ ${studioControlsCSS()}
         <div class="group"><h3 class="section-label">Requests</h3><div class="card rows">
           <label class="srow togrow"><span class="srow-text"><strong>Compact request panel</strong><span class="small">Use a shorter window for update requests and place update requests. Works with either workspace mode.</span></span><span class="switch"><input data-id="compactRequests" type="checkbox"><i></i></span></label>
           <label class="srow togrow" data-row="closeAfterReply"><span class="srow-text"><strong>Close the request after replying</strong><span class="small">Once your reply has been sent, the request window closes by itself.</span></span><span class="switch"><input data-id="closeAfterReply" type="checkbox"><i></i></span></label>
-          <div class="srow"><div class="srow-text"><strong>Visible discussion messages</strong><span class="small">Messages shown before the discussion becomes scrollable, in either request layout.</span></div><input data-id="discussionVisible" type="range" min="1" max="10" step="1" value="2" aria-label="Messages shown before the discussion scrolls"><span class="value" data-id="discussionVisible-value">2</span></div>
+          <div class="srow"><div class="srow-text"><strong>Visible discussion messages</strong><span class="small">How many messages a request shows before the discussion starts scrolling. If you drag a request window taller, it shows as many as fit.</span></div><input data-id="discussionVisible" type="range" min="1" max="10" step="1" value="2" aria-label="Messages shown before the discussion scrolls"><span class="value" data-id="discussionVisible-value">2</span></div>
         </div></div>
         <div class="group"><h3 class="section-label">Size and columns</h3><div class="card rows">
           <div class="srow"><div class="srow-text"><strong>Panel size</strong><span class="small">Makes whole panels smaller: the side panel, Map Layers, Messages and request windows. It follows HUD size; set it here to give panels a size of their own.</span></div><input data-id="panelScale" type="range" min="70" max="100" step="5" value="100" aria-label="Panel size"><span class="value" data-id="panelScale-value">100%</span></div>
@@ -18300,16 +19391,20 @@ ${studioControlsCSS()}
         </div></div>
       </fieldset></section>
       <section class="settings-page" id="studio-page-screens" data-page="screens" role="tabpanel" aria-labelledby="studio-tab-screens" hidden><fieldset data-preferences>
-        <div class="group"><h3 class="section-label">Screen displays</h3><div class="card rows">
-          <label class="srow togrow" data-row="screenDisplays"><span class="srow-text"><strong>Enable Screen displays</strong><span class="small">For touch screens such as an iPad. A finger on the map is handled by Studio: a tap selects what is nearest your finger (a road within a fingertip counts), dragging moves the map without losing the selection, two fingers zoom only the map and a double-tap zooms in. Its buttons sit in their own island at the bottom of the map, which you can fold away. While Select several is pressed, each tap or click adds what is under it to the selection or takes it out.</span><span class="small warn" data-id="screenDisplays-missing" hidden>The WME Studio Screen Displays library did not load. Update WME Studio to get it.</span></span><span class="switch"><input data-id="screenDisplays" type="checkbox"><i></i></span></label>
-          <label class="srow togrow" data-row="screenRoadButton"><span class="srow-text"><strong>Road between two segments</strong><span class="small">A second map button: press it, tap a segment, then one further along, and every segment between them is selected, along the same street when it can.</span></span><span class="switch"><input data-id="screenRoadButton" type="checkbox"><i></i></span></label>
-          <label class="srow togrow" data-row="screenShapeButton"><span class="srow-text"><strong>Shape a road</strong><span class="small">A button that puts big handles on the selected road. Drag a point to move it, drag a + between two points to add one, tap a point to delete it, and drag an end to move it, or drop it on another junction or road to join them. Tap an end, or the middle of an intersection, to move the whole intersection. Undo and Redo sit beside it while it is pressed.</span></span><span class="switch"><input data-id="screenShapeButton" type="checkbox"><i></i></span></label>
-          <label class="srow togrow" data-row="screenDrawButton"><span class="srow-text"><strong>Draw a road</strong><span class="small">A button that starts the editor's own road tool, as + › Roads › Roads does. While the tool draws (however it was started), each tap adds a point, moved onto a junction or road close by so the new road joins it, you can move and zoom the map between taps, and tapping the last point again (or Finish) ends the road. Undo point and Cancel sit beside it.</span></span><span class="switch"><input data-id="screenDrawButton" type="checkbox"><i></i></span></label>
-          <label class="srow togrow" data-row="screenLongPress"><span class="srow-text"><strong>Long-press for the right-click menu</strong><span class="small">Hold a finger still on the map to open the right-click menu there.</span></span><span class="switch"><input data-id="screenLongPress" type="checkbox"><i></i></span></label>
+        <div class="group"><h3 class="section-label">Screen displays<i class="beta-tag"><b>Beta</b></i></h3><div class="card rows">
+          <div class="srow" data-row="screenAll"><div class="srow-text"><strong>All Screen displays tools</strong></div><div class="actions sd-all"><button class="reset" data-id="sd-all-on" type="button">Enable all</button><button class="reset" data-id="sd-all-off" type="button">Disable all</button></div></div>
+          <label class="srow togrow" data-row="screenDisplays"><span class="srow-text"><strong>Enable Screen displays</strong><span class="small">Finger control for iPad, iPhone and touch screens. Tap to select, drag to move the map, pinch to zoom.</span><span class="small warn" data-id="screenDisplays-missing" hidden>The WME Studio Screen Displays library did not load. Update WME Studio to get it.</span></span><span class="switch"><input data-id="screenDisplays" type="checkbox"><i></i></span></label>
+          <label class="srow togrow" data-row="screenRoadButton"><span class="srow-text"><strong>Road between two segments</strong><span class="small">Tap a segment, then one further along, to select every segment between them.</span></span><span class="switch"><input data-id="screenRoadButton" type="checkbox"><i></i></span></label>
+          <label class="srow togrow" data-row="screenShapeButton"><span class="srow-text"><strong>Shape a road</strong><span class="small">Big handles on the selected road to move, add and delete its points.</span></span><span class="switch"><input data-id="screenShapeButton" type="checkbox"><i></i></span></label>
+          <label class="srow togrow" data-row="screenDrawButton"><span class="srow-text"><strong>Draw a road</strong><span class="small">Draw a new road one tap at a time. It joins roads and junctions close by.</span></span><span class="switch"><input data-id="screenDrawButton" type="checkbox"><i></i></span></label>
+          <label class="srow togrow" data-row="screenLongPress"><span class="srow-text"><strong>Long-press for the right-click menu</strong><span class="small">Hold a finger on the map to open the right-click menu.</span></span><span class="switch"><input data-id="screenLongPress" type="checkbox"><i></i></span></label>
         </div></div>
       </fieldset>
+        <div class="group"><h3 class="section-label">iPhone and iPad</h3><div class="card rows">
+          <div class="srow"><div class="srow-text"><strong>Userscripts app</strong><span class="small">For the free Userscripts app in Safari. Download it, then move it into your Userscripts folder in the Files app.</span></div><div class="actions"><a class="reset get-userjs" data-id="sd-userjs" href="https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js" download="WME-Studio.user.js"><b>Download .user.js</b></a></div></div>
+        </div></div>
         <div class="group"><h3 class="section-label">Status</h3><div class="card rows">
-          <div class="srow wrap"><div class="srow-text"><strong>What Screen displays sees</strong><span class="small">Whether the library loaded, and what your last taps did. Copy it into a bug report if something does not work.</span></div><div class="actions"><button class="reset" data-id="sd-status-refresh" type="button">Refresh</button><button class="reset" data-id="sd-status-copy" type="button">Copy</button></div><pre class="sd-status" data-id="sd-status"></pre></div>
+          <div class="srow wrap"><div class="srow-text"><strong>What Screen displays sees</strong><span class="small">Copy this into a bug report if something doesn't work.</span></div><div class="actions"><button class="reset" data-id="sd-status-refresh" type="button">Refresh</button><button class="reset" data-id="sd-status-copy" type="button">Copy</button></div><pre class="sd-status" data-id="sd-status"></pre></div>
         </div></div>
       </section>
       <section class="settings-page" id="studio-page-studio" data-page="studio" role="tabpanel" aria-labelledby="studio-tab-studio" hidden><div class="page-stack">
@@ -18326,7 +19421,7 @@ ${studioControlsCSS()}
       </div></section>
       <section class="settings-page" id="studio-page-bug" data-page="bug" role="tabpanel" aria-labelledby="studio-tab-bug" hidden><div class="page-stack">
         <div class="group"><h3 class="section-label">Something not right?</h3><div class="card rows">
-          <div class="srow" data-row="bugReport"><div class="srow-text"><strong>Report a bug</strong><span class="small">Tell the author what went wrong. Your report includes your Studio version, settings, the last errors Studio caught and your Waze username, so you can be told when it is fixed. Never your edits.</span></div><div class="actions"><button class="reset primary" data-id="bug-report" type="button">Report a bug</button></div></div>
+          <div class="srow" data-row="bugReport"><div class="srow-text"><strong>Report a bug</strong><span class="small">Tell me what went wrong. Your report includes your Studio version, settings, the last errors Studio caught and your Waze username, so I can let you know when it's fixed. It never includes your edits.</span></div><div class="actions"><button class="reset primary" data-id="bug-report" type="button">Report a bug</button></div></div>
           <div class="srow" data-row="bugFixes" hidden><div class="srow-text"><strong>Fixed reports</strong><span class="small" data-id="bug-fixes-text">When a report of yours is fixed, a note shows up here in the editor.</span></div><div class="actions"><button class="reset" data-id="bug-check" type="button">Check now</button></div></div>
           <div class="srow" data-row="bugMine" hidden><div class="srow-text"><strong>My reports</strong><span class="small">Every report you sent from this editor account, and where each one stands.</span></div><div class="actions"><button class="reset" data-id="bug-mine" type="button">See my reports</button></div></div>
           <div class="srow"><div class="srow-text"><strong>Copy the details instead</strong><span class="small">Copies the same technical details as text, for a forum post or a message.</span></div><div class="actions"><button class="reset" data-id="bug-copy" type="button">Copy report</button></div></div>
@@ -18340,7 +19435,7 @@ ${studioControlsCSS()}
         </div></div>
       </div></section>
       <section class="settings-page" id="studio-page-developers" data-page="developers" role="tabpanel" aria-labelledby="studio-tab-developers" hidden><div class="page-stack">
-        <div class="group"><h3 class="section-label">For script authors</h3><div class="card doc">
+        <div class="group"><h3 class="section-label">For script developers</h3><div class="card doc">
           <p>Scripts run with WME Studio without any changes. Everything on this page is optional. It is plain DOM and CSS: there is no library to load and nothing to call, so it does nothing when Studio is not installed.</p>
           <div class="dev-toc" role="group" aria-label="On this page"><button type="button" data-dev-jump="tabs">Name and icon</button><button type="button" data-dev-jump="detect">Detect Studio</button><button type="button" data-dev-jump="theme">Colours and fallbacks</button><button type="button" data-dev-jump="floating">Floating mode</button><button type="button" data-dev-jump="check">Before you release</button></div>
         </div></div>
@@ -18518,7 +19613,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
 </section>
 <div class="bug-backdrop" data-id="bug-backdrop" hidden>
   <form class="bug-dialog" data-id="bug-dialog" role="dialog" aria-modal="true" aria-labelledby="bug-title" novalidate>
-    <div class="bug-head"><div><h3 id="bug-title">Report a bug</h3><p>It goes straight to the author of WME Studio.</p></div><button class="bug-close" type="button" data-id="bug-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="bug-head"><div><h3 id="bug-title">Report a bug</h3><p>It comes straight to me.</p></div><button class="bug-close" type="button" data-id="bug-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="bug-body">
       <div class="bug-as" data-id="bug-as" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span data-id="bug-as-text"></span></div>
       <label class="bug-field"><span>What happened? <em>*</em></span><textarea data-id="bug-what" rows="3" maxlength="2000" placeholder="For example: after I moved the zoom buttons to the left, the + menu opens under the header."></textarea></label>
@@ -18634,7 +19729,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     const sliderTimers = new Map();
     let rangeDrag = null;
     const pages = { layout: 'Layout', look: 'Look', map: 'Map', panels: 'Panels', screens: 'Screen displays', studio: 'General', bug: 'Report a bug', developers: 'Developers' };
-    const pageSubtitles = { layout: 'Mode, size and where the islands go.', look: 'Theme, accent and comfort.', map: 'Brightness, GPS points and the right-click menu.', panels: 'Requests, size and columns.', screens: 'Touch screen tools.', studio: 'Language, backups and defaults.', bug: 'Tell the author what went wrong.', developers: 'For script authors.' };
+    const pageSubtitles = { layout: 'Mode, size and where the islands go.', look: 'Theme, accent and comfort.', map: 'Brightness, GPS points and the right-click menu.', panels: 'Requests, size and columns.', screens: 'Touch screen tools.', studio: 'Language, backups and defaults.', bug: 'Tell me what went wrong.', developers: 'For script developers.' };
     // Earlier page names, so older callers still land on the right section.
     const pageAliases = { workspace: 'layout', presets: 'layout', appearance: 'look', addons: 'look', requests: 'panels', help: 'studio' };
 
@@ -18677,7 +19772,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       for (const [index, entry] of chipTargets.entries()) {
         const chip = document.createElement('button');
         chip.type = 'button'; chip.className = 'sec-chip'; chip.dataset.index = String(index);
-        chip.textContent = [...entry.label.childNodes].filter(node => node.nodeType === 3 || !node.matches?.('.step')).map(node => node.textContent).join('').trim();
+        chip.textContent = [...entry.label.childNodes].filter(node => node.nodeType === 3 || !node.matches?.('.step,.beta-tag')).map(node => node.textContent).join('').trim();
         chip.addEventListener('click', () => {
           const top = body.scrollTop + entry.group.getBoundingClientRect().top - body.getBoundingClientRect().top - 10;
           chipLock = index; clearTimeout(chipLockTimer); chipLockTimer = setTimeout(() => { chipLock = -1; }, 700);
@@ -19298,7 +20393,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     q('[data-id="accent"]').addEventListener('change', e => change({ accent: e.target.value }));
     for (const key of ['compactHeaderWidth','compactIslandOpacity','eyeSaver','satelliteBrightness','viewportBrightness','gpsOpacity','hudScale','panelScale','fontScale','discussionVisible']) {
       bindRangeDrag(q(`[data-id="${key}"]`),key);
-      q(`[data-id="${key}"]`).addEventListener('input', e => previewRange(key, Number(e.target.value)));
+      q(`[data-id="${key}"]`).addEventListener('input', e => { if (key === 'discussionVisible') globalThis.WMEStudioPanelSizes?.forgetRequestHeights?.(); previewRange(key, Number(e.target.value)); });
       q(`[data-id="${key}"]`).addEventListener('change', e => { clearTimeout(sliderTimers.get(key)); sliderTimers.delete(key); change(rangePatch(key,Number(e.target.value))); });
     }
     qa('[data-action="arrange"]').forEach(button=>button.addEventListener('click',async()=>{
@@ -19318,6 +20413,11 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       change({ ...config.defaults });
     });
     q('[data-id="resetPanelSizes"]').addEventListener('click', () => globalThis.WMEStudioPanelSizes?.reset());
+    // Screen displays › All tools (2.3.0): everything on, or everything off, at once.
+    const screenTools = on => ({ screenDisplays: on, screenRoadButton: on, screenShapeButton: on, screenDrawButton: on, screenLongPress: on });
+    q('[data-id="sd-userjs"]').addEventListener('click', downloadStudioUserFile);
+    q('[data-id="sd-all-on"]').addEventListener('click', () => change(screenTools(true), true));
+    q('[data-id="sd-all-off"]').addEventListener('click', () => change(screenTools(false), true));
     // Report a bug: a plain-text summary of this setup for the feedback page. It holds no account details, no
     // edits and no addresses of custom links; it is only copied, and only when asked.
     function bugReport() {
@@ -19431,7 +20531,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     function openBugDialog() {
       bug.opener = shadow.activeElement;
       bug.done.hidden = true; showBugError(''); bug.what.closest('.bug-field').classList.remove('invalid'); q('[data-id="bug-category-control"]').closest('.bug-field').classList.remove('invalid');
-      bug.note.textContent = translate(endpointReady ? 'Sent to the author of WME Studio.' : 'Copied for the feedback page.');
+      bug.note.textContent = translate(endpointReady ? 'Sent. Thanks, I\'ll take a look.' : 'Copied for the feedback page.');
       bug.send.textContent = translate(endpointReady ? 'Send report' : 'Copy & open feedback page');
       const user = wmeUserName();
       bug.as.hidden = !endpointReady;
@@ -19602,7 +20702,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       try {
         const result = await bugApi('POST', '/api/report', { report: text, version: USERSCRIPT_VERSION, editor: `${location.hostname}${location.pathname}`, browser: navigator.userAgent,
           summary: what.slice(0, 200), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.category.value, screenshot: bug.shots[0]?.data || '', screenshots: bug.shots.map(shot => shot.data), token: await studioReporterKey() });
-        let doneText = (result.id ? translate('Your report #{0} was sent to the author of WME Studio.') : translate('Your report was sent to the author of WME Studio.')).replace('{0}', String(result.id || ''));
+        let doneText = (result.id ? translate('Got your report #{0}. Thanks, I\'ll take a look.') : translate('Got your report. Thanks, I\'ll take a look.')).replace('{0}', String(result.id || ''));
         if (bug.clip) {
           bug.send.textContent = translate('Uploading video…');
           try {
@@ -19659,7 +20759,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         : items.length ? (items.length > 1 ? 'Your bug reports were fixed' : 'Your bug report was fixed')
         : working.length ? (working.length > 1 ? 'Your bug reports are under construction' : 'Your bug report is under construction')
         : rejected.length ? (rejected.length > 1 ? 'Your bug reports will not be fixed' : 'Your bug report will not be fixed')
-        : 'The author of WME Studio wrote to you');
+        : 'I sent you a message');
       fix.icon.querySelector('svg').innerHTML = items.length ? FIX_ICONS.fixed : working.length ? FIX_ICONS.working : rejected.length ? FIX_ICONS.rejected : FIX_ICONS.message;
       fix.list.textContent = '';
       // Reports the author will not fix (2.2.1): not a bug, or another script's, with the reason.
@@ -19675,7 +20775,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       for (const item of messages) {
         const row = document.createElement('div'); row.className = 'fix-item';
         const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.report_id).slice(0, 120);
-        const state = document.createElement('span'); state.className = 'fix-version'; state.textContent = translate('the author wrote');
+        const state = document.createElement('span'); state.className = 'fix-version'; state.textContent = translate('I wrote');
         row.append(quote, ' — ', state);
         const note = document.createElement('span'); note.className = 'fix-note'; note.setAttribute('data-ws-keep', ''); note.textContent = String(item.body || '').slice(0, 600); row.append(note);
         const answer = document.createElement('button'); answer.type = 'button'; answer.className = 'reset fix-reply'; answer.textContent = translate('Answer');
@@ -19752,7 +20852,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     const mineMessage = text => { const box = document.createElement('p'); box.className = 'mine-empty'; box.textContent = text; mine.body.replaceChildren(box); };
     function mineState(report) {
       if (report.status === 'fixed') return translate('Fixed in {0}').replace('{0}', report.fixed_version || '?');
-      return translate({ new: 'Sent', seen: 'Seen by the author', working: 'under construction', rejected: 'Will not be fixed', closed: 'Closed' }[report.status] || 'Sent');
+      return translate({ new: 'Sent', seen: 'Seen', working: 'under construction', rejected: 'Will not be fixed', closed: 'Closed' }[report.status] || 'Sent');
     }
     async function loadMyReports() {
       if (mine.loading) return;
@@ -19782,7 +20882,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
             const thread = document.createElement('div'); thread.className = 'mine-thread';
             for (const message of messages) {
               const bubble = document.createElement('div'); bubble.className = 'mine-msg'; bubble.dataset.from = message.author === 'you' ? 'you' : 'author';
-              const who = document.createElement('small'); who.textContent = `${translate(message.author === 'you' ? 'You' : 'The author')} · ${mineDate(message.created_at)}`;
+              const who = document.createElement('small'); who.textContent = `${(message.author === 'you' ? translate('You') : 'WME Studio')} · ${mineDate(message.created_at)}`;
               const text = document.createElement('span'); text.setAttribute('data-ws-keep', ''); text.textContent = String(message.body || '');
               bubble.append(who, text); thread.append(bubble);
             }
@@ -19806,7 +20906,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     // Answering the author (2.2.1): a button that opens a box under the report.
     function mineReply(report, answered) {
       const box = document.createElement('div');
-      const open = document.createElement('button'); open.type = 'button'; open.className = 'reset mine-reply-open'; open.textContent = translate(answered ? 'Answer' : 'Write to the author');
+      const open = document.createElement('button'); open.type = 'button'; open.className = 'reset mine-reply-open'; open.textContent = translate(answered ? 'Answer' : 'Message me');
       const form = document.createElement('div'); form.className = 'mine-reply'; form.hidden = true;
       const field = document.createElement('textarea'); field.maxLength = 2000; field.placeholder = translate('Your answer…');
       const row = document.createElement('div'); row.className = 'mine-reply-row';
@@ -19853,7 +20953,11 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       const groups = release.groups || [{ title: '', items: release.items || [] }];
       return groups.map(group => {
         const box = document.createElement('div'); box.className = 'log-group';
-        if (group.title) box.append(Object.assign(document.createElement('h5'), { textContent: group.title }));
+        if (group.title) {
+          const heading = Object.assign(document.createElement('h5'), { textContent: group.title });
+          if (group.beta) { const tag = Object.assign(document.createElement('span'), { className: 'log-beta' }); tag.append(Object.assign(document.createElement('span'), { textContent: translate('Beta') })); heading.append(tag); }
+          box.append(heading);
+        }
         const list = document.createElement('ul'); changelogItems(list, group.items);
         box.append(list);
         return box;
@@ -20062,7 +21166,7 @@ ${studioControlsCSS()}
           setting('Accent colour','look','accent','color highlight custom'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','look','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','look','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
           setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Open the + menu on click','map','createMenuClick','plus add create hover click menu roads places'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),
           setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Enable Screen displays','screens','screenDisplays','touch screen tablet tap select multiple segments places nodes several'),setting('Draw a road','screens','screenDrawButton','touch draw new road segment create add points snap junction finish'),setting('Shape a road','screens','screenShapeButton','touch shape geometry points vertex vertices move add delete junction node drag snap undo redo'),setting('Road between two segments','screens','screenRoadButton','touch select road path street between segments'),setting('Long-press for the right-click menu','screens','screenLongPress','touch hold press context menu right click'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
-          setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script authors','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
+          setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script developers','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
           {label:translate('Arrange layout'),category:'Workspace',keywords:'move position panels islands controls hide split custom island buttons',disabled:!prefs.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches,run:async()=>{await cfg.write({compactMode:true});globalThis.WMEStudioCompactLayout.open();}},
           ...[['Standard',false],['Floating compact',true]].map(([label,value])=>({label:translate(label),category:'Workspace',keywords:'workspace mode layout',disabled:!prefs.enabled,run:()=>cfg.write({compactMode:value})})),
           ...['light','dark','black'].map(theme=>({label:translate('Theme')+': '+translate(theme === 'black' ? 'Full black' : theme[0].toUpperCase()+theme.slice(1)),category:'Appearance',keywords:'theme color '+theme,run:()=>cfg.write({theme})})),
@@ -20167,18 +21271,19 @@ ${studioControlsCSS()}
     const geographic = ol => /4326|CRS:84/.test(String(attempt(() => ol.getProjectionObject?.()?.getCode?.() || ol.getProjection?.() || ol.projection, '')));
 
     function lonLatAt(clientX, clientY) {
+      const api = getSDK() || studioSDK.get();
+      if (typeof api?.Map?.getLonLatFromPixel === 'function') {
+        // The SDK counts pixels from the map's own viewport.
+        const box = (attempt(() => api.Map.getMapViewportElement?.()) || document.querySelector('#WazeMap, #map'))?.getBoundingClientRect();
+        const point = attempt(() => api.Map.getLonLatFromPixel({ x: clientX - (box?.left || 0), y: clientY - (box?.top || 0) }));
+        if (point && Number.isFinite(point.lon) && Number.isFinite(point.lat)) return { lon: point.lon, lat: point.lat };
+      }
       const ol = olMap();
       if (ol?.div && typeof ol.getLonLatFromPixel === 'function') {
         const box = ol.div.getBoundingClientRect(), Pixel = page.OpenLayers?.Pixel;
         const x = clientX - box.left, y = clientY - box.top;
         const point = attempt(() => ol.getLonLatFromPixel(Pixel ? new Pixel(x, y) : { x, y }));
         if (point && Number.isFinite(point.lon) && Number.isFinite(point.lat)) return geographic(ol) ? { lon: point.lon, lat: point.lat } : toLonLat(point.lon, point.lat);
-      }
-      const api = getSDK();
-      if (typeof api?.Map?.getLonLatFromPixel === 'function') {
-        const box = document.querySelector('#WazeMap, #map')?.getBoundingClientRect();
-        const point = attempt(() => api.Map.getLonLatFromPixel({ x: clientX - (box?.left || 0), y: clientY - (box?.top || 0) }));
-        if (point && Number.isFinite(point.lon) && Number.isFinite(point.lat)) return { lon: point.lon, lat: point.lat };
       }
       return null;
     }
@@ -20258,16 +21363,8 @@ ${studioControlsCSS()}
     }
     // The segment drawn under the cursor, if any: the closest one within a few pixels of the click.
     function segmentAt(clientX, clientY) {
-      const ol = olMap();
-      if (!ol?.div || typeof ol.getLonLatFromPixel !== 'function') return null;
-      const box = ol.div.getBoundingClientRect(), Pixel = page.OpenLayers?.Pixel, x = clientX - box.left, y = clientY - box.top;
-      const raw = attempt(() => ol.getLonLatFromPixel(Pixel ? new Pixel(x, y) : { x, y }));
-      if (!raw || !Number.isFinite(raw.lon) || !Number.isFinite(raw.lat)) return null;
-      const degrees = geographic(ol), here = degrees ? toMercator(raw.lon, raw.lat) : { x: raw.lon, y: raw.lat };
-      const zoom = zoomLevel();
-      const resolution = attempt(() => ol.getResolution()) || (zoom != null ? 156543.03392 / 2 ** zoom : 0);
-      if (!(resolution > 0)) return null;
-      let best = null, bestDistance = resolution * 9;
+      const api = getSDK() || studioSDK.get();
+      let here = null, resolution = 0, best = null, bestDistance = 0;
       const measure = (id, points) => {
         for (let i = 1; i < points.length; i++) {
           const a = points[i - 1], b = points[i], dx = b.x - a.x, dy = b.y - a.y, length = dx * dx + dy * dy;
@@ -20276,19 +21373,36 @@ ${studioControlsCSS()}
           if (distance < bestDistance) { bestDistance = distance; best = String(id); }
         }
       };
+      // The SDK first: the point under the cursor, the map's scale and the loaded segments, all from it.
+      const segments = attempt(() => api?.DataModel?.Segments?.getAll?.(), []);
+      const point = Array.isArray(segments) && segments.length ? lonLatAt(clientX, clientY) : null;
+      const sdkResolution = point ? attempt(() => api.Map.getMapResolution()) : null;
+      if (point && Number.isFinite(sdkResolution) && sdkResolution > 0) {
+        here = toMercator(point.lon, point.lat); resolution = sdkResolution; bestDistance = resolution * 9;
+        for (const segment of segments) {
+          const line = segment?.geometry?.coordinates;
+          if (Array.isArray(line)) measure(segment.id, line.map(([lon, lat]) => toMercator(lon, lat)));
+        }
+        return best;
+      }
+      // The older way: OpenLayers and the editor's own models.
+      const ol = olMap();
+      if (!ol?.div || typeof ol.getLonLatFromPixel !== 'function') return null;
+      const box = ol.div.getBoundingClientRect(), Pixel = page.OpenLayers?.Pixel, x = clientX - box.left, y = clientY - box.top;
+      const raw = attempt(() => ol.getLonLatFromPixel(Pixel ? new Pixel(x, y) : { x, y }));
+      if (!raw || !Number.isFinite(raw.lon) || !Number.isFinite(raw.lat)) return null;
+      const degrees = geographic(ol);
+      here = degrees ? toMercator(raw.lon, raw.lat) : { x: raw.lon, y: raw.lat };
+      const zoom = zoomLevel();
+      resolution = attempt(() => ol.getResolution()) || (zoom != null ? 156543.03392 / 2 ** zoom : 0);
+      if (!(resolution > 0)) return null;
+      bestDistance = resolution * 9;
       const models = attempt(() => page.W?.model?.segments?.getObjectArray?.(), []) || [];
       for (const model of models) {
         const id = attempt(() => model.getID?.()) ?? model.attributes?.id;
         const parts = attempt(() => (model.getOLGeometry?.() || model.geometry)?.components);
         if (id == null || !Array.isArray(parts)) continue;
         measure(id, parts.map(part => degrees ? toMercator(part.x, part.y) : { x: part.x, y: part.y }));
-      }
-      if (!models.length) {
-        const all = attempt(() => getSDK()?.DataModel?.Segments?.getAll?.(), []);
-        for (const segment of Array.isArray(all) ? all : []) {
-          const line = segment?.geometry?.coordinates;
-          if (Array.isArray(line)) measure(segment.id, line.map(([lon, lat]) => toMercator(lon, lat)));
-        }
       }
       return best;
     }
@@ -20345,6 +21459,8 @@ ${studioControlsCSS()}
       return null;
     }
     function refreshData() {
+      const api = getSDK() || studioSDK.get();
+      if (typeof api?.DataModel?.refreshData === 'function') return () => api.DataModel.refreshData();
       const controller = attempt(() => page.W?.controller);
       for (const name of ['reloadData', 'reload']) if (typeof controller?.[name] === 'function') return () => controller[name]();
       return null;
@@ -20739,6 +21855,8 @@ kbd,.count{flex:none;font:600 10.5px/1 var(--ws-font,system-ui,sans-serif);color
     return false;
   }
   function detectNativeCompact() {
+    const fromSDK = studioSDK.value(api => { const value = api.Settings.getUserSettings()?.isCompactMode; return typeof value === 'boolean' ? value : null; }, null);
+    if (fromSDK !== null) return fromSDK;
     try {
       const prefs = setupPage.W?.prefs?.attributes;
       if (prefs) {
@@ -22104,19 +23222,67 @@ ${studioControlsCSS()}
         const items = commentItems(list);
         // The limit is written on the list itself (2.0.5), so no stylesheet rule can switch it off: a rule for request
         // windows sized by hand did exactly that, and it also works whichever Resources library is loaded.
+        // The height of the first messages is read from the page's layout (2.3.0), not from where they show on screen:
+        // read while the window was still sliding or growing in, or in a browser that does not say how much a panel is
+        // zoomed, the screen gave a smaller height, and the discussion showed fewer messages than asked for.
+        const span = count => { const last = items[count - 1]; return last.offsetTop + last.offsetHeight - items[0].offsetTop; };
+        const setVar = (name, value) => { if (list.style.getPropertyValue(name) !== value) list.style.setProperty(name, value); };
+        // The list is never kept taller than the messages it may show: one short message used to show with an empty
+        // strip under it, or with part of the next one.
+        const shown = Math.min(visible, items.length), least = shown ? span(shown) : 0;
+        if (least > 0) setVar('--ws-ur-list-min', least + 'px');
         const clear = () => {
           for (const name of ['--ws-ur-list-max', 'max-height', 'overflow-y', 'overscroll-behavior']) if (list.style.getPropertyValue(name)) list.style.removeProperty(name);
+          if (list.hasAttribute('data-wme-studio-touch-scroll')) list.removeAttribute('data-wme-studio-touch-scroll');
         };
         if (items.length <= visible) { clear(); return; }
-        const height = Math.ceil(items[visible - 1].getBoundingClientRect().bottom - items[0].getBoundingClientRect().top);
-        const value = Math.ceil(height / (list.currentCSSZoom || 1)) + 'px';
+        // A request window made taller by hand (2.3.0): the messages take all the room it has and scroll inside it, so
+        // no empty space is left under a discussion cut down to "Visible discussion messages".
+        if (list.closest('[data-wme-studio-popup-kind][data-wme-studio-user-height="on"]')) {
+          for (const name of ['--ws-ur-list-max', 'max-height']) if (list.style.getPropertyValue(name)) list.style.removeProperty(name);
+          if (list.style.getPropertyValue('overflow-y') !== 'auto') list.style.setProperty('overflow-y', 'auto', 'important');
+          if (list.style.getPropertyValue('overscroll-behavior') !== 'contain') list.style.setProperty('overscroll-behavior', 'contain');
+          if (touchScreenList) showListThumb(list);
+          return;
+        }
+        const height = span(visible);
         if (!(height > 0)) return;
-        if (list.style.getPropertyValue('--ws-ur-list-max') !== value) list.style.setProperty('--ws-ur-list-max', value);
+        const value = height + 'px';
+        setVar('--ws-ur-list-max', value);
         if (list.style.getPropertyValue('max-height') !== value || list.style.getPropertyPriority('max-height') !== 'important') list.style.setProperty('max-height', value, 'important');
         if (list.style.getPropertyValue('overflow-y') !== 'auto') list.style.setProperty('overflow-y', 'auto', 'important');
         // Scrolling the messages stays in the messages: reaching their end no longer starts scrolling the whole request.
         if (list.style.getPropertyValue('overscroll-behavior') !== 'contain') list.style.setProperty('overscroll-behavior', 'contain');
+        if (touchScreenList) showListThumb(list);
       } catch (_) { reportStudioError("fit",_);}
+    };
+    // iPad and iPhone draw no scrollbar until a list is being scrolled (2.3.0): a limited discussion gets a thin bar of
+    // its own on its right edge, showing that it scrolls and where you are in it, and a finger scrolls it up and down.
+    const touchScreenList = navigator.maxTouchPoints > 0 && matchMedia('(any-pointer: coarse)').matches;
+    const thumbLists = new WeakSet();
+    let thumbStyle = null;
+    const paintListThumb = list => {
+      const view = list.clientHeight, full = list.scrollHeight;
+      if (!view || full <= view + 1) { list.style.setProperty('--ws-ur-thumb-size', '0px'); return; }
+      const size = Math.max(24, Math.round(view * view / full));
+      const top = Math.round((view - size) * list.scrollTop / (full - view));
+      list.style.setProperty('--ws-ur-thumb-size', `${size}px`);
+      list.style.setProperty('--ws-ur-thumb-top', `${top}px`);
+    };
+    const showListThumb = list => {
+      if (!thumbStyle) {
+        thumbStyle = document.createElement('style');
+        thumbStyle.textContent = `html[data-wme-studio="on"] [data-wme-studio-touch-scroll] {
+          touch-action: pan-y !important; -webkit-overflow-scrolling: touch; padding-right: 7px !important; box-sizing: border-box !important;
+          background-image: linear-gradient(color-mix(in srgb, var(--wme-studio-text-muted, #99a4ae) 70%, transparent), color-mix(in srgb, var(--wme-studio-text-muted, #99a4ae) 70%, transparent)) !important;
+          background-repeat: no-repeat !important; background-attachment: scroll !important;
+          background-size: 3px var(--ws-ur-thumb-size, 0px) !important; background-position: right 1px top var(--ws-ur-thumb-top, 0px) !important;
+        }`;
+        (document.head || document.documentElement).append(thumbStyle);
+      }
+      if (!list.hasAttribute('data-wme-studio-touch-scroll')) list.setAttribute('data-wme-studio-touch-scroll', '');
+      if (!thumbLists.has(list)) { thumbLists.add(list); list.addEventListener('scroll', () => paintListThumb(list), { passive: true }); }
+      requestAnimationFrame(() => paintListThumb(list));
     };
     const observedComments = new Set();
     const resize = typeof ResizeObserver === 'function'
@@ -22279,7 +23445,7 @@ ${studioControlsCSS()}
       html[data-wme-studio="on"] [data-wme-studio-reply-path] > * { flex-shrink: 0; }
       html[data-wme-studio="on"] [data-wme-studio-reply-path] > [data-wme-studio-reply-path] { flex-shrink: 1 !important; }
       html[data-wme-studio="on"] [data-wme-studio-reply-path] > [data-wme-studio-comment-list] {
-        flex: 0 1 auto !important; min-height: 64px !important; overflow-y: auto !important; overscroll-behavior: contain;
+        flex: 0 1 auto !important; min-height: min(64px, var(--ws-ur-list-min, 64px)) !important; overflow-y: auto !important; overscroll-behavior: contain;
       }
       html[data-wme-studio="on"] [data-wme-studio-comment-list] > * { flex-shrink: 0 !important; }   /* messages keep their height; the list scrolls */
       html[data-wme-studio="on"] [data-wme-studio-sticky-path] { overflow: visible !important; }
@@ -22293,10 +23459,11 @@ ${studioControlsCSS()}
         background: var(--ws-reply-bg, var(--wme-studio-surface, #fff)) !important;
         box-shadow: 0 -10px 14px -12px #00000066 !important;
       }
-      /* A request window sized by hand takes that height as its least height: a long reply makes the window grow
-         downwards, down to the bottom of the screen, instead of taking the messages' room. */
-      html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-height="on"][data-wme-studio-reply-grow] {
-        height: auto !important; min-height: min(var(--ws-user-height), var(--ws-reply-room, 100vh)) !important; max-height: var(--ws-reply-room, none) !important;
+      /* A request window sized by hand (its bottom edge dragged) keeps the height chosen (2.3.0); it used to grow with
+         its content only, so dragging the bottom edge changed nothing. Its messages take the room the window has and
+         scroll inside it ("Visible discussion messages" is for windows left at their own size). */
+      html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-height="on"] [data-wme-studio-reply-path] > [data-wme-studio-comment-list] {
+        flex: 1 1 auto !important;
       }
       html[data-wme-studio="on"] [data-wme-studio-popup-kind][data-wme-studio-user-height="on"][data-wme-studio-reply-folded] {
         height: auto !important; min-height: 0 !important; max-height: var(--ws-user-height) !important;
@@ -22466,7 +23633,14 @@ ${studioControlsCSS()}
       if (globalThis.WMEStudioVectorWatch) globalThis.WMEStudioVectorWatch.watch(observe, { childList: true, subtree: true, characterData: true });
       else new MutationObserver(observe).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
       new MutationObserver(queue).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio-requests'] });
+      // A request window sized by hand, or set back to its own size: its messages are fitted again.
+      new MutationObserver(queue).observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ['data-wme-studio-user-height'] });
 
+      // A request window still opening or growing when its messages were measured: fitted again once it has settled.
+      for (const type of ['transitionend', 'animationend']) document.addEventListener(type, event => {
+        const target = event.target;
+        if (target?.nodeType === 1 && (target.matches('[data-wme-studio-popup-kind]') || target.closest(PANEL))) queue();
+      }, true);
       document.addEventListener('click', event => {
         if (!event.target?.closest?.('.problem-edit, .place-update-edit')) return;
         queue(); setTimeout(queue, 450);
@@ -22476,4 +23650,10 @@ ${studioControlsCSS()}
     if (document.documentElement) start();
     else document.addEventListener('DOMContentLoaded', start, { once: true });
   })();
-})();
+};
+
+if (WME_STUDIO_BRIDGE_NEEDED) {
+  try { wmeStudioStartBridge(wmeStudioMain); } catch (error) { wmeStudioBridgeNote(`could not start: ${error?.message || error}`, true); }
+} else if (typeof GM_getValue !== 'function') {
+  wmeStudioBridgeNote('this userscript manager gives Studio no way to keep its settings (no GM_getValue and no GM.getValue). Tap to close.', true);
+} else wmeStudioMain();
