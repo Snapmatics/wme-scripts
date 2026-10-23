@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      3.0.1
+// @version      3.0.2
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -365,7 +365,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '3.0.1';
+  const USERSCRIPT_VERSION = '3.0.2';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -1011,7 +1011,7 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
   // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
   // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
   // report shows it instead of a layout that looks broken for no reason.
-  const RESOURCES_BUILD = '3.0.1-2026-10-23';
+  const RESOURCES_BUILD = '3.0.2-2026-10-23';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -2557,7 +2557,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   }
   }
   @media all {
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"]) .menu:is(.layer-switcher *) { --ws-compact-layers-width: 540px; }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .menu[data-ws-layers="two"]:is(.layer-switcher *) { --ws-compact-layers-width: 540px; }
   }
   @media all {
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .menu:is(.hide-layer-switcher,[hidden],[aria-hidden="true"]):is(.layer-switcher *) {
@@ -2590,11 +2590,11 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   }
   }
   @media all {
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"]) .togglers:is(.layer-switcher .menu *) {
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .togglers:is(.layer-switcher .menu[data-ws-layers="two"] *) {
     column-count: 2; column-gap: 22px;
     column-rule: 1px solid var(--wme-studio-border); column-fill: balance;
   }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"]) li:is(.layer-switcher .menu .togglers > *) {
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) li:is(.layer-switcher .menu[data-ws-layers="two"] .togglers > *) {
     break-inside: avoid-column; page-break-inside: avoid;
   }
   }
@@ -2920,7 +2920,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     background: transparent !important; box-shadow: none !important;
   }
 }
-  
+
 @media all {
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-drawer {
     width: 100% !important; height: auto !important; min-height: 0 !important; border-inline-end: 0 !important;
@@ -3226,7 +3226,6 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   padding-inline: 8px !important; overflow: hidden !important; text-overflow: ellipsis; white-space: nowrap;
 }
 :host-context(html[data-wme-studio="on"]):host(wz-card.direction-lanes) .wz-card { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
-:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"]):host-context(.layer-switcher .menu):host(wz-checkbox) label.wz-checkbox { min-height: 19px !important; }
 :host-context(html[data-wme-studio="on"]):host-context(.layer-switcher .menu > .title):host(wz-button) .wz-button {
   display:inline-flex !important; align-items:center !important; justify-content:center !important;
   width:28px !important; min-width:28px !important; height:28px !important; min-height:28px !important;
@@ -4657,9 +4656,20 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
     layerColumnsView = 'one';
     if (ready) syncLayerColumns();
   }).catch(error => reportStudioError('layerColumnsView', error));
-  function syncLayerColumns() {
-    attr('layer-columns', layerColumnsActive() ? 'two' : 'one');
-    try { applyCompactLayoutVariables(); } catch (studioError) { reportStudioError('syncLayerColumns', studioError); }
+  // One or two columns is written on the Map Layers panel itself, not on the page (3.0.2): a change on the page made
+  // the browser restyle every part of the editor, which made the switch lag.
+  function markLayerColumn(menu) {
+    const view = layerColumnsActive() ? 'two' : 'one';
+    if (menu?.getAttribute('data-ws-layers') !== view) menu?.setAttribute('data-ws-layers', view);
+  }
+  function markLayerColumns() {
+    for (const menu of document.querySelectorAll('.layer-switcher .menu')) markLayerColumn(menu);
+  }
+  // From the panel's own button the islands' layout is left alone (3.0.2): writing it restyled the whole editor on
+  // every switch, and the panel is put back beside its island right after (see the button below).
+  function syncLayerColumns(fromButton = false) {
+    markLayerColumns();
+    if (!fromButton) try { applyCompactLayoutVariables(); } catch (studioError) { reportStudioError('syncLayerColumns', studioError); }
     syncMapLayerWindows(true);
   }
   // In the style of WME's own full screen icons, sideways: the panel narrows to one column, or widens to two.
@@ -4677,23 +4687,30 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
         const menu = button.closest('.menu'), before = menu?.getBoundingClientRect();
         layerColumnsView = layerColumnsActive() ? 'one' : 'two';
         try { Promise.resolve(studioKeep.set(LAYER_VIEW_KEY, layerColumnsView)).catch(error => reportStudioError('layerColumnsView', error)); } catch (error) { reportStudioError('layerColumnsView', error); }
-        syncLayerColumns();
+        syncLayerColumns(true);
         // The panel keeps the edge beside the island with the Map Layers button (its right edge when that island is on
         // the right), so it narrows towards the island and a second click in the same place switches straight back.
-        if (menu && before) requestAnimationFrame(() => {
+        // Done straight away, before the browser draws (3.0.2): the panel never shows a frame in the wrong place.
+        if (menu && before) {
           const after = menu.getBoundingClientRect(), island = document.querySelector('.layer-switcher-button')?.getBoundingClientRect();
           const islandOnLeft = !!island?.width && island.left + island.width / 2 < before.left + before.width / 2;
-          const delta = islandOnLeft ? before.left - after.left : before.right - after.right;
-          if (!after.width || Math.abs(delta) < 1) return;
-          // The floating layout keeps the panel at its spot (its left edge): that spot moves by the change in width.
+          // Where its left edge goes: the same place, or moved by the change in width so the right edge stays.
+          const shift = islandOnLeft ? 0 : before.width - after.width, target = before.left + shift;
           const guard = headerGuardWindows.get(menu), state = mapLayerWindows.get(menu);
-          if (guard?.requestPoint) guard.requestPoint = { ...guard.requestPoint, left: guard.requestPoint.left + delta };
-          else if (state && canMoveMapLayer(menu)) {
-            state.position ||= { x: before.left, y: before.top };
-            positionMapLayer(state, after.left + delta, state.position.y, { ...mapLayerDragInsets(), width: after.width, height: after.height });
+          if (!after.width) { /* closed meanwhile */ }
+          else if (guard?.requestPoint) {
+            if (Math.abs(shift) >= 1) { guard.requestPoint = { ...guard.requestPoint, left: guard.requestPoint.left + shift }; syncHeaderGuardWindows(); }
+          } else if (state && canMoveMapLayer(menu)) {
+            if (Math.abs(after.left - target) >= 1) {
+              state.position ||= { x: before.left, y: before.top };
+              positionMapLayer(state, target, state.position.y, { ...mapLayerDragInsets(), width: after.width, height: after.height });
+            }
+          } else if (Math.abs(after.left - target) >= 1) {
+            // Placed by the layout: moved on the panel alone until the layout is next worked out (3.0.2).
+            menu.style.setProperty('--ws-island-layers-left', `${Math.round(target)}px`);
+            menu.setAttribute('data-ws-column-shift', 'on');
           }
-          queueHeaderGuardWindows();
-        });
+        }
       });
     }
     // Right after the title text, before WME's own buttons.
@@ -5615,18 +5632,20 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
         applyChatPanelPosition(state,state.requestedOffset || state.offset,true); panelResizeHints.show(frame, 'messages', state.doc);
       } else panelResizeHints.dismiss(frame);
     }
-    const obstacles = [];
+    // Windows that open over the map (Map Layers, the side panel, requests…) are kept apart: the Google Maps link
+    // stays where it is under them (3.0.2).
+    const obstacles = [], windows = new Set();
     for (const spec of compactIslandSpecs) {
       if (spec.id === 'online' || spec.id === 'tile') continue;
       const element = queryCompactIsland(spec), rect = compactVisibleRect(element);
       observeCompactPlacement(element);
-      if (rect) obstacles.push(rect);
+      if (rect) { obstacles.push(rect); if (spec.popup) windows.add(rect); }
     }
     const sidebar = document.getElementById('sidebar'), footer = document.querySelector('.wz-map-ol-footer');
     for (const element of [sidebar, footer]) {
       observeCompactPlacement(element);
       const rect = compactVisibleRect(element);
-      if (rect) obstacles.push(rect);
+      if (rect) { obstacles.push(rect); if (element === sidebar) windows.add(rect); }
     }
     observeCompactPlacement(sidebar?.closest('.app'));
     const filterRect = syncCompactTaskFilters(obstacles, sidebar);
@@ -5716,7 +5735,7 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       const radius = own ? `${Math.round(parseFloat(getComputedStyle(root).getPropertyValue('--ws-compact-radius')) / zoom || 26)}px` : '';
       if (tile.element.style.getPropertyValue('--ws-tile-out-radius') !== radius) { if (radius) tile.element.style.setProperty('--ws-tile-out-radius', radius); else tile.element.style.removeProperty('--ws-tile-out-radius'); }
     }
-    placeGoogleMapsLink(obstacles);
+    placeGoogleMapsLink(obstacles.filter(rect => !windows.has(rect)));
   }
   // The Google Maps link WME shows in the map's bottom-right corner (3.0.0): in Floating mode the Tile Update island
   // sits in that corner and hid it. The link moves left of whatever covers it (or up, when there is no room).
@@ -6011,6 +6030,7 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
 
   function applyCompactLayoutVariables() {
     queueStreetViewWindow();
+    for (const menu of document.querySelectorAll('.layer-switcher .menu[data-ws-column-shift]')) { menu.style.removeProperty('--ws-island-layers-left'); menu.removeAttribute('data-ws-column-shift'); }
     if (!compactLayoutActive()) {
       clearCompactLayoutVariables();
       queueCompactAuxiliaryPlacement();
@@ -7292,7 +7312,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       attr('motion', !settings.motion || reducedMotion.matches ? 'reduced' : 'normal');
       attr('compact', settings.compactMode && !standaloneSignin && !editorProfile ? 'on' : null);
       attr('header-width', settings.compactHeaderFullWidth ? 'custom' : null);
-      attr('layer-columns', layerColumnsActive() ? 'two' : 'one');
+      attr('layer-columns', null); markLayerColumns();
       attr('requests', settings.compactRequests ? 'compact' : null);
       attr('task-style', null);   // the Review looks wait for the vote (3.0.0): everyone keeps Classic for now
       attr('scrollbars', settings.customScrollbars ? 'on' : null);
@@ -11459,6 +11479,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     syncMapLayerRail();
     if (!state.menu.isConnected) return;
     const title = state.menu.querySelector(':scope > .title');
+    markLayerColumn(state.menu);
     syncLayerColumnsButton(title);
     if (state.title !== title) {
       finishMapLayerDrag(state);
@@ -12662,15 +12683,16 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     .ws-link-control svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
     .ws-link-control img[data-loaded] { visibility: visible; }
     /* Two-column Map Layers, drawn tighter (3.0.0): narrower, with shorter rows, smaller gaps and a slimmer title. */
-    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu { --ws-compact-layers-width: 540px; }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu > .title { padding: 6px 8px 6px 12px !important; }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu .togglers { padding: 2px 10px 8px !important; column-gap: 16px; }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu :is([class^="group--"],.ws-layer-group) { padding: 1px 0 3px !important; }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu :is([class^="treeCategory--"],.ws-layer-category) { height: 24px !important; min-height: 24px !important; }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu :is([class^="toggler--"],.ws-layer-toggler) { padding: 3px 0 !important; }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu :is([class^="groupList--"],.ws-layer-list) { padding-bottom: 2px !important; }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu .togglers ul { padding-inline-start: 12px !important; }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu .layer-selector-container { font: 12.5px/18px var(--ws-font) !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu.menu[data-ws-layers="two"] { --ws-compact-layers-width: 540px; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu.menu[data-ws-layers="two"] > .title { padding: 6px 8px 6px 12px !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu.menu[data-ws-layers="two"] .togglers { padding: 2px 10px 8px !important; column-count: 2; column-gap: 16px; column-rule: 1px solid var(--wme-studio-border); column-fill: balance; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu.menu[data-ws-layers="two"] .togglers > li { break-inside: avoid-column; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu.menu[data-ws-layers="two"] :is([class^="group--"],.ws-layer-group) { padding: 1px 0 3px !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu.menu[data-ws-layers="two"] :is([class^="treeCategory--"],.ws-layer-category) { height: 24px !important; min-height: 24px !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu.menu[data-ws-layers="two"] :is([class^="toggler--"],.ws-layer-toggler) { padding: 3px 0 !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu.menu[data-ws-layers="two"] :is([class^="groupList--"],.ws-layer-list) { padding-bottom: 2px !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu.menu[data-ws-layers="two"] .togglers ul { padding-inline-start: 12px !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .layer-switcher .menu.menu[data-ws-layers="two"] .layer-selector-container { font: 12.5px/18px var(--ws-font) !important; }
     /* House numbers of a selected road (3.0.0): WME draws their boxes white in every theme, so the numbers stay dark.
        The dark themes' light text for fields reached these too, leaving white numbers on white. */
     html[data-wme-studio="on"] #WazeMap .house-numbers-layer .house-number :is(input, .content, .input-wrapper) { color: #202830 !important; -webkit-text-fill-color: #202830; caret-color: #202830; }
@@ -19353,9 +19375,15 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '3.0.1-2026-10-23';
+  const STUDIO_BUILD = '3.0.2-2026-10-23';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '3.0.2', groups: [
+      { title: 'Fixes', items: [
+        "Switching Map Layers between one and two columns is quicker, and the panel comes back to exactly the same spot.",
+        "The Google Maps link in the corner of the map stays put when Map Layers or another window opens over it."
+      ] }
+    ] },
     { version: '3.0.1', groups: [
       { title: 'Fixes', items: [
         "Lists and fields that other scripts draw in white, like UR2T's answers, now take your dark theme, so their text is easy to read.",
