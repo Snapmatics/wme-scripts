@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      2.3.0
+// @version      3.0.0
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -24,7 +24,6 @@
 // @exclude      https://waze.com/*/editor/sdk*
 // @exclude      https://beta.waze.com/editor/sdk*
 // @exclude      https://beta.waze.com/*/editor/sdk*
-// @require      https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
 // @require      https://update.greasyfork.org/scripts/600831/WME%20Studio%20Resources.js
 // @require      https://update.greasyfork.org/scripts/601144/WME%20Studio%20Screen%20Displays.js
 // @run-at       document-start
@@ -121,7 +120,7 @@ function wmeStudioStartBridge(main) {
   const say = (...parts) => console.info('[WME Studio]', ...parts);
   const resourcesCode = globalThis.WMEStudioResourcesCode, screenDisplaysCode = globalThis.WMEStudioScreenDisplaysCode;
   if (typeof resourcesCode !== 'function') say('the Resources library did not load: Studio starts without its theme and languages');
-  const ALLOWED = /^https:\/\/(?:update\.greasyfork\.org|greasyfork\.org|[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev)\//i;
+  const ALLOWED = /^https:\/\/(?:update\.greasyfork\.org|greasyfork\.org|wme-studio-reports\.charalamposavgenikos\.workers\.dev)\//i;
 
   // Requests from the page copy, answered here.
   const requests = new Map();
@@ -144,7 +143,7 @@ function wmeStudioStartBridge(main) {
     } catch (error) {
       if (timedOut) answer(id, 'timeout', { status: 0, statusText: '', responseText: '' });
       else if (controller.signal.aborted) answer(id, 'abort', { status: 0, statusText: '', responseText: '' });
-      else if (typeof GM.xmlHttpRequest === 'function' && typeof body !== 'object') {
+      else if (typeof GM.xmlHttpRequest === 'function' && typeof body !== 'object' && (method === 'GET' || method === 'HEAD')) {
         // The site did not let the page read it (no CORS): the manager asks for it instead.
         GM.xmlHttpRequest({ method, url, headers: details.headers || {}, data: body, timeout: details.timeout || 0, anonymous: !!details.anonymous,
           onload: r => answer(id, 'load', { status: r.status, statusText: r.statusText, responseText: r.responseText, response: r.responseText, responseHeaders: r.responseHeaders || '', finalUrl: r.finalUrl || url, readyState: 4 }),
@@ -255,7 +254,7 @@ function wmeStudioStartBridge(main) {
     const plain = { method: details.method, url: String(details.url), headers: details.headers, timeout: details.timeout, anonymous: details.anonymous };
     const data = details.data;
     if (data instanceof Blob) data.arrayBuffer().then(buffer => post({ op: 'xhr', id, details: Object.assign(plain, { buffer, bufferType: data.type }) }));
-    else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) post({ op: 'xhr', id, details: Object.assign(plain, { buffer: data instanceof ArrayBuffer ? data : data.buffer }) });
+    else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) post({ op: 'xhr', id, details: Object.assign(plain, { buffer: data instanceof ArrayBuffer ? data : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) }) });
     else post({ op: 'xhr', id, details: Object.assign(plain, { data: data == null ? undefined : String(data) }) });
     return { abort() { post({ op: 'abort', id }); } };
   }
@@ -366,7 +365,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '2.3.0';
+  const USERSCRIPT_VERSION = '3.0.0';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -539,7 +538,7 @@ const wmeStudioMain = () => {
     if (!active) return Object.freeze({active:false,viewport:desktopViewport,page:text=>text,css:text=>text,bind:(_host,text)=>text,release:()=>{}});
     // On a touch screen a phone held sideways is laid out 980 wide and only some 450 high (see Screen displays):
     // Studio's layout still fits there.
-    const touchLayout = navigator.maxTouchPoints > 0 && matchMedia('(any-pointer: coarse)').matches;
+    const touchLayout = navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse)').matches;
     const viewport = touchLayout ? '(min-width: 740px) and (min-height: 400px)' : '(min-width: 768px) and (min-height: 500px)';
     const viewportCSS = text => text.replace(/\(min-width:\s*1180px\)\s+and\s+\(min-height:\s*640px\)/g,viewport);
     const attribute = 'data-wme-studio-safari-context';
@@ -704,14 +703,15 @@ html[data-wme-studio="on"][data-wme-studio-safari="on"][data-wme-studio-compact=
   const studioRangeCSS = selector => `
 ${selector} {
   --ws-range-accent: var(--wme-studio-accent, var(--accent, #0099ff));
-  --ws-range-rail: color-mix(in srgb, var(--wme-studio-border-strong, var(--line2, #90959c)) 50%, var(--wme-studio-surface-2, var(--surface2, #f5f7fa)));
+  --ws-range-rail: color-mix(in srgb, var(--text, var(--wme-studio-text, #202830)) 26%, transparent);
+  --ws-range-ring: inset 0 0 0 1px color-mix(in srgb, var(--text, var(--wme-studio-text, #202830)) 24%, transparent);
   appearance: none !important; -webkit-appearance: none !important;
   box-sizing: border-box !important; width: 100%; min-width: 0; height: 28px !important;
   margin: 0; padding: 0 !important; border: 0 !important; background: transparent !important;
   cursor: pointer; touch-action: pan-y;
 }
 ${selector}::-webkit-slider-runnable-track {
-  height: 8px; border: 0; border-radius: 999px;
+  height: 8px; border: 0; border-radius: 999px; box-shadow: var(--ws-range-ring);
   background: linear-gradient(90deg, var(--ws-range-accent) 0 var(--ws-range-progress, var(--range-fill, 0%)), var(--ws-range-rail) var(--ws-range-progress, var(--range-fill, 0%)) 100%);
 }
 ${selector}::-webkit-slider-thumb {
@@ -724,7 +724,7 @@ ${selector}:hover:not(:disabled)::-webkit-slider-thumb { box-shadow: 0 0 0 4px c
 ${selector}:active:not(:disabled)::-webkit-slider-thumb { transform: scale(1.08); cursor: grabbing; }
 ${selector}:focus-visible { outline: none; }
 ${selector}:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ws-range-accent) 32%, transparent), 0 2px 5px #00000030; }
-${selector}::-moz-range-track { height: 8px; border: 0; border-radius: 999px; background: var(--ws-range-rail); }
+${selector}::-moz-range-track { height: 8px; border: 0; border-radius: 999px; background: var(--ws-range-rail); box-shadow: var(--ws-range-ring); }
 ${selector}::-moz-range-progress { height: 8px; border: 0; border-radius: 999px; background: var(--ws-range-accent); }
 ${selector}::-moz-range-thumb { box-sizing: border-box; width: 20px; height: 20px; border: 2px solid var(--ws-range-accent); border-radius: 50%; background: #fff; box-shadow: 0 2px 5px #00000030; transition: transform 120ms ease, box-shadow 120ms ease; }
 ${selector}:hover:not(:disabled)::-moz-range-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ws-range-accent) 16%, transparent), 0 2px 5px #00000030; }
@@ -736,7 +736,7 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
   const trackedStorageKeys = [
     'wmeStudio.workspaceProfiles.v1','wmeStudio.scriptTabPins.v1','wmeStudio.panelSizes.v1','wmeStudio.chatPanelOffset.v3','wmeStudio.streetViewWindow.v1',
     'wmeStudio.enabled','wmeStudio.theme','wmeStudio.corners','wmeStudio.accent',
-    'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.compactRequests','wmeStudio.commandShortcut',
+    'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.islandFill','wmeStudio.islandColor','wmeStudio.islandColor2','wmeStudio.islandAngle','wmeStudio.islandIntensity','wmeStudio.taskStyle','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.compactRequests','wmeStudio.commandShortcut',
     'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.closeAfterReply','wmeStudio.screenDisplays','wmeStudio.screenLongPress','wmeStudio.screenRoadButton','wmeStudio.screenShapeButton','wmeStudio.screenDrawButton','wmeStudio.islandControls.v1'
   ];
   const emitStorage = changes => {
@@ -992,6 +992,10 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
     :host-context(html[data-wme-studio="on"]) textarea.input-box::placeholder { color:var(--wme-studio-text-muted) !important; opacity:1; }
     :host-context(html[data-wme-studio="on"]) :is(.thumb,.feedback-button) { color:var(--wme-studio-text-secondary) !important; }
     :host-context(html[data-wme-studio="on"]) :is(.thumb[aria-pressed="true"],.feedback-button[aria-pressed="true"]) { color:var(--wme-studio-accent) !important; }
+    /* Ask Waze (3.0.0): the strip behind the question box is the window itself, not a band of another shade, and with
+       island colors the chat lets the window's color or gradient show. */
+    :host-context(html[data-wme-studio="on"]) .input-container { background:transparent !important; }
+    :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast])) .chat-wrapper { background:transparent !important; }
     :host-context(html[data-wme-studio="on"]) :is(.message-list,.message-list-wrapper,.chat-wrapper) {
       scrollbar-width:thin; scrollbar-color:var(--wme-studio-border-strong) transparent;
     }
@@ -1004,6 +1008,15 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
   if (!studioResources?.pageSheet) console.error('[WME Studio] The WME Studio Resources library did not load. Check the @require line in the script header.');
   // A fix release (2.2.1, say) can come without a new Resources: only a different feature release (2.1 vs 2.2) is a mismatch.
   else if (String(studioResources.version).split('.').slice(0, 2).join('.') !== USERSCRIPT_VERSION.split('.').slice(0, 2).join('.')) console.warn(`[WME Studio] Resources ${studioResources.version} loaded with Studio ${USERSCRIPT_VERSION}; update both scripts together.`);
+  // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
+  // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
+  // report shows it instead of a layout that looks broken for no reason.
+  const RESOURCES_BUILD = '3.0.0-2026-10-22';
+  if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
+    const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
+    console.warn('[WME Studio] ' + note);
+    try { reportStudioError('Resources', new Error(note)); } catch (_) {}
+  }
   globalThis.WMEStudioPageStyle = GM_addStyle(globalThis.WMEStudioSafari.page(studioResources?.pageSheet ? studioResources.pageSheet({ studioAIHelperTokensCSS, studioButtonMotionCSS, studioGlassFeedbackCSS, studioHeaderAddonCSS, studioKeyedList, studioRangeCSS }) : ''));
   // Plain form fields in other scripts' panels and dialogs (2.2.0). WME's own stylesheet gives every input, select
   // and textarea dark grey text (rgb(61, 61, 61)), which nearly disappears on Dark and Full black. Here they take the
@@ -1172,10 +1185,16 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     createMenuClick: false, searchWidth: 0,
     // 2.0.5: a request (UR, MP or PUR) closes by itself once your reply has been sent.
     closeAfterReply: false,
+    // 3.0.0: how Review sets the requests you haven't opened apart from the ones you have (picked in a vote).
+    taskStyle: 'classic',
     // 2.2.1: Screen displays (touch screens, iPad first): finger control of the map and map buttons to select
     // several things, the road between two segments, shape a road and draw a road. The feature lives in the WME Studio
     // Screen Displays library.
-    screenDisplays: false, screenLongPress: true, screenRoadButton: true, screenShapeButton: true, screenDrawButton: true
+    screenDisplays: false, screenLongPress: true, screenRoadButton: true, screenShapeButton: true, screenDrawButton: true,
+    // 3.0.0: the islands' own background: the theme's, one color of your own, or a gradient of two.
+    islandFill: 'theme', islandColor: '#1e3a5f', islandColor2: '#6d28d9', islandAngle: '135',
+    // How strong the islands' color or gradient is: lower blends it with the theme's own background.
+    islandIntensity: 100
   });
   // A shortcut is stored as its modifiers plus the physical key ("Shift+KeyP"), so it is the same key on a Greek
   // or any other keyboard layout. '' means the shortcut is off. A letter, number or symbol key needs a modifier;
@@ -1202,8 +1221,8 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     return value.split('+').map(part => names[part] || part.replace(/^(?:Key|Digit)/, '').replace(/^Numpad/, 'Num ')).join(' + ');
   }
   globalThis.WMEStudioShortcut = { normalize: normalizeShortcut, fromEvent: shortcutFromEvent, label: shortcutLabel, recording: false };
-  const choices = { theme: ['light', 'dark', 'black'], themeNight: ['dark', 'black'], themeSchedule: ['off', 'sun', 'custom'], eyeSaverSchedule: ['off', 'sun', 'custom'], corners: ['flat', 'soft'], layerColumns: ['one', 'two'], language: ['auto','en','el','es','pt','fr','de','it','nl','pl','ru','tr','ka'] };
-  const ranges = { compactHeaderWidth: [0, 100], compactIslandOpacity: [20, 100], eyeSaver: [0, 100], satelliteBrightness: [0, 100], viewportBrightness: [0, 100], gpsOpacity: [0, 100], hudScale: [70, 100], panelScale: [70, 100], fontScale: [85, 120], discussionVisible: [1, 10], searchWidth: [0, 900] };
+  const choices = { taskStyle: ['classic', 'edge', 'dot', 'fade'], islandFill: ['theme', 'color', 'gradient'], islandAngle: ['90', '135', '180', '225'], theme: ['light', 'dark', 'black'], themeNight: ['dark', 'black'], themeSchedule: ['off', 'sun', 'custom'], eyeSaverSchedule: ['off', 'sun', 'custom'], corners: ['flat', 'soft'], layerColumns: ['one', 'two'], language: ['auto','en','el','es','pt','fr','de','it','nl','pl','ru','tr','ka'] };
+  const ranges = { compactHeaderWidth: [0, 100], compactIslandOpacity: [20, 100], islandIntensity: [20, 100], eyeSaver: [0, 100], satelliteBrightness: [0, 100], viewportBrightness: [0, 100], gpsOpacity: [0, 100], hudScale: [70, 100], panelScale: [70, 100], fontScale: [85, 120], discussionVisible: [1, 10], searchWidth: [0, 900] };
   const steps = { compactHeaderWidth: 1, discussionVisible: 1, searchWidth: 1 };
   const clockTimes = new Set(['themeDayStart', 'themeNightStart', 'eyeSaverStart', 'eyeSaverEnd']);
   const CLOCK = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -1218,7 +1237,7 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
       else if (ranges[key]) out[key] = Number.isFinite(value)
         ? Math.min(ranges[key][1], Math.max(ranges[key][0], Math.round(value / (steps[key] || 5)) * (steps[key] || 5)))
         : fallback;
-      else if (key === 'accent') out[key] = /^#[0-9a-f]{6}$/i.test(value || '') ? value.toLowerCase() : fallback;
+      else if (key === 'accent' || key === 'islandColor' || key === 'islandColor2') out[key] = /^#[0-9a-f]{6}$/i.test(value || '') ? value.toLowerCase() : fallback;
       else if (clockTimes.has(key)) out[key] = typeof value === 'string' && CLOCK.test(value) ? value : fallback;
       else if (key === 'commandShortcut') { const shortcut = normalizeShortcut(value); out[key] = shortcut === null ? fallback : shortcut; }
       else out[key] = typeof value === 'boolean' ? value : fallback;
@@ -1268,7 +1287,6 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
 (() => {
   'use strict';
   if (globalThis.WMEStudioSchedule) return;
-  const pageWindow = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
   const rad = Math.PI / 180, dayMs = 864e5, J1970 = 2440588, J2000 = 2451545, tilt = rad * 23.4397, cycle = 2 * Math.PI;
   const FADE_MS = 30 * 60 * 1000;
   const PLACE_KEY = 'wmeStudio.scheduleLocation';
@@ -1301,15 +1319,6 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
       return Number.isFinite(center?.lon) && Number.isFinite(center?.lat) && (center.lon || center.lat) && Math.abs(center.lat) <= 90 ? { lat: center.lat, lon: center.lon } : null;
     }, null);
     if (fromSDK) return fromSDK;
-    try {
-      const map = pageWindow.W?.map, ol = map?.getOLMap?.() || map?.olMap || null;
-      const center = ol?.getCenter?.();
-      if (center && Number.isFinite(center.lon) && Number.isFinite(center.lat) && (center.lon || center.lat)) {
-        if (Math.abs(center.lon) <= 180 && Math.abs(center.lat) <= 90 && ol.getProjection?.() === 'EPSG:4326') return { lat: center.lat, lon: center.lon };
-        const R = 6378137;   // WME's map works in Web Mercator metres.
-        return { lon: center.lon / R / rad, lat: (2 * Math.atan(Math.exp(center.lat / R)) - Math.PI / 2) / rad };
-      }
-    } catch (_) {}
     try {
       const params = new URLSearchParams(location.search), lat = Number(params.get('lat')), lon = Number(params.get('lon'));
       if (params.has('lat') && params.has('lon') && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return { lat, lon };
@@ -1941,7 +1950,7 @@ $root #panel-urce-settings div:has(> input[type="checkbox"][id^="_cb"]:not([id$=
 $root #panel-urce-settings div:has(> input[type="checkbox"][id^="_cb"]:not([id$="_useDefault"]) + label.URCE-label) > label.URCE-label { display: inline !important; padding-left: 0 !important; }
 /* URC-E builds every comment entry with a fixed 225px name box (and 230px tagline boxes), so the list stays narrow
    when the panel is widened. Let the name take the free width; the double-click icon stays at the end of the row. */
-$root #panel-urce-comments .URCE-divComment { display: flex !important; align-items: center; min-width: 0; }
+$root #panel-urce-comments .URCE-divComment:not(.URCE-blankLine) { display: flex !important; align-items: center; min-width: 0; }
 $root #panel-urce-comments .URCE-divComment > div[style*="width:225px"] { flex: 1 1 auto; width: auto !important; min-width: 0; }
 $root #panel-urce-comments .URCE-divComment > .URCE-divDoubleClick { flex: 0 0 auto; margin-inline-start: auto; }
 $root textarea.URCE-textInput[style*="width:230px"] { width: 100% !important; max-width: 100%; box-sizing: border-box; }
@@ -2239,6 +2248,7 @@ ${studioHeaderAddonCSS(':host-context(html[data-wme-studio="on"][data-wme-studio
 ${studioQuickRepliesToolbarCSS(':host-context(html[data-wme-studio="on"][data-wme-studio-addons="on"]) .qr-wrap')}
 }
 
+
 ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-glass-contrast="on"])')}
 @media all {
 :host-context(html[data-wme-studio="on"][data-wme-studio-satellite="on"]) img:is(
@@ -2474,12 +2484,12 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   }
   @media all {
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .wz-map-ol-footer {
-    background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent) !important;
+    background: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-opacity, 60%), transparent)) !important;
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .wz-map-ol-footer:hover {
-    background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-hover-opacity, 100%), transparent) !important;
+    background: var(--ws-island-paint-hover, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-hover-opacity, 100%), transparent)) !important;
   }
   }
   @media all {
@@ -2547,7 +2557,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   }
   }
   @media all {
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"]) .menu:is(.layer-switcher *) { --ws-compact-layers-width: 620px; }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"]) .menu:is(.layer-switcher *) { --ws-compact-layers-width: 540px; }
   }
   @media all {
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) .menu:is(.hide-layer-switcher,[hidden],[aria-hidden="true"]):is(.layer-switcher *) {
@@ -2617,7 +2627,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     max-height: min(var(--ws-online-panel-height, 320px), calc(100vh - 48px)) !important;
     box-sizing: border-box !important; padding: 0 12px !important;
     overflow: hidden !important; border: 0 !important; border-radius: 16px !important;
-    background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent) !important;
+    background: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-opacity, 60%), transparent)) !important;
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     box-shadow: 0 8px 28px #00000026 !important;
     color: var(--ws-glass-text, var(--wme-studio-text)) !important; font-family: var(--ws-font) !important;
@@ -2625,7 +2635,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     transition: background-color 160ms ease, box-shadow 160ms ease !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) [data-wme-studio-online-editors-panel="on"]:is(:hover,:focus-within) {
-    background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-hover-opacity, 100%), transparent) !important;
+    background: var(--ws-island-paint-hover, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-hover-opacity, 100%), transparent)) !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) wz-list-item:is([data-wme-studio-online-editors-panel="on"] *) {
     --wz-list-item-padding: 8px 0 !important;
@@ -2823,7 +2833,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     min-height: 30px !important; max-height: 30px !important;
     margin: 0 !important; padding: 0 !important; box-sizing: border-box;
     border: 0 !important; border-radius: 10px !important;
-    background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent) !important;
+    background: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-opacity, 60%), transparent)) !important;
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     box-shadow: 0 8px 28px #00000026 !important;
     color: var(--ws-glass-text, var(--wme-studio-text)) !important; text-shadow: var(--ws-glass-text-shadow, none); font: 500 12px/16px var(--ws-font) !important;
@@ -2832,7 +2842,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) :where(.online-editors-bubble):is(.online-editors-bubble,[data-wme-studio-online-editors-status="on"]):is(:hover,:focus-within),
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) :where([data-wme-studio-online-editors-status="on"]):is(.online-editors-bubble,[data-wme-studio-online-editors-status="on"]):is(:hover,:focus-within) {
-    background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-hover-opacity, 100%), transparent) !important;
+    background: var(--ws-island-paint-hover, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-hover-opacity, 100%), transparent)) !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]) [slot="left-icon"]:is(.online-editors-bubble *) {
     display: inline-flex !important; width: 18px !important; height: 18px !important;
@@ -2855,6 +2865,8 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
 
 @media all {
 :host-context(html[data-wme-studio="on"]) .wz-navigation-drawer { background: var(--wme-studio-bg) !important; box-shadow: none !important; }
+}
+@media all {
 /* A control hidden in Arrange stays hidden even where a component's own rules would show it. */
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host([data-wme-studio-control-hidden]) { display: none !important; }
 }
@@ -2864,7 +2876,9 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     height: fit-content !important; align-self: center !important; min-height: 0 !important; max-height: none !important; overflow: visible !important;
     background: transparent !important; box-shadow: none !important;
   }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer) {
+  }
+@media all {
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer) {
     position: fixed !important; zoom: var(--ws-hud-zoom, 1);
     top: calc(50vh / var(--ws-hud-zoom, 1)) !important; bottom: auto !important;
     left: var(--ws-compact-side-inset, 12px) !important; right: auto !important;
@@ -2877,23 +2891,25 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
     box-shadow: none !important;
   }
+}
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"][data-wme-studio-layout~="navigation"]):host(wz-navigation-drawer#drawer) {
     top: calc(var(--ws-island-navigation-top) / var(--ws-hud-zoom, 1)) !important;
     left: calc(var(--ws-island-navigation-left) / var(--ws-hud-zoom, 1)) !important;
     transform: none !important;
   }
+@media all {
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer:hover) {
     background: transparent !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer)::before {
     content: "" !important; position: absolute !important; inset: 0 !important; z-index: -1 !important;
     pointer-events: none !important; border-radius: inherit !important;
-    background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-opacity, 60%), transparent) !important;
+    background: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-opacity, 60%), transparent)) !important;
     -webkit-backdrop-filter: blur(8px) !important; backdrop-filter: blur(8px) !important;
     box-shadow: none !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer:hover)::before {
-    background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-hover-opacity, 100%), transparent) !important;
+    background: var(--ws-island-paint-hover, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-hover-opacity, 100%), transparent)) !important;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer) .wz-navigation-drawer {
     width: 100% !important; height: auto !important; min-height: 0 !important; max-height: none !important;
@@ -2903,7 +2919,10 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-beta="on"]):host(wz-navigation-drawer#drawer) .wz-navigation-drawer::before {
     background: transparent !important; box-shadow: none !important;
   }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-drawer {
+}
+
+@media all {
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-drawer {
     width: 100% !important; height: auto !important; min-height: 0 !important; border-inline-end: 0 !important;
     border-radius: var(--ws-compact-radius) !important;
     max-height: none !important; overflow: visible !important; scrollbar-width: none;
@@ -3207,6 +3226,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
   padding-inline: 8px !important; overflow: hidden !important; text-overflow: ellipsis; white-space: nowrap;
 }
 :host-context(html[data-wme-studio="on"]):host(wz-card.direction-lanes) .wz-card { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"]):host-context(.layer-switcher .menu):host(wz-checkbox) label.wz-checkbox { min-height: 19px !important; }
 :host-context(html[data-wme-studio="on"]):host-context(.layer-switcher .menu > .title):host(wz-button) .wz-button {
   display:inline-flex !important; align-items:center !important; justify-content:center !important;
   width:28px !important; min-width:28px !important; height:28px !important; min-height:28px !important;
@@ -3264,6 +3284,32 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
 :host-context(html[data-wme-studio="on"]):host-context(:is(#sidebar,#filter-panel-region)):host(wz-card:is(.list-item-card,.issue-tracker-card-content)) .wz-card:focus-visible {
   outline: 2px solid var(--wme-studio-accent) !important; outline-offset: 2px;
 }
+}
+/* Review: three looks for the requests you haven't opened next to the ones you have, put to a vote in 3.0.0 and not
+   offered as a setting yet; kept here for when the vote is in. Edge: a colored bar on the new ones, opened ones outlined. Dot: a small dot on the new ones.
+   Fade: new ones raised, opened ones faded back. Without one, the cards look as before (Classic). */
+@media all {
+:host-context(html[data-wme-studio="on"][data-wme-studio-task-style="edge"]):host-context(:is(#sidebar,#filter-panel-region)):host(wz-card:is(.list-item-card,.issue-tracker-card-content)) .wz-card:not(.read):not(.selected) {
+  background: color-mix(in srgb, var(--wme-studio-accent) 9%, var(--wme-studio-input)) !important;
+  box-shadow: inset 3px 0 0 var(--wme-studio-accent) !important;
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-task-style="edge"]):host-context(:is(#sidebar,#filter-panel-region)):host(wz-card:is(.list-item-card,.issue-tracker-card-content)) .wz-card.read:not(.selected) { background: transparent !important; box-shadow: inset 0 0 0 1px var(--wme-studio-border) !important; }
+}
+@media all {
+:host-context(html[data-wme-studio="on"][data-wme-studio-task-style="dot"]):host-context(:is(#sidebar,#filter-panel-region)):host(wz-card:is(.list-item-card,.issue-tracker-card-content)) .wz-card { position: relative; }
+:host-context(html[data-wme-studio="on"][data-wme-studio-task-style="dot"]):host-context(:is(#sidebar,#filter-panel-region)):host(wz-card:is(.list-item-card,.issue-tracker-card-content)) .wz-card:not(.read)::after {
+  content: ""; position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; pointer-events: none;
+  background: var(--wme-studio-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wme-studio-accent) 22%, transparent);
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-task-style="dot"]):host-context(:is(#sidebar,#filter-panel-region)):host(wz-card:is(.list-item-card,.issue-tracker-card-content)) .wz-card.read:not(.selected) { background: transparent !important; box-shadow: inset 0 0 0 1px var(--wme-studio-border) !important; }
+}
+@media all {
+:host-context(html[data-wme-studio="on"][data-wme-studio-task-style="fade"]):host-context(:is(#sidebar,#filter-panel-region)):host(wz-card:is(.list-item-card,.issue-tracker-card-content)) .wz-card:not(.read):not(.selected) {
+  background: var(--wme-studio-surface-3) !important;
+  box-shadow: 0 3px 12px #0000002e, inset 0 0 0 1px color-mix(in srgb, var(--wme-studio-accent) 40%, transparent) !important;
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-task-style="fade"]):host-context(:is(#sidebar,#filter-panel-region)):host(wz-card:is(.list-item-card,.issue-tracker-card-content)) .wz-card.read:not(.selected) { background: transparent !important; box-shadow: none !important; opacity: .58; }
+:host-context(html[data-wme-studio="on"][data-wme-studio-task-style="fade"]):host-context(:is(#sidebar,#filter-panel-region)):host(wz-card:is(.list-item-card,.issue-tracker-card-content)) .wz-card.read:is(:hover, :focus-within) { opacity: 1; }
 }
 @media all {
 :host-context(html[data-wme-studio="on"][data-wme-studio-motion="normal"]):host-context(:is(#sidebar,#filter-panel-region)):host(wz-card:is(.list-item-card,.issue-tracker-card-content)) .wz-card {
@@ -3591,21 +3637,21 @@ ${studioRangeCSS(':host-context(html[data-wme-studio="on"]) input[type="range"]'
 }
 @media (min-width: 1180px) and (min-height: 640px) {
   @media all {
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app:not(.sidebar-fullscreen)):host-context(#drawer) .options-wrapper:is(.wz-menu > .options-container > *) {
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window]))):host-context(#drawer) .options-wrapper:is(.wz-menu > .options-container > *) {
     background: transparent !important; box-shadow: 0 8px 28px #00000026 !important;
     border: 0 !important; outline: none !important;
   }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app:not(.sidebar-fullscreen)):host-context(#drawer) :where(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before,
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app:not(.sidebar-fullscreen)):host-context(#drawer) :where(.wz-menu[data-wme-studio-nav-menu="on"] > .options-container):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before {
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window]))):host-context(#drawer) :where(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before,
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window]))):host-context(#drawer) :where(.wz-menu[data-wme-studio-nav-menu="on"] > .options-container):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before {
     content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
-    background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-opacity, 60%), transparent);
+    background: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-opacity, 60%), transparent));
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     transition: background-color 160ms ease !important;
   }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app:not(.sidebar-fullscreen)):host-context(#drawer:hover) :where(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before,
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app:not(.sidebar-fullscreen)):host-context(#drawer:hover) :where(.wz-menu[data-wme-studio-nav-menu="on"] > .options-container):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before { background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-hover-opacity, 100%), transparent); }
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app.show-sidebar:not(.sidebar-fullscreen)):host-context(#drawer) :where(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before,
-  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app.show-sidebar:not(.sidebar-fullscreen)):host-context(#drawer) :where(.wz-menu[data-wme-studio-nav-menu="on"] > .options-container):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before {
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window]))):host-context(#drawer:hover) :where(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before,
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window]))):host-context(#drawer:hover) :where(.wz-menu[data-wme-studio-nav-menu="on"] > .options-container):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before { background: var(--ws-island-paint-hover, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-hover-opacity, 100%), transparent)); }
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app.show-sidebar:not(.sidebar-fullscreen:not([data-wme-studio-hub-window]))):host-context(#drawer) :where(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before,
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(.app.show-sidebar:not(.sidebar-fullscreen:not([data-wme-studio-hub-window]))):host-context(#drawer) :where(.wz-menu[data-wme-studio-nav-menu="on"] > .options-container):is(.wz-menu:not([data-wme-studio-nav-menu="on"]) > .options-container > .options-wrapper, .wz-menu[data-wme-studio-nav-menu="on"] > .options-container)::before {
     background: var(--wme-studio-bg);
   }
   }
@@ -3822,7 +3868,9 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     transition: opacity 150ms ease !important;
     transform: none !important; translate: none !important; margin: 0 !important;
   }
-  /* Safari clips a submenu drawn beside the list (Roads, Place, Hazard under +) to the list's scroll box, so it
+  }
+@media all {
+/* Safari clips a submenu drawn beside the list (Roads, Place, Hazard under +) to the list's scroll box, so it
      opened out of sight and looked as if pointing at the item did nothing. While a submenu is open the list stops
      scrolling, so the submenu shows. */
   :host-context(html[data-wme-studio="on"][data-wme-studio-safari="on"][data-wme-studio-compact="on"]) .options-wrapper:is(.wz-menu[data-wme-studio-nav-menu="on"][data-wme-studio-nav-sub-open="on"] > .options-container > *) {
@@ -4045,7 +4093,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
 @media (min-width: 1180px) and (min-height: 640px) {
   @media all {
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(wz-user-box) .options-wrapper:is(.wz-menu > .options-container > *) {
-    --ws-header-surface: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent);
+    --ws-header-surface: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-opacity, 60%), transparent));
     background: var(--ws-header-surface) !important;
     border-radius: 16px !important; -webkit-backdrop-filter: blur(8px) !important; backdrop-filter: blur(8px) !important;
     box-shadow: 0 18px 52px #00000045 !important;
@@ -4053,7 +4101,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     transition: background-color 160ms ease;
   }
   :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(wz-user-box) .options-wrapper:hover:is(.wz-menu > .options-container > *) {
-    --ws-header-surface: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-hover-opacity, 100%), transparent);
+    --ws-header-surface: var(--ws-island-paint-hover, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-hover-opacity, 100%), transparent));
     background: var(--ws-header-surface) !important;
   }
   }
@@ -4068,7 +4116,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       transition: none !important; animation: none !important;
     }
     :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layout-editing="on"]) [data-wme-studio-online-editors-status="on"] {
-      background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-opacity, 60%), transparent) !important;
+      background: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-opacity, 60%), transparent)) !important;
       -webkit-backdrop-filter: blur(8px) !important; backdrop-filter: blur(8px) !important;
     }
     :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layout-editing="on"]):host-context(#drawer) .navigation-button,
@@ -4116,6 +4164,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
 }
 :host-context(html[data-wme-studio="on"]):host(wz-dialog.restrictions-modal) path:is(.dismiss-button svg *) { fill:var(--wme-studio-text-secondary) !important; }
 :host-context(html[data-wme-studio="on"]):host(wz-dialog.restrictions-modal) path:is(.dismiss-button:hover svg *) { fill:var(--wme-studio-accent) !important; }
+}
+@media all {
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]),
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"])::before,
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"])::after,
@@ -4135,22 +4185,36 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   scale:var(--ws-restriction-scale,1) !important; transform-origin:top left !important;
   pointer-events:auto !important;
 }
+/* One grip in the bottom right corner: drag it diagonally to make the whole panel larger or smaller, keeping its shape. */
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .ws-restriction-resize {
   position:absolute; inset:auto 0 0 auto; z-index:10; display:grid; place-items:center;
-  width:16px; height:16px; padding:0; border:0; border-radius:6px 0 var(--wme-studio-panel-radius) 0;
+  width:18px; height:18px; padding:0; border:0; border-radius:6px 0 var(--wme-studio-panel-radius) 0;
   background:transparent; color:var(--wme-studio-text-secondary);
-  cursor:nwse-resize; touch-action:none;
+  cursor:nwse-resize; touch-action:none; transition:color 120ms ease, background-color 120ms ease;
 }
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .ws-restriction-resize::after {
   content:""; width:10px; height:10px; border-right:2px solid currentColor; border-bottom:2px solid currentColor;
   clip-path:polygon(70% 0,100% 0,100% 100%,0 100%,0 70%,70% 70%);
 }
-:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .ws-restriction-resize:hover,
-:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .ws-restriction-resize:focus-visible {
-  color:var(--wme-studio-accent); background:var(--wme-studio-hover);
-}
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host(wz-dialog[data-wme-studio-map-dialog-active="on"]) .ws-restriction-resize:is(:hover,:focus-visible,:active) { color:var(--wme-studio-accent); background:var(--wme-studio-hover); outline:none; }
 }
 
+
+/* Island colors (3.0.0): an unticked box shows the panel through it (its cover took the panel's color, which is now
+   see-through), and a dialog's box is painted with the islands' color or gradient. */
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast])):host(wz-checkbox:not([checked]):not([indeterminate])) .fill { opacity: 0 !important; }
+/* Menus that open inside a colored panel (the filter presets in Review, a selection's ⋮ menu) are drawn inside other
+   components, out of reach of the page's rules: they take the islands' color here, solid, so what is under them
+   doesn't show through. */
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast])):host(wz-menu) {
+  --background_default: var(--ws-island-a) !important; --background_variant: color-mix(in srgb, var(--ws-island-ink) 12%, var(--ws-island-a)) !important;
+  --separator_default: color-mix(in srgb, var(--ws-island-ink) 16%, transparent) !important; --content_default: var(--ws-island-ink) !important;
+  --wme-studio-surface: var(--ws-island-a) !important; --wme-studio-surface-3: var(--ws-island-a) !important; --wme-studio-bg: var(--ws-island-a) !important;
+  --wme-studio-hover: color-mix(in srgb, var(--ws-island-ink) 12%, var(--ws-island-a)) !important; --wme-studio-active: color-mix(in srgb, var(--ws-island-ink) 18%, var(--ws-island-a)) !important;
+  --wme-studio-border: color-mix(in srgb, var(--ws-island-ink) 16%, transparent) !important; --wme-studio-text: var(--ws-island-ink) !important;
+  --wme-studio-text-muted: color-mix(in srgb, var(--ws-island-ink) 62%, var(--ws-island-a)) !important;
+}
+:host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast])):host(wz-dialog) .wz-dialog { background: var(--ws-island-paint-hover, var(--ws-island-a)) !important; color: var(--ws-island-ink) !important; }
 
 /* "Open the + menu on click" (2.0.5): WME's + menu opens itself on hover in ways no event reaches, so its list is
    kept out of sight until Studio has seen a click on + (or opens the menu itself for a + menu shortcut). */
@@ -4165,6 +4229,10 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   if (!standaloneSignin && !/(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname)) return;
   if (globalThis.__wmeStudioRunning) return;
   globalThis.__wmeStudioRunning = true;
+  // The editor profile's daily edit bubbles (3.0.0): WME draws them dark in every theme, so their text stays light.
+  // Studio's own profile text colour reached the bubble's text too, which in the light theme left dark text on dark.
+  if (editorProfile) GM_addStyle(`html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity, #edits-by-type, body) .tooltip .tooltip-inner,
+html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity, #edits-by-type, body) .tooltip .tooltip-inner * { color: #fff !important; }`);
   const config = globalThis.WMEStudioSettings;
   const schedule = globalThis.WMEStudioSchedule;
 
@@ -4174,7 +4242,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   // only the map zooms (the map reads the fingers itself, which still works). Safari keeps laying the page out and
   // turning it as it always did. While the on-screen keyboard is up, a bar just above it shows the field's text and
   // caret as you type. Islands are drawn a little larger on a touch screen, for a finger.
-  const touchScreen = navigator.maxTouchPoints > 0 && matchMedia('(any-pointer: coarse)').matches && window.top === window.self;
+  const touchScreen = navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse)').matches && window.top === window.self;
   // On a touch screen islands are a little larger (up to 15%) where there is room for them, and smaller where the
   // page is short (a phone held sideways is some 450 high), so the side rails and the header still fit.
   const touchHudZoom = () => {
@@ -4184,18 +4252,19 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   };
   const hudZoomOf = scale => Math.round((scale || 100) / 100 * touchHudZoom() * 1000) / 1000;
   (() => {
-    if (!touchScreen || standaloneSignin) return;
+    if (!touchScreen || standaloneSignin || editorProfile) return;
     const root = document.documentElement;
     root.setAttribute('data-wme-studio-touch', 'on');
 
     // Two fingers or a double tap never zoom the page. Safari's page zoom comes from its gesture events; the map's
     // own pinch comes from the touch events, which are left to run.
-    const block = event => { if (event.cancelable) event.preventDefault(); };
+    // With Studio turned off the page zooms as it always did.
+    const block = event => { if (event.cancelable && root.getAttribute('data-wme-studio') === 'on') event.preventDefault(); };
     const options = { capture: true, passive: false };
     for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, block, options);
     document.addEventListener('touchmove', event => { if (event.touches.length > 1) block(event); }, options);
     const touchStyle = document.createElement('style');
-    touchStyle.textContent = 'html[data-wme-studio-touch="on"],html[data-wme-studio-touch="on"] body{touch-action:pan-x pan-y}';
+    touchStyle.textContent = 'html[data-wme-studio="on"][data-wme-studio-touch="on"],html[data-wme-studio="on"][data-wme-studio-touch="on"] body{touch-action:pan-x pan-y}';
     (document.head || root).append(touchStyle);
 
     // The page's width. Studio's layout needs a page at least 740 wide: on a phone the page is laid out 980 wide, as
@@ -4361,6 +4430,12 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       if (bar.host) { bar.box.classList.remove('on'); bar.host.style.display = 'none'; }
     }
     document.addEventListener('touchstart', event => { if (typable(event.composedPath?.()[0] || event.target)) holdScale(); }, { capture: true, passive: true });
+    // A finger that landed on a field and then scrolled away, or a phone turned: the scale is not held for a field that
+    // never got (or no longer has) the focus.
+    const releaseUnlessTyping = () => setTimeout(() => { if (!typable(deepActive())) releaseScale(); }, 450);
+    document.addEventListener('touchend', releaseUnlessTyping, { capture: true, passive: true });
+    document.addEventListener('touchcancel', releaseUnlessTyping, { capture: true, passive: true });
+    window.addEventListener('orientationchange', () => { releaseScale(); setTimeout(() => { if (typable(deepActive())) holdScale(); }, 500); });
     document.addEventListener('focusin', event => {
       const field = event.composedPath?.()[0] || event.target;
       if (!typable(field)) return;
@@ -4571,9 +4646,68 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   }, true);
 
   let settings = { ...config.defaults };
+  // Two-column Map Layers (3.0.0): a button in the panel's title switches between the two columns and WME's own single
+  // column, and the choice is remembered. The setting decides whether the two columns (and the button) are offered.
+  const LAYER_VIEW_KEY = 'wmeStudio.layerColumnsView.v1';
+  let layerColumnsView = 'two';
+  const layerColumnsActive = () => settings.layerColumns === 'two' && layerColumnsView !== 'one';
+  Promise.resolve(studioKeep.get(LAYER_VIEW_KEY, 'two')).then(value => {
+    if (value !== 'one' || layerColumnsView === 'one') return;
+    layerColumnsView = 'one';
+    if (ready) syncLayerColumns();
+  }).catch(error => reportStudioError('layerColumnsView', error));
+  function syncLayerColumns() {
+    attr('layer-columns', layerColumnsActive() ? 'two' : 'one');
+    try { applyCompactLayoutVariables(); } catch (studioError) { reportStudioError('syncLayerColumns', studioError); }
+    syncMapLayerWindows(true);
+  }
+  // In the style of WME's own full screen icons, sideways: the panel narrows to one column, or widens to two.
+  const LAYER_ONE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M3 12h6M6.5 9.5 9 12l-2.5 2.5M21 12h-6M17.5 9.5 15 12l2.5 2.5"/></svg>';
+  const LAYER_TWO_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M9 12H3M5.5 9.5 3 12l2.5 2.5M15 12h6M18.5 9.5 21 12l-2.5 2.5"/></svg>';
+  function syncLayerColumnsButton(title) {
+    let button = title?.querySelector(':scope > .ws-layer-columns-toggle') || null;
+    const offered = !!title && settings.enabled && settings.compactMode && settings.layerColumns === 'two';
+    if (!offered) { button?.remove(); return; }
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button'; button.className = 'ws-layer-columns-toggle';
+      button.addEventListener('click', event => {
+        event.preventDefault(); event.stopPropagation();
+        const menu = button.closest('.menu'), before = menu?.getBoundingClientRect();
+        layerColumnsView = layerColumnsActive() ? 'one' : 'two';
+        try { Promise.resolve(studioKeep.set(LAYER_VIEW_KEY, layerColumnsView)).catch(error => reportStudioError('layerColumnsView', error)); } catch (error) { reportStudioError('layerColumnsView', error); }
+        syncLayerColumns();
+        // The panel keeps the edge beside the island with the Map Layers button (its right edge when that island is on
+        // the right), so it narrows towards the island and a second click in the same place switches straight back.
+        if (menu && before) requestAnimationFrame(() => {
+          const after = menu.getBoundingClientRect(), island = document.querySelector('.layer-switcher-button')?.getBoundingClientRect();
+          const islandOnLeft = !!island?.width && island.left + island.width / 2 < before.left + before.width / 2;
+          const delta = islandOnLeft ? before.left - after.left : before.right - after.right;
+          if (!after.width || Math.abs(delta) < 1) return;
+          // The floating layout keeps the panel at its spot (its left edge): that spot moves by the change in width.
+          const guard = headerGuardWindows.get(menu), state = mapLayerWindows.get(menu);
+          if (guard?.requestPoint) guard.requestPoint = { ...guard.requestPoint, left: guard.requestPoint.left + delta };
+          else if (state && canMoveMapLayer(menu)) {
+            state.position ||= { x: before.left, y: before.top };
+            positionMapLayer(state, after.left + delta, state.position.y, { ...mapLayerDragInsets(), width: after.width, height: after.height });
+          }
+          queueHeaderGuardWindows();
+        });
+      });
+    }
+    // Right after the title text, before WME's own buttons.
+    const heading = title.querySelector(':scope > h6');
+    if (heading) { if (button.previousElementSibling !== heading) heading.after(button); }
+    else if (button.parentElement !== title) title.prepend(button);
+    const two = layerColumnsActive();
+    const label = globalThis.WMEStudioI18n?.t?.(two ? 'Show one column' : 'Show two columns') || (two ? 'Show one column' : 'Show two columns');
+    if (button.dataset.view !== (two ? 'two' : 'one')) { button.dataset.view = two ? 'two' : 'one'; button.innerHTML = two ? LAYER_ONE_ICON : LAYER_TWO_ICON; }
+    if (button.title !== label) { button.title = label; button.setAttribute('aria-label', label); }
+  }
   let ready = false;
   const COMPACT_LAYOUT_KEY = 'wmeStudio.compactIslandLayout.v1';
   const SIDE_RAIL_CENTER_MIGRATION_KEY = 'wmeStudio.update.sideRailsViewportCenter.v3';
+  const SIDE_DOCK_VARIABLES = ['--ws-side-dock-left','--ws-side-dock-right','--ws-side-dock-top','--ws-side-dock-bottom','--ws-side-dock-height','--ws-side-dock-css-height'];
   const COMPACT_LAYOUT_VARIABLES = [
     '--ws-island-header-center','--ws-island-header-top',
     '--ws-island-navigation-left','--ws-island-navigation-top',
@@ -4590,7 +4724,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     Object.freeze({ id: 'header', label: 'Header', selector: '#app-head', width: () => compactHeaderWidth(), height: () => 52, legacy: Object.freeze([.5, .03]) }),
     Object.freeze({ id: 'navigation', label: 'Navigation', selector: '#drawer', width: () => 52, height: () => Math.min(390, innerHeight - 180), legacy: Object.freeze([.035, .36]) }),
     Object.freeze({ id: 'sidePanel', popup: true, arrange: false, label: 'Side panel', selector: '#sidebar', width: () => 330, height: () => Math.min(620,innerHeight - 160) }),
-    Object.freeze({ id: 'layers', popup: true, arrange: false, label: 'Map Layers', selector: '.layer-switcher .menu', width: () => settings.layerColumns === 'two' ? 620 : 320, height: () => Math.min(560, innerHeight - 120), legacy: Object.freeze([.62, .14]) }),
+    Object.freeze({ id: 'layers', popup: true, arrange: false, label: 'Map Layers', selector: '.layer-switcher .menu', width: () => layerColumnsActive() ? 540 : 320, height: () => Math.min(560, innerHeight - 120), legacy: Object.freeze([.62, .14]) }),
     Object.freeze({ id: 'aiHelper', popup: true, arrange: false, label: 'Ask Waze', selector: '#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]', width: () => 375, height: () => Math.min(600,innerHeight - 120) }),
     Object.freeze({ id: 'streetView', popup: true, arrange: false, label: 'Street View', selector: '#street-view-container', width: () => streetViewWindow.size.width, height: () => streetViewWindow.size.height }),
     Object.freeze({ id: 'tools', label: 'Map tools', selector: '#overlay-buttons', width: () => 52, height: () => Math.min(360, innerHeight - 180), legacy: Object.freeze([.965, .36]) }),
@@ -4610,6 +4744,241 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   let compactLayoutEditing = false;
   const arrangeBaseline = new Map();
 
+
+  // The islands' palette when they have a color of their own (3.0.0): every surface, field, border and text color
+  // inside an island is made from the chosen color, so menus and fields in the header follow it too.
+  // WME's own colour tokens (and add-ons' ones) are set from Studio's colours once, on the page root, so a panel or
+  // island that changes Studio's colours has to set them again for itself to see the new ones (3.0.0).
+  const ISLAND_ALIASES = `--wme-studio-focus: color-mix(in srgb, var(--wme-studio-accent) 42%, transparent); --ws-bg: var(--wme-studio-bg); --ws-surface: var(--wme-studio-surface); --ws-raised: var(--wme-studio-surface-3); --ws-field: var(--wme-studio-input); --ws-hover: var(--wme-studio-hover); --ws-text: var(--wme-studio-text); --ws-secondary: var(--wme-studio-text-secondary); --ws-muted: var(--wme-studio-text-muted); --ws-border: var(--wme-studio-border); --ws-border-strong: var(--wme-studio-border-strong); --ws-shadow: var(--wme-studio-shadow); --ws-accent: var(--wme-studio-accent); --ws-accent-soft: var(--wme-studio-active); --ws-on-accent: var(--wme-studio-on-accent); --ws-link: var(--wme-studio-accent); --ws-focus: var(--wme-studio-focus); --wme-studio-active: color-mix(in srgb, var(--wme-studio-accent) 12%, var(--wme-studio-surface)); --background_default: var(--wme-studio-surface); --background_variant: var(--wme-studio-bg); --surface_default: var(--wme-studio-input); --surface_alt: var(--wme-studio-input); --surface_variant: var(--wme-studio-hover); --surface_variant_purple: var(--ws-banner-purple); --surface_variant_green: var(--ws-banner-green); --surface_variant_yellow: var(--ws-banner-yellow); --surface_variant_orange: var(--ws-banner-orange); --surface_variant_red: var(--ws-banner-red); --content_default: var(--wme-studio-text); --content_p1: var(--wme-studio-text); --content_p2: var(--wme-studio-text-secondary); --content_p3: var(--wme-studio-text-muted); --hint_text: var(--wme-studio-text-muted); --disabled_text: var(--wme-studio-text-muted); --hairline: var(--wme-studio-border); --hairline_strong: var(--wme-studio-border-strong); --separator_default: var(--wme-studio-border); --primary: var(--wme-studio-accent); --primary_variant: var(--wme-studio-accent); --on_primary: var(--wme-studio-on-accent); --wz-color-surface: var(--wme-studio-surface); --wz-color-grey-100: var(--wme-studio-input); --wct-surface: var(--wme-studio-surface); --wct-bg: var(--wme-studio-surface-2); --wct-bg2: var(--wme-studio-surface-2); --wct-hover: var(--wme-studio-hover); --wct-border: var(--wme-studio-border); --wct-text: var(--wme-studio-text); --wct-text2: var(--wme-studio-text-secondary); --wmeph-text-default: var(--wme-studio-text); --wmeph-text-secondary: var(--wme-studio-text); --wmeph-bg-primary: var(--wme-studio-surface); --wmeph-bg-secondary: var(--wme-studio-surface-2); --wmeph-bg-tertiary: var(--wme-studio-surface-2); --wmeph-border: var(--wme-studio-border-strong); --wmeph-border-light: var(--wme-studio-border); --wmeph-divider: var(--wme-studio-border); --wmeph-gray-text: var(--wme-studio-text); --wmeph-gray-bg: var(--wme-studio-surface-2); --wmeph-lightgray-bg: var(--wme-studio-surface-2); --wmeph-gradient-secondary: var(--wme-studio-surface-2); --wmeph-gradient-secondary-hover: var(--wme-studio-hover); --wmeph-gradient-section-header: var(--wme-studio-surface-2); --wmeph-gradient-section-header-hover: var(--wme-studio-hover); --wmeph-dark-bg-secondary: var(--wme-studio-input); --wmeph-dark-bg-tertiary: var(--wme-studio-hover); --wmeph-dark-border: var(--wme-studio-border);`;
+  const ISLAND_PANEL_PAINT = '.layer-switcher .menu,#sidebar,#panel-container > *,iframe[data-wme-studio-chat-panel="on"],[data-wme-studio-popup-kind]:not([data-wme-studio-popup-kind] *,[data-wme-studio-panel-preview]),[data-testid="floating-window"]:not([data-wme-studio-popup-kind],[data-wme-studio-popup-kind] *),.save-popover,[class*="changesLog--"] [class*="tooltipContent--"],#filter-panel-region,[id^="TURN_MENU_"]';
+  // Dialogs (Map build status, the restriction editor…) take the colors too; their box is painted from inside (see
+  // the wz-dialog rule in the components' style), the dialog element itself covers the whole page.
+  const ISLAND_PANELS = `${ISLAND_PANEL_PAINT},wz-dialog`;
+  GM_addStyle(`
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(#app-head,#drawer,#overlay-buttons,[data-wme-studio-online-editors-panel="on"],[data-wme-studio-online-editors-status="on"],.online-editors-bubble,.wz-map-ol-footer,#tile-build-status,.notifications-box-container,.ws-custom-island,.ws-sd-island,.ws-sd-handle,.ws-sd-bubble,.ws-sd-tip) {
+  ${ISLAND_ALIASES}
+  --wme-studio-surface: var(--ws-island-a); --wme-studio-bg: var(--ws-island-a); --wme-studio-surface-3: var(--ws-island-a); --ws-notification-surface: var(--ws-island-a);
+  --wme-studio-input: color-mix(in srgb, var(--ws-island-ink) 9%, var(--ws-island-a)); --wme-studio-surface-2: var(--wme-studio-input);
+  --wme-studio-hover: color-mix(in srgb, var(--ws-island-ink) 12%, var(--ws-island-a)); --wme-studio-active: color-mix(in srgb, var(--ws-island-ink) 18%, var(--ws-island-a));
+  --wme-studio-border: color-mix(in srgb, var(--ws-island-ink) 16%, transparent); --wme-studio-border-strong: color-mix(in srgb, var(--ws-island-ink) 28%, transparent);
+  --wme-studio-text: var(--ws-island-ink); --wme-studio-text-secondary: color-mix(in srgb, var(--ws-island-ink) 78%, var(--ws-island-a)); --wme-studio-text-muted: color-mix(in srgb, var(--ws-island-ink) 62%, var(--ws-island-a));
+  --ws-glass-text: var(--ws-island-ink); --ws-glass-secondary: color-mix(in srgb, var(--ws-island-ink) 78%, var(--ws-island-a)); --ws-glass-footer-text: color-mix(in srgb, var(--ws-island-ink) 78%, var(--ws-island-a));
+  --ws-light-glass-icon-color: var(--ws-island-ink); --ws-glass-text-shadow: none; color: var(--ws-island-ink);
+  --content_default: var(--wme-studio-text); --content_p1: var(--wme-studio-text-secondary); --content_p2: var(--wme-studio-text-muted); --hint_text: var(--wme-studio-text-muted);
+  --background_default: var(--wme-studio-surface); --background_variant: var(--wme-studio-input); --surface_default: var(--wme-studio-input); --surface_variant: var(--wme-studio-hover);
+  --hairline: var(--wme-studio-border); --hairline_strong: var(--wme-studio-border-strong);
+}
+/* The Touch & iPad tools island (Screen Displays) is painted like the other islands: the color or the gradient, at
+   the glass opacity, fuller under the pointer. */
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) .ws-sd-island::before {
+  background: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a) var(--ws-compact-opacity, 82%), transparent)) !important;
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) .ws-sd-island:is(:hover, :focus-within)::before {
+  background: var(--ws-island-paint-hover, color-mix(in srgb, var(--ws-island-a) var(--ws-compact-hover-opacity, 100%), transparent)) !important;
+}
+/* The panels take the islands' color too (3.0.0): the side panel, request windows, Map Layers, Messages and the
+   other floating windows. The window itself is painted with the color or gradient, nearly opaque so text stays easy
+   to read; what is inside lets it show through, with fields and hovers drawn as a tint of the text color. Menus and
+   lists that open over the window stay solid. */
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(${ISLAND_PANELS}) {
+  ${ISLAND_ALIASES}
+  --wme-studio-surface: transparent; --wme-studio-bg: transparent; --wme-studio-surface-3: transparent; --ws-notification-surface: var(--ws-island-a);
+  --ws-task-unread-background: color-mix(in srgb, var(--ws-island-ink) 16%, transparent);
+  --wme-studio-input: color-mix(in srgb, var(--ws-island-ink) 10%, transparent); --wme-studio-surface-2: var(--wme-studio-input);
+  --wme-studio-hover: color-mix(in srgb, var(--ws-island-ink) 13%, transparent); --wme-studio-active: color-mix(in srgb, var(--ws-island-ink) 19%, transparent);
+  --wme-studio-border: color-mix(in srgb, var(--ws-island-ink) 16%, transparent); --wme-studio-border-strong: color-mix(in srgb, var(--ws-island-ink) 28%, transparent);
+  --wme-studio-text: var(--ws-island-ink); --wme-studio-text-secondary: color-mix(in srgb, var(--ws-island-ink) 80%, transparent); --wme-studio-text-muted: color-mix(in srgb, var(--ws-island-ink) 64%, transparent);
+  --content_default: var(--wme-studio-text); --content_p1: var(--wme-studio-text-secondary); --content_p2: var(--wme-studio-text-muted); --hint_text: var(--wme-studio-text-muted);
+  --background_default: transparent; --background_variant: var(--wme-studio-input); --surface_default: var(--wme-studio-input); --surface_variant: var(--wme-studio-hover);
+  --hairline: var(--wme-studio-border); --hairline_strong: var(--wme-studio-border-strong); color: var(--ws-island-ink);
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(${ISLAND_PANELS}) :is([role="listbox"],[role="menu"],wz-menu,wz-select,wz-autocomplete,.dropdown-menu,.select2-dropdown,.tippy-box,.options-container,wz-tooltip-content) {
+  --wme-studio-surface: var(--ws-island-a); --wme-studio-bg: var(--ws-island-a); --wme-studio-surface-3: var(--ws-island-a); --background_default: var(--ws-island-a);
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #sidebar#sidebar,
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(${ISLAND_PANEL_PAINT}):not(#sidebar)[class][class],
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(${ISLAND_PANEL_PAINT}):not(#sidebar)[data-wme-studio-popup-kind][data-wme-studio-popup-kind],
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) #filter-panel-region#filter-panel-region,
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) [data-wme-studio-pane-fill][data-wme-studio-pane-fill] {
+  background: var(--ws-island-paint-hover, var(--ws-island-a)) !important;
+}
+/* The side panel is solid everywhere (3.0.0), and on a touch screen, where a finger never hovers, so are the other
+   panels you read (Filter, request windows, Map Layers and the other floating windows). */
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #sidebar#sidebar#sidebar,
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #sidebar [data-wme-studio-pane-fill][data-wme-studio-pane-fill],
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-touch="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) #filter-panel-region#filter-panel-region,
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-touch="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) [data-wme-studio-pane-fill][data-wme-studio-pane-fill] {
+  background: var(--ws-island-paint-solid, var(--ws-island-a)) !important;
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-touch="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(${ISLAND_PANEL_PAINT}):not(#sidebar)[class][class],
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-touch="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(${ISLAND_PANEL_PAINT}):not(#sidebar)[data-wme-studio-popup-kind][data-wme-studio-popup-kind] {
+  background: var(--ws-island-paint-solid, var(--ws-island-a)) !important;
+}
+/* Empty lists in the side panel (Events, say: "No events found"): one soft card across the panel instead of the
+   editor's narrow box with a dashed edge and a ring around it (3.0.0). */
+html[data-wme-studio="on"] #sidebar [class*="listPlaceholder--"] {
+  box-sizing: border-box !important; width: auto !important; max-width: none !important; align-self: stretch !important;
+  margin: 8px 0 0 !important; padding: 26px 16px 22px !important; display: flex !important; flex-direction: column !important; align-items: center !important; gap: 12px !important;
+  background: color-mix(in srgb, var(--wme-studio-text, #fff) 6%, transparent) !important; border: 0 !important; box-shadow: none !important; border-radius: 16px !important;
+  text-align: center !important; line-height: 1.35 !important;
+}
+/* Turn instructions (3.0.0) shows the same grips as the other windows you can size: a bar at the bottom and one on
+   the right edge (its left edge stays where the layout puts it). */
+html[data-wme-studio="on"] [data-wme-studio-popup-kind="panel"][data-wme-studio-turn-panel]::after {
+  content: ""; position: absolute; left: 50%; bottom: 2px; width: 38px; height: 4px; margin-left: -19px; border-radius: 2px;
+  background: var(--wme-studio-text-muted); opacity: .55; pointer-events: none; z-index: 999;
+}
+html[data-wme-studio="on"] [data-wme-studio-popup-kind="panel"][data-wme-studio-turn-panel]::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 999; opacity: .45;
+  background: linear-gradient(var(--wme-studio-text-muted), var(--wme-studio-text-muted)) right 1px center / 3px 38px no-repeat;
+}
+/* Under the pointer they light up in the accent color, as the side panel's do; the fields' scrollbar keeps clear of
+   the right edge so its bar can be seen. */
+html[data-wme-studio="on"] [data-wme-studio-popup-kind="panel"][data-wme-studio-turn-panel][data-wme-studio-resize-edge="bottom"]::after { background: var(--wme-studio-accent); opacity: 1; }
+html[data-wme-studio="on"] [data-wme-studio-popup-kind="panel"][data-wme-studio-turn-panel][data-wme-studio-resize-edge="right"]::before { opacity: 1; background: linear-gradient(var(--wme-studio-accent), var(--wme-studio-accent)) right 1px center / 3px 38px no-repeat; }
+html[data-wme-studio="on"] [data-wme-studio-turn-panel] .turn-instructions-panel .panel-content { margin-inline-end: 7px !important; overflow-x: hidden !important; }
+html[data-wme-studio="on"] [data-wme-studio-turn-panel], html[data-wme-studio="on"] [data-wme-studio-turn-panel] .turn-instructions-panel [class*="container--"] { overflow-x: hidden !important; }
+/* Events: its title bar, page count, events and footer reach across the panel as in the editor itself (title left,
+   filter right; the count left, the arrows right) instead of shrinking into the middle (3.0.0). */
+html[data-wme-studio="on"] #sidebar [class*="mteListView--"] > :not(wz-button, button) { align-self: stretch !important; width: auto !important; max-width: none !important; box-sizing: border-box !important; }
+html[data-wme-studio="on"] #sidebar div[class*="mteListView--"]:has(> [class*="pagination--"]) > [class*="pagination--"][class*="pagination--"] { margin-inline-start: 0 !important; margin-inline-end: 0 !important; align-self: stretch !important; width: auto !important; display: flex !important; align-items: center !important; }
+html[data-wme-studio="on"] #sidebar div[class*="mteListView--"] > [class*="pagination--"] > [class*="range--"][class*="range--"] { margin-inline-end: auto !important; }
+/* A bar that stays put while its panel scrolls (a panel's title, say) is painted with the panel's own gradient, laid
+   out over the whole panel, so it covers what scrolls under it and still lines up with the panel (syncPaneFills). */
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) [data-wme-studio-pane-fill][data-wme-studio-pane-fill] {
+  background-position: var(--ws-pane-pos, 0 0) !important; background-size: var(--ws-pane-size, auto) !important; background-repeat: no-repeat !important;
+}
+html[data-wme-studio-island-ink="dark"] { --ws-island-ink: #111820; }
+html[data-wme-studio-island-ink="light"] { --ws-island-ink: #f4f6f8; }
+`);
+  // The side panel's size and spot (3.0.0) are written on the panel and the map area (see sideWidthTargets). These
+  // rules live here, beside the code that writes them, so they apply even while a userscript manager still runs an
+  // older copy of WME Studio Resources (it keeps a library until the main script's version changes).
+  GM_addStyle(`
+@property --ws-side-width { syntax: '*'; inherits: false; }
+@property --ws-lane-width { syntax: '*'; inherits: false; }
+@property --ws-side-dock-left { syntax: '*'; inherits: false; }
+@property --ws-side-dock-right { syntax: '*'; inherits: false; }
+@property --ws-side-dock-top { syntax: '*'; inherits: false; }
+@property --ws-side-dock-bottom { syntax: '*'; inherits: false; }
+@property --ws-side-dock-height { syntax: '*'; inherits: false; }
+@property --ws-side-dock-css-height { syntax: '*'; inherits: false; }
+@property --ws-dock-panel-left { syntax: '*'; inherits: false; }
+@property --ws-dock-panel-right { syntax: '*'; inherits: false; }
+@property --ws-dock-panel-top { syntax: '*'; inherits: false; }
+@property --ws-dock-panel-bottom { syntax: '*'; inherits: false; }
+@property --ws-dock-panel-css-height { syntax: '*'; inherits: false; }
+html[data-wme-studio="on"] .app[data-wme-studio-lanes="on"] :is(#sidebar, .edit-area-main) {
+  --ws-sidebar: min(var(--ws-lane-width, 330px), calc(100vw - 240px));
+}
+html[data-wme-studio="on"][data-wme-studio-side-width="on"] .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) :is(#sidebar, .edit-area-main) {
+  --ws-sidebar: min(var(--ws-side-width), calc(100vw - 24px));
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #sidebar#sidebar {
+  top: calc(var(--ws-dock-panel-top, var(--ws-side-dock-top, var(--ws-compact-panel-top))) / var(--ws-panel-zoom, 1)) !important;
+  bottom: calc(var(--ws-dock-panel-bottom, var(--ws-side-dock-bottom, var(--ws-compact-gap))) / var(--ws-panel-zoom, 1)) !important;
+  left: calc(var(--ws-dock-panel-left, var(--ws-side-dock-left, calc((var(--ws-compact-side-inset) + var(--ws-compact-rail)) * var(--ws-hud-zoom, 1) + 16px))) / var(--ws-panel-zoom, 1)) !important;
+  right: calc(var(--ws-dock-panel-right, var(--ws-side-dock-right, auto)) / var(--ws-panel-zoom, 1)) !important;
+  height: var(--ws-dock-panel-css-height, var(--ws-side-dock-css-height, auto)) !important;
+}
+`);
+  // Your hub › Your impact opened large (3.0.0): in Floating mode the page is a big window over the map, with the
+  // islands kept where they are. Drag its title bar to move it and its edges to size it; double-click the bar to put
+  // it back in the middle at its first size.
+  GM_addStyle(`
+@property --ws-hub-left { syntax: '*'; inherits: false; }
+@property --ws-hub-top { syntax: '*'; inherits: false; }
+@property --ws-hub-width { syntax: '*'; inherits: false; }
+@property --ws-hub-height { syntax: '*'; inherits: false; }
+html[data-wme-studio="on"][data-wme-studio-compact="on"] .app.sidebar-fullscreen[data-wme-studio-hub-window] #sidebar#sidebar {
+  --ws-hub-w: min(var(--ws-hub-width, min(1120px, calc(100vw - 48px))), calc(100vw - 24px));
+  --ws-hub-h: min(var(--ws-hub-height, max(320px, calc(100vh - var(--ws-compact-panel-top, 80px) - 40px))), calc(100vh - 24px));
+  position: fixed !important; z-index: 509;
+  width: calc(var(--ws-hub-w) / var(--ws-panel-zoom, 1)) !important; max-width: none !important;
+  height: calc(var(--ws-hub-h) / var(--ws-panel-zoom, 1)) !important; min-height: 0 !important; max-height: none !important;
+  left: calc(clamp(12px, var(--ws-hub-left, calc((100vw - var(--ws-hub-w)) / 2)), calc(100vw - var(--ws-hub-w) - 12px)) / var(--ws-panel-zoom, 1)) !important;
+  top: calc(clamp(12px, var(--ws-hub-top, var(--ws-compact-panel-top, 80px)), calc(100vh - var(--ws-hub-h) - 12px)) / var(--ws-panel-zoom, 1)) !important;
+  right: auto !important; bottom: auto !important; margin: 0 !important;
+  opacity: 1 !important; visibility: visible !important; pointer-events: auto !important;
+  border: 1px solid var(--wme-studio-border) !important; border-radius: var(--ws-compact-radius, 16px) !important; overflow: hidden !important;
+  background: var(--ws-island-paint-hover, var(--ws-island-a, var(--wme-studio-surface))) !important; box-shadow: 0 18px 50px #00000040 !important;
+  transform: none !important; translate: none !important;
+}
+html[data-wme-studio="on"][data-wme-studio-compact="on"] .app.sidebar-fullscreen[data-wme-studio-hub-window] #sidebar .tab-pane.active > [class*="header--"] { cursor: grab; }
+html[data-wme-studio="on"][data-wme-studio-hub-moving] .app.sidebar-fullscreen[data-wme-studio-hub-window] #sidebar .tab-pane.active > [class*="header--"] { cursor: grabbing; }
+`);
+  // The row with "Sort by" and the page numbers stays one row (WMEStudioFitRows); it wraps only when told to.
+  // Ask Waze: its lower parts were rounder than the window, so their corners stuck out; the window's own rounding
+  // clips them now.
+  GM_addStyle(`
+html[data-wme-studio="on"] [data-testid="ai-helper-window"] :is([class*="container--"],[class*="disclaimer--"]) { border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row][data-wme-studio-fit-row]:has(> [class*="pagination--"]) { flex-wrap: nowrap !important; align-items: center; }
+html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row="wrap"][data-wme-studio-fit-row]:has(> [class*="pagination--"]) { flex-wrap: wrap !important; }
+`);
+  // WME's small pop-up panels (a closure's Status history, say) fade the list into the header with a white band drawn
+  // over the top of the list: it takes the panel's color instead (3.0.0).
+  GM_addStyle(`
+html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--"]::after {
+  background: linear-gradient(var(--wme-studio-surface) 0%, var(--wme-studio-surface) 20%, transparent 100%) !important;
+}
+`);
+  // ---- The islands' own color (3.0.0) ----------------------------------------------------------------------------
+  // Theme: the islands take the theme's surface, as before. Color: one color of your own. Gradient: two colors along
+  // a direction. The glass opacity still applies. On the islands the theme's colors are replaced by ones made from
+  // the chosen color, and text and icons turn dark on a light color and light on a dark one, so they stay readable.
+  // Dark or light text: whichever stays most readable against both ends of the color (a gradient from a light to a
+  // dark color is judged by its worse end, not by the average of the two).
+  function islandInk(a, b) {
+    const lum = hex => { const [r, g, bl] = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); return r * .2126 + g * .7152 + bl * .0722; };
+    const ratio = (x, y) => (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
+    const ends = [lum(a), lum(b)], dark = lum('#111820'), light = lum('#f4f6f8');
+    return Math.min(...ends.map(end => ratio(end, dark))) >= Math.min(...ends.map(end => ratio(end, light))) ? 'dark' : 'light';
+  }
+  globalThis.WMEStudioIslandInk = islandInk;
+  // Color intensity: the chosen color mixed with the theme's background (100% is the color itself).
+  function islandTone(hex, intensity = settings.islandIntensity, theme = activeTheme()) {
+    const base = (studioPalettes[theme] || studioPalettes.dark)['--wme-studio-surface'] || '#292d31';
+    const share = Math.min(100, Math.max(0, Number(intensity) || 100)) / 100;
+    if (share >= 1 || !/^#[0-9a-f]{6}$/i.test(hex) || !/^#[0-9a-f]{6}$/i.test(base)) return hex;
+    const channel = (color, index) => parseInt(color.slice(index, index + 2), 16);
+    return '#' + [1, 3, 5].map(index => Math.round(channel(hex, index) * share + channel(base, index) * (1 - share)).toString(16).padStart(2, '0')).join('');
+  }
+  globalThis.WMEStudioIslandTone = islandTone;
+  function syncIslandFill() {
+    const fill = settings.enabled && settings.compactMode && !standaloneSignin && !editorProfile ? settings.islandFill : 'theme';
+    const a = islandTone(settings.islandColor), b = fill === 'gradient' ? islandTone(settings.islandColor2) : a;
+    rootStyle('--ws-island-a', fill === 'theme' ? '' : a);
+    const paint = opacity => `linear-gradient(${settings.islandAngle}deg, color-mix(in srgb, ${a} var(${opacity}), transparent), color-mix(in srgb, ${b} var(${opacity}), transparent))`;
+    rootStyle('--ws-island-paint', fill === 'gradient' ? paint('--ws-compact-opacity, 60%') : '');
+    rootStyle('--ws-island-paint-hover', fill === 'gradient' ? paint('--ws-compact-hover-opacity, 90%') : '');
+    // The side panel (and every panel on a touch screen) is solid (3.0.0): the colors themselves, nothing shows through.
+    rootStyle('--ws-island-paint-solid', fill === 'gradient' ? `linear-gradient(${settings.islandAngle}deg, ${a}, ${b})` : fill === 'color' ? a : '');
+    attr('island-ink', fill === 'theme' ? null : islandInk(a, b));
+    setTimeout(syncPaneFills, 0);
+  }
+  // Bars that stay put inside a colored panel (3.0.0): see the [data-wme-studio-pane-fill] rule.
+  let paneFillTimer = 0;
+  function syncPaneFills() {
+    const on = root.hasAttribute('data-wme-studio-island-ink') && !root.hasAttribute('data-wme-studio-glass-contrast');
+    const marked = new Set(document.querySelectorAll('[data-wme-studio-pane-fill]'));
+    if (on) for (const panel of document.querySelectorAll(ISLAND_PANEL_PAINT)) {
+      if (panel.localName === 'iframe' || !panel.isConnected) continue;
+      const box = panel.getBoundingClientRect();
+      if (box.width < 40 || box.height < 40) continue;
+      for (const bar of panel.querySelectorAll('[class*="header--"],[class*="Header--"],wz-section-header,[class*="sticky" i],[class*="toolbar" i],[class*="tabs--"]')) {
+        const position = getComputedStyle(bar).position;
+        if (position !== 'sticky' && position !== 'fixed') continue;
+        const own = bar.getBoundingClientRect(), zoom = bar.currentCSSZoom || 1;
+        const values = { '--ws-pane-size': `${Math.round(box.width / zoom)}px ${Math.round(box.height / zoom)}px`, '--ws-pane-pos': `${Math.round((box.left - own.left) / zoom)}px ${Math.round((box.top - own.top) / zoom)}px` };
+        for (const [name, value] of Object.entries(values)) if (bar.style.getPropertyValue(name) !== value) bar.style.setProperty(name, value);
+        if (!bar.hasAttribute('data-wme-studio-pane-fill')) bar.setAttribute('data-wme-studio-pane-fill', '');
+        marked.delete(bar);
+      }
+    }
+    for (const bar of marked) { bar.removeAttribute('data-wme-studio-pane-fill'); bar.style.removeProperty('--ws-pane-size'); bar.style.removeProperty('--ws-pane-pos'); }
+    clearTimeout(paneFillTimer);
+    if (on || document.querySelector('[data-wme-studio-pane-fill]')) paneFillTimer = setTimeout(syncPaneFills, 1000);
+  }
   function syncCompactGlassAppearance(opacity = settings.compactIslandOpacity) {
     const compact = settings.enabled && settings.compactMode && !standaloneSignin && !editorProfile;
     const contrast = compact && Number(opacity) < 50;
@@ -4924,7 +5293,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     if (!panel) return null;
     const app = panel.closest('.app');
     observeCompactPlacement(panel); observeCompactPlacement(app);
-    if (!app?.classList.contains('filter-panel-open') || app.classList.contains('sidebar-fullscreen')) {
+    if (!app?.classList.contains('filter-panel-open') || (app.classList.contains('sidebar-fullscreen') && !app.hasAttribute('data-wme-studio-hub-window'))) {
       clearCompactTaskFilters(panel); return null;
     }
     const bounds = panel.getBoundingClientRect(), sidebarRect = compactVisibleRect(sidebar);
@@ -5230,7 +5599,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   }
   function syncCompactAuxiliaryPlacement(forceLaunchers = false) {
     if (!compactLayoutActive()) {
-      clearCompactTaskFilters();
+      clearCompactTaskFilters(); placeGoogleMapsLink(null);
       for (const state of onlineEditorsPanels.values()) {
         for (const name of ['--ws-online-panel-left','--ws-online-panel-top','--ws-online-panel-height']) state.panel.style.removeProperty(name);
         state.panel.removeAttribute('data-wme-studio-online-space'); state.measureHeight = true;
@@ -5346,6 +5715,40 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       const radius = own ? `${Math.round(parseFloat(getComputedStyle(root).getPropertyValue('--ws-compact-radius')) / zoom || 26)}px` : '';
       if (tile.element.style.getPropertyValue('--ws-tile-out-radius') !== radius) { if (radius) tile.element.style.setProperty('--ws-tile-out-radius', radius); else tile.element.style.removeProperty('--ws-tile-out-radius'); }
     }
+    placeGoogleMapsLink(obstacles);
+  }
+  // The Google Maps link WME shows in the map's bottom-right corner (3.0.0): in Floating mode the Tile Update island
+  // sits in that corner and hid it. The link moves left of whatever covers it (or up, when there is no room).
+  function placeGoogleMapsLink(obstacles) {
+    const link = document.querySelector('.wz-map-ol-control-google-map-permalink');
+    if (!link) return;
+    if (link.style.getPropertyValue('translate')) link.style.removeProperty('translate');
+    if (!obstacles) return;
+    const base = compactVisibleRect(link);
+    if (!base) return;
+    const gap = 8;
+    const hit = box => obstacles.find(other => other.left < box.left + box.width + gap && other.left + other.width + gap > box.left && other.top < box.top + box.height && other.top + other.height > box.top);
+    let box = { ...base };
+    for (let tries = 0; tries < 6; tries++) {
+      const other = hit(box);
+      if (!other) break;
+      const left = other.left - gap - box.width;
+      if (left >= 12) box.left = left;
+      else { box.left = base.left; box.top = other.top - gap - box.height; }
+    }
+    if (hit(box)) return;
+    const dx = Math.round(box.left - base.left), dy = Math.round(box.top - base.top);
+    if (dx || dy) link.style.setProperty('translate', `${dx}px ${dy}px`, 'important');
+  }
+  // Where the side panel sits in Floating mode is written on the panel itself (3.0.0): see sideWidthTargets.
+  const sideDock = new Map();
+  function sideDockVariable(name, value) {
+    if (value == null) sideDock.delete(name); else sideDock.set(name, value);
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) setElementVariable(sidebar, name, value);
+  }
+  function applySideDock(sidebar) {
+    for (const name of SIDE_DOCK_VARIABLES) setElementVariable(sidebar, name, sideDock.has(name) ? sideDock.get(name) : null);
   }
   function rootVariable(name, value) {
     if (value == null) root.style.removeProperty(name);
@@ -5354,6 +5757,9 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
   function clearCompactLayoutVariables() {
     attr('layout', null);
     for (const name of COMPACT_LAYOUT_VARIABLES) root.style.removeProperty(name);
+    sideDock.clear();
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) applySideDock(sidebar);
     clearDefaultSideIslandCenters();
     for (const spec of compactIslandSpecs.filter(spec => spec.popup)) for (const axis of ['left','top']) root.style.removeProperty(`--ws-island-${spec.id}-${axis}`);
   }
@@ -5426,8 +5832,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       if (rail.left + rail.width / 2 > frame.width / 2) panelRight = Math.round(frame.width - rail.left + COMPACT_DOCK_GAP);
       else panelLeft = Math.round(rail.left + rail.width + COMPACT_DOCK_GAP);
     }
-    rootVariable('--ws-dock-panel-left', panelLeft != null ? `${panelLeft}px` : panelRight != null ? 'auto' : null);
-    rootVariable('--ws-dock-panel-right', panelRight != null ? `${panelRight}px` : null);
+    sideDockVariable('--ws-side-dock-left', panelLeft != null ? `${panelLeft}px` : panelRight != null ? 'auto' : null);
+    sideDockVariable('--ws-side-dock-right', panelRight != null ? `${panelRight}px` : null);
 
     const footer = frame.footer;
     let panelTop = null, panelBottom = footer ? `${Math.ceil(frame.height - footer.top + COMPACT_ISLAND_GAP)}px` : null;
@@ -5461,16 +5867,16 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       const placed = compactFreePosition({...requested,top,height},obstacles,frame) || {...requested,top,height};
       panelLeft = Math.round(placed.left); panelRight = null;
       panelTop = `${Math.round(placed.top)}px`; panelBottom = 'auto'; panelHeight = `${Math.round(height)}px`;
-      rootVariable('--ws-dock-panel-left',`${panelLeft}px`); rootVariable('--ws-dock-panel-right','auto');
+      sideDockVariable('--ws-side-dock-left',`${panelLeft}px`); sideDockVariable('--ws-side-dock-right','auto');
     } else if (sideHeight) {
       const top = parseFloat(panelTop) || document.getElementById('sidebar')?.getBoundingClientRect().top || 100;
       panelHeight = `${Math.max(1,Math.min(sideHeight*(settings.panelScale || 100)/100,(footer ? footer.top-COMPACT_ISLAND_GAP : frame.height-12)-top))}px`;
       panelBottom = 'auto';
     }
-    rootVariable('--ws-dock-panel-top', panelTop);
-    rootVariable('--ws-dock-panel-bottom', panelBottom);
-    rootVariable('--ws-dock-panel-height',panelHeight);
-    rootVariable('--ws-dock-panel-css-height',panelHeight ? `calc(${panelHeight} / var(--ws-panel-zoom, 1))` : null);
+    sideDockVariable('--ws-side-dock-top', panelTop);
+    sideDockVariable('--ws-side-dock-bottom', panelBottom);
+    sideDockVariable('--ws-side-dock-height',panelHeight);
+    sideDockVariable('--ws-side-dock-css-height',panelHeight ? `calc(${panelHeight} / var(--ws-panel-zoom, 1))` : null);
 
     let layersLeft = null, layersRight = null;
     if (layout.tools && !layout.layers) {
@@ -5622,6 +6028,12 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       const baseline = compactLayoutEditing ? arrangeBaseline.get(spec.id) : null;
       const horizontal = spec.id === 'header' ? '--ws-island-header-center' : `--ws-island-${spec.id}-left`;
       if (!point && !baseline) {
+        // Online Editors and Tile Update are given their spot right after this (queueCompactAuxiliaryPlacement).
+        // Clearing it here first made the browser restyle the whole page twice, a second or more each on a busy map,
+        // every time the layout was applied: after sizing the side panel, say (3.0.0).
+        const header = typeof floatingHeader === 'undefined' ? null : floatingHeader;
+        const element = (spec.id === 'online' || spec.id === 'tile') ? queryCompactIsland(spec) : null;
+        if (element && !compactLayoutEditing && !header?.position && !islandPlaced.has(element)) continue;
         writes.push([horizontal, null], [`--ws-island-${spec.id}-top`, null]);
         continue;
       }
@@ -5950,13 +6362,15 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       animation.cancel();
     }
   }
-  function mapSizeOnRecord(map) {
-    try {
-      const native = map?.getOLMap?.() || map?.wazeMap || map?.olMap || map;
-      if (typeof native?.getSize !== 'function' || typeof native?.getCurrentSize !== 'function') return false;
-      const recorded = native.getSize(), actual = native.getCurrentSize();
-      return !!recorded && !!actual && actual.w > 0 && actual.h > 0 && recorded.w === actual.w && recorded.h === actual.h;
-    } catch (_) { return false; }
+  // Whether the size the map has on record (its extent over its resolution, from the SDK) is the size of its element.
+  function mapSizeOnRecord() {
+    return studioSDK.value(api => {
+      const element = api.Map.getMapViewportElement(), [left, bottom, right, top] = api.Map.getMapExtent(), resolution = api.Map.getMapResolution();
+      const w = element?.clientWidth, h = element?.clientHeight;
+      if (!w || !h || !(resolution > 0)) return false;
+      const x = lon => lon * 20037508.34 / 180, y = lat => Math.log(Math.tan((90 + lat) * Math.PI / 360)) * 20037508.34 / Math.PI;
+      return Math.abs((x(right) - x(left)) / resolution - w) < 1.5 && Math.abs((y(top) - y(bottom)) / resolution - h) < 1.5;
+    }, false);
   }
   function resizeMap(immediate = false) {
     resizeNative ||= immediate;
@@ -5966,12 +6380,14 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
       const preferNative = resizeNative; resizeNative = false;
       notifyingMapResize = true;
       try {
-        const map = pageWindow.W?.map;
         if (preferNative && document.getElementById('WazeMap')) {
+          if (mapSizeOnRecord()) return;   // nothing changed for the map: no page-wide resize (Street View drags call this often)
           // The page's own "the window changed" first, as for any page; WME's resize only if the map did not follow.
           window.dispatchEvent(new Event('resize'));
           requestAnimationFrame(() => {
-            if (typeof map?.resize !== 'function' || mapSizeOnRecord(map)) return;
+            // The SDK has no way to tell the map its size changed: WME's own call, only when the map missed the event.
+            const map = pageWindow.W?.map;
+            if (typeof map?.resize !== 'function' || mapSizeOnRecord()) return;
             notifyingMapResize = true;
             try { map.resize(); } catch (studioError) { reportStudioError("resizeMap",studioError); }
             finally { notifyingMapResize = false; }
@@ -5981,7 +6397,7 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
         // A "resize" event makes the editor and every script that listens for it measure the page again.
         // When the size OpenLayers has on record already equals the size of the map element (a floating
         // side panel opening over the map, for example) there is nothing to tell it.
-        if (!preferNative && mapSizeOnRecord(map)) return;
+        if (!preferNative && mapSizeOnRecord()) return;
         window.dispatchEvent(new Event('resize'));
       } finally { notifyingMapResize = false; }
     });
@@ -6586,7 +7002,8 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
     else syncChatFrame(frame);
   }
   function syncChatTheme() {
-    const paletteKey = activeTheme() + ':' + settings.accent + ':' + settings.corners;
+    const islandOn = !!root.getAttribute('data-wme-studio-island-ink') && !root.hasAttribute('data-wme-studio-glass-contrast');
+    const paletteKey = activeTheme() + ':' + settings.accent + ':' + settings.corners + (islandOn ? `:${settings.islandFill}:${settings.islandColor}:${settings.islandColor2}:${settings.islandAngle}:${settings.islandIntensity}:${settings.compactIslandOpacity}` : '');
     if (!settings.enabled) { chatPaletteKey = ''; chatPaletteText = ''; }
     if (settings.enabled && (standaloneSignin || chatFrames.size) && (!chatStyleText || paletteKey !== chatPaletteKey)) {
       chatPaletteKey = paletteKey;
@@ -6599,6 +7016,17 @@ ${studioButtonMotionCSS('.wz-button.icon-only', ':host-context(html[data-wme-stu
         palette.setProperty('color-scheme', activeTheme() === 'light' ? 'light' : 'dark', 'important');
       }
       chatPaletteText = standaloneSignin ? '' : `html[data-wme-studio-chat="on"], html[data-wme-studio-chat="on"] body, html[data-wme-studio-chat="on"] #root { ${palette.cssText} }`;
+      // The islands' color (3.0.0) reaches Messages too: the frame is painted with it, and its own surfaces let it show.
+      if (!standaloneSignin && islandOn) {
+        const ink = computed.getPropertyValue('--ws-island-ink').trim() || '#f4f6f8', a = islandTone(settings.islandColor);
+        const paint = (touchScreen && computed.getPropertyValue('--ws-island-paint-solid').trim()) || computed.getPropertyValue('--ws-island-paint-hover').trim() || a;
+        const tint = amount => `color-mix(in srgb, ${ink} ${amount}%, transparent)`;
+        // An open conversation lies over the list of conversations: it is painted solid, or the list showed through it.
+        chatPaletteText += `
+html[data-wme-studio-chat="on"], html[data-wme-studio-chat="on"] body, html[data-wme-studio-chat="on"] #root { --wme-studio-surface: transparent !important; --wme-studio-bg: transparent !important; --wme-studio-surface-3: transparent !important; --wme-studio-input: ${tint(10)} !important; --wme-studio-surface-2: ${tint(10)} !important; --wme-studio-hover: ${tint(13)} !important; --wme-studio-active: ${tint(19)} !important; --wme-studio-border: ${tint(16)} !important; --wme-studio-border-strong: ${tint(28)} !important; --wme-studio-text: ${ink} !important; --wme-studio-text-secondary: ${tint(80)} !important; --wme-studio-text-muted: ${tint(64)} !important; --background_default: transparent !important; --background_variant: ${tint(10)} !important; --surface_default: ${tint(10)} !important; --surface_variant: ${tint(13)} !important; --content_default: ${ink} !important; --content_p1: ${tint(80)} !important; --content_p2: ${tint(64)} !important; --hint_text: ${tint(64)} !important; --hairline: ${tint(16)} !important; --hairline_strong: ${tint(28)} !important; color-scheme: ${ink === '#111820' ? 'light' : 'dark'} !important; }
+html[data-wme-studio-chat="on"][data-wme-studio-chat] { background: ${paint} !important; }
+html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + div > div { background: ${paint === a ? a : `${paint}, ${a}`} !important; }`;
+      }
       chatStyleText ||= `html[data-wme-studio-chat="on"],
 html[data-wme-studio-chat="on"] body,
 html[data-wme-studio-chat="on"] #root,
@@ -6829,8 +7257,8 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     if (!settings.enabled) {
       syncStudioPalette();
       root.removeAttribute('data-wme-studio-sidebar-entry');
-      for (const key of ['', 'page', 'theme', 'corners', 'addons', 'motion', 'compact', 'header-width', 'layer-columns', 'light-glass', 'eye-saver', 'satellite', 'viewport-overlay', 'requests', 'scrollbars', 'screen-displays', 'sd-longpress', 'sd-road', 'sd-shape', 'sd-draw']) attr(key, null);
-      for (const name of ['--wme-studio-accent', '--wme-studio-on-accent', '--ws-on-accent-filter', '--ws-sidebar', '--ws-compact-drawer-top', '--ws-compact-drawer-height', '--ws-compact-drawer-left', '--ws-compact-opacity', '--ws-compact-hover-opacity', '--ws-compact-tools-border-width', '--ws-header-width-extension', '--ws-eye-saver-opacity', '--ws-satellite-brightness', '--ws-gps-opacity', '--ws-viewport-overlay-opacity']) root.style.removeProperty(name);
+      for (const key of ['', 'page', 'theme', 'corners', 'addons', 'motion', 'compact', 'header-width', 'layer-columns', 'light-glass', 'eye-saver', 'satellite', 'viewport-overlay', 'requests', 'scrollbars', 'screen-displays', 'sd-longpress', 'sd-road', 'sd-shape', 'sd-draw', 'island-ink']) attr(key, null);
+      for (const name of ['--ws-island-paint-hover', '--wme-studio-accent', '--wme-studio-on-accent', '--ws-on-accent-filter', '--ws-sidebar', '--ws-compact-drawer-top', '--ws-compact-drawer-height', '--ws-compact-drawer-left', '--ws-compact-opacity', '--ws-compact-hover-opacity', '--ws-compact-tools-border-width', '--ws-header-width-extension', '--ws-eye-saver-opacity', '--ws-satellite-brightness', '--ws-gps-opacity', '--ws-viewport-overlay-opacity', '--ws-island-a', '--ws-island-paint', '--ws-island-paint-solid']) root.style.removeProperty(name);
       clearCompactLayoutVariables();
       queueCompactAuxiliaryPlacement();
       syncCompactToolTooltips();
@@ -6844,6 +7272,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       rootStyle('--ws-sidebar', '330px');
       rootStyle('--ws-compact-opacity', `${settings.compactIslandOpacity}%`);
       rootStyle('--ws-compact-hover-opacity', `${Math.min(100, settings.compactIslandOpacity + 48)}%`);
+      syncIslandFill();
       syncEyeSaver();
       rootStyle('--ws-satellite-brightness', String(settings.satelliteBrightness / 100));
       rootStyle('--ws-gps-opacity', String(settings.gpsOpacity / 100));
@@ -6862,10 +7291,11 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       attr('motion', !settings.motion || reducedMotion.matches ? 'reduced' : 'normal');
       attr('compact', settings.compactMode && !standaloneSignin && !editorProfile ? 'on' : null);
       attr('header-width', settings.compactHeaderFullWidth ? 'custom' : null);
-      attr('layer-columns', settings.layerColumns);
+      attr('layer-columns', layerColumnsActive() ? 'two' : 'one');
       attr('requests', settings.compactRequests ? 'compact' : null);
+      attr('task-style', null);   // the Review looks wait for the vote (3.0.0): everyone keeps Classic for now
       attr('scrollbars', settings.customScrollbars ? 'on' : null);
-      attr('create-click', settings.createMenuClick ? 'on' : null);
+      attr('create-click', settings.createMenuClick || touchScreen ? 'on' : null);
       attr('screen-displays', settings.screenDisplays ? 'on' : null);
       attr('sd-longpress', settings.screenDisplays && settings.screenLongPress ? 'on' : null);
       attr('sd-road', settings.screenDisplays && settings.screenRoadButton ? 'on' : null);
@@ -6873,6 +7303,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       attr('sd-draw', settings.screenDisplays && settings.screenDrawButton ? 'on' : null);
       attr('page', standaloneSignin ? 'signin' : editorProfile ? 'profile' : 'editor');
       attr('', 'on');
+      globalThis.WMEStudioHubWindow?.sync();
       if (affects('enabled', 'compactMode', 'compactHeaderFullWidth', 'compactHeaderWidth', 'hudScale', 'compactIslandLayout.v1', 'layerColumns')) applyCompactLayoutVariables();
     }
     syncSidePanelSize();
@@ -6890,7 +7321,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     if (!settings.enabled) scheduleNativeTheme();
     if (affects('enabled', 'viewportBrightness')) syncViewportOverlay();
     if (affects('enabled', 'gpsBelowRoads','gpsOpacity','satelliteBrightness')) syncMapOrder();
-    if (affects('enabled', 'theme', 'accent', 'corners')) {
+    if (affects('enabled', 'theme', 'accent', 'corners', 'compactMode', 'islandFill', 'islandColor', 'islandColor2', 'islandAngle', 'islandIntensity', 'compactIslandOpacity')) {
       if (!changed || changed.has('enabled') || !settings.enabled) syncChatTheme();
       else queueChatTheme();
     }
@@ -7175,11 +7606,11 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
   :host(#drawer[data-wme-studio-beta-glass="on"])::before {
     content:""!important;position:absolute!important;inset:0!important;z-index:-1!important;
     pointer-events:none!important;border-radius:inherit!important;
-    background:color-mix(in srgb,var(--wme-studio-bg) var(--ws-compact-opacity,60%),transparent)!important;
+    background:var(--ws-island-paint, color-mix(in srgb,var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-opacity,60%),transparent))!important;
     -webkit-backdrop-filter:blur(8px)!important;backdrop-filter:blur(8px)!important;box-shadow:none!important;
   }
   :host(#drawer[data-wme-studio-beta-glass="on"]:hover)::before {
-    background:color-mix(in srgb,var(--wme-studio-bg) var(--ws-compact-hover-opacity,100%),transparent)!important;
+    background:var(--ws-island-paint-hover, color-mix(in srgb,var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-hover-opacity,100%),transparent))!important;
   }
   :host(#drawer[data-wme-studio-beta-glass="on"]) .wz-navigation-drawer {
     width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;
@@ -7290,9 +7721,16 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
     }
     return Math.ceil(content) + 2;
   }
+  // The side panel's width goes on the two boxes that use it (the panel and the map area), never on a box around the
+  // map: a variable written there is worked out again for every road and place drawn on the map, which took WME a
+  // second or more each time (3.0.0). The two are declared as variables that do not pass down (see @property).
+  function sideWidthTargets(app = document.querySelector('.app')) {
+    return [app?.querySelector('#sidebar') || document.getElementById('sidebar'), app?.querySelector('.edit-area-main')].filter(Boolean);
+  }
   function clearLaneLayout(app) {
     app?.removeAttribute('data-wme-studio-lanes');
     app?.style.removeProperty('--ws-lane-width');
+    for (const node of sideWidthTargets(app)) node.style.removeProperty('--ws-lane-width');
   }
   function clearLaneSizing() {
     cancelAnimationFrame(laneFrame); laneFrame = 0;
@@ -7323,7 +7761,7 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       normalWidth ||= pixels(getComputedStyle(root).getPropertyValue('--ws-sidebar')) || 330;
       const needed = Math.max(normalWidth, ...visible.map(row => laneRowWidth(row, sidebar, styles)));
       const width = needed + 'px';
-      if (app.style.getPropertyValue('--ws-lane-width') !== width) app.style.setProperty('--ws-lane-width', width);
+      for (const node of sideWidthTargets(app)) if (node.style.getPropertyValue('--ws-lane-width') !== width) node.style.setProperty('--ws-lane-width', width);
       if (app.getAttribute('data-wme-studio-lanes') !== 'on') app.setAttribute('data-wme-studio-lanes', 'on');
     }
   }
@@ -8235,8 +8673,7 @@ ${studioRangeCSS('.picker-hue')}
       if (id == null) return null;
       let data = null;
       try { if (event.type === 'mapProblem') data = studioSDK.get()?.DataModel?.MapProblems?.getById?.({ mapProblemId: id }) || null; } catch (_) { data = null; }
-      if (data?.geometry) return { id: String(id), getID: () => String(id), getGeometry: () => data.geometry };
-      try { return pageWindow.W?.model?.mapProblems?.getObjectById?.(id) || null; } catch (_) { return null; }
+      return data?.geometry ? { id: String(id), getID: () => String(id), getGeometry: () => data.geometry } : null;
     }
     function requestShown(next, revealModel = next?.model) {
       if (revealModel) requestReveal.schedule(revealModel);
@@ -8261,17 +8698,25 @@ ${studioRangeCSS('.picker-hue')}
           else { sdkOpen = null; requestShown(null, problemFromSDK(event)); }
         } });
         api.Events.on({ eventName: 'wme-issue-tracker-panel-closed', eventHandler: () => { sdkOpen = null; requestClosed(); } });
+        // An update request opened from its marker on the map.
+        try { api.Events.on({ eventName: 'wme-update-request-panel-opened', eventHandler: event => {
+          const id = event?.updateRequestId;
+          if (id == null || sdkOpen === String(id)) return;
+          sdkOpen = String(id); requestShown(requestFromSDK(id));
+        } }); } catch (_) { /* an SDK without this event: the issue tracker event is enough */ }
         sdkPanelsHooked = true;
       } catch (_) { sdkPanelsHooked = false; }
       return sdkPanelsHooked;
     }
     function readCurrent() {
-      if (sdkOpen !== undefined) {
-        if (!sdkOpen) return;
+      if (sdkOpen) {
         const fresh = requestFromSDK(sdkOpen);
-        active = { ...(active?.id === fresh.id ? active : {}), ...fresh, mapIssueId: Number.isFinite(fresh.mapIssueId) ? fresh.mapIssueId : active?.mapIssueId };
+        const same = active?.id === fresh.id;
+        active = { ...(same ? active : {}), ...fresh, mapIssueId: Number.isFinite(fresh.mapIssueId) ? fresh.mapIssueId : same ? active.mapIssueId : NaN };
         return;
       }
+      // Once the SDK reports the panels, its word is the one that counts. Before that (or without it): WME's own answer.
+      if (sdkPanelsHooked && sdkOpen !== undefined) return;
       let model;
       try { model=pageWindow.W?.problemsController?.getCurrentProblem?.(); } catch (_) { reportStudioError("readCurrent",_);}
       if (model) {
@@ -8634,8 +9079,20 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   const requestReveal = (() => {
     let timers = [];
     let placePanel = null, placeKey = '', placeSDK = null, placeSDKStop = null;
-    const olMap = () => { const map = pageWindow.W?.map; return map?.getOLMap?.() || map?.wazeMap || map?.olMap || map || null; };
-    function screenPoint(model, map, view) {
+    // The map's place on the screen (the SDK's viewport element).
+    const mapView = () => studioSDK.value(api => api.Map.getMapViewportElement()?.getBoundingClientRect() || null, null) || document.getElementById('WazeMap')?.getBoundingClientRect() || null;
+    // The middle of an area (its centroid), else of its outline.
+    function centroid(ring) {
+      let area = 0, x = 0, y = 0;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const cross = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+        area += cross; x += (ring[j][0] + ring[i][0]) * cross; y += (ring[j][1] + ring[i][1]) * cross;
+      }
+      if (Math.abs(area) > 1e-14) return [x / (3 * area), y / (3 * area)];
+      const lons = ring.map(p => p[0]), lats = ring.map(p => p[1]);
+      return [(Math.min(...lons) + Math.max(...lons)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
+    }
+    function screenPoint(model, view) {
       // The SDK first: the request's position in degrees, and where that is on the map.
       const fromSDK = studioSDK.value(api => {
         let geometry = null;
@@ -8645,51 +9102,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         if (geometry?.type === 'Polygon') {
           const ring = pair?.[0];
           if (!Array.isArray(ring) || !ring.length) return null;
-          const lons = ring.map(p => p[0]), lats = ring.map(p => p[1]);
-          pair = [(Math.min(...lons) + Math.max(...lons)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
+          if (ring.some(p => !Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1]))) return null;
+          pair = centroid(ring);
         } else if (geometry?.type !== 'Point') return null;
         if (!Array.isArray(pair) || !Number.isFinite(pair[0]) || !Number.isFinite(pair[1]) || Math.abs(pair[0]) > 180 || Math.abs(pair[1]) > 90) return null;
         const pixel = api.Map.getPixelFromLonLat({ lonLat: { lon: pair[0], lat: pair[1] } });
         return Number.isFinite(pixel?.x) && Number.isFinite(pixel?.y) ? { x: view.left + pixel.x, y: view.top + pixel.y } : null;
       }, null);
-      if (fromSDK) return fromSDK;
-      let x, y;
-      try {
-        const geometry = model?.getOLGeometry?.();
-        const point = Number.isFinite(geometry?.x) && Number.isFinite(geometry?.y) ? geometry : geometry?.getCentroid?.();
-        if (Number.isFinite(point?.x) && Number.isFinite(point?.y)) { x = point.x; y = point.y; }
-        else {
-          const center = geometry?.getBounds?.()?.getCenterLonLat?.();
-          if (Number.isFinite(center?.lon) && Number.isFinite(center?.lat)) { x = center.lon; y = center.lat; }
-        }
-      } catch (_) { /* older models have no such method */ }
-      if (x === undefined) {
-        let geometry = null, pair = null;
-        try {
-          geometry = model?.attributes?.geometry;
-          if (!Array.isArray(geometry?.coordinates)) geometry = model?.getGeometry?.();
-          if (!Array.isArray(geometry?.coordinates)) geometry = model?.geometry || null;
-        } catch (_) { geometry = null; }
-        pair = geometry?.coordinates;
-        if (geometry?.type === 'Polygon') {
-          const ring = pair?.[0];
-          if (!Array.isArray(ring) || !ring.length) return null;
-          let left = Infinity, right = -Infinity, bottom = Infinity, top = -Infinity;
-          for (const p of ring) {
-            if (!Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return null;
-            left = Math.min(left,p[0]); right = Math.max(right,p[0]); bottom = Math.min(bottom,p[1]); top = Math.max(top,p[1]);
-          }
-          pair = [(left + right) / 2,(bottom + top) / 2];
-        }
-        if (!Array.isArray(pair) || !Number.isFinite(pair[0]) || !Number.isFinite(pair[1])) return null;
-        const code = String(map.getProjectionObject?.()?.getCode?.() || map.projection?.projCode || map.projection || '');
-        if (/4326/.test(code)) { x = pair[0]; y = pair[1]; }
-        else { x = pair[0] * 20037508.342789244 / 180; y = Math.log(Math.tan((90 + pair[1]) * Math.PI / 360)) * 20037508.342789244 / Math.PI; }
-      }
-      let pixel = null;
-      try { pixel = map.getPixelFromLonLat?.({ lon: x, lat: y }) || map.getViewPortPxFromLonLat?.({ lon: x, lat: y }) || null; } catch (_) { pixel = null; }
-      if (!pixel || !Number.isFinite(pixel.x) || !Number.isFinite(pixel.y)) return null;
-      return { x: view.left + pixel.x, y: view.top + pixel.y };
+      return fromSDK;
     }
     // Moves the map by dx, dy pixels through the SDK (the centre moved to the point that many pixels away).
     function sdkPanBy(dx, dy) {
@@ -8720,11 +9140,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     function reveal(model) {
       if (!ready || !settings.enabled || !compactLayoutActive() || compactLayoutEditing || !headerGuardWindows.size) return 'not in the Floating layout, or no request panel';
-      const map = olMap();
-      if (!map || typeof map.pan !== 'function') return 'no map';
-      const view = (map.viewPortDiv || map.div || document.getElementById('WazeMap'))?.getBoundingClientRect?.();
+      const view = mapView();
       if (!view || view.width < 200 || view.height < 200) return 'no map view';
-      const point = screenPoint(model, map, view);
+      const point = screenPoint(model, view);
       if (!point) return 'no position for the request';
       if (point.x < view.left || point.x > view.right || point.y < view.top || point.y > view.bottom) return 'request is off screen';
       const obstacles = compactPanelObstacles(null, 16);
@@ -8734,8 +9152,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const dx = Math.round(point.x - (free.left + free.width / 2)), dy = Math.round(point.y - (free.top + free.height / 2));
       if (Math.hypot(dx, dy) < 40) return 'visible';
       ownPanUntil = performance.now() + 600;
-      if (!sdkPanBy(dx, dy)) map.pan(dx, dy, { animate: false });
-      return `moved ${dx},${dy}`;
+      return sdkPanBy(dx, dy) ? `moved ${dx},${dy}` : 'the map could not be moved';
     }
     // Map problems (and anything else the editor opens without announcing it) are found from their panel: the
     // editor centres the map on the request as it opens it, so that centre is where the request is. When the
@@ -8743,9 +9160,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     // Moves the map so a screen point (a request's marker) is in the clearest area no panel covers.
     function revealScreen(point) {
       if (!ready || !settings.enabled || !compactLayoutActive() || compactLayoutEditing) return 'not in the Floating layout';
-      const map = olMap();
-      if (!map || typeof map.pan !== 'function') return 'no map';
-      const view = (map.viewPortDiv || map.div || document.getElementById('WazeMap'))?.getBoundingClientRect?.();
+      const view = mapView();
       if (!view || view.width < 200 || view.height < 200) return 'no map view';
       const obstacles = compactPanelObstacles(null, 16);
       if (!obstacles.some(rect => point.x >= rect.left && point.x <= rect.left + rect.width && point.y >= rect.top && point.y <= rect.top + rect.height)) return 'visible';
@@ -8754,8 +9169,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const dx = Math.round(point.x - (free.left + free.width / 2)), dy = Math.round(point.y - (free.top + free.height / 2));
       if (Math.hypot(dx, dy) < 40) return 'visible';
       ownPanUntil = performance.now() + 600;
-      if (!sdkPanBy(dx, dy)) map.pan(dx, dy, { animate: false });
-      return `moved ${dx},${dy}`;
+      return sdkPanBy(dx, dy) ? `moved ${dx},${dy}` : 'the map could not be moved';
     }
     // The marker of the request a panel shows: the editor draws the open request's marker enlarged (or marks it
     // as selected). Only a marker that clearly stands out next to the panel is used; anything less certain is
@@ -8791,18 +9205,18 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (first.rect.width >= 40 && (!second || area(first) >= 1.3 * area(second))) return { marker: first, why: 'enlarged marker' };
       return { marker: null, why: `no marker stands out: ${describe(sorted)}` };
     }
-    let lastShown = -Infinity, ownPanUntil = 0, movesHooked = null, requestClick = -Infinity, showTimer = 0, shownModel = null;
+    let lastShown = -Infinity, ownPanUntil = 0, requestClick = -Infinity, showTimer = 0, shownModel = null;
     window.addEventListener('click', event => {
       if (!event.target?.closest?.(REQUEST_WINDOW_SELECTOR)) return;
       requestClick = performance.now(); hookMoves();
     }, { capture: true, passive: true });
     const moves = [], seenPanels = new WeakSet();
     let movesSDK = false;
-    // The map stopped moving: lon/lat in degrees (from the SDK) or in the map's own units (OpenLayers).
-    function mapStopped(lon, lat, degrees) {
+    // The map stopped moving: lon/lat in degrees (from the SDK).
+    function mapStopped(lon, lat) {
       if (performance.now() < ownPanUntil) return;
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
-      moves.push({ time: performance.now(), lon, lat, degrees }); if (moves.length > 8) moves.shift();
+      moves.push({ time: performance.now(), lon, lat }); if (moves.length > 8) moves.shift();
       // "Show on map" (or anything else in a request that moves the map): the editor flies there in several
       // steps, so nothing is done until the map has been still for a while, and then the request's own
       // position is used (not the map's centre, which is only where the flight happened to stop).
@@ -8820,22 +9234,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     function hookMoves() {
       if (movesSDK) return;
       const api = studioSDK.get();
-      if (api) {
-        try {
-          api.Events.on({ eventName: 'wme-map-move-end', eventHandler: () => {
-            try { const center = api.Map.getMapCenter(); mapStopped(center?.lon, center?.lat, true); } catch (_) { /* the map is still loading */ }
-          } });
-          movesSDK = true;
-          return;
-        } catch (_) { /* OpenLayers below */ }
-      }
-      const map = olMap();
-      if (!map || movesHooked === map || typeof map.events?.register !== 'function') return;
-      movesHooked = map;
+      if (!api?.Events?.on) return;
       try {
-        map.events.register('moveend', null, () => {
-          try { const center = map.getCenter?.(); mapStopped(center?.lon, center?.lat, false); } catch (_) { /* the map is still loading */ }
-        });
+        api.Events.on({ eventName: 'wme-map-move-end', eventHandler: () => {
+          try { const center = api.Map.getMapCenter(); mapStopped(center?.lon, center?.lat); } catch (_) { /* the map is still loading */ }
+        } });
+        movesSDK = true;
       } catch (error) { reportStudioError('requestReveal', error); }
     }
     function openProblem(panel) {
@@ -8853,7 +9257,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
           const id = `panel:${move.lon.toFixed(1)},${move.lat.toFixed(1)}`;
           if (done.id === id && performance.now() - done.time < 30000) { handled = true; return; }
           let result;
-          shownModel = move.degrees ? { id, getGeometry: () => ({ type: 'Point', coordinates: [move.lon, move.lat] }) } : { id, getOLGeometry: () => ({ x: move.lon, y: move.lat }) };
+          shownModel = { id, getGeometry: () => ({ type: 'Point', coordinates: [move.lon, move.lat] }) };
           try { result = reveal(shownModel); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
           note(id, `centred by the editor: ${result}`);
           if (result.startsWith('moved')) { done = { id, time: performance.now() }; handled = true; }
@@ -8912,10 +9316,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       // A genuine reopen is different from duplicate selection/render events during a drag.
       if (freshOpening && done.id === key) done = {id:'',time:0};
       const panel = placePanel;
-      // Prefer native venue geometry when available, so area-place markers use their actual centroid.
-      let nativeVenue = null;
-      try { nativeVenue = pageWindow.W?.model?.venues?.getObjectById?.(id); } catch (_) { /* SDK geometry remains available */ }
-      const target = {id:key,getOLGeometry:()=>venue.getOLGeometry?.() || nativeVenue?.getOLGeometry?.(),getGeometry:()=>venue.getGeometry?.() || venue.geometry || venue.attributes?.geometry};
+      // An area place is centred on its centroid (screenPoint works it out from the SDK's outline).
+      const target = {id:key,getGeometry:()=>venue.geometry || venue.getGeometry?.() || venue.attributes?.geometry};
       schedule(target,() => {
         if (placePanel !== panel || !placePanelVisible()) return false;
         const current = selectedPlace();
@@ -9173,7 +9575,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       }
       const popupKind = requestPopupKind(element) || (element.matches('.layer-switcher .menu') ? 'layers' : isFlowPanel(element) ? 'panel' : null);
       if (popupKind && element.getAttribute('data-wme-studio-popup-kind') !== popupKind) element.setAttribute('data-wme-studio-popup-kind',popupKind);
-      if (popupKind && panelSizes[popupKind] && resizableWindow(element)) applyWindowSize(element);
+      const sizeKey = popupKind ? resizableWindow(element) : '';
+      if ((sizeKey === 'turnInstructions') !== element.hasAttribute('data-wme-studio-turn-panel')) element.toggleAttribute('data-wme-studio-turn-panel', sizeKey === 'turnInstructions');
+      if (sizeKey && panelSizes[sizeKey]) applyWindowSize(element);
       panelResizeHints.show(element, resizableWindow(element));
       const savedPoint = popupKind && compact ? compactIslandLayout?.[popupKind] : null;
       const signature = savedPoint ? `${savedPoint.anchor || 'preview'},${savedPoint.x},${savedPoint.y}` : null;
@@ -9183,7 +9587,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const suggestionBody = popupKind === 'mapSuggestion' ? requestWindowBody(state) : null;
       // Account for content arriving after the loading shell was height-limited.
       const suggestionOverflow = suggestionBody ? Math.max(0,suggestionBody.container.scrollHeight - suggestionBody.container.clientHeight) + Math.max(0,suggestionBody.content.scrollHeight - suggestionBody.content.clientHeight) : 0;
-      const savedHeight = popupKind && resizableWindow(element) ? Number(panelSizes[popupKind]?.height) : 0;
+      const savedHeight = sizeKey ? Number(panelSizes[sizeKey]?.height) : 0;
       const userHeight = Number.isFinite(savedHeight) && savedHeight > 0 ? savedHeight * (element.currentCSSZoom || 1) : 0;
       // A previous max-height can still clip rect.height. Fit the saved resize target so the panel can grow again.
       const desiredHeight = userHeight || Math.max(rect.height + suggestionOverflow * (element.currentCSSZoom || 1),state.naturalHeight || rect.height);
@@ -9193,7 +9597,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (popupKind && !state.requestPoint) state.requestPoint = {left:preferred.left,top:preferred.top};
       if (popupKind && compact && !compactLayoutEditing) {
         const occupied = compactPanelObstacles(element);
-        const wanted = isFlowPanel(element) ? { ...preferred, height: Math.min(preferred.height, 620) } : {...preferred,height:Math.min(preferred.height,preferredHeightLimit)};
+        // The editor's own panels stop at 620 px, unless you sized one yourself (Turn instructions, 3.0.0).
+        const wanted = isFlowPanel(element) ? { ...preferred, height: userHeight ? preferred.height : Math.min(preferred.height, 620) } : {...preferred,height:Math.min(preferred.height,preferredHeightLimit)};
         {
           const pillLimits = areaPillLimits({ top: -Infinity, bottom: Infinity }, wanted.left, wanted.width);
           if (wanted.top < pillLimits.top) wanted.top = pillLimits.top;
@@ -9300,7 +9705,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   function resizableWindow(element) {
     if (element?.id === 'sidebar') return settings.enabled && !standaloneSignin && !editorProfile && !!element.closest('.app.show-sidebar:not(.sidebar-fullscreen)') ? 'sidePanel' : '';
     const kind = element?.getAttribute?.('data-wme-studio-popup-kind');
-    return kind && kind !== 'layers' && kind !== 'panel' && !element.hasAttribute('data-wme-studio-panel-preview') ? kind : '';
+    // Turn instructions (3.0.0) is one of the editor's own panels, sized like a request window.
+    if (kind === 'panel') return element.matches('.turn-instructions-panel') || element.querySelector(':scope > .turn-instructions-panel, :scope > * > .turn-instructions-panel') ? 'turnInstructions' : '';
+    return kind && kind !== 'layers' && !element.hasAttribute('data-wme-studio-panel-preview') ? kind : '';
   }
   function setElementVariable(element, name, value) {
     if (value == null) { if (element.style.getPropertyValue(name)) element.style.removeProperty(name); }
@@ -9311,7 +9718,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const width = Number(panelSizes.sidePanel?.width), active = ready && settings.enabled && !standaloneSignin && !editorProfile;
     const sized = active && Number.isFinite(width) && width > 0;
     attr('side-width',sized ? 'on' : null);
-    rootVariable('--ws-side-width',sized ? `${Math.max(300,Math.min(640,width))}px` : null);
+    const sideWidth = sized ? `${Math.max(300,Math.min(640,width))}px` : null;
+    if (root.style.getPropertyValue('--ws-side-width')) root.style.removeProperty('--ws-side-width');
+    for (const node of new Set([element, ...sideWidthTargets(element?.closest('.app') || undefined)].filter(Boolean))) setElementVariable(node,'--ws-side-width',sideWidth);
+    if (element) applySideDock(element);
     if (!element) return;
     const mode = resizableWindow(element) ? compactLayoutActive() ? 'floating' : 'docked' : null;
     if (mode) {
@@ -9323,16 +9733,200 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (resizeGrip?.target===element && !windowResize) hideResizeGrip();
     }
   }
+  // Your hub › Your impact opened large (3.0.0). WME marks the app "sidebar-fullscreen" and lays the page over the
+  // whole editor; in Floating mode Studio marks it as a window (data-wme-studio-hub-window), keeps the islands, and
+  // the title bar moves the window. Its spot is kept between sessions; a double-click on the bar centres it again.
+  globalThis.WMEStudioHubWindow = (() => {
+    const KEY = 'wmeStudio.hubWindow.v1';
+    let saved = null, watched = null, drag = null, grip = null;
+    const MIN_WIDTH = 480, MIN_HEIGHT = 320;
+    const observer = new MutationObserver(() => sync());
+    try { Promise.resolve(studioKeep.get(KEY, null)).then(value => { if (value && Number.isFinite(value.left) && Number.isFinite(value.top)) { saved = { left: value.left, top: value.top }; if (Number.isFinite(value.width) && Number.isFinite(value.height)) Object.assign(saved, { width: value.width, height: value.height }); place(); } }).catch(studioError => reportStudioError('hubWindow', studioError)); } catch (studioError) { reportStudioError('hubWindow', studioError); }
+    function place() {
+      const sidebar = document.getElementById('sidebar');
+      if (!sidebar) return;
+      setElementVariable(sidebar, '--ws-hub-left', saved ? `${saved.left}px` : null);
+      setElementVariable(sidebar, '--ws-hub-top', saved ? `${saved.top}px` : null);
+      setElementVariable(sidebar, '--ws-hub-width', saved?.width ? `${saved.width}px` : null);
+      setElementVariable(sidebar, '--ws-hub-height', saved?.height ? `${saved.height}px` : null);
+    }
+    const open = () => !!watched?.hasAttribute('data-wme-studio-hub-window');
+    // The edges size the window: a few pixels inside and out, corners take both directions.
+    function edgeAt(x, y) {
+      if (!open()) return '';
+      const rect = document.getElementById('sidebar')?.getBoundingClientRect();
+      if (!rect?.width) return '';
+      const out = 7, inside = 5;
+      const acrossX = x > rect.left - out && x < rect.right + out, acrossY = y > rect.top - out && y < rect.bottom + out;
+      let edge = '';
+      if (acrossX && y >= rect.bottom - inside && y <= rect.bottom + out) edge += 's';
+      else if (acrossX && y >= rect.top - out && y <= rect.top + inside) edge += 'n';
+      if (acrossY && x >= rect.right - inside && x <= rect.right + out) edge += 'e';
+      else if (acrossY && x >= rect.left - out && x <= rect.left + inside) edge += 'w';
+      return edge;
+    }
+    const CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
+    function showGrip(edge, x, y) {
+      if (!grip) {
+        grip = document.createElement('div');
+        grip.id = 'wme-studio-hub-grip'; grip.setAttribute('aria-hidden', 'true');
+        grip.style.cssText = 'position:fixed;z-index:2147483000;width:24px;height:24px;margin:-12px 0 0 -12px;background:transparent;touch-action:none';
+        grip.addEventListener('pointerdown', startSize);
+        grip.addEventListener('pointermove', moveSize);
+        grip.addEventListener('pointerup', endSize);
+        grip.addEventListener('pointercancel', endSize);
+        grip.addEventListener('lostpointercapture', endSize);
+        grip.addEventListener('pointerleave', () => { if (!drag) grip.hidden = true; });
+        root.append(grip);
+      }
+      grip.edge = edge; grip.hidden = false;
+      grip.style.left = `${x}px`; grip.style.top = `${y}px`; grip.style.cursor = CURSORS[edge];
+    }
+    document.addEventListener('pointermove', event => {
+      if (drag || event.buttons || event.pointerType === 'touch') return;
+      const edge = edgeAt(event.clientX, event.clientY) && !pointOverPopup(event.clientX, event.clientY) ? edgeAt(event.clientX, event.clientY) : '';
+      if (edge) showGrip(edge, event.clientX, event.clientY);
+      else if (grip && !grip.hidden && event.target !== grip) grip.hidden = true;
+    }, { capture: true, passive: true });
+    function startSize(event) {
+      if (drag || event.button !== 0 || !grip?.edge) return;
+      const rect = document.getElementById('sidebar')?.getBoundingClientRect();
+      if (!rect) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, rect, edge: grip.edge, size: true, moved: false };
+      try { grip.setPointerCapture(event.pointerId); } catch (_) {}
+    }
+    function moveSize(event) {
+      if (!drag?.size || event.pointerId !== drag.id) return;
+      event.preventDefault();
+      const { rect, edge } = drag, dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+      drag.moved = true;
+      const maxWidth = innerWidth - 24, maxHeight = innerHeight - 24;
+      let { left, top, width, height } = rect;
+      if (edge.includes('e')) width = rect.width + dx;
+      if (edge.includes('w')) width = rect.width - dx;
+      if (edge.includes('s')) height = rect.height + dy;
+      if (edge.includes('n')) height = rect.height - dy;
+      width = Math.round(Math.max(MIN_WIDTH, Math.min(maxWidth, width)));
+      height = Math.round(Math.max(MIN_HEIGHT, Math.min(maxHeight, height)));
+      if (edge.includes('w')) left = rect.right - width;
+      if (edge.includes('n')) top = rect.bottom - height;
+      saved = { left: Math.round(left), top: Math.round(top), width, height };
+      place();
+      grip.style.left = `${event.clientX}px`; grip.style.top = `${event.clientY}px`;
+    }
+    function endSize(event) {
+      if (!drag?.size || (event.pointerId !== undefined && event.pointerId !== drag.id)) return;
+      const moved = drag.moved;
+      try { if (grip.hasPointerCapture(drag.id)) grip.releasePointerCapture(drag.id); } catch (_) {}
+      drag = null; grip.hidden = true;
+      if (moved) store();
+    }
+    function sync() {
+      const app = document.querySelector('.app');
+      if (app && app !== watched) { observer.disconnect(); watched = app; observer.observe(app, { attributes: true, attributeFilter: ['class'] }); }
+      const on = !!app && compactLayoutActive() && app.classList.contains('sidebar-fullscreen');
+      if (app && on !== app.hasAttribute('data-wme-studio-hub-window')) app.toggleAttribute('data-wme-studio-hub-window', on);
+      if (on) place();
+    }
+    function store() {
+      try { Promise.resolve(studioKeep.set(KEY, saved)).catch(studioError => reportStudioError('hubWindow', studioError)); } catch (studioError) { reportStudioError('hubWindow', studioError); }
+    }
+    function titleBar(event) {
+      if (!watched?.hasAttribute('data-wme-studio-hub-window')) return null;
+      const path = event.composedPath();
+      const bar = path.find(node => node instanceof Element && node.matches('#sidebar .tab-pane.active > [class*="header--"]'));
+      if (!bar) return null;
+      // Its buttons (back, shrink) keep working.
+      for (const node of path) { if (node === bar) break; if (node instanceof Element && node.matches('button,a,input,select,textarea,wz-button,[role="button"]')) return null; }
+      return bar;
+    }
+    document.addEventListener('pointerdown', event => {
+      if (drag || event.button !== 0 || event.isPrimary === false || !titleBar(event)) return;
+      const rect = document.getElementById('sidebar')?.getBoundingClientRect();
+      if (!rect) return;
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, moved: false, keep: saved?.width ? { width: saved.width, height: saved.height } : null };
+      event.preventDefault();
+    }, true);
+    window.addEventListener('pointermove', event => {
+      if (!drag || drag.size || event.pointerId !== drag.id) return;
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (!drag.moved) { if (Math.hypot(dx, dy) < 4) return; drag.moved = true; attr('hub-moving', 'on'); }
+      event.preventDefault();
+      saved = { left: Math.round(drag.left + dx), top: Math.round(drag.top + dy), ...(drag.keep || {}) };
+      place();
+    }, true);
+    const end = event => {
+      if (!drag || drag.size || event.pointerId !== drag.id) return;
+      const moved = drag.moved;
+      drag = null; attr('hub-moving', null);
+      if (!moved) return;
+      // Kept inside the window, as the page shows it.
+      const rect = document.getElementById('sidebar')?.getBoundingClientRect();
+      if (rect) { saved = { ...saved, left: Math.round(rect.left), top: Math.round(rect.top) }; place(); }
+      store();
+    };
+    window.addEventListener('pointerup', end, true);
+    window.addEventListener('pointercancel', end, true);
+    document.addEventListener('dblclick', event => { if (!titleBar(event)) return; saved = null; place(); store(); }, true);
+    return Object.freeze({ sync });
+  })();
+  // "Sort by" and the page numbers above a list (Review, 3.0.0) share one row: when the panel is too narrow for both,
+  // the row is drawn smaller, text and buttons alike, rather than broken in two. Below 78% of its size it wraps.
+  globalThis.WMEStudioFitRows = (() => {
+    const rows = new Set();
+    let frame = 0;
+    const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => queue()) : null;
+    function queue() { if (!frame) frame = requestAnimationFrame(fitAll); }
+    function fit(row) {
+      const kids = [...row.children].filter(kid => getComputedStyle(kid).display !== 'none');
+      if (!kids.length) return;
+      const zoom = Number(kids[0].style.zoom) || 1, style = getComputedStyle(row);
+      const gap = parseFloat(style.columnGap) || 0;
+      const natural = kids.reduce((sum, kid) => sum + kid.getBoundingClientRect().width / zoom, 0) + gap * (kids.length - 1) + 1;
+      const room = row.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+      if (!room || !natural) return;
+      const ratio = Math.min(1, room / natural), wrap = ratio < .78;
+      const value = wrap || ratio >= .995 ? '' : String(Math.floor(ratio * 100) / 100);
+      for (const kid of kids) if (kid.style.zoom !== value) kid.style.zoom = value;
+      const state = wrap ? 'wrap' : 'fit';
+      if (row.getAttribute('data-wme-studio-fit-row') !== state) row.setAttribute('data-wme-studio-fit-row', state);
+    }
+    function fitAll() {
+      frame = 0;
+      for (const row of rows) {
+        if (!row.isConnected) { rows.delete(row); resize?.unobserve(row); continue; }
+        try { fit(row); } catch (studioError) { reportStudioError('fitRows', studioError); }
+      }
+    }
+    function track(row) {
+      if (!row || rows.has(row) || !row.closest('#sidebar,#filter-panel-region')) return;
+      rows.add(row); row.setAttribute('data-wme-studio-fit-row', 'fit');
+      resize?.observe(row);
+      for (const kid of row.children) resize?.observe(kid);
+      queue();
+    }
+    return Object.freeze({ track, refresh: queue });
+  })();
   function applyWindowSize(element) {
     if (element.id==='sidebar') { syncSidePanelSize(element);if (compactLayoutActive()) syncCompactDocks();return; }
-    const size = panelSizes[resizableWindow(element)] || {}, state = headerGuardWindows.get(element);
+    const size = { ...(panelSizes[resizableWindow(element)] || {}) }, state = headerGuardWindows.get(element);
+    if (resizableWindow(element) === 'turnInstructions' && size.width && size.width < 344) size.width = 344;
     const flag = (node, name, on) => { if (on !== node.hasAttribute(name)) { if (on) node.setAttribute(name, 'on'); else node.removeAttribute(name); } };
     setElementVariable(element, '--ws-user-width', size.width ? `${size.width}px` : null);
     setElementVariable(element, '--ws-user-height', size.height ? `${size.height}px` : null);
     flag(element, 'data-wme-studio-user-width', !!size.width); flag(element, 'data-wme-studio-user-height', !!size.height);
     const sized = !!(size.width || size.height);
-    const body = state && requestWindowBody(state);
-    const card = body?.card || element.querySelector('wz-card');
+    const turnPanel = resizableWindow(element) === 'turnInstructions';
+    const body = !turnPanel && state && requestWindowBody(state);
+    // Turn instructions (3.0.0) is a card too: its box fills the window, the fields scroll, the rest stays put.
+    const card = turnPanel ? element.querySelector('wz-card.turn-instructions-panel, .turn-instructions-panel') : body?.card || element.querySelector('wz-card');
+    if (turnPanel) {
+      const content = card?.querySelector('.panel-content'), container = content?.parentElement;
+      if (container && container !== card && sized) flag(container, 'data-wme-studio-request-body', true);
+      if (content) flag(content, 'data-wme-studio-request-content', sized);
+    }
     const chain = new Set();
     if (card && sized) for (let node = card.parentElement; node && node !== element; node = node.parentElement) chain.add(node);
     if (body && sized) for (let node = body.container.parentElement; node && node !== card; node = node.parentElement) chain.add(node);
@@ -9440,10 +10034,28 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const point = resizeHoverPoint; resizeHoverPoint = null;
       if (!point || windowResize || requestHeaderDrag) return;
       if (point.target?.closest?.('#wme-studio-userscript-ui,#wme-studio-minimized-requests')) { hideResizeGrip(); return; }
+      if (pointOverPopup(point.x, point.y)) { hideResizeGrip(); return; }
       const hit = windowEdgeAt(point.x, point.y);
       if (hit) showResizeGrip(hit);
       else if (resizeGrip && !resizeGrip.hidden && point.target !== resizeGrip) hideResizeGrip();
     });
+  }
+  // A menu or a list open over a panel's edge (a closure's ⋮ menu reaching past the side panel, say) keeps the pointer:
+  // the edge only takes over where nothing is drawn on top of it (3.0.0).
+  const POPUP_OVER_EDGE = '.options-wrapper,.options-container,[role="menu"],[role="listbox"],[role="dialog"]:not(#sidebar),wz-menu-item,.tippy-box,.dropdown-menu,.select2-drop,[popover]:popover-open,wz-dialog';
+  function pointOverPopup(x, y) {
+    let node = document.elementsFromPoint(x, y).find(element => element !== resizeGrip && element.id !== 'wme-studio-hub-grip');
+    for (let depth = 0; node?.shadowRoot && depth < 8; depth++) {
+      const inner = node.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === node) break;
+      node = inner;
+    }
+    for (; node && node !== document.body && node !== document.documentElement; node = node.parentElement || node.getRootNode?.().host) {
+      // Reached the panel or window itself first: nothing lies on top of its edge.
+      if (node.id === 'sidebar' || headerGuardWindows.has(node)) return false;
+      if (node.matches?.(POPUP_OVER_EDGE)) return true;
+    }
+    return false;
   }
   // slack: a finger gets a wider edge than a mouse (touch screens have no hover to show the grip first).
   function windowEdgeAt(x, y, slack = 0) {
@@ -9461,7 +10073,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (floatingSide && inSpan && y >= rect.top - 6 - slack && y <= rect.top + 9 + inner) return { element, edge: 'move', rect };
       if (!dockedSide && inSpan && y >= rect.bottom - 6 - inner && y <= rect.bottom + 7 + slack) return { element, edge: 'bottom', rect };
       if (inColumn && x >= rect.right - 4 - inner && x <= rect.right + 7 + slack) return { element, edge: 'right', rect };
-      if (!dockedSide && inColumn && x <= rect.left + 4 + inner && x >= rect.left - 7 - slack) return { element, edge: 'left', rect };
+      // Turn instructions keeps its left edge where the layout puts it: it grows to the right and down.
+      if (!dockedSide && inColumn && x <= rect.left + 4 + inner && x >= rect.left - 7 - slack && resizableWindow(element) !== 'turnInstructions') return { element, edge: 'left', rect };
     }
     return null;
   }
@@ -9502,7 +10115,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     cancelAnimationFrame(resizeHoverFrame); resizeHoverFrame = 0; resizeHoverPoint = null;
     panelResizeHints.dismiss(element);
     const rect = element.getBoundingClientRect(), zoom = element.currentCSSZoom || 1, kind = resizableWindow(element);
-    windowResize = { element, edge, kind, zoom, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, rect, width: rect.width / zoom, height: rect.height / zoom, frame: 0, x: event.clientX, y: event.clientY };
+    // A press that does not move (a tap on a finger, a click with the mouse) changes nothing: the panel only follows the
+    // pointer once it has gone a few pixels, and a tap on a touch screen reaches what is under it.
+    windowResize = { element, edge, kind, zoom, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, rect, width: rect.width / zoom, height: rect.height / zoom, frame: 0, x: event.clientX, y: event.clientY,
+      touch: event.pointerType !== 'mouse', moved: false };
     if (kind === 'sidePanel') {
       const drag = windowResize, footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
       drag.floating = compactLayoutActive();
@@ -9527,6 +10143,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   document.addEventListener('pointerdown', event => {
     touchGrab = null;
     if (event.pointerType === 'mouse' || windowResize || event.button !== 0 || event.isPrimary === false) return;
+    if (pointOverPopup(event.clientX, event.clientY)) return;
     const hit = windowEdgeAt(event.clientX, event.clientY, 12);
     if (!hit) return;
     showResizeGrip(hit);
@@ -9553,6 +10170,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (event.pointerId !== drag.pointerId) return;
     event.preventDefault(); event.stopImmediatePropagation();
     drag.x = event.clientX; drag.y = event.clientY;
+    if (!drag.moved) {
+      if (Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < (drag.touch ? 6 : 3)) return;
+      drag.moved = true;
+    }
     if (!drag.frame) drag.frame = requestAnimationFrame(() => {
       drag.frame = 0;
       if (windowResize === drag) applyWindowResize(drag);
@@ -9604,7 +10225,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (drag.edge === 'bottom') size.height = Math.round(Math.max(220, Math.min((innerHeight - 24) / drag.zoom, drag.height + (drag.y - drag.startY) / drag.zoom)));
     else {
       const delta = (drag.x - drag.startX) * (drag.edge === 'left' ? -1 : 1);
-      size.width = Math.round(Math.min(640,Math.max(300, drag.width + delta / drag.zoom)));
+      // Turn instructions keeps room for its own 320 px form, or the form would overflow and scroll sideways.
+      size.width = Math.round(Math.min(640,Math.max(drag.kind === 'turnInstructions' ? 344 : 300, drag.width + delta / drag.zoom)));
       if (drag.edge === 'left') {
         const guard = headerGuardWindows.get(drag.element);
         if (guard) guard.requestPoint = { left: drag.rect.right - size.width * drag.zoom, top: drag.rect.top };
@@ -9617,12 +10239,22 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   function endWindowResize(event) {
     const drag = windowResize;
     if (!drag || (event && event.pointerId !== drag.pointerId)) return;
-    if (drag.frame || event?.type === 'pointerup') {
+    if (event?.type === 'pointerup' && !drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= (drag.touch ? 6 : 3)) drag.moved = true;
+    if (drag.moved && (drag.frame || event?.type === 'pointerup')) {
       cancelAnimationFrame(drag.frame); drag.frame = 0;
       if (event?.type === 'pointerup') { drag.x = event.clientX; drag.y = event.clientY; }
       applyWindowResize(drag);
     }
+    cancelAnimationFrame(drag.frame); drag.frame = 0;
     windowResize = null;
+    if (!drag.moved) {
+      // Only pressed: nothing was sized, so nothing is kept. A tap on a touch screen goes on to what is under the finger.
+      drag.element.removeAttribute('data-wme-studio-panel-moving');
+      try { if (resizeGrip.hasPointerCapture(drag.pointerId)) resizeGrip.releasePointerCapture(drag.pointerId); } catch (_) { reportStudioError("endWindowResize",_);}
+      hideResizeGrip();
+      if (drag.touch && event?.type === 'pointerup') tapThrough(event.clientX, event.clientY);
+      return;
+    }
     if (drag.kind === 'sidePanel') {
       drag.element.removeAttribute('data-wme-studio-panel-moving');
       // A moved panel keeps the height it had (a panel that never had one set would take the default size).
@@ -9644,6 +10276,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const hit = event ? windowEdgeAt(event.clientX, event.clientY) : null;
     if (hit) showResizeGrip(hit); else hideResizeGrip();
   }
+  function tapThrough(x, y) {
+    // The touch that took the edge was held from the browser, so its click never came: send it to what is under it.
+    let target = document.elementFromPoint(x, y);
+    for (let depth = 0; target?.shadowRoot && depth < 6; depth++) { const inner = target.shadowRoot.elementFromPoint(x, y); if (!inner || inner === target) break; target = inner; }
+    if (!target || target === resizeGrip) return;
+    try { (target.closest?.('button,a,[role="button"],wz-button,wz-checkbox,input,label') || target).click?.(); }
+    catch (studioError) { reportStudioError('tapThrough', studioError); }
+  }
   function resetWindowSize(event) {
     const element = resizeGrip?.target, kind = element && resizableWindow(element);
     // Double-click the top edge: the side panel goes back to where panels open by default.
@@ -9661,7 +10301,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     // number shows straight away. The width dragged is kept; dragging the bottom edge again makes them taller.
     forgetRequestHeights() {
       let changed = false;
-      for (const kind of ['updateRequest', 'mapUpdateRequest', 'placeUpdateRequest', 'mapProblem']) {
+      for (const kind of ['updateRequest', 'mapUpdateRequest', 'placeUpdateRequest', 'mapProblem', 'mapSuggestion']) {
         const size = panelSizes[kind];
         if (!size?.height) continue;
         const { height, ...rest } = size;
@@ -9939,7 +10579,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   function compactHeaderActive() {
     return ready && settings.enabled && settings.compactMode && mapLayerViewport.matches &&
       !standaloneSignin && !editorProfile && floatingHeader.header?.isConnected &&
-      !floatingHeader.header.closest('.sidebar-fullscreen');
+      !floatingHeader.header.closest('.sidebar-fullscreen:not([data-wme-studio-hub-window])');
   }
   function canMoveHeader() {
     return compactHeaderActive() && !compactLayoutEditing;
@@ -10742,6 +11382,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     syncMapLayerRail();
     if (!state.menu.isConnected) return;
     const title = state.menu.querySelector(':scope > .title');
+    syncLayerColumnsButton(title);
     if (state.title !== title) {
       finishMapLayerDrag(state);
       state.title?.removeEventListener('pointerdown', state.onDown);
@@ -11012,7 +11653,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     // Beside the islands Studio draws, so a placed link shares their layer and shows above its island.
     let dock = document.getElementById('ws-link-dock');
     if (!dock) { dock = document.createElement('div'); dock.id = 'ws-link-dock'; }
-    const host = document.querySelector('.app:not(.sidebar-fullscreen) .edit-area-main') || document.querySelector('.app') || document.body || document.documentElement;
+    const host = document.querySelector('.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) .edit-area-main') || document.querySelector('.app') || document.body || document.documentElement;
     if (dock.parentElement !== host) host.append(dock);
     for (const link of links) {
       let element = linkElements.get(link.id);
@@ -11168,7 +11809,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (createHoverButton?.isConnected && path.includes(createHoverButton)) return true;
     // The + button itself (its + icon), sitting next to the menu: a few boxes up from it is the box that holds the
     // menu too. Recognised even before the + control is known.
-    const plus = path.find(node => node?.nodeType === 1 && node.matches?.('wz-button,button') && node.querySelector?.('.w-icon-plus'));
+    // The map's zoom-in button and the other map controls carry a + icon too: they never count.
+    const plus = path.find(node => node?.nodeType === 1 && node.matches?.('wz-button,button') && node.querySelector?.('.w-icon-plus')
+      && !node.closest?.('.zoom-bar-container,#overlay-buttons,.overlay-buttons-container,#map,.olMap,#wme-studio-userscript-ui'));
     if (plus && createHoverMenu?.isConnected && !createHoverMenu.contains(plus)) {
       for (let node = plus.parentElement, depth = 0; node && depth < 5; node = node.parentElement, depth++) if (node.contains(createHoverMenu)) return true;
     }
@@ -11183,11 +11826,17 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   // click close it again. So WME is left alone, and the list is simply out of sight unless + was clicked
   // (data-wme-studio-create-open). The rule lives in the menu's own shadow root, only while the setting is on.
   const CREATE_CLICK_CSS = ':host(:not([data-wme-studio-create-open])) .options-container { display: none !important; }';
+  // A touch screen has no hover, so there + always opens on a tap (3.0.0), whatever the setting says.
+  const createClickMode = () => !!(settings.enabled && (settings.createMenuClick || touchScreen));
+  // A tap on iPad and iPhone ends with the pointer "leaving" +, and WME closes its menu on that: the menu flashed open
+  // and shut, and a second tap was needed. For a moment after a tap opens it, the menu stays open through that.
+  let createTapGuardUntil = 0, createLastPointer = 'mouse';
+  document.addEventListener('pointerdown', event => { createLastPointer = event.pointerType || 'mouse'; }, { capture: true, passive: true });
   function syncCreateClickStyle() {
     const root = createHoverMenu?.shadowRoot;
     if (!root) return;
     let style = root.querySelector('style[data-wme-studio-create-click]');
-    const on = !!(settings.createMenuClick && settings.enabled);
+    const on = createClickMode();
     if (on && !style) { style = document.createElement('style'); style.setAttribute('data-wme-studio-create-click', ''); style.textContent = CREATE_CLICK_CSS; root.append(style); }
     else if (!on && style) style.remove();
     else if (on && style !== root.lastElementChild) root.append(style);   // stays last, so nothing added later wins over it
@@ -11201,7 +11850,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if ((createHoverHost === drawer || !createHoverButton?.isConnected) && performance.now() - createHoverLookedAt >= 1500) {
         createHoverLookedAt = performance.now();
         const trigger = createTrigger();
-        if (trigger?.element) { createHoverHost = trigger.element; createHoverButton = trigger.button || null; }
+        if (trigger?.element) {
+          createHoverHost = trigger.element; createHoverButton = trigger.button || null;
+          // The + control found now may hold a different menu from the one found first: that one is the + menu.
+          const menu = findCreateMenu(trigger.element);
+          if (menu && menu !== createHoverMenu) adoptCreateMenu(menu);
+        }
       }
       syncCreateClickStyle(); return createHoverHost;
     }
@@ -11218,22 +11872,39 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       return null;
     }
     createHoverMissing = false;
-    createHoverMenu.setAttribute('data-wme-studio-create-host', '');
+    adoptCreateMenu(createHoverMenu);
+    return createHoverHost;
+  }
+  function adoptCreateMenu(menu) {
+    if (createHoverMenu && createHoverMenu !== menu) {
+      createHoverMenu.removeAttribute('data-wme-studio-create-host');
+      createHoverMenu.removeAttribute('data-wme-studio-create-open');
+      createHoverMenu.shadowRoot?.querySelector('style[data-wme-studio-create-click]')?.remove();
+    }
+    createHoverMenu = menu;
+    createHoverObserver?.disconnect(); createHoverObserver = null;
+    menu.setAttribute('data-wme-studio-create-host', '');
     syncCreateClickStyle();
     if (typeof MutationObserver === 'function') {
       // When WME closes the menu (an item picked, a click elsewhere, Escape), the click that opened it is over.
       createHoverObserver = new MutationObserver(() => {
-        if (createHoverMenu && !createHoverMenu.hasAttribute('expanded')) createHoverMenu.removeAttribute('data-wme-studio-create-open');
+        if (!createHoverMenu || createHoverMenu.hasAttribute('expanded')) return;
+        if (createHoverMenu.hasAttribute('data-wme-studio-create-open') && performance.now() < createTapGuardUntil) {
+          try { if ('expanded' in createHoverMenu) createHoverMenu.expanded = true; else createHoverMenu.setAttribute('expanded', ''); } catch (_) { /* left closed */ }
+          return;
+        }
+        createHoverMenu.removeAttribute('data-wme-studio-create-open');
       });
-      createHoverObserver.observe(createHoverMenu, { attributes: true, attributeFilter: ['expanded'] });
+      createHoverObserver.observe(menu, { attributes: true, attributeFilter: ['expanded'] });
     }
-    return createHoverHost;
   }
   // A click on + opens the list, a second click closes it. WME's own click on + may have toggled its menu either
   // way (it was often already open from the hover), so once WME is done the menu is set to match.
   function onCreateClick(event) {
-    if (!settings.createMenuClick || !settings.enabled) return;
-    if (createHoverHost === document.getElementById('drawer') || !createHoverButton?.isConnected) createHoverLookedAt = -1e9;   // look for the + control now
+    if (!createClickMode()) return;
+    // Look for the + control now, but only for a click in the side rail where it lives (not on every click on the map).
+    const drawer = document.getElementById('drawer');
+    if ((createHoverHost === drawer || !createHoverButton?.isConnected) && drawer && event.composedPath().includes(drawer)) createHoverLookedAt = -1e9;
     if (!createHoverTarget()) return;
     const menu = createHoverMenu, path = event.composedPath();
     if (!menu || !isCreateButtonClick(path)) return;
@@ -11242,10 +11913,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (!menu.isConnected) return;
       try {
         if (opening) {
+          if (createLastPointer !== 'mouse') createTapGuardUntil = performance.now() + 900;
           menu.setAttribute('data-wme-studio-create-open', '');
           if (!menu.hasAttribute('expanded')) { if ('expanded' in menu) menu.expanded = true; else menu.setAttribute('expanded', ''); }
           menu.setAttribute('data-wme-studio-create-open', '');
         } else {
+          createTapGuardUntil = 0;
           menu.removeAttribute('data-wme-studio-create-open');
           if (menu.hasAttribute('expanded')) { if ('expanded' in menu) menu.expanded = false; else menu.removeAttribute('expanded'); }
         }
@@ -11740,7 +12413,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (!createCatalog.length) return changedSet;
     let dock = document.getElementById('ws-link-dock');
     if (!dock) { dock = document.createElement('div'); dock.id = 'ws-link-dock'; }
-    const host = document.querySelector('.app:not(.sidebar-fullscreen) .edit-area-main') || document.querySelector('.app') || document.body || document.documentElement;
+    const host = document.querySelector('.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) .edit-area-main') || document.querySelector('.app') || document.body || document.documentElement;
     if (dock.parentElement !== host) host.append(dock);
     for (const entry of createCatalog) {
       if (!wanted.has(entry.id)) continue;
@@ -11911,13 +12584,31 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     .ws-link-control img { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; visibility: hidden; }
     .ws-link-control svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
     .ws-link-control img[data-loaded] { visibility: visible; }
+    /* Two-column Map Layers, drawn tighter (3.0.0): narrower, with shorter rows, smaller gaps and a slimmer title. */
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu { --ws-compact-layers-width: 540px; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu > .title { padding: 6px 8px 6px 12px !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu .togglers { padding: 2px 10px 8px !important; column-gap: 16px; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu :is([class^="group--"],.ws-layer-group) { padding: 1px 0 3px !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu :is([class^="treeCategory--"],.ws-layer-category) { height: 24px !important; min-height: 24px !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu :is([class^="toggler--"],.ws-layer-toggler) { padding: 3px 0 !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu :is([class^="groupList--"],.ws-layer-list) { padding-bottom: 2px !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu .togglers ul { padding-inline-start: 12px !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layer-columns="two"] .layer-switcher .menu.menu .layer-selector-container { font: 12.5px/18px var(--ws-font) !important; }
+    /* House numbers of a selected road (3.0.0): WME draws their boxes white in every theme, so the numbers stay dark.
+       The dark themes' light text for fields reached these too, leaving white numbers on white. */
+    html[data-wme-studio="on"] #WazeMap .house-numbers-layer .house-number :is(input, .content, .input-wrapper) { color: #202830 !important; -webkit-text-fill-color: #202830; caret-color: #202830; }
+    /* The one/two columns button in the Map Layers title (3.0.0): the size of WME's own title buttons. */
+    .layer-switcher .menu > .title > .ws-layer-columns-toggle { all: unset; box-sizing: border-box; flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; margin: 0;
+      border-radius: var(--ws-island-button-radius, 9px); color: var(--wme-studio-text, #edf1f4); cursor: pointer; transition: background-color 140ms ease; }
+    .layer-switcher .menu > .title > .ws-layer-columns-toggle:hover { background: var(--wme-studio-hover, #363c42); }
+    .layer-switcher .menu > .title > .ws-layer-columns-toggle:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 1px; }
+    .layer-switcher .menu > .title > .ws-layer-columns-toggle svg { width: 24px; height: 24px; display: block; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
     /* A + menu shortcut: WME's own icon for the item, at the size of a rail icon. */
     button.ws-create-control { margin: 0; border: 0; background: transparent; color: var(--wme-studio-text, #e8eaed); font: inherit; }
     .ws-create-control .ws-create-icon { display: grid; place-items: center; width: 24px; height: 24px; overflow: hidden; pointer-events: none; font: 600 15px/1 var(--ws-font, system-ui); }
     .ws-create-control .ws-create-icon img { visibility: visible; display: block; }
     .ws-create-control .ws-create-icon > * { flex: none; margin: 0; vertical-align: middle; }
     .ws-create-control .ws-create-icon img.ws-create-bundled { width: 24px; height: 24px; border-radius: 0; object-fit: contain; image-rendering: auto; }
-    .ws-create-control[data-ws-disabled] .ws-create-icon { opacity: .45; filter: grayscale(.7); }
     /* Point or area, for an item that can be either: beside the button, like WME's own two buttons. */
     .ws-create-shape { position: fixed; z-index: 2147483000; display: flex; align-items: center; gap: 2px; padding: 4px 4px 4px 12px; box-sizing: border-box;
       border: 1px solid var(--wme-studio-border, #3b4249); border-radius: 14px; background: var(--wme-studio-surface, #24282c); color: var(--wme-studio-text, #e8eaed);
@@ -11946,7 +12637,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     html[data-wme-studio="on"][data-wme-studio-loading="on"] :is(#app-head, #drawer, #overlay-buttons, #tile-build-status, #online-editors, .online-editors-bubble, .ws-custom-island, [data-wme-studio-island-control], #wme-studio-launcher-host) {
       visibility: hidden !important; opacity: 0 !important; pointer-events: none !important;
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #app-head[data-wme-studio-island-source] {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #app-head[data-wme-studio-island-source] {
       transform: none !important; translate: none !important;
       margin-left: calc(var(--ws-island-source-half, 0px) * -1) !important;
     }
@@ -11972,10 +12663,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .zoom-bar-container[data-wme-studio-island-control] { border-top-color: transparent !important; }
     /* A WME island Studio has taken over keeps its place in the page but draws nothing: Studio draws it now. */
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] :is(#overlay-buttons,.app:not(.sidebar-fullscreen) #drawer)[data-wme-studio-island-absorbed] {
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] :is(#overlay-buttons,.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #drawer)[data-wme-studio-island-absorbed] {
       background: transparent !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] :is(#overlay-buttons,.app:not(.sidebar-fullscreen) #drawer)[data-wme-studio-island-absorbed]::before { display: none !important; }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] :is(#overlay-buttons,.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #drawer)[data-wme-studio-island-absorbed]::before { display: none !important; }
     html[data-wme-studio="on"][data-wme-studio-compact="on"] #drawer[data-wme-studio-island-absorbed] [class*="separation--"] { display: none !important; }
     html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .zoom-bar-container[data-wme-studio-island-orient="h"],
     html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons .zoom-bar-container[data-wme-studio-island-orient="h"] > :not(.zoom-button):not(wz-button):has(.zoom-button,wz-button) {
@@ -12086,31 +12777,31 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     .ws-custom-island::before {
       content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
-      background: color-mix(in srgb, var(--wme-studio-surface, #292d31) var(--ws-compact-opacity, 60%), transparent);
+      background: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface, #292d31)) var(--ws-compact-opacity, 60%), transparent));
       -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     }
     .ws-custom-island[data-single] { box-shadow: 0 4px 16px #00000024; pointer-events: none; }
     .ws-custom-island[data-bare] { box-shadow: none; }
     .ws-custom-island[data-bare]::before { display: none; }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app.show-sidebar:not(.sidebar-fullscreen) .ws-custom-island[data-rail]::before { background: var(--wme-studio-bg, #202124) !important; }
-    .ws-custom-island:is(:hover,[data-wme-studio-island-hover])::before { background: color-mix(in srgb, var(--wme-studio-surface, #292d31) var(--ws-compact-hover-opacity, 100%), transparent); }
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app.show-sidebar:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) .ws-custom-island[data-rail]::before { background: var(--ws-island-paint-hover, var(--ws-island-a, var(--wme-studio-bg, #202124))) !important; }
+    .ws-custom-island:is(:hover,[data-wme-studio-island-hover])::before { background: var(--ws-island-paint-hover, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface, #292d31)) var(--ws-compact-hover-opacity, 100%), transparent)); }
     html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons[data-wme-studio-island-hover]::before {
-      background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-hover-opacity, 100%), transparent) !important;
+      background: var(--ws-island-paint-hover, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-hover-opacity, 100%), transparent)) !important;
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #drawer[data-wme-studio-island-hover]::before {
-      background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-hover-opacity, 100%), transparent) !important;
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #drawer[data-wme-studio-island-hover]::before {
+      background: var(--ws-island-paint-hover, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-hover-opacity, 100%), transparent)) !important;
     }
     html[data-wme-studio="on"][data-wme-studio-compact="on"] #overlay-buttons:has([data-wme-studio-island-away]:hover):not([data-wme-studio-island-hover])::before {
-      background: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent) !important;
+      background: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-opacity, 60%), transparent)) !important;
     }
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #drawer:has([data-wme-studio-island-away]:hover):not([data-wme-studio-island-hover])::before {
-      background: color-mix(in srgb, var(--wme-studio-bg) var(--ws-compact-opacity, 60%), transparent) !important;
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #drawer:has([data-wme-studio-island-away]:hover):not([data-wme-studio-island-hover])::before {
+      background: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-opacity, 60%), transparent)) !important;
     }
     /* The header lights up for its own controls only. A control moved to another island (and, for the bell, the
        notifications it opens) is hovered or focused without lighting the header it still belongs to in the page. */
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #app-head:is(:hover,:focus-within):not(:has(:focus:not([data-wme-studio-island-away],[data-wme-studio-island-away] *))):not(:hover:not(:has([data-wme-studio-island-away]:hover))),
-    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen) #app-head:has(#notification-button[data-wme-studio-island-away]):is(:hover,:focus-within):not(:has(:focus:not([data-wme-studio-island-away],[data-wme-studio-island-away] *,.notifications-box-container,.notifications-box-container *))):not(:hover:not(:has([data-wme-studio-island-away]:hover,.notifications-box-container:hover))) {
-      --ws-header-surface: color-mix(in srgb, var(--wme-studio-surface) var(--ws-compact-opacity, 60%), transparent) !important;
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #app-head:is(:hover,:focus-within):not(:has(:focus:not([data-wme-studio-island-away],[data-wme-studio-island-away] *))):not(:hover:not(:has([data-wme-studio-island-away]:hover))),
+    html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #app-head:has(#notification-button[data-wme-studio-island-away]):is(:hover,:focus-within):not(:has(:focus:not([data-wme-studio-island-away],[data-wme-studio-island-away] *,.notifications-box-container,.notifications-box-container *))):not(:hover:not(:has([data-wme-studio-island-away]:hover,.notifications-box-container:hover))) {
+      --ws-header-surface: var(--ws-island-paint, color-mix(in srgb, var(--ws-island-a, var(--wme-studio-surface)) var(--ws-compact-opacity, 60%), transparent)) !important;
       --ws-header-search-bg: color-mix(in srgb, var(--wme-studio-input) 20%, transparent) !important;
       --ws-header-search-border: transparent !important;
     }
@@ -12252,7 +12943,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   }
   function customIslandElement(id) {
     let element = islandGlass.get(id);
-    const host = document.querySelector('.app:not(.sidebar-fullscreen) .edit-area-main') || document.querySelector('.app') || document.body;
+    const host = document.querySelector('.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) .edit-area-main') || document.querySelector('.app') || document.body;
     if (!element) {
       element = document.createElement('div');
       element.className = 'ws-custom-island';
@@ -12359,7 +13050,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     // islands are laid out once, when loading ends.
     if (document.documentElement.getAttribute('data-wme-studio-loading') === 'on') return islandLayout;
     const model = islandModel();
-    if (!compactLayoutActive() || document.querySelector('.app.sidebar-fullscreen') || (islandControlsEmpty(model) && !compactLayoutEditing)) {
+    if (!compactLayoutActive() || document.querySelector('.app.sidebar-fullscreen:not([data-wme-studio-hub-window])') || (islandControlsEmpty(model) && !compactLayoutEditing)) {
       if (islandPlaced.size || managedSizes.size || islandGlass.size || document.querySelector('[data-wme-studio-control-hidden],[data-wme-studio-island-source]')) releaseIslandControls();
       islandLayout = { islands: new Map(), controls: new Map() };
       return islandLayout;
@@ -12770,7 +13461,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   }
   setInterval(() => {
     if (document.hidden || document.documentElement.getAttribute('data-wme-studio-loading') === 'on' || (islandControlsEmpty(islandModel()) && !islandPlaced.size)) return;
-    if (!compactLayoutActive() || document.querySelector('.app.sidebar-fullscreen')) { if (islandPlaced.size || islandGlass.size) scheduleIslandControls(); return; }
+    if (!compactLayoutActive() || document.querySelector('.app.sidebar-fullscreen:not([data-wme-studio-hub-window])')) { if (islandPlaced.size || islandGlass.size) scheduleIslandControls(); return; }
     watchIslandSources();
     if (!islandLayout.controls.size && !islandLayout.islands.size) { scheduleIslandControls(); return; }
     // A control that drifted (its island moved or WME redrew it) is put back on its slot.
@@ -12821,7 +13512,7 @@ ${studioControlsCSS()}
       .toolbar{cursor:grab;touch-action:none;user-select:none}.dock[data-dragging="on"] .toolbar{cursor:grabbing}.toolbar .control{cursor:default}
       .title{min-width:150px;max-width:250px;margin-right:6px}.title span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.title strong{display:block;font-size:13px}.title strong::before{content:"⠿";margin-right:7px;color:var(--wme-studio-text-muted,#99a4ae)}.title span{display:block;margin-top:2px;color:var(--wme-studio-text-muted,#99a4ae);font-size:10.5px;line-height:1.35}
       .control{display:flex;align-items:center;gap:6px;padding:0 3px;color:var(--wme-studio-text-secondary,#c0c8d0);font-size:11px;white-space:nowrap}.control output{min-width:34px;text-align:right;font-variant-numeric:tabular-nums;color:var(--wme-studio-text,#fff)}
-      .switch{position:relative;flex:none;width:34px;height:20px}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}.switch i{position:absolute;inset:0;border-radius:999px;background-color:var(--wme-studio-border-strong,#65707c);background-image:radial-gradient(circle,#fff 6.6px,rgba(255,255,255,0) 7.4px);background-size:20px 20px;background-repeat:no-repeat;background-position:0 50%;transition:background-color 120ms ease,background-position 120ms ease;pointer-events:none}.switch i::after{content:none;display:none;background:#fff;transition:transform 120ms ease}.switch input:checked+i{background-color:var(--wme-studio-accent,#0099ff);background-position:100% 50%}.switch:has(input:focus-visible){outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:3px;border-radius:999px}
+      .switch{position:relative;flex:none;width:34px;height:20px}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}.switch i{position:absolute;inset:0;border-radius:999px;background-color:var(--wme-studio-border-strong,#65707c);background-image:radial-gradient(circle,#fff 6.6px,rgba(255,255,255,0) 7.4px);background-size:20px 20px;background-repeat:no-repeat;background-position:0 50%;transition:background-color 120ms ease,background-position 120ms ease;pointer-events:none}.switch i::after{content:none;display:none;background:#fff;transition:transform 120ms ease}.switch input:checked+i{background-color:var(--wme-studio-accent,#0099ff);background-position:100% 50%}.switch input:not(:checked)+i{background-color:color-mix(in srgb,var(--wme-studio-text,#202830) 30%,transparent);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--wme-studio-text,#202830) 40%,transparent)}.switch:has(input:focus-visible){outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:3px;border-radius:999px}
       ${studioRangeCSS('input[type="range"]')}
       input[type="range"]{width:100px;margin:0}
       button{font:inherit}.action{min-height:34px;padding:0 13px;text-box:trim-both cap alphabetic;border:1px solid var(--wme-studio-border,#4b5560);border-radius:10px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff);font-size:11px;font-weight:650;cursor:pointer}.action:hover{background:var(--wme-studio-hover,#363c42)}.action.primary{border-color:var(--wme-studio-accent,#0099ff);background:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-on-accent,#fff)}.action:disabled{opacity:.55}.action:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:3px}
@@ -14874,7 +15565,7 @@ ${studioControlsCSS()}
       q('[data-id="snap-edges"]').checked = snapEdges;
       q('[data-id="snap-center"]').checked = snapCenter;
       setOpacity(settings.compactIslandOpacity);
-      const workspace = document.querySelector('.app:not(.sidebar-fullscreen) .edit-area-main') || document.querySelector('.app') || root;
+      const workspace = document.querySelector('.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) .edit-area-main') || document.querySelector('.app') || root;
       if (grid.parentElement !== workspace) workspace.append(grid);
       syncGridVisibility();
       compactIslandLayout = draft;
@@ -15593,7 +16284,7 @@ ${studioControlsCSS()}
   const tileBuildFeed = { region: null, snapshot: null, nextAt: 0, failures: 0, timer: 0, controller: null, generation: 0, readyHooked: false };
   function tileBuildRegion() {
     try {
-      const region = studioSDK.value(api => api.Settings.getRegionCode(), () => pageWindow.W?.app?.getAppRegionCode?.());
+      const region = studioSDK.value(api => api.Settings.getRegionCode(), null);
       return Object.hasOwn(TILE_BUILD_FEEDS, region) ? region : null;
     } catch (studioError) { reportStudioError("tileBuildRegion",studioError); return null; }
   }
@@ -16511,6 +17202,8 @@ ${studioControlsCSS()}
     return {left,top,right:left+(view?.width || innerWidth),bottom:top+(view?.height || innerHeight)};
   };
   const restrictionClamp = (value, low, high) => Math.max(low,Math.min(value,Math.max(low,high)));
+  // Restrictions and the school zone schedule: moved by their title, and made larger or smaller as a whole (one scale,
+  // so the form keeps its shape) with the grip in the bottom right corner.
   function writeRestrictionPanel(state) {
     state.host.style.setProperty('--ws-restriction-x',`${Math.round(state.x)}px`);
     state.host.style.setProperty('--ws-restriction-y',`${Math.round(state.y)}px`);
@@ -16538,7 +17231,8 @@ ${studioControlsCSS()}
       state.x = drag.x + restrictionClamp(drag.rect.left+dx,view.left+gap,view.right-drag.rect.width-gap)-drag.rect.left;
       state.y = drag.y + restrictionClamp(drag.rect.top+dy,view.top+gap,view.bottom-drag.rect.height-gap)-drag.rect.top;
     } else {
-      // A single scale changes both axes together, so the form never reflows while it is resized.
+      // One scale for both directions: the whole panel grows or shrinks as it is, keeping its shape, so the form never
+      // reflows while it is resized. The top left corner stays put.
       const width = drag.rect.width/drag.scale, height = drag.rect.height/drag.scale;
       const view = restrictionViewport(), gap = 12;
       const limit = Math.max(.4,Math.min(1.6,(view.right-drag.rect.left-gap)/width,(view.bottom-drag.rect.top-gap)/height));
@@ -16558,7 +17252,7 @@ ${studioControlsCSS()}
     window.removeEventListener('pointermove',state.onMove,true);
     window.removeEventListener('pointerup',state.onEnd,true);
     window.removeEventListener('pointercancel',state.onEnd,true);
-    const handle = drag.mode === 'move' ? state.header : state.handle;
+    const handle = drag.mode === 'move' ? state.header : drag.handle;
     if (handle?.hasPointerCapture?.(drag.pointerId)) {
       try { handle.releasePointerCapture(drag.pointerId); } catch (_) { /* already released by WME */ }
     }
@@ -16570,10 +17264,10 @@ ${studioControlsCSS()}
     const rect = state.surface.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     state.drag = {mode,pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,
-      clientX:event.clientX,clientY:event.clientY,rect,x:state.x,y:state.y,scale:state.scale};
+      clientX:event.clientX,clientY:event.clientY,rect,x:state.x,y:state.y,scale:state.scale,handle:event.currentTarget};
     if (mode === 'move') state.host.setAttribute('data-wme-studio-restriction-moving','');
     event.preventDefault(); event.stopPropagation();
-    try { (mode === 'move' ? state.header : state.handle).setPointerCapture(event.pointerId); } catch (_) { /* window listeners also finish the gesture */ }
+    try { (mode === 'move' ? state.header : event.currentTarget).setPointerCapture(event.pointerId); } catch (_) { /* window listeners also finish the gesture */ }
     window.addEventListener('pointermove',state.onMove,true);
     window.addEventListener('pointerup',state.onEnd,true);
     window.addEventListener('pointercancel',state.onEnd,true);
@@ -16598,6 +17292,8 @@ ${studioControlsCSS()}
     }
     state.originalPosition=null;
     state.handle?.remove(); state.handle=null;
+    state.host.removeAttribute('data-wme-studio-restriction-sized');
+    state.host.style.removeProperty('--ws-restriction-w'); state.host.style.removeProperty('--ws-restriction-h'); state.host.style.removeProperty('--ws-restriction-scale');
   }
   function syncRestrictionPanel(state) {
     const {host} = state;
@@ -16644,10 +17340,11 @@ ${studioControlsCSS()}
     writeRestrictionPanel(state);
     const previous=lastRestrictionPanelPlacement.get(state.kind);
     if (previous) {
+      // The size it had last time, as far as the screen allows now.
       const natural=surface.getBoundingClientRect(), view=restrictionViewport(), gap=12;
       const desiredLeft=restrictionClamp(previous.left,view.left+gap,view.right-natural.width*.65-gap);
       const desiredTop=restrictionClamp(previous.top,view.top+gap,view.bottom-natural.height*.65-gap);
-      state.scale=restrictionClamp(previous.scale,.65,Math.max(.65,Math.min(1.6,(view.right-desiredLeft-gap)/natural.width,(view.bottom-desiredTop-gap)/natural.height)));
+      state.scale=restrictionClamp(previous.scale || 1,.65,Math.max(.65,Math.min(1.6,(view.right-desiredLeft-gap)/natural.width,(view.bottom-desiredTop-gap)/natural.height)));
       writeRestrictionPanel(state);
       const scaled=surface.getBoundingClientRect();
       state.x=restrictionClamp(previous.left,view.left+gap,view.right-scaled.width-gap)-scaled.left;
@@ -16655,11 +17352,15 @@ ${studioControlsCSS()}
       writeRestrictionPanel(state);
     }
     const grip=document.createElement('button');
-    grip.type='button'; grip.className='ws-restriction-resize';
-    grip.setAttribute('aria-label',state.kind === 'school-zone' ? 'Resize school zone schedule diagonally' : 'Resize restrictions panel diagonally');
-    grip.title='Drag diagonally to resize';
+    const tip=globalThis.WMEStudioI18n?.t?.('Drag to resize · Double-click to reset') || 'Drag to resize · Double-click to reset';
+    grip.type='button'; grip.className='ws-restriction-resize'; grip.title=tip; grip.setAttribute('aria-label',tip);
     grip.addEventListener('pointerdown',event=>beginRestrictionGesture(state,'resize',event));
     grip.addEventListener('click',event=>event.stopPropagation());
+    // Back to the dialog's own size (it scales from its top left corner, so that corner stays where it was).
+    grip.addEventListener('dblclick',event=>{
+      event.stopPropagation();
+      state.scale=1; writeRestrictionPanel(state); constrainRestrictionPanel(state); rememberRestrictionPanel(state);
+    });
     grip.addEventListener('keydown',event=>{
       if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)) return;
       event.preventDefault(); event.stopPropagation();
@@ -17443,6 +18144,9 @@ ${studioControlsCSS()}
         .more-label,.more-count{display:none}.bar[data-pins="none"] .more-label{display:inline;font-weight:600;color:var(--wme-studio-text)}.bar[data-pins="none"] .more-count{display:inline;color:var(--wme-studio-text-muted)}.bar[data-pins="none"] .more{padding:0 10px 0 8px}.bar[data-pins="none"] .tab[aria-selected="true"]{max-width:100%}
         .tip{position:fixed;inset:auto;margin:0;max-width:280px;padding:4px 8px;border:1px solid var(--wme-studio-border);border-radius:6px;background:var(--wme-studio-surface,#fff);color:var(--wme-studio-text,#202830);font:11.5px/16px var(--ws-font,Arial,sans-serif);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;box-shadow:0 4px 14px #0003}
         .picker{display:none;flex-direction:column;position:fixed;inset:auto;margin:0;padding:0;min-width:0;border:1px solid var(--wme-studio-border);border-radius:var(--wme-studio-panel-radius,12px);background:var(--wme-studio-surface,#fff);color:var(--wme-studio-text,#202830);box-shadow:0 10px 30px #0003;overflow:hidden;z-index:2147483500;font:12px/18px var(--ws-font,Arial,sans-serif)}.picker.open{display:flex}.picker:popover-open{display:flex}.picker::backdrop{background:transparent}
+        /* Inside a panel colored with the islands' color (3.0.0) the list is drawn solid in that color: the panel's own
+           surfaces let its gradient through, and the page under the list showed through too. */
+        :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast])) .picker{background:var(--ws-island-a)!important}
         .head{display:flex;align-items:center;gap:8px;flex:none;padding:9px 8px 8px 14px}.head strong{font-size:13.5px;font-weight:600}.count{flex:1;color:var(--wme-studio-text-muted);font-size:11.5px}
         .close,.wipe{display:grid;place-items:center;flex:none;width:26px;height:26px;padding:0;background:transparent;color:var(--wme-studio-text-muted)}.close svg,.wipe svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round}.wipe{width:24px;height:24px}.wipe svg{width:11px;height:11px}
         .search-box{display:flex;align-items:center;gap:8px;flex:none;margin:0 10px;padding:0 5px 0 10px;min-height:34px;border:1px solid var(--wme-studio-border-strong,var(--wme-studio-border));border-radius:var(--r);background:var(--wme-studio-input)}.search-box>svg{width:15px;height:15px;fill:none;stroke:var(--wme-studio-text-muted);stroke-width:1.7;flex:none}.search{flex:1;width:100%;min-width:0;height:30px;padding:0;border:0;outline:0;background:transparent}.search::placeholder{color:var(--wme-studio-text-muted)}.search::-webkit-search-cancel-button{display:none}.search-box:focus-within{border-color:var(--wme-studio-accent);box-shadow:0 0 0 3px var(--soft)}
@@ -17636,7 +18340,17 @@ ${studioControlsCSS()}
     const moduleClass = classes.length ? host.getAttribute('class') || '' : '';
     const modular = moduleClass.includes('--');
     betaMapLayers.inspect(host);
+    if (modular && moduleClass.includes('pagination--') && host.parentElement) globalThis.WMEStudioFitRows?.track(host.parentElement);
     if (testId === 'search-this-area-button') trackSearchAreaButton(host);
+    // Newer WME builds dropped the test id from "Search this area" (a container--… box holding an iconContainer--…
+    // with the search icon): it is put back, so the button keeps its theme colors and its spot (3.0.0).
+    else if (modular && moduleClass.includes('searchIcon--')) {
+      const button = host.parentElement?.parentElement;
+      if (button && !button.hasAttribute('data-testid') && /(^|\s)container--/.test(button.getAttribute('class') || '') && /iconContainer--/.test(host.parentElement.getAttribute('class') || '')) {
+        button.setAttribute('data-testid', 'search-this-area-button');
+        trackSearchAreaButton(button);
+      }
+    }
     if (id === 'WMETB_logger' || id === 'WMETB_logger_warn') trackToolboxLogger(host);
     if (idAttribute.startsWith('toast-container-') || classes.contains('toast-container-wazedev')) trackAddonToast(host);
     if (id === 'WMETB_Dashboard') trackToolboxDashboard(host);
@@ -17694,6 +18408,7 @@ ${studioControlsCSS()}
     if (classes.contains('wmeRcFriendsHeaderLauncherSlot')) trackRightClickHeaderSlot(host);
     if (id === 'app-head' || classes.contains('secondary-toolbar')) queueRightClickHeaderLaunchers();
     if (host === document.body || classes.contains('app')) watchNativeScopes();
+    if (classes.contains('app')) globalThis.WMEStudioHubWindow?.sync();
     if (tag === 'wz-button' && host.closest('#drawer')) queueAccentFills();
     if (host.id === 'drawer' && !compactDrawers.has(host)) {
       compactDrawers.add(host); compactDrawerObserver?.observe(host); scheduleCompactDrawerTop();
@@ -17850,7 +18565,6 @@ ${studioControlsCSS()}
     })) scheduleLaneSizing();
     for (const record of records) {
       for (const node of record.addedNodes) if (node.nodeType === 1) {
-        if (!studioUpdateReported && !studioUpdateTimer && (node.id==='WazeMap' || node.id==='WWSU-Container' || node.matches('.app') && node.querySelector('#WazeMap'))) showStudioUpdateNotes();
         if (node.localName === 'iframe') trackChatFrame(node);
         if (!excluded(node)) queue.add(node);
       }
@@ -17941,43 +18655,10 @@ ${studioControlsCSS()}
   })();
   globalThis.WMEStudioVectorWatch = studioVectorWatch;
   const observer = studioVectorWatch.watch(collect, { childList: true, subtree: true });
-  const studioUpdateNotes = `<p>What’s new in WME Studio ${USERSCRIPT_VERSION}:</p>
-<p><strong>Arrange your own islands</strong></p><ul>
-<li>Click a control, then drag it into another island, or onto the map to give it an island of its own.</li>
-<li>Make new islands, rename them, rotate them, split them in two, or swap one control for another.</li>
-<li>Hide the controls you never use from the new Controls list, and bring them back any time.</li>
-<li>Custom links: add a button for any website. It shows the site’s icon and opens it in a new tab.</li>
-<li>Ctrl + click several islands to move them together, and undo or redo every step.</li></ul>
-<p><strong>Right-click menu</strong></p><ul>
-<li>Right-click the map for coordinates, permalinks, Google Maps and a switch to WME Beta and back.</li>
-<li>Right-click a segment or a selection to copy its IDs or names, or zoom to it.</li>
-<li>Switch between WME and WME Beta at the same spot, and reach Arrange, the theme and Settings in one click.</li></ul>
-<p><strong>Also</strong></p><ul>
-<li>The + menu as buttons: put Roads, Place or any place category in an island and create it with one click.</li>
-<li>Request windows keep the reporter’s description pinned at the top while you scroll down.</li>
-<li>Custom scrollbars: slim and rounded, in your theme colors.</li>
-<li>More map problems and requests now move the map so their marker isn’t hidden under the panel.</li>
-<li>Theming for WME Segment Shift Utility, and many layout and dark theme fixes.</li></ul>`;
-  let studioUpdateReported=false, studioUpdateTimer=0, studioUpdateAttempts=0;
-  function showStudioUpdateNotes() {
-    if (studioUpdateReported || studioUpdateTimer || !document.getElementById('WazeMap')) return;
-    // In the editor itself the update tour (WMEStudioTour) presents the release, so WazeWrap's notes stay quiet there.
-    if (window.top === window.self && /(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname)) { studioUpdateReported=true; return; }
-    const wrap=globalThis.WazeWrap || unsafeWindow.WazeWrap;
-    if (wrap?.Ready && typeof wrap.Interface?.ShowScriptUpdate==='function' && document.getElementById('WWSU-Container')) {
-      try {
-        wrap.Interface.ShowScriptUpdate('WME Studio',USERSCRIPT_VERSION,studioUpdateNotes);
-        studioUpdateReported=true;
-      } catch (error) { if (reportStudioError.active) reportStudioError('Update notes could not be displayed',error); else console.warn('[WME Studio] Update notes could not be displayed:',error); }
-      return;
-    }
-    if (++studioUpdateAttempts<=60) studioUpdateTimer=setTimeout(()=>{studioUpdateTimer=0;showStudioUpdateNotes();},1000);
-  }
   function boot() {
     const step = (name, action) => {
       try { action(); } catch (error) { console.error(`[WME Studio] Beta startup: ${name} failed`, error); }
     };
-    step('update notes', showStudioUpdateNotes);
     step('stylesheet recovery', () => {
       for (const link of document.querySelectorAll('link[rel~="stylesheet"][href^="data:text/css"]')) if (!link.sheet) studioResourceRecovery.repair(link);
     });
@@ -18038,12 +18719,14 @@ ${studioControlsCSS()}
     if (y.pre === null) return true;
     return x.pre <= y.pre;
   }
+  // What identifies one pause: the time it was changed, or (without one) the whole answer.
+  const remoteStamp = state => state.changed_at || JSON.stringify({ studio: state.studio, screenDisplays: state.screenDisplays });
   function remoteRules() {
     const state = remoteSwitch.state;
     if (!state) return { studio: false, sd: false };
     let lifted = {};
     try { lifted = JSON.parse(sessionValue(REMOTE_OVERRIDE_KEY) || '{}') || {}; } catch (_) { lifted = {}; }
-    if (lifted.stamp !== state.changed_at) lifted = {};
+    if (lifted.stamp !== remoteStamp(state)) lifted = {};
     const forThisVersion = !state.studio.upTo || versionAtMost(USERSCRIPT_VERSION, state.studio.upTo);
     const studio = state.studio.off && forThisVersion && !lifted.studio;
     return { studio, sd: studio || (state.screenDisplays.off && !lifted.sd && !lifted.studio) };
@@ -18070,9 +18753,10 @@ ${studioControlsCSS()}
       screenDisplays: { off: data?.screenDisplays?.off === true, message: text(data?.screenDisplays?.message, 500) },
       changed_at: text(data?.changed_at, 40)
     };
-    const same = JSON.stringify(state) === JSON.stringify(remoteSwitch.state);
     remoteSwitch.state = state;
-    if (!same) { try { Promise.resolve(studioKeep.set(REMOTE_SWITCH_KEY, state)).catch(() => {}); } catch (_) { /* kept for this tab only */ } }
+    // Kept with the time it was fetched (every check), so a pause kept from long ago is not used when the site no
+    // longer answers.
+    try { Promise.resolve(studioKeep.set(REMOTE_SWITCH_KEY, { ...state, fetched: Date.now() })).catch(() => {}); } catch (_) { /* kept for this tab only */ }
     refreshRemoteSwitch();
   }
   function checkRemoteSwitch() {
@@ -18089,7 +18773,7 @@ ${studioControlsCSS()}
   function showRemoteNotice() {
     const state = remoteSwitch.state, rules = remoteRules();
     const kind = rules.studio && realSettings.enabled ? 'studio' : rules.sd && !rules.studio && realSettings.enabled && realSettings.screenDisplays ? 'sd' : '';
-    const stamp = kind ? `${kind}:${state.changed_at}` : '';
+    const stamp = kind ? `${kind}:${remoteStamp(state)}` : '';
     if (!kind || standaloneSignin || editorProfile || sessionValue(REMOTE_SEEN_KEY) === stamp) { remoteSwitch.host?.remove(); remoteSwitch.host = null; return; }
     if (!document.body) { document.addEventListener('DOMContentLoaded', showRemoteNotice, { once: true }); return; }
     if (remoteSwitch.host?.isConnected && remoteSwitch.host.dataset.stamp === stamp) return;
@@ -18122,7 +18806,7 @@ ${studioControlsCSS()}
     const run = shadow.querySelector('.run'), ok = shadow.querySelector('.ok');
     run.textContent = say('Run anyway'); ok.textContent = say('OK');
     run.addEventListener('click', () => {
-      sessionValue(REMOTE_OVERRIDE_KEY, JSON.stringify({ stamp: state.changed_at, studio: kind === 'studio', sd: true }));
+      sessionValue(REMOTE_OVERRIDE_KEY, JSON.stringify({ stamp: remoteStamp(state), studio: kind === 'studio', sd: true }));
       sessionValue(REMOTE_SEEN_KEY, stamp);
       host.remove(); remoteSwitch.host = null;
       refreshRemoteSwitch();
@@ -18133,6 +18817,8 @@ ${studioControlsCSS()}
   try {
     const take = value => {
       if (!value || typeof value !== 'object' || remoteSwitch.state) return;
+      const paused = value.studio?.off === true || value.screenDisplays?.off === true;
+      if (paused && !(Number(value.fetched) > Date.now() - 2 * 86400000)) return;   // too old to trust: wait for the site
       remoteSwitch.state = { studio: { off: value.studio?.off === true, upTo: String(value.studio?.upTo || ''), message: String(value.studio?.message || '') },
         screenDisplays: { off: value.screenDisplays?.off === true, message: String(value.screenDisplays?.message || '') }, changed_at: String(value.changed_at || '') };
       refreshRemoteSwitch();
@@ -18183,7 +18869,7 @@ ${studioControlsCSS()}
         return !top || screen === top || screen.contains(top);
       }
       // no loading screen yet and no map yet: still starting (the SDK says so first, when it is there)
-      return studioSDK.value(api => (api.State.isInitialized() ? false : null), () => !pageWindow.W?.map);
+      return studioSDK.value(api => (api.State.isInitialized() ? false : null), () => !document.querySelector('#WazeMap .olMapViewport'));
     };
     (function poll() {
       const loading = loadingNow();
@@ -18288,7 +18974,7 @@ ${studioControlsCSS()}
   globalThis.WMEStudioWorkspaces = (() => {
     const KEY = 'wmeStudio.workspaceProfiles.v1', MAX = 12, LIMIT = 262144;
     const layoutKeys = ['hudScale','panelScale','compactSnapEdges','compactSnapCenter','layerColumns'];
-    const sizeKinds = new Set(['updateRequest','mapUpdateRequest','placeUpdateRequest','mapProblem','mapSuggestion','messages','sidePanel','streetView']);
+    const sizeKinds = new Set(['updateRequest','mapUpdateRequest','placeUpdateRequest','mapProblem','mapSuggestion','aiHelper','turnInstructions','messages','sidePanel','streetView']);
     let busy = false, profileUndo = null;
     const copy = value => JSON.parse(JSON.stringify(value));
     const record = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -18299,20 +18985,21 @@ ${studioControlsCSS()}
     }
     function preferences(value, keys) {
       if (!record(value)) error('Backup settings are missing.');
+      // Each setting as Studio would store it: a value out of range or from an older version is put right (or given
+      // its default), instead of failing the whole backup over one setting.
       const clean = config.sanitize(value), out = {};
-      for (const key of keys) {
-        if (!Object.hasOwn(value,key) || value[key] !== clean[key]) error('Backup contains an invalid setting.');
-        out[key] = clean[key];
-      }
+      for (const key of keys) out[key] = clean[key];
       return out;
     }
+    // Panel sizes: the panels Studio knows, each kept within sensible limits. A panel this version doesn't size (from
+    // a newer or older Studio) or a size that makes no sense is left out, so the rest of the backup still works.
     function sizes(value) {
-      if (!record(value)) error('Backup panel sizes are invalid.');
       const out = {};
+      if (!record(value)) return out;
       for (const [kind,size] of Object.entries(value)) {
-        if (!sizeKinds.has(kind) || !record(size)) error('Backup panel sizes are invalid.');
+        if (!sizeKinds.has(kind) || !record(size)) continue;
         const point = {};
-        for (const axis of ['width','height']) if (Object.hasOwn(size,axis)) point[axis] = bounded(size[axis],80,4000);
+        for (const axis of ['width','height']) if (Number.isFinite(size[axis]) && size[axis] > 0) point[axis] = Math.round(Math.max(80,Math.min(4000,size[axis])));
         if (Object.keys(point).length) out[kind] = point;
       }
       return out;
@@ -18404,9 +19091,11 @@ ${studioControlsCSS()}
       if (!Array.isArray(value.profiles) || value.profiles.length > MAX) error('A backup can contain up to 12 workspaces.');
       const profiles = value.profiles.map(profile);
       if (new Set(profiles.map(item=>item.id)).size !== profiles.length) error('Backup workspace IDs must be unique.');
-      const prefs = preferences(value.settings,Object.keys(config.defaults)), layout = validateSnapshot(value.layout);
-      for (const key of layoutKeys) if (prefs[key] !== layout.layoutSettings[key]) error('Backup settings and layout do not match.');
-      for (const key of ['compactMode','compactHeaderFullWidth','compactHeaderWidth']) if (prefs[key] !== layout.workspace[key]) error('Backup settings and layout do not match.');
+      // A backup from an older version lacks the settings added since: they get their defaults.
+      const prefs = preferences(record(value.settings) ? { ...config.defaults, ...value.settings } : value.settings,Object.keys(config.defaults)), layout = validateSnapshot(value.layout);
+      // The settings are the ones that count where the two copies differ (an edited file, an older version).
+      for (const key of layoutKeys) layout.layoutSettings[key] = prefs[key];
+      for (const key of ['compactMode','compactHeaderFullWidth','compactHeaderWidth']) layout.workspace[key] = prefs[key];
       const scriptTabs=Object.hasOwn(value,'scriptTabs') ? scriptTabPicker.validate(value.scriptTabs) : null;
       return {format:'wme-studio-backup',formatVersion:1,settings:prefs,layout,profiles,scriptTabs};
     }
@@ -18465,6 +19154,13 @@ ${studioControlsCSS()}
 
 
 
+  // a <= b for release numbers (the changelog's "what's new since"): "2.3.0" <= "3.0.0".
+  function versionAtMost(a, b) {
+    const parts = value => String(value || '').trim().split('-')[0].split('.').map(part => parseInt(part, 10) || 0);
+    const x = parts(a), y = parts(b);
+    for (let i = 0; i < Math.max(x.length, y.length); i += 1) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0);
+    return true;
+  }
   const UI_HOST_ID = 'wme-studio-userscript-ui';
   const LAUNCHER_HOST_ID = 'wme-studio-launcher-host';
   let studioUI = null, studioUIFixes = null;
@@ -18506,35 +19202,39 @@ ${studioControlsCSS()}
       + `<rect class="t-soft" x="${x + 3}" y="${y + 37.4}" width="11.2" height="4" rx="1.2"/><rect class="t-acc" x="${x + 15.8}" y="${y + 37.4}" width="11.2" height="4" rx="1.2"/>`;
     const chat = (x, y) => island(x, y, 27, 34, 2.6) + bar(x + 3, y + 3, 10, 't-strong', 1.6) + dot(x + 23.4, y + 3.8, .8)
       + `<rect class="t-soft" x="${x + 3}" y="${y + 8}" width="14" height="4.4" rx="1.8"/><rect class="t-acc" x="${x + 10}" y="${y + 14}" width="14" height="4.4" rx="1.8"/><rect class="t-soft" x="${x + 3}" y="${y + 20}" width="17" height="4.4" rx="1.8"/><rect class="t-soft" x="${x + 3}" y="${y + 27.4}" width="21" height="3.8" rx="1.9"/>`;
+    // Drawn to scale, the islands of a 1920 × 1080 editor are a few pixels wide in a card: each one is drawn 1.6 times
+    // larger, from the edge it is pinned to, so the layouts read at a glance (3.0.0).
+    const K = 1.6, Z = (content, ax, ay) => `<g transform="translate(${ax} ${ay}) scale(${K}) translate(${-ax} ${-ay})">${content}</g>`;
     let ui;
     if (kind === 'standard') {
-      ui = `<rect class="t-ui" x="-1" y="-1" width="194" height="8.4"/>` + headParts(0, 0, 192, 7.4, true) + `<rect class="t-ui" x="-1" y="7.4" width="9" height="102"/>` + plus(2, 10.7, 4) + bar(1.2, 19.2, 5.6, 't-soft', .5) + bar(1.2, 57.6, 5.6, 't-soft', .5)
-        + [23.6, 32.1, 40.6, 48.9, 62, 70.4, 78.9, 87.3].map(y => dot(4, y) + bar(2, y + 2, 4, 't-ink', .8)).join('')
-        + [13, 18.5, 23.8, 29.4, 72.7, 78.2, 83.6].map((y, i) => `<rect class="${i ? 't-ui' : 't-on'}" x="186.3" y="${y}" width="4.2" height="4.2" rx="1.2"/>` + (i ? dot(188.4, y + 2.1, .8) : '')).join('')
-        + `<rect class="t-ui" x="186.3" y="89.1" width="4.2" height="8.6" rx="1.2"/>` + dot(188.4, 91.3, .8) + dot(188.4, 95.5, .8)
-        + `<rect class="t-ui" x="9.8" y="100.4" width="15.5" height="3.6" rx="1.8"/>` + dot(12, 102.2, .8) + bar(13.8, 101.7, 9.5, 't-ink', 1) + `<rect class="t-ui" x="165" y="101.4" width="16" height="3.4" rx="1"/>` + dot(166.9, 103.1, .7, 't-acc') + bar(168.6, 102.6, 8.5, 't-ink', 1)
-        + `<rect class="t-ui" x="8" y="105.5" width="185" height="3.5"/>` + footer(9.7).replaceAll('t-foot', 't-ink');
+      const head = `<rect class="t-ui" x="-1" y="-1" width="194" height="8.4"/>` + headParts(0, 0, 192 / K, 7.4, true);
+      const rail = `<rect class="t-ui" x="-1" y="7.4" width="9" height="102"/>` + plus(2, 10.7, 4) + bar(1.2, 19.2, 5.6, 't-soft', .5) + bar(1.2, 57.6, 5.6, 't-soft', .5)
+        + [23.6, 32.1, 40.6, 48.9, 62].map(y => dot(4, y) + bar(2, y + 2, 4, 't-ink', .8)).join('');
+      const buttons = [13, 18.5, 23.8, 29.4, 35, 40.5].map((y, i) => `<rect class="${i ? 't-ui' : 't-on'}" x="186.3" y="${y}" width="4.2" height="4.2" rx="1.2"/>` + (i ? dot(188.4, y + 2.1, .8) : '')).join('');
+      const pill = `<rect class="t-ui" x="9.8" y="100.4" width="15.5" height="3.6" rx="1.8"/>` + dot(12, 102.2, .8) + bar(13.8, 101.7, 9.5, 't-ink', 1);
+      const tilePill = `<rect class="t-ui" x="165" y="101.4" width="16" height="3.4" rx="1"/>` + dot(166.9, 103.1, .7, 't-acc') + bar(168.6, 102.6, 8.5, 't-ink', 1);
+      ui = Z(rail, 0, 7.4) + Z(buttons, 190.5, 9 + 7.4 * K - 7.4) + Z(pill, 8 * K, 104) + Z(tilePill, 181, 104.8)
+        + `<rect class="t-ui" x="8" y="105.5" width="185" height="3.5"/>` + footer(9.7).replaceAll('t-foot', 't-ink') + Z(head, 0, 0);
     } else {
       const top = kind === 'left-handed' || kind === 'review', left = kind === 'left-handed';
-      ui = (kind === 'wide' ? header(.4, 3, 191.2) : header(32.5, top ? 1.5 : 3, 127)) + (left ? tools(1.2) + nav(184.6) : nav(1.2) + tools(184.6))
-        + (top ? online(187.7, 14.5) + tile(187.7, 21.4) : online(4.3, 101.2) + tile(187.7, 101.2)) + footer(top ? 1.6 : 9) + (kind === 'review' ? chat(11, 17) + request(150, 26) : '');
+      const headW = (kind === 'wide' ? 191.2 : 127) / K, headY = top ? 1.5 : 3;
+      const railY = top ? 30.2 : 54;
+      const leftRail = left ? tools(1.2) : nav(1.2), rightRail = left ? nav(184.6) : tools(184.6);
+      ui = footer(top ? 1.6 : 9) + Z(header(96 - headW / 2, headY, headW), 96, headY) + Z(leftRail, 1.2, railY) + Z(rightRail, 190.8, railY)
+        + (top ? Z(online(187.7, 14.5), 190.7, 7.5) + Z(tile(187.7, 21.4), 190.7, 18.4 + 8 * (K - 1))
+          : Z(online(4.3, 101.2), 1.3, 104.2) + Z(tile(187.7, 101.2), 190.7, 104.2))
+        + (kind === 'review' ? Z(chat(11, 17), 12, 17) + Z(request(150, 26), 180, 26) : '');
     }
     return `<svg class="thumb" viewBox="0 0 192 108" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">${map}${ui}</svg>`;
   }
 
-  // The editor's own user name, for bug reports and the update tour. Several places, since WME moves it around.
+  // The editor's own user name, for bug reports and the update tour: from the SDK, else from what the page shows.
   function wmeUserName() {
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const text = value => (typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '').replace(/\s+/g, ' ').trim();
     const tries = [
       () => studioSDK.value(api => api.State.getUserInfo()?.userName, null),
-      () => (globalThis.WazeWrap || page.WazeWrap)?.User?.Username?.(),
-      () => { const user = page.W?.loginManager?.user; return typeof user?.getUserName === 'function' ? user.getUserName() : null; },
-      () => page.W?.loginManager?.user?.userName,
-      () => page.W?.loginManager?.user?.attributes?.userName,
-      () => page.W?.loginManager?.getUserName?.(),
-      () => page.W?.loginManager?.user?.name,
-      () => page.W?.model?.users?.getObjectById?.(page.W?.loginManager?.user?.id || page.W?.loginManager?.user?.attributes?.id)?.attributes?.userName,
+      () => { try { return page.getWmeSdk?.({ scriptId: 'wme-studio', scriptName: 'WME Studio' })?.State?.getUserInfo?.()?.userName; } catch (_) { return null; } },
       () => { const box = document.querySelector('wz-user-box'); return box && (box.getAttribute('user-name') || box.getAttribute('username') || box.getAttribute('name') || box.querySelector('[slot="label"], [slot="name"]')?.textContent || box.shadowRoot?.querySelector('.user-name, .username, [class*="userName"], [class*="user-name"]')?.textContent); },
       () => document.querySelector('#user-info .user-name, .user-info .user-name, [class*="userName--"], [class*="username--"]')?.textContent
     ];
@@ -18548,9 +19248,38 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '2.3.0-2026-10-21m';
+  const STUDIO_BUILD = '3.0.0-2026-10-22';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '3.0.0', groups: [
+      { title: 'Settings', items: [
+        'I redesigned Settings. It is frosted glass now, like the islands, and opens on a new Home page with the things you change most.',
+        'Fewer, clearer pages: Appearance, Layout, Map, Panels and Touch & iPad. The eye saver now sits with the brightness sliders under Map.',
+        'Type in the search box to find any setting on any page, in your language. Enter takes you straight to it.',
+        'Settings open at once, even the first time.',
+        'Suggest a feature next to Report a bug, and a new My reports page with everything you sent, open and closed, bugs and ideas.'
+      ] },
+      { title: 'New in 3.0', items: [
+        "Studio now asks a quick question now and then, so you can help pick what comes next. Your first vote: how Review shows requests you haven't opened.",
+        "Color intensity softens your island color or gradient toward the theme.",
+        "Your hub › Your impact opens as a big window you can move and resize, and the islands stay where they are.",
+        "My reports keeps every report you sent, also the ones I removed from my list.",
+        "Touch tools: clearer icons, tooltips that say what each button does, and when you draw or shape a road, the point sits above your finger so you can see where it goes.",
+        "On iPhone and iPad, panels are nearly solid now, so their text is easy to read over the map.",
+        "Switches that are off and slider rails are easier to see now, on every island color and gradient."
+      ] },
+      { title: 'Look', items: [
+        'Pick your own color for the islands, or a gradient of two colors, in Settings › Appearance › Islands. It colors the side panel, request windows, Map Layers and Messages too, and each quick color comes with a matching accent. Text and icons switch to dark or light so they stay easy to read.'
+      ] },
+      { title: 'Fixes', items: [
+        "Backup & restore works again: a panel size or a setting from another version no longer stops the export or the import.",
+        "House numbers of a selected road are readable again in the dark themes.",
+        "The daily edit bubbles on your editor profile are readable again in the light theme."
+      ] },
+      { title: 'WME SDK', items: [
+        "Almost everything Studio does in the editor now goes through the official WME SDK, the touch tools too: moving and zooming the map with your fingers, selecting and shaping roads. Studio doesn't need WazeWrap anymore."
+      ] }
+    ] },
     { version: '2.3.0', groups: [
       { title: 'Studio', items: [
         'If a WME update breaks Studio, I can now turn it off for everyone until I fix it. You\'ll see a short note, and you can still press Run anyway.'
@@ -18695,23 +19424,32 @@ ${studioControlsCSS()}
   // and iPad news, Settings › Screen displays) save this very script as WME-Studio.user.js: the copy the manager
   // holds when it has one (Tampermonkey), else the one posted on Greasy Fork.
   const STUDIO_USER_FILE_URL = 'https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js';
+  let studioUserFilePromise = null;
+  // Asked for once and kept: pointing at or focusing a download button starts it, so the click itself can save at
+  // once (Safari only allows a download straight after the tap).
+  function studioUserFileReady() {
+    if (!studioUserFilePromise) studioUserFilePromise = studioUserFileText().catch(error => { studioUserFilePromise = null; throw error; });
+    return studioUserFilePromise;
+  }
+  function prefetchStudioUserFile() { studioUserFileReady().catch(() => {}); }
   function studioUserFileText() {
     const own = typeof GM_info === 'object' && typeof GM_info?.scriptSource === 'string' && GM_info.scriptSource.includes('==UserScript==') ? GM_info.scriptSource : '';
     if (own) return Promise.resolve(own);
     return new Promise((resolve, reject) => {
       const take = (status, text) => (status === 200 && String(text).includes('==UserScript==') ? resolve(String(text)) : reject(new Error(`The server answered ${status}`)));
       if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url: STUDIO_USER_FILE_URL, timeout: 30000, anonymous: true,
-        onload: response => take(response.status, response.responseText), onerror: () => reject(new Error('No answer')), ontimeout: () => reject(new Error('Too slow')) });
+        onload: response => take(response.status, response.responseText), onerror: () => reject(new Error('No answer')), ontimeout: () => reject(new Error('Too slow')), onabort: () => reject(new Error('Stopped')) });
       else fetch(STUDIO_USER_FILE_URL, { credentials: 'omit' }).then(async response => take(response.status, await response.text())).catch(reject);
     });
   }
   async function downloadStudioUserFile(event) {
-    event?.preventDefault?.();
     const button = event?.currentTarget;
+    if (button?.dataset.direct) return;   // the file could not be fetched before: the link opens it from Greasy Fork
+    event?.preventDefault?.();
     if (button?.dataset.busy) return;
     if (button) { button.dataset.busy = '1'; button.style.opacity = '.6'; }
     try {
-      const text = await studioUserFileText();
+      const text = await studioUserFileReady();
       const url = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
       const link = Object.assign(document.createElement('a'), { href: url, download: 'WME-Studio.user.js' });
       link.style.display = 'none';
@@ -18720,7 +19458,8 @@ ${studioControlsCSS()}
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (error) {
       reportStudioError('download the .user.js file', error);
-      window.open(STUDIO_USER_FILE_URL, '_blank', 'noopener');   // the browser can still fetch it from Greasy Fork
+      // A new window opened this late would be blocked: the next tap follows the link to Greasy Fork instead.
+      if (button) { button.dataset.direct = '1'; button.setAttribute('target', '_blank'); button.setAttribute('rel', 'noopener'); button.removeAttribute('download'); }
     } finally { if (button) { delete button.dataset.busy; button.style.opacity = ''; } }
   }
   // ---- iPhone and iPad: the news (2.3.0) --------------------------------------------------------------------------
@@ -18884,20 +19623,32 @@ ${studioControlsCSS()}
     $('.note:not(.need) b').textContent = say('This is the first beta');
     $('.get-text').textContent = say('Download WME Studio (.user.js)');
     $('.get').addEventListener('click', downloadStudioUserFile);
+    for (const type of ['pointerenter', 'touchstart', 'focus']) $('.get').addEventListener(type, prefetchStudioUserFile, { once: true, passive: true });
     $('.need-text').textContent = say('Use one of two separate apps from the App Store: Tampermonkey, or the free Userscripts. You only need one. Turn it on for Safari, then add WME Studio to it.');
     $('.note-text').textContent = say('There will be some bugs, and tapping hazards is turned off for now. If something looks off, send it to me from Settings › Report a bug and I\'ll sort it out.');
     const button = $('button');
     button.firstElementChild.textContent = say('Continue');
     let closed = false;
+    const opener = document.activeElement;
+    // Keys belong to the news only while focus is in it (or nowhere): another Studio window opened on top of it (the
+    // command palette, Settings) keeps its own keys. Tab stays inside the card; Enter closes it unless a link has focus.
     const keys = event => {
-      if (event.key === 'Escape' || event.key === 'Enter') { event.preventDefault(); close(); }
+      const inside = event.composedPath().includes(host) || document.activeElement === document.body || document.activeElement === host;
+      if (!inside) return;
+      const focused = shadow.activeElement;
+      if (event.key === 'Escape' || (event.key === 'Enter' && !(focused && focused.matches('a')))) { event.preventDefault(); close(); }
+      else if (event.key === 'Tab') {
+        const stops = [...shadow.querySelectorAll('a[href], button')];
+        const at = stops.indexOf(focused), next = stops[(at + (event.shiftKey ? -1 : 1) + stops.length) % stops.length];
+        event.preventDefault(); next?.focus({ preventScroll: true });
+      }
       if (!event.ctrlKey && !event.metaKey) event.stopImmediatePropagation();
     };
     function close() {
       if (closed) return;
       closed = true;
       document.removeEventListener('keydown', keys, true);
-      const finish = () => { removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); host.remove(); done(); };
+      const finish = () => { removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); host.remove(); try { opener?.focus?.({ preventScroll: true }); } catch (_) { /* gone */ } done(); };
       if (host.hasAttribute('data-still')) { finish(); return; }
       host.classList.add('closing');
       setTimeout(finish, 200);
@@ -18925,14 +19676,22 @@ ${studioControlsCSS()}
     await new Promise(ok => { const go = () => setTimeout(ok, 3500); if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true }); });
     if (document.visibilityState !== 'visible') await new Promise(ok => document.addEventListener('visibilitychange', function shown() { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', shown); ok(); } }));
     const value = await globalThis.WMEStudioSettings.read().catch(() => null);
-    if (!value?.enabled || studioSetup?.isOpen?.() || studioTour?.isOpen?.() || document.documentElement.hasAttribute('data-wme-studio-layout-editing')) { changelogStarted = false; return; }
+    // Not while Studio is off, paused from the website, or busy with the setup, the tour or Arrange (checked again
+    // after the news, which may have been open for a while).
+    const blocked = async () => {
+      const now = await globalThis.WMEStudioSettings.read().catch(() => null);
+      return !now?.enabled || document.documentElement.getAttribute('data-wme-studio') !== 'on' || studioSetup?.isOpen?.() || studioTour?.isOpen?.()
+        || document.documentElement.hasAttribute('data-wme-studio-layout-editing') || studioPanelOpen;
+    };
+    if (!value || await blocked()) { changelogStarted = false; return; }
     await maybeShowMobileNews();   // the iPhone and iPad news comes first, once
+    if (await blocked()) { changelogStarted = false; return; }
     // Built first, shown a moment later: building the settings dialog is heavy, and a card that starts its
     // entrance during that work stutters.
     const ui = buildStudioUI();
     if (!ui) return;
     await new Promise(ok => (window.requestIdleCallback || setTimeout)(() => ok(), { timeout: 600 }));
-    requestAnimationFrame(() => ui.showChangelog?.('new'));
+    requestAnimationFrame(() => ui.showChangelog?.('new', String(seen || '').split('-')[0]));
   }
 
   function buildStudioUI() {
@@ -18953,7 +19712,7 @@ ${studioControlsCSS()}
   button,input{font:inherit}button{cursor:pointer}button:disabled{cursor:default}
   button:focus-visible,input:focus-visible{outline:2px solid var(--accent,#0099ff);outline-offset:3px}
   .backdrop{position:fixed;inset:0;pointer-events:auto;background:rgba(0,0,0,.38)}
-  .panel{
+  .panel{text-wrap:pretty;
     --accent:var(--wme-studio-accent,#0099ff);--on-accent:var(--wme-studio-on-accent,#fff);
     --surface:var(--wme-studio-surface,#fff);--surface2:var(--wme-studio-surface-2,#f5f7fa);
     --text:var(--wme-studio-text,#202830);--muted:var(--wme-studio-text-muted,#72767d);
@@ -18989,11 +19748,18 @@ ${studioControlsCSS()}
   #studio-tab-screens{gap:9px} #studio-tab-screens span{white-space:nowrap}
   @media(max-width:760px){.nav-beta{display:none}}
   .actions.sd-all{margin:0;flex-wrap:wrap}
+  .island-colors{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .island-preview{display:grid;place-items:center;width:58px;height:34px;border-radius:999px;border:1px solid var(--line);background:var(--island-preview,var(--surface2));color:var(--island-preview-ink,var(--text));font-size:13px;box-shadow:inset 0 1px 0 #ffffff1f,0 3px 8px #0000002e}
+  .island-preview b{display:block;line-height:1;text-box:trim-both cap alphabetic}
+  /* A gradient is laid out inside the border and repeated under it, so its far end showed as a strip along the edge. */
+  .island-preview,.swatch,.colorshell{background-origin:border-box!important}
+  .island-swatches{margin-top:0}
+  .seg [data-setting="islandAngle"]{min-width:40px;font-size:16px;line-height:1}
   a.get-userjs{display:inline-flex;align-items:center;text-decoration:none;white-space:nowrap} a.get-userjs>b{display:block;font-weight:inherit;line-height:1;text-box:trim-both cap alphabetic}
   .nav-badge{min-width:18px;height:18px;margin-left:auto;padding:0 5px;border-radius:999px;background:#23a86b;color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center}
   .small-note{color:var(--muted);font-size:10.5px}
   .head-text{display:grid;gap:2px;min-width:0}.page-sub{margin:0;color:var(--muted);font-size:12px}.page-sub:empty{display:none}
-  .chips{display:flex;gap:6px;flex:0 0 auto;padding:0 28px 12px;margin:0;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
+  .chips{display:flex;gap:6px;flex:0 0 auto;padding:0 28px 12px;margin:0;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}.chips[data-more~="end"]{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 44px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 44px),transparent)}.chips[data-more~="start"]{-webkit-mask-image:linear-gradient(90deg,transparent,#000 44px);mask-image:linear-gradient(90deg,transparent,#000 44px)}.chips[data-more="start end"]{-webkit-mask-image:linear-gradient(90deg,transparent,#000 44px,#000 calc(100% - 44px),transparent);mask-image:linear-gradient(90deg,transparent,#000 44px,#000 calc(100% - 44px),transparent)}
   .sec-chip{flex:0 0 auto;height:26px;margin:0;padding:0 11px;border:0;border-radius:999px;background:transparent;color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap}
   .sec-chip:hover{background:var(--hover);color:var(--text)}.sec-chip[aria-current="true"]{background:var(--hover);color:var(--text)}
   .section-note{margin-left:auto;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -19001,10 +19767,41 @@ ${studioControlsCSS()}
   .row-reset{display:inline-block;margin:4px 0 0;padding:0;border:0;background:transparent;color:var(--accent);font-size:11.5px;font-weight:600;cursor:pointer}.row-reset:hover{text-decoration:underline}.row-reset[hidden]{display:none}
   .value[role="button"]{cursor:text;border-radius:7px;padding:3px 6px;margin-right:-6px;border:1px solid transparent}.value[role="button"]:hover{border-color:var(--line);background:var(--surface2);color:var(--text)}
   .value-edit{width:54px;height:22px;box-sizing:border-box;padding:0 4px;border:1px solid var(--accent);border-radius:6px;background:var(--surface2);color:var(--text);font:inherit;font-size:12px;text-align:right;outline:none}
-  .search-trigger{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;height:36px;margin:0;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--muted);font-size:12px;text-align:left}
-  .search-trigger:hover:not(:disabled){border-color:var(--line2);color:var(--text)}.search-trigger:disabled{opacity:.5}
-  .search-trigger svg{width:15px;height:15px;flex:0 0 15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
-  .search-trigger span{min-width:0;padding-block:.4em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-box:trim-both cap alphabetic}
+  /* Search (3.0.0): a field of its own in the sidebar; the button at its end opens the command palette. */
+  .search-field{position:relative;display:flex;align-items:center;gap:6px;height:36px;padding:0 4px 0 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--muted)}
+  .search-field:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+  .search-field>svg{width:15px;height:15px;flex:0 0 15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+  .search-field input{flex:1 1 auto;min-width:0;height:100%;margin:0;padding:0;border:0;outline:none!important;background:transparent;color:var(--text);font-size:12.5px}
+  .search-field input::placeholder{color:var(--muted)}
+  .search-clear,.search-commands{flex:0 0 26px;display:grid;place-items:center;width:26px;height:26px;margin:0;padding:0;border:0;border-radius:7px;background:transparent;color:var(--muted)}
+  .search-clear:hover,.search-commands:hover{background:var(--hover);color:var(--text)}
+  .search-clear svg,.search-commands svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .search-results{display:grid;gap:6px}
+  .result{display:grid;gap:2px;width:100%;margin:0;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);text-align:left}
+  .result:hover,.result[aria-selected="true"]{border-color:color-mix(in srgb,var(--accent) 55%,var(--line));background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
+  .result strong{font-size:13px;font-weight:650}.result .small{margin:0}
+  .result-path{color:var(--accent);font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+  .search-empty{margin:24px 0 0;color:var(--muted);text-align:center}
+  .search-tip{margin:16px 0 0;color:var(--muted);font-size:11.5px;text-align:center}
+  .link{margin:0;padding:0;border:0;background:transparent;color:var(--accent);font:inherit;font-weight:600}.link:hover{text-decoration:underline}
+  /* Home (3.0.0) */
+  .home-hero{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));border-radius:16px;background:linear-gradient(120deg,color-mix(in srgb,var(--accent) 14%,var(--surface)),var(--surface) 70%)}
+  .home-hero[data-off]{border-color:var(--line);background:var(--surface)}
+  .home-logo{width:40px;height:40px;flex:0 0 40px;display:grid;place-items:center}.home-logo img{display:block;width:38px;height:38px;object-fit:contain}
+  .home-hero[data-off] .home-logo{filter:grayscale(1);opacity:.6}
+  .home-hero-text{flex:1 1 auto;display:grid;gap:2px;min-width:0}.home-hero-text strong{font-size:15px;font-weight:700;letter-spacing:-.2px}.home-hero-text .small{margin:0}
+  .switch.big{width:44px;height:26px;flex:0 0 44px}
+  .switch.big i{background-image:radial-gradient(circle,#fff 9px,rgba(255,255,255,0) 9.8px),radial-gradient(circle at 50% 58%,rgba(0,0,0,.2) 9px,rgba(0,0,0,0) 11.5px);background-size:26px 26px}
+  .qrow{display:flex;align-items:center;gap:16px;min-height:54px;padding:9px 16px}
+  .quick>fieldset{display:block}
+  .swatch.more{display:grid;place-items:center;border-color:transparent;background:var(--surface2);color:var(--muted);box-shadow:inset 0 0 0 1px var(--line)}
+  .swatch.more svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}.swatch.more:hover{color:var(--text)}
+  .home-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+  .home-tile{display:flex;align-items:flex-start;gap:11px;min-width:0;margin:0;padding:13px 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);text-align:left}
+  .home-tile:hover{border-color:var(--line2);background:color-mix(in srgb,var(--text) 3%,var(--surface))}
+  .home-tile>svg{width:20px;height:20px;flex:0 0 20px;margin-top:1px;fill:none;stroke:var(--accent);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .home-tile-text{display:grid;gap:2px;min-width:0}.home-tile-text strong{font-size:13px;font-weight:650}.home-tile-text .small{margin:0}
+  .home-links{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
   .nav{display:grid;grid-auto-rows:max-content;align-content:start;gap:2px;min-height:0;overflow-y:auto;scrollbar-width:thin}
   .nav-item{display:flex;align-items:center;justify-content:flex-start;text-align:left;gap:11px;width:100%;height:38px;margin:0;padding:0 11px;border:0;border-radius:11px;background:transparent;color:var(--muted);font-size:13px;font-weight:600}
   .nav-item:hover{background:var(--hover)}.nav-item[aria-selected="true"]{background:color-mix(in srgb,var(--accent) 14%,var(--surface2));color:var(--accent)}
@@ -19047,7 +19844,7 @@ ${studioControlsCSS()}
   .mode-preview{flex:0 0 112px;display:block;width:112px;height:63px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface2)}
   .thumb{display:block;width:100%;height:100%}
   .thumb .t-bg{fill:color-mix(in srgb,var(--text) 12%,var(--surface2))}.thumb .t-grid{fill:none;stroke:var(--text);stroke-opacity:.08;stroke-width:.6}
-  .thumb .t-ui{fill:var(--surface);stroke:var(--line2);stroke-width:.7}.thumb .t-sh{fill:#000;fill-opacity:.18}
+  .thumb .t-ui{fill:color-mix(in srgb,var(--surface) 88%,var(--text));stroke:color-mix(in srgb,var(--text) 38%,transparent);stroke-width:.6}.thumb .t-sh{fill:#000;fill-opacity:.32}
   .thumb .t-soft{fill:color-mix(in srgb,var(--text) 12%,var(--surface))}.thumb .t-ink{fill:color-mix(in srgb,var(--text) 55%,var(--surface))}.thumb .t-strong{fill:color-mix(in srgb,var(--text) 86%,var(--surface))}
   .thumb .t-acc{fill:var(--accent)}.thumb .t-save{fill:color-mix(in srgb,var(--accent) 62%,var(--surface))}.thumb .t-on{fill:color-mix(in srgb,var(--accent) 26%,var(--surface));stroke:var(--accent);stroke-width:.7}.thumb .t-warn{fill:#f5a623}
   .thumb .t-plus{fill:none;stroke:#fff;stroke-width:.8;stroke-linecap:round}.thumb .t-foot{fill:#fff;fill-opacity:.6}
@@ -19080,6 +19877,10 @@ ${studioControlsCSS()}
     background-size:21px 21px;background-repeat:no-repeat;background-position:0 50%,0 50%;
     transition:background-color 120ms ease,background-position 120ms ease}
   .switch input:checked+i{background-color:var(--accent);background-position:100% 50%,100% 50%}
+  /* Off switches are drawn from the text color with a ring around them (3.0.0), so they stay visible on every
+     gradient and color, light or dark. */
+  .switch input:not(:checked)+i{background-color:color-mix(in srgb,var(--text) 30%,transparent);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--text) 40%,transparent)}
+  .switch input:disabled+i{opacity:.5}
   .switch:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:3px;border-radius:999px}
   /* Text buttons: a fixed height, and the label trimmed to its cap height so it sits in the optical middle in any font. */
   .reset,.primary,.ghost,.seg button,.picker-done,.picker-reset{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;margin:0;line-height:1.2;white-space:nowrap;vertical-align:middle;text-box:trim-both cap alphabetic}
@@ -19217,6 +20018,111 @@ ${studioControlsCSS()}
   .bug-thumb-tag{position:absolute;left:4px;bottom:4px;padding:1px 6px;border-radius:6px;background:#000000a6;color:#fff;font:600 10px/14px var(--ws-font,system-ui,sans-serif);pointer-events:none}
   .bug-details summary{cursor:pointer;color:var(--muted);font-size:12px}.bug-details pre{margin:8px 0 0;max-height:160px;overflow:auto;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
   .bug-error{margin:0;padding:8px 10px;border-radius:10px;background:rgba(255,107,107,.14);color:#ff6b6b;font-size:12px}
+
+  /* The 3.0 welcome (3.0.0): a picture of the new release drawn as a small 3D scene (the map, islands, a Review list,
+     a poll and the touch tools), with the main changes under it. The scene tilts a little with the pointer. */
+  .release-backdrop{z-index:6;background:radial-gradient(120% 90% at 50% 0%,color-mix(in srgb,var(--wme-studio-accent,#0099ff) 22%,transparent),rgba(0,0,0,.55) 60%);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+  .release{--accent:var(--wme-studio-accent,#0099ff);--surface:var(--wme-studio-surface,#fff);--surface2:var(--wme-studio-surface-2,#f5f7fa);--text:var(--wme-studio-text,#202830);--muted:var(--wme-studio-text-muted,#72767d);--line:var(--wme-studio-border,#dde3e8);
+    position:relative;display:flex;flex-direction:column;width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:hidden;border-radius:26px;background:var(--surface);color:var(--text);
+    box-shadow:0 40px 90px #00000070,0 0 0 1px color-mix(in srgb,var(--text) 10%,transparent);font-family:var(--ws-font,Inter,system-ui,sans-serif);animation:rl-in .6s cubic-bezier(.2,.9,.25,1)}
+  .release:focus{outline:none}
+  @keyframes rl-in{from{opacity:0;transform:translateY(24px) scale(.96)}}
+  .release-stage{position:relative;flex:none;height:250px;overflow:hidden;perspective:900px;
+    background:radial-gradient(90% 120% at 20% 0%,color-mix(in srgb,var(--accent) 55%,#0b1220),#0b1220 70%)}
+  .release-stage::after{content:"";position:absolute;inset:auto 0 0;height:60px;background:linear-gradient(transparent,color-mix(in srgb,var(--surface) 70%,transparent));pointer-events:none}
+  .rs-scene{--rx:52deg;--rz:-28deg;position:absolute;left:50%;top:62%;width:430px;height:270px;margin:-135px 0 0 -215px;transform-style:preserve-3d;transform:rotateX(var(--rx)) rotateZ(var(--rz));transition:transform .5s cubic-bezier(.2,.8,.2,1);animation:rs-float 7s ease-in-out infinite}
+  @keyframes rs-float{50%{translate:0 -6px}}
+  .rs-scene>*{position:absolute;transform-style:preserve-3d;border-radius:14px}
+  .rs-map{inset:0;border-radius:22px;overflow:hidden;background:
+    repeating-linear-gradient(115deg,transparent 0 34px,#ffffff10 34px 36px),repeating-linear-gradient(25deg,transparent 0 46px,#ffffff0d 46px 48px),linear-gradient(135deg,#2c4a3a,#1d3347 60%,#2a2f4a);
+    box-shadow:0 40px 60px #0009,inset 0 0 0 1px #ffffff1c}
+  .rs-map i{position:absolute;height:9px;border-radius:9px;background:linear-gradient(90deg,#f5c84c,#f0a43a);box-shadow:0 0 0 2px #00000030;transform-origin:left center}
+  .rs-map i:nth-child(1){left:-10px;top:150px;width:470px;transform:rotate(-14deg)}
+  .rs-map i:nth-child(2){left:120px;top:-20px;width:330px;transform:rotate(68deg);background:linear-gradient(90deg,#e8edf2,#c9d2db)}
+  .rs-map i:nth-child(3){left:20px;top:60px;width:260px;transform:rotate(22deg);height:6px;background:#e8edf2}
+  .rs-head{left:90px;right:30px;top:14px;height:26px;transform:translateZ(26px);display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--ws-island-paint-hover,color-mix(in srgb,#1b2026 92%,transparent));box-shadow:0 14px 24px #0007}
+  .rs-head b{width:46px;height:8px;border-radius:4px;background:#fff;opacity:.9}.rs-head i{margin-left:auto;width:9px;height:9px;border-radius:50%;background:#ffffff70}.rs-head i+i{margin-left:0}
+  .rs-rail{left:14px;top:60px;width:26px;height:150px;transform:translateZ(30px);display:flex;flex-direction:column;align-items:center;gap:10px;padding-top:12px;background:var(--ws-island-paint-hover,#1b2026ee);box-shadow:0 14px 24px #0007}
+  .rs-rail i{width:10px;height:10px;border-radius:4px;background:#ffffff66}.rs-rail i:first-child{background:var(--accent)}
+  .rs-panel{left:52px;top:56px;width:132px;height:192px;transform:translateZ(46px);padding:10px 9px;display:flex;flex-direction:column;gap:7px;background:var(--ws-island-paint-hover,#20262ef2);box-shadow:0 22px 34px #0009,inset 0 0 0 1px #ffffff14}
+  .rs-panel b{height:8px;width:60%;border-radius:4px;background:#fff;opacity:.85;margin-bottom:3px}
+  .rs-panel i{height:30px;border-radius:8px;box-shadow:inset 0 0 0 1px #ffffff26}
+  .rs-panel i.new{background:color-mix(in srgb,var(--accent) 22%,#ffffff10);box-shadow:inset 3px 0 0 var(--accent)}
+  .rs-poll{left:220px;top:110px;width:168px;height:118px;transform:translateZ(72px) rotateX(-8deg);padding:12px;display:flex;flex-direction:column;gap:9px;background:#fffffff2;box-shadow:0 34px 50px #000a;animation:rs-poll 5s ease-in-out infinite}
+  @keyframes rs-poll{50%{transform:translateZ(84px) rotateX(-8deg)}}
+  .rs-poll b{height:9px;width:70%;border-radius:4px;background:#1d2733}
+  .rs-poll span{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1}
+  .rs-poll span i{border-radius:8px;background:#e9eef3;box-shadow:inset 0 0 0 1px #d4dbe3}
+  .rs-poll span i.on{background:color-mix(in srgb,var(--accent) 16%,#fff);box-shadow:inset 0 0 0 2px var(--accent)}
+  .rs-poll em{align-self:flex-end;width:46px;height:14px;border-radius:7px;background:var(--accent)}
+  .rs-tools{left:180px;bottom:14px;height:30px;transform:translateZ(36px);display:flex;align-items:center;gap:6px;padding:0 7px;background:var(--ws-island-paint-hover,#1b2026ee);box-shadow:0 14px 24px #0008}
+  .rs-tools i{width:18px;height:18px;border-radius:6px;background:#ffffff40}.rs-tools i.on{background:var(--accent)}
+  .rs-aim{left:372px;top:196px;width:26px;height:26px;border-radius:50%!important;transform:translateZ(60px);border:3px solid #34c759;background:rgba(52,199,89,.25);box-shadow:0 0 0 2px #fff,0 10px 18px #0008;animation:rs-aim 2.6s ease-in-out infinite}
+  @keyframes rs-aim{50%{translate:-14px 10px}}
+  .rs-badge{position:absolute;left:22px;top:18px;padding:6px 12px 7px;border-radius:999px;background:#ffffff1f;color:#fff;font:800 15px/1 var(--ws-font,Inter,system-ui,sans-serif);letter-spacing:.02em;box-shadow:inset 0 0 0 1px #ffffff33;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+  .release-close{position:absolute!important;top:12px;right:12px;color:#fff!important;background:#ffffff1f!important;border-radius:50%!important}
+  .release-body{padding:24px 26px 4px;overflow:auto}
+  .release-kicker{margin:0 0 8px;color:var(--accent);font-size:11.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+  .release-body h2{margin:0;font-size:26px;line-height:1.1;font-weight:800;letter-spacing:-.01em}
+  .release-lead{margin:8px 0 16px;color:var(--muted);font-size:13.5px;line-height:1.45}
+  .release-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0;padding:0;list-style:none}
+  .release-grid li{display:flex;gap:12px;align-items:center;min-height:62px;box-sizing:border-box;padding:12px 14px;border-radius:16px;background:var(--surface2);box-shadow:inset 0 0 0 1px var(--line)}
+  .rt-icon{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:color-mix(in srgb,var(--accent) 15%,transparent);color:var(--accent)}
+  .rt-gradient i{width:18px;height:18px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#b06cff 55%,#ff8a5c);box-shadow:0 0 0 2px color-mix(in srgb,var(--surface) 70%,transparent),0 3px 8px color-mix(in srgb,#b06cff 40%,transparent)}
+  .rt-icon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .rt-text{display:flex;flex-direction:column;gap:3px;min-width:0}.rt-text b{font-size:13px;line-height:1.25}.rt-text span{color:var(--muted);font-size:11.5px;line-height:1.35}
+  .release-foot{display:flex;justify-content:flex-end;gap:10px;padding:18px 26px 22px}
+  .release-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;margin:0;padding:0 18px;border:0;border-radius:13px;cursor:pointer;
+    font:600 13.5px/1 var(--ws-font,Inter,system-ui,sans-serif);color:var(--text);background:color-mix(in srgb,var(--text) 8%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text) 12%,transparent);transition:background-color .15s ease,transform .15s ease,box-shadow .15s ease}
+  .release-btn span{display:block;line-height:1}
+  .release-btn svg{flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.8}
+  .release-btn circle{fill:currentColor;stroke:none}
+  .release-btn:hover{background:color-mix(in srgb,var(--text) 13%,transparent)}
+  .release-btn:active{transform:scale(.97)}
+  .release-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .release-btn.primary{color:var(--wme-studio-on-accent,#fff);background:var(--accent);box-shadow:0 8px 20px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .release-btn.primary:hover{background:color-mix(in srgb,var(--accent) 88%,#fff)}
+  .release-btn.primary svg{opacity:1;transition:transform .15s ease}.release-btn.primary:hover svg{transform:translateX(2px)}
+  @media (max-width:560px){.release-grid{grid-template-columns:minmax(0,1fr)}.release-stage{height:200px}.rs-scene{scale:.8}}
+  :host-context(html[data-wme-studio-motion="reduced"]) :is(.release,.rs-scene,.rs-poll,.rs-aim){animation:none!important;transition:none!important}
+  @media (prefers-reduced-motion:reduce){:is(.release,.rs-scene,.rs-poll,.rs-aim){animation:none!important}}
+  /* The vote on the Review look (3.0.0): four choices, each with a new and an opened request drawn in its look. */
+  .poll-dialog{width:min(600px,calc(100vw - 32px))}.poll-dialog:focus{outline:none}
+  .poll-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .poll-options.plain{grid-template-columns:minmax(0,1fr)}
+  /* Where the question comes from: Studio's own mark and name, so nobody takes it for WME's or another script's. */
+  .poll-from{display:flex;align-items:center;gap:7px;margin:0 0 10px;color:var(--muted);font-size:11.5px;font-weight:600;line-height:1}
+  .poll-from b{color:var(--text);font-weight:700;text-box:trim-both cap alphabetic}
+  .poll-logo{display:grid;place-items:center;width:22px;height:22px;flex:none}.poll-logo img{width:100%;height:100%;object-fit:contain}
+  .poll-tag{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:10.5px;font-weight:700;letter-spacing:.02em}
+  .poll-cover{display:block;width:100%;max-height:220px;object-fit:cover;border-radius:14px;margin:0 0 12px;background:var(--surface2)}
+  .poll-pic{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;background:var(--surface)}
+  .poll-pic:not([src]){visibility:hidden}
+  .poll-options.plain .poll-option{padding:12px 14px}
+  .poll-options.plain.pictures{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .poll-option{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;min-width:0;padding:10px;border:1px solid var(--line);border-radius:16px;background:var(--surface2);cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}
+  .poll-option:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+  .poll-option:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .poll-option[aria-checked="true"]{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent);background:color-mix(in srgb,var(--accent) 7%,var(--surface2))}
+  .poll-name{display:block;color:var(--text);font-size:13px;font-weight:700;line-height:1;text-box:trim-both cap alphabetic;margin-top:4px}
+  .poll-desc{display:block;color:var(--muted);font-size:11.5px;line-height:1.35}
+  .poll-preview{display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:12px;background:var(--surface)}
+  .poll-preview .pc{position:relative;display:flex;align-items:center;gap:8px;min-width:0;padding:7px 9px;border-radius:10px}
+  .poll-preview .pi{flex:0 0 auto;width:20px;height:20px;border-radius:50%;background:#f2545b}
+  .poll-preview .pt{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .poll-preview b{color:var(--text);font-size:11.5px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .poll-preview .read b{font-weight:500}
+  .poll-preview small{color:var(--muted);font-size:10.5px;line-height:1.2;white-space:nowrap}
+  .poll-preview[data-look="classic"] .unread{background:color-mix(in srgb,var(--text) 9%,var(--surface))}
+  .poll-preview[data-look="classic"] .read{background:color-mix(in srgb,var(--text) 4%,var(--surface))}
+  .poll-preview[data-look="edge"] .unread{background:color-mix(in srgb,var(--accent) 10%,var(--surface));box-shadow:inset 3px 0 0 var(--accent)}
+  .poll-preview[data-look="edge"] .read{box-shadow:inset 0 0 0 1px var(--line)}
+  .poll-preview[data-look="dot"] .unread{background:color-mix(in srgb,var(--text) 9%,var(--surface))}
+  .poll-preview[data-look="dot"] .unread::after{content:"";position:absolute;top:7px;right:8px;width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+  .poll-preview[data-look="dot"] .read{box-shadow:inset 0 0 0 1px var(--line)}
+  .poll-preview[data-look="fade"] .unread{background:color-mix(in srgb,var(--text) 6%,var(--surface));box-shadow:0 3px 10px #0000002e,inset 0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent)}
+  .poll-preview[data-look="fade"] .read{opacity:.55}
+  @media (max-width:520px){.poll-options{grid-template-columns:minmax(0,1fr)}}
   .bug-foot{display:flex;align-items:center;gap:8px;padding:12px 20px 18px}.bug-note{flex:1;color:var(--muted);font-size:11.5px;min-width:0}
   .bug-done{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px;text-align:center;background:var(--surface);animation:bug-in 180ms ease}
   .bug-as{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--text);font-size:12px;line-height:1.35}.bug-as svg{flex:none;width:15px;height:15px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.bug-as b{font-weight:700}
@@ -19245,6 +20151,7 @@ ${studioControlsCSS()}
   .log-list ul{display:flex;flex-direction:column;gap:5px;margin:0;padding-left:16px}
   .log-list li::marker{color:var(--accent)}
   .log-group h5{margin:0 0 4px;color:var(--muted);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .log-version{margin:6px 0 0;font-size:12px;font-weight:700;color:var(--text)} .log-version:first-child{margin-top:0}
   .log-group h5 .log-beta{display:inline-flex;align-items:center;height:16px;margin-left:7px;padding:0 7px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:9.5px;line-height:1;letter-spacing:.07em;vertical-align:middle}
   .log-group h5 .log-beta>span{display:block;line-height:1;text-box:trim-both cap alphabetic}
   .log-release .log-group + .log-group{margin-top:8px}
@@ -19255,7 +20162,7 @@ ${studioControlsCSS()}
   .mine-top{display:flex;align-items:center;gap:8px;min-width:0}
   .mine-state{--c:var(--muted);flex:none;display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:999px;background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) 78%,var(--text));font-size:11px;font-weight:700;line-height:1}
   .mine-state::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
-  .mine-state[data-s="seen"]{--c:#2f8fe6}.mine-state[data-s="working"]{--c:#8b5cf6}.mine-state[data-s="fixed"]{--c:#22a35a}.mine-state[data-s="rejected"]{--c:#d9534f}
+  .mine-state[data-s="seen"]{--c:#2f8fe6}.mine-state[data-s="working"]{--c:#8b5cf6}.mine-state[data-s="fixed"]{--c:#22a35a}.mine-state[data-s="rejected"]{--c:#d9534f}.mine-state[data-s="deleted"]{--c:var(--muted)}.mine-item:has(.mine-state[data-s="deleted"]) .mine-sum{opacity:.75}
   .mine-when{margin-left:auto;color:var(--muted);font-size:11.5px;white-space:nowrap}
   .mine-sum{color:var(--text);font-size:13px;line-height:1.4;overflow-wrap:anywhere}
   .mine-note{margin-top:2px;padding-left:8px;border-left:2px solid var(--line);color:var(--muted);font-size:12px;font-style:italic;overflow-wrap:anywhere}
@@ -19279,7 +20186,124 @@ ${studioControlsCSS()}
   .fix-actions>button{height:34px;min-width:92px;padding:0 16px;border:1px solid var(--line);border-radius:10px;font-size:12px;font-weight:650;white-space:nowrap}
   .fix-actions>button[hidden]{display:none}
   .bug-done-icon{width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:26px;font-weight:700;margin-bottom:6px}.bug-done h3{margin:0;font-size:17px}.bug-done p{margin:0 0 14px;color:var(--muted);max-width:360px}
-  @media(max-width:760px){.panel{width:calc(100vw - 24px);height:min(660px,calc(100dvh - 24px));grid-template-columns:64px minmax(0,1fr)}.head{padding:16px 14px 12px 20px}.chips{padding-inline:20px}.body{padding:16px 20px 20px}.sidebar{align-items:center;gap:8px;padding:14px 0 12px}.brand{padding:0}.brand-text{display:none}.search-trigger{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.search-trigger span{display:none}.nav{width:100%;justify-items:center;gap:4px}.nav-group{display:none}.nav-item{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.nav-item span{display:none}.nav-item .nav-badge{display:grid;position:absolute;top:4px;right:4px;min-width:8px;height:8px;padding:0;font-size:0}.nav-item{position:relative}.sidebar-footer{padding:0}.power-text{display:none}.notice{width:28px;padding:0;justify-content:center}.notice [data-id="status"]{display:none}.srow{flex-wrap:wrap;row-gap:8px}.srow:has(>input[type="range"]) .srow-text,.srow:has(>.actions) .srow-text,.srow:has(>.swatches) .srow-text{flex-basis:100%}.srow input[type="range"]{flex:1 1 160px;width:auto}.stack-main{flex-wrap:wrap;row-gap:8px}.modes{grid-template-columns:1fr}.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.themes{gap:8px}}
+  /* ---- Glass (3.0.0): the window is frosted glass like the floating islands, the map showing through; the
+     sections float inside it as their own panes. Solid again for "Reduce transparency". ---- */
+  .panel{
+    --glass:color-mix(in srgb,var(--surface) 76%,transparent);--glass-pane:color-mix(in srgb,var(--surface) 58%,transparent);
+    --glass-soft:color-mix(in srgb,var(--text) 5%,transparent);--glass-line:color-mix(in srgb,var(--text) 11%,transparent);
+    --glass-edge:color-mix(in srgb,#fff 14%,transparent);
+    border:1px solid var(--glass-line);border-radius:26px;background:var(--glass);
+    -webkit-backdrop-filter:blur(30px) saturate(1.7);backdrop-filter:blur(30px) saturate(1.7);
+    box-shadow:inset 0 1px 0 var(--glass-edge),0 30px 90px #00000052,0 6px 20px #00000026;
+    grid-template-columns:232px minmax(0,1fr);
+  }
+  .backdrop{background:rgba(0,0,0,.22)}
+  .sidebar{margin:10px 0 10px 10px;padding:14px 10px 12px;border:1px solid var(--glass-line);border-radius:19px;background:var(--glass-soft);box-shadow:inset 0 1px 0 var(--glass-edge)}
+  .search-field{background:var(--glass-pane);border-color:var(--glass-line)}
+  .nav-item{height:36px;border-radius:12px;transition:background-color 120ms ease,box-shadow 120ms ease}
+  .nav-item:hover{background:var(--glass-soft)}
+  .nav-item[aria-selected="true"]{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent);box-shadow:none}
+  .nav-item[aria-selected="true"] span{color:var(--text)}
+  .head{padding:20px 22px 12px 26px}
+  .head h2{font-size:23px;letter-spacing:-.5px}
+  .chips{padding:0 26px 12px;border-bottom:1px solid var(--glass-line)}
+  .sec-chip{border:1px solid transparent}.sec-chip[aria-current="true"]{background:var(--glass-pane);border-color:var(--glass-line);color:var(--text)}
+  .body{padding:18px 26px 26px}
+  .card,.saved{border-color:var(--glass-line);border-radius:18px;background:var(--glass-pane);box-shadow:inset 0 1px 0 var(--glass-edge),0 8px 24px #0000001a}
+  .rows>*+*{border-top-color:var(--glass-line)}
+  .theme,.mode-card,.preset-card,.home-tile,.result,.chip{border-color:var(--glass-line);background:var(--glass-pane);box-shadow:inset 0 1px 0 var(--glass-edge)}
+  .theme:hover,.mode-card:hover,.preset-card:hover,.home-tile:hover{border-color:color-mix(in srgb,var(--text) 22%,transparent);background:color-mix(in srgb,var(--surface) 70%,transparent)}
+  .mode-card:has(input:checked){background:color-mix(in srgb,var(--accent) 12%,var(--glass-pane))}
+  .seg{border-color:var(--glass-line);background:var(--glass-soft);border-radius:var(--seg-radius,14px)}
+  .seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .reset{border-color:var(--glass-line);background:var(--glass-pane)}.reset:hover:not(:disabled){background:color-mix(in srgb,var(--surface) 80%,transparent)}
+  .home-hero{border-radius:20px;background:linear-gradient(120deg,color-mix(in srgb,var(--accent) 24%,transparent),var(--glass-pane) 72%);box-shadow:inset 0 1px 0 var(--glass-edge),0 10px 30px color-mix(in srgb,var(--accent) 16%,transparent)}
+  .home-hero[data-off]{background:var(--glass-pane);box-shadow:inset 0 1px 0 var(--glass-edge)}
+  .peek-hint{background:color-mix(in srgb,var(--accent) 12%,var(--glass-pane));border:1px solid color-mix(in srgb,var(--accent) 25%,transparent)}
+  .section-label{color:color-mix(in srgb,var(--text) 58%,transparent)}
+  .panel[data-peek]{background:transparent;box-shadow:none;border-color:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+  /* Theme and layout cards (3.0.0): rounder, and each preview is a small window tilted in 3D on a lit stage. It
+     straightens a little on hover, and faces you when it is the one chosen. */
+  /* Every button in Studio follows the Corners setting with !important (studioControlsCSS); the cards below keep
+     their own, rounder shape (3.0.0). */
+  .panel .body button.theme,.panel .body button.theme.theme{border-radius:24px!important}
+  .panel .body button.preset-card.preset-card{border-radius:20px!important}
+  .panel .body button.home-tile.home-tile{border-radius:18px!important}
+  .panel .body button.result.result{border-radius:14px!important}
+  .panel .body button.swatch.swatch{border-radius:50%!important}
+  .theme{padding:9px 9px 12px;gap:10px}
+  .theme-name,.theme-desc{padding-inline:5px}
+  .preview{--tilt-x:18deg;--tilt-y:-16deg;height:100px;border:0;border-radius:15px;overflow:hidden;perspective:430px;
+    background:radial-gradient(120% 90% at 25% 0%,color-mix(in srgb,var(--accent) 26%,transparent),transparent 62%),linear-gradient(160deg,color-mix(in srgb,var(--text) 10%,var(--surface2)),color-mix(in srgb,var(--text) 22%,var(--surface2)));
+    box-shadow:inset 0 0 0 1px var(--glass-line,var(--line))}
+  .preview::before,.preview::after{content:none}
+  .pv-win{position:absolute;left:12%;right:12%;top:14%;bottom:8%;border-radius:11px;background:var(--preview-bg);border:1px solid var(--preview-line);
+    transform:rotateX(var(--tilt-x)) rotateY(var(--tilt-y)) rotateZ(1.5deg);transform-style:preserve-3d;transform-origin:50% 60%;
+    box-shadow:0 22px 26px -12px #0000008c,0 6px 10px -4px #0000004d;transition:transform 260ms cubic-bezier(.2,.8,.25,1)}
+  .pv-win::before{content:"";position:absolute;left:8%;top:9%;width:84%;height:11%;border-radius:5px;background:var(--preview-surface);box-shadow:0 2px 4px #0000001f;transform:translateZ(8px)}
+  .pv-win::after{content:"";position:absolute;left:8%;top:30%;width:12%;height:56%;border-radius:6px;background:var(--preview-surface);box-shadow:0 3px 6px #00000024;transform:translateZ(12px)}
+  .pv-win i{right:8%;top:30%;width:62%;height:56%;border-radius:8px;box-shadow:0 6px 12px #00000033;transform:translateZ(18px)}
+  .theme:hover .preview{--tilt-x:12deg;--tilt-y:-10deg}
+  .theme[aria-pressed="true"] .preview{--tilt-x:6deg;--tilt-y:-5deg}
+  .theme[aria-pressed="true"]{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent),inset 0 0 0 1px var(--accent),0 12px 28px color-mix(in srgb,var(--accent) 18%,transparent)}
+  .theme[aria-pressed="true"]::after{right:14px;top:14px;z-index:2}
+  .mode-card{border-radius:20px;padding:10px 14px 10px 10px}
+  .mode-preview,.preset-preview{--tilt-x:14deg;--tilt-y:-14deg;border:0;perspective:380px;overflow:hidden;
+    background:radial-gradient(120% 90% at 25% 0%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 62%),linear-gradient(160deg,color-mix(in srgb,var(--text) 8%,var(--surface2)),color-mix(in srgb,var(--text) 20%,var(--surface2)));
+    box-shadow:inset 0 0 0 1px var(--glass-line,var(--line))}
+  .mode-preview{flex-basis:150px;width:150px;height:90px;border-radius:14px}
+  .preset-card{border-radius:18px;padding:8px 8px 10px}
+  .preset-preview{border-radius:12px}
+  .mode-preview .thumb,.preset-preview .thumb{width:92%;height:90%;margin:5% 4% 0;border-radius:7px;clip-path:inset(0 round 7px);
+    transform:rotateX(var(--tilt-x)) rotateY(var(--tilt-y)) rotateZ(1deg);transform-origin:50% 65%;
+    filter:drop-shadow(0 10px 9px #00000066);transition:transform 260ms cubic-bezier(.2,.8,.25,1)}
+  .mode-card:hover .mode-preview,.preset-card:hover:not(:disabled) .preset-preview{--tilt-x:9deg;--tilt-y:-9deg}
+  .mode-card:has(input:checked) .mode-preview,.preset-card[aria-pressed="true"] .preset-preview{--tilt-x:4deg;--tilt-y:-4deg}
+  .mode-card:has(input:checked){box-shadow:0 0 0 1px var(--accent),0 12px 28px color-mix(in srgb,var(--accent) 16%,transparent)}
+  .preset-card[aria-pressed="true"]{box-shadow:0 0 0 1px var(--accent),0 10px 24px color-mix(in srgb,var(--accent) 16%,transparent)}
+  /* Labels sit in the optical middle of their buttons (3.0.0). A flex button cannot trim its own text, so each label
+     is wrapped in a span.tx (trimLabels) that is cut to the height of its capital letters and centred. A text field
+     cannot be trimmed: its text is moved down by the gap between the font's line and its capitals instead. */
+  .tx{display:block;min-width:0;line-height:1;text-box:trim-both cap alphabetic;overflow:visible}
+  .notice [data-id="status"]{line-height:1;text-box:trim-both cap alphabetic;padding-block:4px;margin-block:-4px}
+  .search-field input{box-sizing:border-box;padding:0}
+  .feature-input,.value-edit{padding-top:1px}
+  .bug-field input{height:36px;padding:0 10px}
+  .bug-select-button>span{line-height:1;text-box:trim-both cap alphabetic;padding-top:1.8px}
+  /* My reports (3.0.0) */
+  .reports-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+  .reports-sub{margin:0}.reports-sub:empty{display:none}
+  .reports-list .mine-item{gap:6px;padding:12px 14px;border-color:var(--glass-line,var(--line));border-radius:16px;background:var(--glass-pane,var(--surface2));box-shadow:inset 0 1px 0 var(--glass-edge,transparent)}
+  .mine-kind{flex:none;display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;border:1px solid var(--glass-line,var(--line));color:var(--muted);font-size:11px;font-weight:600}
+  .mine-kind[data-k="idea"]{border-color:color-mix(in srgb,#e0a100 45%,transparent);color:color-mix(in srgb,#e0a100 85%,var(--text))}
+  .mine-state .tx,.mine-kind .tx{white-space:nowrap}
+  /* Each quick island color shows the accent it comes with, as a small dot. */
+  .island-swatches .swatch[data-accent]{position:relative}
+  .island-swatches .swatch[data-accent]::after{content:"";position:absolute;right:-4px;bottom:-4px;width:11px;height:11px;border-radius:50%;background:var(--a);box-shadow:0 0 0 2px var(--surface)}
+  .island-swatches{gap:14px}
+  .island-swatches .swatch[aria-pressed="true"],.island-swatches .swatch.on{outline:2px solid var(--text);outline-offset:2px}
+  .srow-text>strong:has(>.row-reset){display:flex;align-items:center;flex-wrap:wrap;column-gap:0}
+  .srow-text>strong>.row-reset{order:3;margin:0 0 0 10px;font-size:11px;line-height:1;text-box:trim-both cap alphabetic}
+  .srow[data-changed]>.srow-text>strong:has(>.row-reset)::after{order:2}
+  /* Island colors of your own (Floating mode) color Settings too (3.0.0). */
+  :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast])) .panel{
+    --text:var(--ws-island-ink);--muted:color-mix(in srgb,var(--ws-island-ink) 66%,transparent);
+    --line:color-mix(in srgb,var(--ws-island-ink) 16%,transparent);--line2:color-mix(in srgb,var(--ws-island-ink) 30%,transparent);--hover:color-mix(in srgb,var(--ws-island-ink) 10%,transparent);
+    --surface:var(--ws-island-a);--surface2:color-mix(in srgb,var(--ws-island-ink) 8%,var(--ws-island-a));
+    --glass:transparent;--glass-pane:color-mix(in srgb,var(--ws-island-ink) 7%,transparent);--glass-soft:color-mix(in srgb,var(--ws-island-ink) 5%,transparent);--glass-line:color-mix(in srgb,var(--ws-island-ink) 14%,transparent);--glass-edge:color-mix(in srgb,#fff 10%,transparent);
+    background:var(--ws-island-paint-hover,var(--ws-island-a));color:var(--ws-island-ink)
+  }
+  /* The 3D previews are drawn inside their own clipped layer, so the glass behind never shows a seam through them. */
+  /* The tilt is drawn flat (3.0.0): a 3D tilt made Chrome cut the glass behind it into pieces on some screens, which
+     showed as thin lines across Settings. Rotate and skew give the same look without any 3D layers. */
+  .preview,.mode-preview,.preset-preview{isolation:isolate;contain:paint;perspective:none}
+  .pv-win{transform:rotate(calc(var(--tilt-y) * .2)) skewX(calc(var(--tilt-y) * -.4)) scale(.97);transform-style:flat}
+  .pv-win::before,.pv-win::after,.pv-win i{transform:none}
+  .mode-preview .thumb,.preset-preview .thumb{transform:rotate(calc(var(--tilt-y) * .2)) skewX(calc(var(--tilt-y) * -.35)) scale(.97)}
+  @media(prefers-reduced-transparency:reduce){.panel{--glass:var(--surface);--glass-pane:var(--surface);background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none}}
+  @media(max-width:760px){.panel{width:calc(100vw - 24px);height:min(660px,calc(100dvh - 24px));grid-template-columns:64px minmax(0,1fr)}.head{padding:16px 14px 12px 20px}.chips{padding-inline:20px}.body{padding:16px 20px 20px}.sidebar{align-items:center;gap:8px;padding:14px 0 12px}.brand{padding:0}.brand-text{display:none}.search-field{width:40px;height:40px;padding:0;border:0;background:transparent;box-shadow:none;justify-content:center}.search-field>svg,.search-field input,.search-clear{display:none}.search-commands{flex-basis:40px;width:40px;height:40px;border:1px solid var(--line);border-radius:11px}.nav{width:100%;justify-items:center;gap:4px}.nav-group{display:none}.nav-item{width:40px;height:40px;justify-content:center;padding:0;border-radius:11px}.nav-item span{display:none}.nav-item .nav-badge{display:grid;position:absolute;top:4px;right:4px;min-width:8px;height:8px;padding:0;font-size:0}.nav-item{position:relative}.sidebar-footer{padding:0}.power-text{display:none}.notice{width:28px;padding:0;justify-content:center}
+  /* The tick is drawn, not typed, so it sits in the middle of its circle whatever font the system uses. */
+  .notice[data-state="saved"] .save-indicator::before{content:"";display:block;width:8px;height:4px;border:solid currentColor;border-width:0 0 2px 2px;border-radius:0 0 0 1px;transform:translate(0.5px,-1px) rotate(-45deg)}.notice [data-id="status"]{display:none}.srow{flex-wrap:wrap;row-gap:8px}.srow:has(>input[type="range"]) .srow-text,.srow:has(>.actions) .srow-text,.srow:has(>.swatches) .srow-text{flex-basis:100%}.srow input[type="range"]{flex:1 1 160px;width:auto}.stack-main{flex-wrap:wrap;row-gap:8px}.modes{grid-template-columns:1fr}.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.themes{gap:8px}}
   @media(max-width:580px){.panel{border-radius:17px}.head{padding:14px 12px 10px 16px}.head h2{font-size:19px}.body{padding:14px 16px 18px}.theme{padding:8px;border-radius:12px}.preview{height:64px}.theme-desc{font-size:9.5px}.theme-name{font-size:11px}.swatches{gap:7px}}
   @media(prefers-reduced-motion:reduce){.panel.open{animation:none}*,*::before,*::after{transition:none!important}}
 </style>
@@ -19287,30 +20311,44 @@ ${studioControlsCSS()}
 <section class="panel" role="dialog" aria-modal="true" aria-label="WME Studio settings" tabindex="-1">
   <aside class="sidebar">
     <div class="brand"><div class="logo">${studioIcon}</div><span class="brand-text"><b data-ws-keep>WME Studio</b><span class="brand-sub"><span class="version" data-ws-keep>v${USERSCRIPT_VERSION}</span> · <a class="brand-link" href="https://greasyfork.org/scripts/599569/versions" target="_blank" rel="noopener" data-id="whats-new">What's new</a></span></span></div>
-    <button class="search-trigger" type="button" data-id="commands" aria-label="Search settings and commands"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span>Search settings</span></button>
+    <div class="search-field" role="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="text" data-id="settings-search" placeholder="Search settings" aria-label="Search settings" autocomplete="off" spellcheck="false" enterkeyhint="search"><button class="search-clear" type="button" data-id="settings-search-clear" aria-label="Clear search" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button><button class="search-commands" type="button" data-id="commands" aria-label="Command palette" title="Command palette"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6Z"/></svg></button></div>
     <nav class="nav" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
-      <div class="nav-group" aria-hidden="true">Workspace</div>
+      <button class="nav-item" type="button" role="tab" id="studio-tab-home" data-page-target="home" aria-controls="studio-page-home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 11 8-7 8 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5.5h4V20"/></svg><span>Home</span></button>
+      <div class="nav-group" aria-hidden="true">Customize</div>
+      <button class="nav-item" type="button" role="tab" id="studio-tab-look" data-page-target="look" aria-controls="studio-page-look"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7c-.8-.5-.5-1.8.5-1.8H17a4 4 0 0 0 4-4A8.5 8.5 0 0 0 12 3Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="11" cy="7" r=".8"/><circle cx="15.5" cy="8" r=".8"/></svg><span>Appearance</span></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-layout" data-page-target="layout" aria-controls="studio-page-layout"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11M17 13v3"/></svg><span>Layout</span></button>
-      <button class="nav-item" type="button" role="tab" id="studio-tab-look" data-page-target="look" aria-controls="studio-page-look"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7c-.8-.5-.5-1.8.5-1.8H17a4 4 0 0 0 4-4A8.5 8.5 0 0 0 12 3Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="11" cy="7" r=".8"/><circle cx="15.5" cy="8" r=".8"/></svg><span>Look</span></button>
-      <div class="nav-group" aria-hidden="true">Editor</div>
       <button class="nav-item" type="button" role="tab" id="studio-tab-map" data-page-target="map" aria-controls="studio-page-map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg><span>Map</span></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-panels" data-page-target="panels" aria-controls="studio-page-panels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7l-5 3v-3H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 9h10M7 13h6"/></svg><span>Panels</span></button>
-      <button class="nav-item" type="button" role="tab" id="studio-tab-screens" data-page-target="screens" aria-controls="studio-page-screens"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M10.5 18h3"/><path d="M9.5 10.5 12 8l2.5 2.5"/></svg><span>Screen displays</span><i class="nav-beta"><b>Beta</b></i></button>
+      <button class="nav-item" type="button" role="tab" id="studio-tab-screens" data-page-target="screens" aria-controls="studio-page-screens"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M10.5 18h3"/><path d="M9.5 10.5 12 8l2.5 2.5"/></svg><span>Touch &amp; iPad</span><i class="nav-beta"><b>Beta</b></i></button>
       <div class="nav-group" aria-hidden="true" data-ws-keep>Studio</div>
       <button class="nav-item" type="button" role="tab" id="studio-tab-studio" data-page-target="studio" aria-controls="studio-page-studio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>General</span></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-bug" data-page-target="bug" aria-controls="studio-page-bug"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7a4 4 0 0 1 8 0v1a4 4 0 0 1-8 0V7Z"/><path d="M6 12h12M5 17c1.5-.8 2.5-2.5 2.5-4.5M19 17c-1.5-.8-2.5-2.5-2.5-4.5M8 12v4a4 4 0 0 0 8 0v-4M10 5 8 3M14 5l2-2"/></svg><span>Report a bug</span><b class="nav-badge" data-id="bug-badge" hidden></b></button>
+      <button class="nav-item" type="button" role="tab" id="studio-tab-reports" data-page-target="reports" aria-controls="studio-page-reports"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h11a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8"/><path d="M4 6h1M4 12h1M4 18h1M9 8h7M9 12h7M9 16h4"/></svg><span>My reports</span></button>
       <button class="nav-item" type="button" role="tab" id="studio-tab-developers" data-page-target="developers" aria-controls="studio-page-developers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg><span>Developers</span></button>
     </nav>
     <div class="sidebar-footer"><label class="power"><span class="power-text"><span>Studio enabled</span><span class="small-note">Pause without uninstalling</span></span><span class="switch"><input data-id="enabled" type="checkbox" aria-label="Enable WME Studio"><i></i></span></label></div>
   </aside>
   <div class="workspace">
-    <header class="head"><div class="head-text"><h2 data-id="page-title">Layout</h2><p class="page-sub" data-id="page-sub"></p></div><div class="head-tools"><div class="notice" data-state="saved"><span class="save-indicator" aria-hidden="true">✓</span><span data-id="status" role="status" aria-live="polite">Changes save automatically</span></div><button class="close" type="button" aria-label="Close settings"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2l10 10M12 2 2 12"/></svg></button></div></header>
+    <header class="head"><div class="head-text"><h2 data-id="page-title">Layout</h2><p class="page-sub" data-id="page-sub"></p></div><div class="head-tools"><div class="notice" data-state="saved"><span class="save-indicator" aria-hidden="true"></span><span data-id="status" role="status" aria-live="polite">Changes save automatically</span></div><button class="close" type="button" aria-label="Close settings"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2l10 10M12 2 2 12"/></svg></button></div></header>
     <nav class="chips" data-id="chips" aria-label="Sections on this page" hidden></nav>
     <div class="body">
-      <section class="settings-page" id="studio-page-layout" data-page="layout" role="tabpanel" aria-labelledby="studio-tab-layout"><fieldset data-preferences>
+      <section class="settings-page search-page" id="studio-page-search" data-page="search" role="region" aria-label="Search results" hidden><div class="search-results" data-id="search-results" role="listbox" aria-label="Search results" data-ws-keep></div><p class="search-tip">Looking for an action, like switching a saved workspace? <button class="link" type="button" data-id="search-commands">Open the command palette</button></p></section>
+      <section class="settings-page" id="studio-page-home" data-page="home" role="tabpanel" aria-labelledby="studio-tab-home"><div class="page-stack">
+        <div class="home-hero" data-id="home-hero"><span class="home-logo" aria-hidden="true">${studioIcon}</span><span class="home-hero-text"><strong data-id="home-state">Studio is on</strong><span class="small" data-id="home-summary"></span></span><label class="switch big" title="Pause without uninstalling"><input data-id="enabled-home" type="checkbox" aria-label="Enable WME Studio"><i></i></label></div>
+        <fieldset data-preferences><div class="group"><h3 class="section-label">Quick settings</h3><div class="card rows quick">
+          <div class="qrow"><div class="srow-text"><strong>Workspace</strong><span class="small">WME's own layout, or islands over the map.</span></div><div class="seg" role="group" aria-label="Workspace"><button type="button" data-setting="compactMode" data-value="false">Standard</button><button type="button" data-setting="compactMode" data-value="true">Floating</button></div></div>
+          <div class="qrow"><div class="srow-text"><strong>Theme</strong></div><div class="seg" role="group" aria-label="Theme"><button type="button" data-setting="theme" data-value="light">Light</button><button type="button" data-setting="theme" data-value="dark">Dark</button><button type="button" data-setting="theme" data-value="black">Full black</button></div></div>
+          <div class="qrow"><div class="srow-text"><strong>Accent color</strong></div><div class="swatches"><button class="swatch" style="background:#0099ff" type="button" data-setting="accent" data-value="#0099ff" aria-label="Waze blue"></button><button class="swatch" style="background:#00bba7" type="button" data-setting="accent" data-value="#00bba7" aria-label="Teal"></button><button class="swatch" style="background:#9878f0" type="button" data-setting="accent" data-value="#9878f0" aria-label="Violet"></button><button class="swatch" style="background:#f5aa3c" type="button" data-setting="accent" data-value="#f5aa3c" aria-label="Amber"></button><button class="swatch more" type="button" data-go="look" data-reveal="accent" aria-label="More colors" title="More colors"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
+          <fieldset data-compact-preferences><div class="qrow"><div class="srow-text"><strong>Island color</strong><span class="small" data-id="home-island-note">For the floating islands.</span></div><div class="seg" role="group" aria-label="Island color"><button type="button" data-setting="islandFill" data-value="theme">Theme</button><button type="button" data-setting="islandFill" data-value="color">Color</button><button type="button" data-setting="islandFill" data-value="gradient">Gradient</button></div></div></fieldset>
+          <div class="qrow"><div class="srow-text"><strong>Text size</strong></div><div class="seg" role="group" aria-label="Text size"><button type="button" data-setting="fontScale" data-value="90">Smaller</button><button type="button" data-setting="fontScale" data-value="100">Normal</button><button type="button" data-setting="fontScale" data-value="110">Larger</button></div></div>
+        </div></div></fieldset>
+        <div class="group"><h3 class="section-label">All settings</h3><div class="home-grid"><button class="home-tile" type="button" data-go="look"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7c-.8-.5-.5-1.8.5-1.8H17a4 4 0 0 0 4-4A8.5 8.5 0 0 0 12 3Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="11" cy="7" r=".8"/><circle cx="15.5" cy="8" r=".8"/></svg><span class="home-tile-text"><strong>Appearance</strong><span class="small">Theme, colors, islands and text size.</span></span></button><button class="home-tile" type="button" data-go="layout"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11M17 13v3"/></svg><span class="home-tile-text"><strong>Layout</strong><span class="small">Standard or Floating, starting layouts and workspaces.</span></span></button><button class="home-tile" type="button" data-go="map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg><span class="home-tile-text"><strong>Map</strong><span class="small">Brightness, eye saver, GPS points and menus.</span></span></button><button class="home-tile" type="button" data-go="panels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7l-5 3v-3H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 9h10M7 13h6"/></svg><span class="home-tile-text"><strong>Panels</strong><span class="small">Request windows, panel size and Map Layers.</span></span></button><button class="home-tile" type="button" data-go="screens"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M10.5 18h3"/><path d="M9.5 10.5 12 8l2.5 2.5"/></svg><span class="home-tile-text"><strong>Touch &amp; iPad</strong><span class="small">Finger tools for iPad, iPhone and touch screens.</span></span></button><button class="home-tile" type="button" data-go="studio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span class="home-tile-text"><strong>General</strong><span class="small">Language, shortcut, backups and defaults.</span></span></button></div></div>
+        <div class="home-links"><button class="reset" type="button" data-home="tour">What's new</button><button class="reset" type="button" data-home="changelog">Changelog</button><button class="reset" type="button" data-go="bug">Report a bug</button><button class="reset" type="button" data-home="feature-request">Suggest a feature</button></div>
+      </div></section>
+      <section class="settings-page" id="studio-page-layout" data-page="layout" role="tabpanel" aria-labelledby="studio-tab-layout" hidden><fieldset data-preferences>
         <div class="group"><h3 class="section-label" id="studio-workspace-mode-label"><span class="step" aria-hidden="true"><b>1</b></span>Mode</h3><div class="modes" role="radiogroup" aria-labelledby="studio-workspace-mode-label">
           <label class="mode-card"><span class="mode-preview" aria-hidden="true">${layoutThumb('standard')}</span><span class="mode-text"><strong>Standard</strong><span class="small">WME’s own layout, restyled. Panels dock at the left.</span></span><input data-id="workspaceMode-standard" type="radio" name="workspace-mode" value="standard" aria-label="Standard workspace"></label>
-          <label class="mode-card"><span class="mode-preview compact" aria-hidden="true">${layoutThumb('floating')}</span><span class="mode-text"><strong>Floating</strong><span class="small">Islands over the map. Move them, split them, hide them.</span></span><input data-id="workspaceMode-compact" type="radio" name="workspace-mode" value="compact" aria-label="Floating compact workspace"></label>
+          <label class="mode-card"><span class="mode-preview compact" aria-hidden="true">${layoutThumb('floating')}</span><span class="mode-text"><strong>Floating</strong><span class="small">Islands over the map. Move them, split them, hide them.</span></span><input data-id="workspaceMode-compact" type="radio" name="workspace-mode" value="compact" aria-label="Floating workspace"></label>
         </div></div>
         <div class="group"><div class="section-head"><h3 class="section-label"><span class="step" aria-hidden="true"><b>2</b></span>Starting layout</h3><p class="preset-summary"><span>Current layout</span><strong data-id="preset-current">Balanced</strong></p></div>
           <div class="preset-grid">${globalThis.WMEStudioCompactLayout.presets.map(preset=>`<button class="preset-card" type="button" data-preset="${preset.id}" aria-pressed="false" title="${preset.description}"><span class="preset-preview" aria-hidden="true">${layoutThumb(preset.id)}</span><span class="preset-name"><span>${preset.name}</span><span class="preset-check" aria-hidden="true">✓</span></span></button>`).join('')}</div>
@@ -19334,9 +20372,9 @@ ${studioControlsCSS()}
       </fieldset></section>
       <section class="settings-page" id="studio-page-look" data-page="look" role="tabpanel" aria-labelledby="studio-tab-look" hidden><fieldset data-preferences>
         <div class="group"><div class="section-head"><h3 class="section-label">Theme</h3><span class="section-note" data-id="theme-note" hidden></span></div><div class="themes" role="group" aria-label="Theme" data-id="theme-cards">
-          <button class="theme" type="button" data-setting="theme" data-value="light"><span class="preview light"><i></i></span><span class="theme-name">Light</span><span class="theme-desc">Bright and clear</span></button>
-          <button class="theme" type="button" data-setting="theme" data-value="dark"><span class="preview dark"><i></i></span><span class="theme-name">Dark</span><span class="theme-desc">Balanced contrast</span></button>
-          <button class="theme" type="button" data-setting="theme" data-value="black"><span class="preview black"><i></i></span><span class="theme-name">Full black</span><span class="theme-desc">Pure black surfaces</span></button>
+          <button class="theme" type="button" data-setting="theme" data-value="light"><span class="preview light"><span class="pv-win"><i></i></span></span><span class="theme-name">Light</span><span class="theme-desc">Bright and clear</span></button>
+          <button class="theme" type="button" data-setting="theme" data-value="dark"><span class="preview dark"><span class="pv-win"><i></i></span></span><span class="theme-name">Dark</span><span class="theme-desc">Balanced contrast</span></button>
+          <button class="theme" type="button" data-setting="theme" data-value="black"><span class="preview black"><span class="pv-win"><i></i></span></span><span class="theme-name">Full black</span><span class="theme-desc">Pure black surfaces</span></button>
         </div>
           <div class="card rows" data-id="dark-schedule">
             <div class="srow wrap" data-row="themeSchedule"><div class="srow-text"><strong>Dark at night</strong><span class="small">Switch from Light to a dark theme in the evening and back in the morning.</span><span class="small schedule-status" data-id="themeSchedule-status" hidden></span><span class="small" data-id="themeSchedule-sun" hidden></span></div><div class="seg" role="group" aria-label="Dark at night"><button type="button" data-setting="themeSchedule" data-value="off">Off</button><button type="button" data-setting="themeSchedule" data-value="sun">Sun</button><button type="button" data-setting="themeSchedule" data-value="custom">Hours</button></div></div>
@@ -19351,13 +20389,22 @@ ${studioControlsCSS()}
           <div class="srow" data-row="corners"><div class="srow-text"><strong>Corners</strong><span class="small">Panel and control shape.</span></div><div class="seg" role="group" aria-label="Corners"><button type="button" data-setting="corners" data-value="flat">Flat</button><button type="button" data-setting="corners" data-value="soft">Soft</button></div></div>
           <div class="srow"><div class="srow-text"><strong>Font size</strong><span class="small">Makes text in the header, menus and panels smaller or larger without resizing them. 100% is the normal size.</span></div><input data-id="fontScale" type="range" min="85" max="120" step="5" value="100" aria-label="Font size"><span class="value" data-id="fontScale-value">100%</span></div>
         </div></div>
-        <div class="group"><h3 class="section-label">Comfort</h3><div class="card rows">
-          <div class="srow" data-row="eyeSaverSchedule"><div class="srow-text"><strong>Eye saver</strong><span class="small" data-id="eyeSaver-hint">Warmer colors across the editor.</span><span class="small schedule-status" data-id="eyeSaverSchedule-status" hidden></span><span class="small" data-id="eyeSaverSchedule-sun" hidden></span></div><input data-id="eyeSaver" type="range" min="0" max="100" step="5" value="0" aria-label="Eye saver strength"><span class="value" data-id="eyeSaver-value">Off</span><div class="seg" role="group" aria-label="Eye saver schedule" title="Always, or only at night: by the sun, or between your own hours"><button type="button" data-setting="eyeSaverSchedule" data-value="off">Always</button><button type="button" data-setting="eyeSaverSchedule" data-value="sun">Sun</button><button type="button" data-setting="eyeSaverSchedule" data-value="custom">Hours</button></div></div>
-          <div class="srow wrap" data-when="eyeSaverSchedule-custom"><div class="srow-text"><strong>Active hours</strong><span class="small">Warm colors between these times.</span></div><div class="times"><label class="time"><span>From</span><input type="time" data-time="eyeSaverStart" required></label><label class="time"><span>To</span><input type="time" data-time="eyeSaverEnd" required></label></div></div>
-          <label class="srow togrow" data-when="eyeSaverSchedule"><span class="srow-text"><strong>Fade in and out</strong><span class="small">Warms up and cools down over 30 minutes.</span></span><span class="switch"><input data-id="eyeSaverFade" type="checkbox"><i></i></span></label>
+        <div class="group"><h3 class="section-label">Islands</h3><div class="card rows">
+          <div class="srow wrap" data-row="islandFill"><div class="srow-text"><strong>Island color</strong><span class="small">The background of the floating islands. Text and icons turn dark or light so they stay easy to read.</span></div><div class="seg" role="group" aria-label="Island color"><button type="button" data-setting="islandFill" data-value="theme">Theme</button><button type="button" data-setting="islandFill" data-value="color">Color</button><button type="button" data-setting="islandFill" data-value="gradient">Gradient</button></div></div>
+          <div class="srow" data-when="islandFill-color|gradient"><div class="srow-text"><strong>Colors</strong><span class="small" data-when="islandFill-gradient">From the first color to the second.</span></div><div class="island-colors"><span class="island-preview" data-id="island-preview" aria-hidden="true"><b>Aa</b></span><button class="colorshell" data-id="island-color-open" type="button" aria-label="First island color" aria-controls="studio-color-picker" aria-expanded="false"></button><button class="colorshell" data-id="island-color2-open" data-when="islandFill-gradient" type="button" aria-label="Second island color" aria-controls="studio-color-picker" aria-expanded="false"></button></div></div>
+          <div class="srow wrap" data-when="islandFill-color"><div class="srow-text"><strong>Quick colors</strong></div><div class="swatches island-swatches">
+            <button class="swatch" style="background:#1e3a5f;--a:#4da3ff" type="button" data-setting="islandColor" data-value="#1e3a5f" data-accent="#4da3ff" aria-label="Navy"></button><button class="swatch" style="background:#2b2f36;--a:#0099ff" type="button" data-setting="islandColor" data-value="#2b2f36" data-accent="#0099ff" aria-label="Graphite"></button><button class="swatch" style="background:#1f3d33;--a:#2ecc8f" type="button" data-setting="islandColor" data-value="#1f3d33" data-accent="#2ecc8f" aria-label="Forest"></button><button class="swatch" style="background:#3d2446;--a:#c084fc" type="button" data-setting="islandColor" data-value="#3d2446" data-accent="#c084fc" aria-label="Plum"></button><button class="swatch" style="background:#5b2a2a;--a:#f2545b" type="button" data-setting="islandColor" data-value="#5b2a2a" data-accent="#f2545b" aria-label="Wine"></button><button class="swatch" style="background:#ede6da;--a:#c0763a" type="button" data-setting="islandColor" data-value="#ede6da" data-accent="#c0763a" aria-label="Sand"></button><button class="swatch" style="background:#ffffff;--a:#2f7cf6" type="button" data-setting="islandColor" data-value="#ffffff" data-accent="#2f7cf6" aria-label="White"></button>
+          </div></div>
+          <div class="srow wrap" data-when="islandFill-gradient"><div class="srow-text"><strong>Quick gradients</strong></div><div class="swatches island-swatches">
+            <button class="swatch" style="background:linear-gradient(135deg,#1e3a5f,#6d28d9);--a:#8b7cf6" type="button" data-accent="#8b7cf6" data-island-gradient="#1e3a5f,#6d28d9" aria-label="Night"></button><button class="swatch" style="background:linear-gradient(135deg,#0f2027,#2c5364);--a:#38bdf8" type="button" data-accent="#38bdf8" data-island-gradient="#0f2027,#2c5364" aria-label="Ocean"></button><button class="swatch" style="background:linear-gradient(135deg,#134e5e,#3f9b6b);--a:#4ade80" type="button" data-accent="#4ade80" data-island-gradient="#134e5e,#3f9b6b" aria-label="Forest"></button><button class="swatch" style="background:linear-gradient(135deg,#7a1f5c,#e0643a);--a:#fb7a4a" type="button" data-accent="#fb7a4a" data-island-gradient="#7a1f5c,#e0643a" aria-label="Sunset"></button><button class="swatch" style="background:linear-gradient(135deg,#232526,#5b6068);--a:#5ea0ff" type="button" data-accent="#5ea0ff" data-island-gradient="#232526,#5b6068" aria-label="Steel"></button><button class="swatch" style="background:linear-gradient(135deg,#fdfbfb,#dfe6ee);--a:#3b82f6" type="button" data-accent="#3b82f6" data-island-gradient="#fdfbfb,#dfe6ee" aria-label="Cloud"></button>
+          </div></div>
+          <div class="srow wrap" data-when="islandFill-gradient"><div class="srow-text"><strong>Direction</strong></div><div class="seg" role="group" aria-label="Gradient direction"><button type="button" data-setting="islandAngle" data-value="90" aria-label="Left to right">→</button><button type="button" data-setting="islandAngle" data-value="135" aria-label="Diagonal down">↘</button><button type="button" data-setting="islandAngle" data-value="180" aria-label="Top to bottom">↓</button><button type="button" data-setting="islandAngle" data-value="225" aria-label="Diagonal, the other way">↙</button></div></div>
+          <div class="srow" data-when="islandFill-color|gradient"><div class="srow-text"><strong>Color intensity</strong><span class="small">How strong the color is. Lower values blend it with the theme.</span></div><input data-id="islandIntensity" type="range" min="20" max="100" step="5" value="100" aria-label="Island color intensity"><span class="value" data-id="islandIntensity-value">100%</span></div>
+          <fieldset data-compact-preferences><div class="srow"><div class="srow-text"><strong>Glass opacity</strong><span class="small">Adjust idle glass surfaces without fading their text or icons.</span></div><input data-id="compactIslandOpacity" type="range" min="20" max="100" step="5" value="60" aria-label="Compact island glass opacity"><span class="value" data-id="compactIslandOpacity-value">60%</span></div></fieldset>
+        </div></div>
+        <div class="group"><h3 class="section-label">Interface</h3><div class="card rows">
           <label class="srow togrow"><span class="srow-text"><strong>Interface animations</strong><span class="small">Smooth panel and menu animations.</span></span><span class="switch"><input data-id="motion" type="checkbox"><i></i></span></label>
           <label class="srow togrow" data-row="customScrollbars"><span class="srow-text"><strong>Custom scrollbars</strong><span class="small">Slim, rounded scrollbars in your theme colors.</span></span><span class="switch"><input data-id="customScrollbars" type="checkbox"><i></i></span></label>
-          <fieldset data-compact-preferences><div class="srow"><div class="srow-text"><strong>Glass opacity</strong><span class="small">Adjust idle glass surfaces without fading their text or icons.</span></div><input data-id="compactIslandOpacity" type="range" min="20" max="100" step="5" value="60" aria-label="Compact island glass opacity"><span class="value" data-id="compactIslandOpacity-value">60%</span></div></fieldset>
         </div></div>
         <div class="group"><h3 class="section-label">Add-ons</h3><div class="card rows">
           <label class="srow togrow"><span class="srow-text"><strong>Match supported add-ons</strong><span class="small">Coordinate supported script panels with your Studio theme in either workspace mode.</span></span><span class="switch"><input data-id="addons" type="checkbox"><i></i></span></label>
@@ -19365,9 +20412,13 @@ ${studioControlsCSS()}
       </fieldset></section>
       <section class="settings-page" id="studio-page-map" data-page="map" role="tabpanel" aria-labelledby="studio-tab-map" hidden><fieldset data-preferences>
         <p class="peek-hint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span>This window hides while you drag a slider, so you can see the change on the map.</span></p>
-        <div class="group"><h3 class="section-label">Brightness</h3><div class="card rows">
+        <div class="group"><h3 class="section-label">Brightness and eye saver</h3><div class="card rows">
           <div class="srow"><div class="srow-text"><strong>Satellite brightness</strong><span class="small">100% keeps satellite imagery unchanged.</span></div><input data-id="satelliteBrightness" type="range" min="0" max="100" step="5" value="100" aria-label="Satellite brightness"><span class="value" data-id="satelliteBrightness-value">100%</span></div>
           <div class="srow"><div class="srow-text"><strong>Viewport brightness</strong><span class="small">100% is normal. Edit layers and controls stay clear.</span></div><input data-id="viewportBrightness" type="range" min="0" max="100" step="5" value="100" aria-label="Viewport brightness"><span class="value" data-id="viewportBrightness-value">100%</span></div>
+          <div class="srow" data-row="eyeSaverSchedule"><div class="srow-text"><strong>Eye saver</strong><span class="small" data-id="eyeSaver-hint">Warmer colors across the editor.</span></div><input data-id="eyeSaver" type="range" min="0" max="100" step="5" value="0" aria-label="Eye saver strength"><span class="value" data-id="eyeSaver-value">Off</span><div class="seg" role="group" aria-label="Eye saver schedule" title="Always, or only at night: by the sun, or between your own hours"><button type="button" data-setting="eyeSaverSchedule" data-value="off">Always</button><button type="button" data-setting="eyeSaverSchedule" data-value="sun">Sun</button><button type="button" data-setting="eyeSaverSchedule" data-value="custom">Hours</button></div></div>
+          <div class="srow wrap" data-when="eyeSaverSchedule-custom"><div class="srow-text"><strong>Active hours</strong><span class="small">Warm colors between these times.</span></div><div class="times"><label class="time"><span>From</span><input type="time" data-time="eyeSaverStart" required></label><label class="time"><span>To</span><input type="time" data-time="eyeSaverEnd" required></label></div></div>
+          <div class="srow schedule-row" data-when="eyeSaverSchedule"><div class="srow-text"><strong>Right now</strong><span class="small schedule-status" data-id="eyeSaverSchedule-status" hidden></span><span class="small" data-id="eyeSaverSchedule-sun" hidden></span></div></div>
+          <label class="srow togrow" data-when="eyeSaverSchedule"><span class="srow-text"><strong>Fade in and out</strong><span class="small">Warms up and cools down over 30 minutes.</span></span><span class="switch"><input data-id="eyeSaverFade" type="checkbox"><i></i></span></label>
         </div></div>
         <div class="group"><h3 class="section-label">GPS points</h3><div class="card rows">
           <div class="srow"><div class="srow-text"><strong>GPS points opacity</strong><span class="small">100% keeps GPS points unchanged. Lower values make them more transparent.</span></div><input data-id="gpsOpacity" type="range" min="0" max="100" step="5" value="100" aria-label="GPS points opacity"><span class="value" data-id="gpsOpacity-value">100%</span></div>
@@ -19422,6 +20473,7 @@ ${studioControlsCSS()}
       <section class="settings-page" id="studio-page-bug" data-page="bug" role="tabpanel" aria-labelledby="studio-tab-bug" hidden><div class="page-stack">
         <div class="group"><h3 class="section-label">Something not right?</h3><div class="card rows">
           <div class="srow" data-row="bugReport"><div class="srow-text"><strong>Report a bug</strong><span class="small">Tell me what went wrong. Your report includes your Studio version, settings, the last errors Studio caught and your Waze username, so I can let you know when it's fixed. It never includes your edits.</span></div><div class="actions"><button class="reset primary" data-id="bug-report" type="button">Report a bug</button></div></div>
+          <div class="srow" data-row="featureRequest"><div class="srow-text"><strong>Suggest a feature</strong><span class="small">Have an idea that would make editing easier? Tell me about it. It comes straight to me, like bug reports.</span></div><div class="actions"><button class="reset" data-id="feature-request" type="button">Suggest a feature</button></div></div>
           <div class="srow" data-row="bugFixes" hidden><div class="srow-text"><strong>Fixed reports</strong><span class="small" data-id="bug-fixes-text">When a report of yours is fixed, a note shows up here in the editor.</span></div><div class="actions"><button class="reset" data-id="bug-check" type="button">Check now</button></div></div>
           <div class="srow" data-row="bugMine" hidden><div class="srow-text"><strong>My reports</strong><span class="small">Every report you sent from this editor account, and where each one stands.</span></div><div class="actions"><button class="reset" data-id="bug-mine" type="button">See my reports</button></div></div>
           <div class="srow"><div class="srow-text"><strong>Copy the details instead</strong><span class="small">Copies the same technical details as text, for a forum post or a message.</span></div><div class="actions"><button class="reset" data-id="bug-copy" type="button">Copy report</button></div></div>
@@ -19433,6 +20485,14 @@ ${studioControlsCSS()}
             <li><strong>Add a screenshot.</strong> A picture of the problem is worth a paragraph.</li>
           </ul>
         </div></div>
+      </div></section>
+      <section class="settings-page" id="studio-page-reports" data-page="reports" role="tabpanel" aria-labelledby="studio-tab-reports" hidden><div class="page-stack">
+        <div class="group"><div class="section-head"><h3 class="section-label">Your reports and ideas</h3><button class="reset" data-id="reports-reload" type="button">Refresh</button></div>
+          <div class="reports-bar"><div class="seg" role="group" aria-label="Show"><button type="button" data-reports-filter="all" aria-pressed="true">All</button><button type="button" data-reports-filter="open" aria-pressed="false">Open</button><button type="button" data-reports-filter="closed" aria-pressed="false">Closed</button></div><div class="seg" role="group" aria-label="Kind"><button type="button" data-reports-kind="all" aria-pressed="true">Everything</button><button type="button" data-reports-kind="bug" aria-pressed="false">Bugs</button><button type="button" data-reports-kind="feature" aria-pressed="false">Ideas</button></div></div>
+          <p class="small reports-sub" data-id="reports-sub"></p>
+          <div class="reports-list" data-id="reports-body"></div>
+          <div class="home-links"><button class="reset" type="button" data-id="reports-new-bug">Report a bug</button><button class="reset" type="button" data-id="reports-new-idea">Suggest a feature</button></div>
+        </div>
       </div></section>
       <section class="settings-page" id="studio-page-developers" data-page="developers" role="tabpanel" aria-labelledby="studio-tab-developers" hidden><div class="page-stack">
         <div class="group"><h3 class="section-label">For script developers</h3><div class="card doc">
@@ -19593,7 +20653,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
           <ul>
             <li>Switch “Studio enabled” off. Your script should look exactly as it does without Studio.</li>
             <li>Switch it back on and try Light, Dark and Full Black. No white boxes, no unreadable text.</li>
-            <li>Try both Standard and Floating compact, and move the header in Arrange.</li>
+            <li>Try both Standard and Floating, and move the header in Arrange.</li>
             <li>Search your CSS for <code data-ws-keep>var(--wme-studio</code> and <code data-ws-keep>var(--ws-</code>. Every match needs a comma and a fallback.</li>
             <li>Run “Script tabs report” from the command palette and find your tab in it.</li>
           </ul>
@@ -19616,12 +20676,12 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     <div class="bug-head"><div><h3 id="bug-title">Report a bug</h3><p>It comes straight to me.</p></div><button class="bug-close" type="button" data-id="bug-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="bug-body">
       <div class="bug-as" data-id="bug-as" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span data-id="bug-as-text"></span></div>
-      <label class="bug-field"><span>What happened? <em>*</em></span><textarea data-id="bug-what" rows="3" maxlength="2000" placeholder="For example: after I moved the zoom buttons to the left, the + menu opens under the header."></textarea></label>
+      <label class="bug-field"><span><span data-id="bug-what-label">What happened?</span> <em>*</em></span><textarea data-id="bug-what" rows="3" maxlength="2000" placeholder="For example: after I moved the zoom buttons to the left, the + menu opens under the header."></textarea></label>
       <div class="bug-two">
-        <div class="bug-field"><span id="bug-where-label">Where</span><div class="bug-select" data-id="bug-category-control"><button class="bug-select-button" type="button" data-id="bug-category" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="bug-where-label bug-category-value"><span id="bug-category-value" data-id="bug-category-value" class="bug-placeholder">Select an option</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="bug-select-menu" data-id="bug-category-menu" role="listbox" aria-labelledby="bug-where-label" hidden><button class="bug-option" type="button" role="option" data-value="layout" aria-selected="false">Floating mode and islands</button><button class="bug-option" type="button" role="option" data-value="arrange" aria-selected="false">Arrange</button><button class="bug-option" type="button" role="option" data-value="theme" aria-selected="false">Theme and colors</button><button class="bug-option" type="button" role="option" data-value="panels" aria-selected="false">Panels and windows</button><button class="bug-option" type="button" role="option" data-value="menu" aria-selected="false">Right-click menu</button><button class="bug-option" type="button" role="option" data-value="addons" aria-selected="false">Another script</button><button class="bug-option" type="button" role="option" data-value="speed" aria-selected="false">Speed</button><button class="bug-option" type="button" role="option" data-value="other" aria-selected="false">Something else</button></div></div></div>
+        <div class="bug-field" data-id="bug-where-field"><span id="bug-where-label">Where</span><div class="bug-select" data-id="bug-category-control"><button class="bug-select-button" type="button" data-id="bug-category" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="bug-where-label bug-category-value"><span id="bug-category-value" data-id="bug-category-value" class="bug-placeholder">Select an option</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="bug-select-menu" data-id="bug-category-menu" role="listbox" aria-labelledby="bug-where-label" hidden><button class="bug-option" type="button" role="option" data-value="layout" aria-selected="false">Floating mode and islands</button><button class="bug-option" type="button" role="option" data-value="arrange" aria-selected="false">Arrange</button><button class="bug-option" type="button" role="option" data-value="theme" aria-selected="false">Theme and colors</button><button class="bug-option" type="button" role="option" data-value="panels" aria-selected="false">Panels and windows</button><button class="bug-option" type="button" role="option" data-value="menu" aria-selected="false">Right-click menu</button><button class="bug-option" type="button" role="option" data-value="addons" aria-selected="false">Another script</button><button class="bug-option" type="button" role="option" data-value="speed" aria-selected="false">Speed</button><button class="bug-option" type="button" role="option" data-value="mobile" aria-selected="false">Mobile</button><button class="bug-option" type="button" role="option" data-value="other" aria-selected="false">Something else</button></div></div></div>
         <label class="bug-field"><span>Another way to reach you <small>(optional)</small></span><input data-id="bug-contact" type="text" maxlength="120" placeholder="Forum name or email"></label>
       </div>
-      <label class="bug-field"><span>Steps to see it again <small>(optional)</small></span><textarea data-id="bug-steps" rows="2" maxlength="2000" placeholder="1. Open Arrange  2. …"></textarea></label>
+      <label class="bug-field"><span><span data-id="bug-steps-label">Steps to see it again</span> <small>(optional)</small></span><textarea data-id="bug-steps" rows="2" maxlength="2000" placeholder="1. Open Arrange  2. …"></textarea></label>
       <div class="bug-shot"><button class="reset" type="button" data-id="bug-shot-pick">Add images or a video</button><input data-id="bug-shot-file" type="file" accept="image/*,video/mp4,.mp4" multiple hidden><span class="bug-shot-name" data-id="bug-shot-name">Optional: up to 4 images and 1 MP4 video. You can also paste or drop them here.</span><button class="bug-shot-clear" type="button" data-id="bug-shot-clear" hidden aria-label="Remove all attachments">✕</button></div>
       <div class="bug-thumbs" data-id="bug-thumbs" hidden></div>
       <details class="bug-details"><summary>What else is sent</summary><pre data-id="bug-diag"></pre></details>
@@ -19654,6 +20714,38 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     <div class="bug-body" data-id="mine-body"></div>
     <div class="bug-foot"><span class="bug-note"></span><button class="reset" type="button" data-id="mine-reload">Refresh</button><button class="reset primary" type="button" data-id="mine-done">Close</button></div>
   </div>
+</div>
+<div class="bug-backdrop release-backdrop" data-id="release-backdrop" hidden>
+  <div class="release" role="dialog" aria-modal="true" aria-labelledby="release-title" tabindex="-1">
+    <div class="release-stage" data-id="release-stage" aria-hidden="true">
+      <div class="rs-scene">
+        <div class="rs-map"><i></i><i></i><i></i></div>
+        <div class="rs-head"><b></b><i></i><i></i><i></i></div>
+        <div class="rs-rail"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="rs-panel"><b></b><i class="new"></i><i class="new"></i><i></i><i></i></div>
+        <div class="rs-poll"><b></b><span><i class="on"></i><i></i><i></i><i></i></span><em></em></div>
+        <div class="rs-tools"><i></i><i class="on"></i><i></i><i></i></div>
+        <div class="rs-aim"></div>
+      </div>
+      <span class="rs-badge" data-ws-keep>3.0</span>
+      <button class="bug-close release-close" type="button" data-id="release-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="release-body">
+      <p class="release-kicker">New version</p>
+      <h2 id="release-title" data-ws-keep>WME Studio 3.0</h2>
+      <p class="release-lead">The biggest update yet. Here is what's new.</p>
+      <ul class="release-grid"><li><span class="rt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6"/></svg></span><span class="rt-text"><b>Polls</b><span>Vote on what comes next, right in the editor.</span></span></li><li><span class="rt-icon rt-gradient"><i></i></span><span class="rt-text"><b>Custom gradients</b><span>Paint the islands any color, or a gradient of two.</span></span></li><li><span class="rt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c3 3.6 5.5 6.6 5.5 9.6a5.5 5.5 0 0 1-11 0c0-3 2.5-6 5.5-9.6z"/><path d="M12 19v-8"/></svg></span><span class="rt-text"><b>Color intensity</b><span>Soften island colors toward your theme.</span></span></li><li><span class="rt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M3.5 9h17M15 15l3 3M18 15v3h-3"/></svg></span><span class="rt-text"><b>A window for Your hub</b><span>Move and resize it, the islands stay put.</span></span></li><li><span class="rt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M9 12h6M9 16h4"/></svg></span><span class="rt-text"><b>My reports</b><span>Every report you sent, even removed ones.</span></span></li><li><span class="rt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V10l4.2.9a2 2 0 0 1 1.6 2.2l-.6 4.4a3 3 0 0 1-3 2.5H11a3 3 0 0 1-2.4-1.2L5.5 14.6a1.4 1.4 0 0 1 2-2L9 14"/></svg></span><span class="rt-text"><b>Touch tools</b><span>Clearer icons, tooltips, and aiming above your finger.</span></span></li></ul>
+    </div>
+    <div class="release-foot"><button class="release-btn" type="button" data-id="release-all"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h11M8 12h11M8 18h11"/><circle cx="4" cy="6" r=".9"/><circle cx="4" cy="12" r=".9"/><circle cx="4" cy="18" r=".9"/></svg><span>See all changes</span></button><button class="release-btn primary" type="button" data-id="release-ok"><span>Let's go</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+  </div>
+</div>
+<div class="bug-backdrop" data-id="poll-backdrop" hidden>
+  <div class="bug-dialog poll-dialog" role="dialog" aria-modal="true" aria-labelledby="poll-title" tabindex="-1">
+    <div class="bug-head"><div><div class="poll-from"><span class="poll-logo">${studioIcon}</span><b data-ws-keep>WME Studio</b><span class="poll-tag">Poll</span></div><h3 id="poll-title" data-id="poll-title" data-ws-keep></h3><p data-id="poll-sub" data-ws-keep></p></div><button class="bug-close" type="button" data-id="poll-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="bug-body poll-body"><img class="poll-cover" data-id="poll-cover" alt="" hidden><div class="poll-options" data-id="poll-options" role="radiogroup" data-ws-keep></div></div>
+    <div class="bug-foot"><span class="bug-note" data-id="poll-note"></span><button class="reset" type="button" data-id="poll-later">Not now</button><button class="reset primary" type="button" data-id="poll-vote" disabled>Vote</button></div>
+  </div>
+</div>
 </div>`;
     (document.documentElement || document).appendChild(host);
 
@@ -19687,11 +20779,15 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     const status = q('[data-id="status"]');
     const config = globalThis.WMEStudioSettings;
     let current = { ...config.defaults };
+    let pickerKey = 'accent';   // which color the picker is changing: the accent or one of the island colors (3.0.0)
     // Until the saved settings are read, "current" holds the defaults: the dialog built without being opened (for a
     // "report fixed" note or the changelog) used to set the language from them, back to Automatic, for the session.
     let currentRead = false;
+    // What the controls last showed: a window built before the saved settings arrived showed the defaults, and opening
+    // it then skipped drawing again because the settings read had not changed since (3.0.0).
+    let renderedSettings = '';
     config.read().then(value => { if (!currentRead) { current = value; currentRead = true; } }).catch(() => {});
-    let activePage = 'workspace';
+    let activePage = 'home';
     let presetUndo = null, presetBusy = false;
     const workspaces = globalThis.WMEStudioWorkspaces;
     let profiles = [], profileManage = false, profilesBusy = false, workspaceUndo = null, backupUndo = null, backupText = null;
@@ -19728,10 +20824,10 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     let returnFocus = null;
     const sliderTimers = new Map();
     let rangeDrag = null;
-    const pages = { layout: 'Layout', look: 'Look', map: 'Map', panels: 'Panels', screens: 'Screen displays', studio: 'General', bug: 'Report a bug', developers: 'Developers' };
-    const pageSubtitles = { layout: 'Mode, size and where the islands go.', look: 'Theme, accent and comfort.', map: 'Brightness, GPS points and the right-click menu.', panels: 'Requests, size and columns.', screens: 'Touch screen tools.', studio: 'Language, backups and defaults.', bug: 'Tell me what went wrong.', developers: 'For script developers.' };
+    const pages = { home: 'Home', look: 'Appearance', layout: 'Layout', map: 'Map', panels: 'Panels', screens: 'Touch & iPad', studio: 'General', bug: 'Report a bug', reports: 'My reports', developers: 'Developers', search: 'Search' };
+    const pageSubtitles = { home: 'The settings you change most, and the way to everything else.', layout: 'Mode, size and where the islands go.', look: 'Theme, colors, islands and text size.', map: 'Brightness, eye saver, GPS points and menus.', panels: 'Requests, size and columns.', screens: 'Finger tools for iPad, iPhone and touch screens.', studio: 'Language, backups and defaults.', bug: 'Tell me what went wrong.', developers: 'For script developers.', reports: 'Everything you sent, and where it stands.' };
     // Earlier page names, so older callers still land on the right section.
-    const pageAliases = { workspace: 'layout', presets: 'layout', appearance: 'look', addons: 'look', requests: 'panels', help: 'studio' };
+    const pageAliases = { workspace: 'layout', presets: 'layout', appearance: 'look', addons: 'look', requests: 'panels', help: 'studio', touch: 'screens', general: 'studio' };
 
     for (const item of qa('.nav-item')) item.title = item.querySelector('span')?.textContent || '';
     function selectPage(name) {
@@ -19749,7 +20845,118 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       q('[data-id="page-sub"]').textContent = pageSubtitles[name] || '';
       renderChips(name);
       if (name === 'screens') renderScreenStatus();
+      if (name === 'reports') loadMyReportsIfOld();
+      if (name !== 'search' && searchInput.value) { searchInput.value = ''; searchClear.hidden = true; }
     }
+    // Home (3.0.0): what Studio is set to, in one line, and the settings people change most.
+    function paintHome() {
+      const t = text => globalThis.WMEStudioI18n?.t?.(text) ?? text;
+      const state = q('[data-id="home-state"]'), summary = q('[data-id="home-summary"]'), toggle = q('[data-id="enabled-home"]');
+      toggle.checked = current.enabled;
+      q('[data-id="home-hero"]').toggleAttribute('data-off', !current.enabled);
+      const stateText = current.enabled ? 'Studio is on' : 'Studio is paused';
+      if (state.textContent !== stateText) state.textContent = stateText;
+      const theme = { light: 'Light', dark: 'Dark', black: 'Full black' }[current.theme] || 'Dark';
+      const line = current.enabled ? [t(current.compactMode ? 'Floating' : 'Standard'), t(theme), `${t('Text size')} ${current.fontScale}%`].join(' · ') : t('Pause without uninstalling');
+      if (summary.textContent !== line) { summary.setAttribute('data-ws-keep', ''); summary.textContent = line; }
+      q('[data-id="home-island-note"]').textContent = current.compactMode ? 'For the floating islands.' : 'Switch to Floating to use it.';
+    }
+    // Search (3.0.0): typing in the sidebar lists every setting whose name, description or section matches, from every
+    // page and in the language Studio is shown in. Enter or a click opens the setting's page and points it out.
+    const searchInput = q('[data-id="settings-search"]'), searchClear = q('[data-id="settings-search-clear"]'), searchList = q('[data-id="search-results"]');
+    let searchReturn = 'home', searchHits = [], searchPick = 0;
+    const fold = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const ownText = node => node ? [...node.childNodes].filter(child => child.nodeType === 3 || !child.matches?.('.step,.beta-tag,.row-reset,.nav-beta,.nav-badge')).map(child => child.textContent).join('').replace(/\s+/g, ' ').trim() : '';
+    function shownInPage(node, page) {
+      for (let el = node; el && el !== page; el = el.parentElement) if (el.hidden) return false;
+      return true;
+    }
+    function settingIndex() {
+      const entries = [];
+      for (const page of qa('.settings-page[data-page]')) {
+        const id = page.dataset.page;
+        if (id === 'search' || id === 'home') continue;
+        const pageName = ownText(q(`[data-page-target="${id}"] span`)) || pages[id];
+        for (const group of page.querySelectorAll('.group')) {
+          if (!shownInPage(group, page)) continue;
+          const section = ownText(group.querySelector('.section-label'));
+          const rows = [...group.querySelectorAll('.srow,.mode-card,.saved')].filter(row => shownInPage(row, page) && row.querySelector('strong'));
+          for (const row of rows) {
+            const title = ownText(row.querySelector('strong')), desc = ownText(row.querySelector(':scope .small:not([hidden])'));
+            if (!title) continue;
+            entries.push({ title, desc, section, page: id, pageName, el: row, hay: fold([title, desc, section, pageName].join(' ')), name: fold(title) });
+          }
+          // The section itself, found by its name (and, for a section of cards without rows, by the cards' words).
+          if (section) entries.push({ title: section, desc: '', section: '', page: id, pageName, el: group, hay: fold([section, pageName, rows.length ? '' : group.textContent].join(' ')), name: fold(section), isSection: true, group });
+        }
+      }
+      return entries;
+    }
+    function runSearch() {
+      const query = fold(searchInput.value), words = query.split(' ').filter(Boolean);
+      const rank = entry => (entry.name.startsWith(query) ? 0 : words.every(word => entry.name.includes(word)) ? 1 : 3) + (entry.isSection ? 1 : 0);
+      const found = words.length ? settingIndex().filter(entry => words.every(word => entry.hay.includes(word))) : [];
+      // A section is listed only when none of its own settings is.
+      searchHits = found.filter(entry => !entry.isSection || !found.some(other => !other.isSection && entry.group.contains(other.el))).sort((a, b) => rank(a) - rank(b)).slice(0, 40);
+      searchPick = 0;
+      searchList.replaceChildren();
+      const t = text => globalThis.WMEStudioI18n?.t?.(text) ?? text;
+      if (!searchHits.length) {
+        const empty = document.createElement('p'); empty.className = 'search-empty';
+        empty.textContent = t('No setting matches “{0}”.').replace('{0}', searchInput.value.trim());
+        searchList.append(empty);
+      }
+      searchHits.forEach((entry, index) => {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'result'; button.dataset.index = String(index);
+        button.setAttribute('role', 'option'); button.setAttribute('aria-selected', String(index === 0));
+        const path = document.createElement('span'); path.className = 'result-path'; path.textContent = entry.section ? `${entry.pageName} › ${entry.section}` : entry.pageName;
+        const title = document.createElement('strong'); title.textContent = entry.title;
+        button.append(path, title);
+        if (entry.desc) { const desc = document.createElement('span'); desc.className = 'small'; desc.textContent = entry.desc; button.append(desc); }
+        searchList.append(button);
+      });
+      q('[data-id="page-sub"]').textContent = searchHits.length ? t(searchHits.length === 1 ? '1 setting found' : '{0} settings found').replace('{0}', String(searchHits.length)) : '';
+    }
+    function openHit(index) {
+      const entry = searchHits[index];
+      if (!entry) return;
+      selectPage(entry.page);
+      revealElement(entry.el);
+    }
+    function markHit(index) {
+      searchPick = Math.max(0, Math.min(searchHits.length - 1, index));
+      searchList.querySelectorAll('.result').forEach((button, position) => {
+        button.setAttribute('aria-selected', String(position === searchPick));
+        if (position === searchPick) button.scrollIntoView({ block: 'nearest' });
+      });
+    }
+    searchInput.addEventListener('input', () => {
+      const text = searchInput.value.trim();
+      searchClear.hidden = !searchInput.value;
+      if (!text) { if (activePage === 'search') selectPage(searchReturn); return; }
+      if (activePage !== 'search') { searchReturn = activePage; selectPage('search'); }
+      runSearch();
+    });
+    // The window keeps the keys for itself (modalKeydown), so the field gets them from there.
+    searchInput.wsValueKeydown = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (searchInput.value) { searchInput.value = ''; searchClear.hidden = true; selectPage(searchReturn); }
+        else close();
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); markHit(searchPick + (event.key === 'ArrowDown' ? 1 : -1)); }
+      else if (event.key === 'Enter') { event.preventDefault(); openHit(searchPick); }
+    };
+    searchClear.addEventListener('click', () => { searchInput.value = ''; searchClear.hidden = true; selectPage(searchReturn); searchInput.focus({ preventScroll: true }); });
+    searchList.addEventListener('click', event => { const button = event.target.closest('.result'); if (button) openHit(Number(button.dataset.index)); });
+    q('[data-id="search-commands"]').addEventListener('click', () => { close(); openStudioCommands(); });
+    // Home's tiles and links.
+    q('[data-page="home"]').addEventListener('click', event => {
+      const go = event.target.closest('[data-go]');
+      if (go) { selectPage(go.dataset.go); if (go.dataset.reveal) reveal(go.dataset.reveal); return; }
+      const link = event.target.closest('[data-home]');
+      if (link) q(`[data-id="${link.dataset.home}"]`)?.click();
+    });
+    q('[data-id="enabled-home"]').addEventListener('change', event => change({ enabled: event.target.checked }, true));
     // Settings › Screen displays › Status: what the library reports (an iPad has no console to ask).
     function renderScreenStatus() {
       const box = q('[data-id="sd-status"]');
@@ -19767,7 +20974,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       const page = q(`[data-page="${name}"]`);
       chipTargets = page ? [...page.querySelectorAll('.section-label')].map(label => ({ label, group: label.closest('.group') || label.parentElement })).filter(entry => entry.group && !entry.group.hidden) : [];
       chips.textContent = '';
-      chips.hidden = chipTargets.length < 2;
+      chips.hidden = chipTargets.length < 2 || name === 'home' || name === 'search';
       if (chips.hidden) return;
       for (const [index, entry] of chipTargets.entries()) {
         const chip = document.createElement('button');
@@ -19780,9 +20987,24 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         });
         chips.append(chip);
       }
-      markChip(0);
+      markChip(0); chipEdges();
     }
-    function markChip(index) { chips.querySelectorAll('.sec-chip').forEach((chip, position) => chip.setAttribute('aria-current', String(position === index))); }
+    // More chips than fit (the Developers page, say): the strip fades out at the side that has more, and the chip of
+    // the section in view is scrolled into the strip.
+    function chipEdges() {
+      const more = [chips.scrollLeft > 1 ? 'start' : '', chips.scrollLeft + chips.clientWidth < chips.scrollWidth - 1 ? 'end' : ''].filter(Boolean).join(' ');
+      if (more) chips.dataset.more = more; else delete chips.dataset.more;
+    }
+    chips.addEventListener('scroll', chipEdges, { passive: true });
+    function markChip(index) {
+      chips.querySelectorAll('.sec-chip').forEach((chip, position) => {
+        chip.setAttribute('aria-current', String(position === index));
+        if (position !== index || chips.scrollWidth <= chips.clientWidth + 1) return;
+        const box = chips.getBoundingClientRect(), own = chip.getBoundingClientRect();
+        if (own.left < box.left + 28) chips.scrollBy({ left: own.left - box.left - 28 });
+        else if (own.right > box.right - 28) chips.scrollBy({ left: own.right - box.right + 28 });
+      });
+    }
     body.addEventListener('scroll', () => {
       if (chipFrame || chips.hidden) return;
       chipFrame = requestAnimationFrame(() => {
@@ -19811,7 +21033,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       for (const item of profiles) {
         const apply = document.createElement('button');apply.type = 'button';apply.className = 'chip';apply.dataset.profile = item.id;apply.dataset.profileAction = 'apply';
         const title = document.createElement('strong');title.textContent = item.name;title.setAttribute('data-ws-keep','');
-        const description = document.createElement('small');description.textContent = item.snapshot.workspace.compactMode ? 'Floating compact' : 'Standard';apply.append(title,description);chips.append(apply);
+        const description = document.createElement('small');description.textContent = item.snapshot.workspace.compactMode ? 'Floating' : 'Standard';apply.append(title,description);chips.append(apply);
         const editor = document.createElement('div');editor.className = 'profile-editor';editor.dataset.profile = item.id;
         const input = document.createElement('input');input.className = 'feature-input';input.value = item.name;input.maxLength = 48;input.setAttribute('aria-label','Workspace name');editor.append(input);
         for (const [action,label] of [['rename','Rename'],['update','Update layout'],['delete','Delete']]) {const button = document.createElement('button');button.type = 'button';button.className = 'reset';button.dataset.profileAction = action;button.textContent = label;editor.append(button);}
@@ -19872,7 +21094,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       try {
         if (file.size > workspaces.limit) throw new Error('Choose a Studio backup smaller than 256 KB.');
         const text = await file.text(), value = workspaces.parseBackup(text);backupText = text;
-        q('[data-id="backup-summary"]').textContent = `${value.settings.theme} · ${value.settings.compactMode ? 'Floating compact' : 'Standard'} · ${value.profiles.length} saved workspaces. Your current settings and workspace list will be replaced.`;
+        q('[data-id="backup-summary"]').textContent = `${value.settings.theme} · ${value.settings.compactMode ? 'Floating' : 'Standard'} · ${value.profiles.length} saved workspaces. Your current settings and workspace list will be replaced.`;
         q('[data-id="backup-review"]').hidden = false;featureStatus('backup','Backup checked. Nothing changes until you confirm.');
       } catch(err) { reportStudioError("buildStudioUI",err);featureStatus('backup',err.message,true);}
     });
@@ -19972,6 +21194,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
 
     function render() {
+      renderedSettings = JSON.stringify(current);
       if (!languageMenu.childElementCount) {
         const add = (code, name, keep) => {
           const option = document.createElement('button'); option.type = 'button'; option.className = 'language-option';
@@ -20004,14 +21227,22 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       syncWorkspaceControls();
       q('[data-id="compactModeHint"]').textContent = !current.enabled ? 'Enable Studio to adjust workspace settings.' :
         current.compactMode ? 'Applies to floating islands on desktop. Your arrangement is saved separately.' :
-        'Select Floating compact to adjust these settings. Your saved values are kept.';
+        'Switch to Floating to adjust these settings. Your saved values are kept.';
       q('[data-id="layerColumnsToggle"]').checked = current.layerColumns === 'two';
       panel.dataset.motion = current.motion ? 'full' : 'reduced';
       q('[data-id="accent"]').value = current.accent;
-      q('.colorshell').style.setProperty('--custom-color', current.accent);
+      q('[data-id="accent-picker-open"]').style.setProperty('--custom-color', current.accent);
+      q('[data-id="island-color-open"]').style.setProperty('--custom-color', current.islandColor);
+      q('[data-id="island-color2-open"]').style.setProperty('--custom-color', current.islandColor2);
+      {
+        const tone = hex => globalThis.WMEStudioIslandTone?.(hex, current.islandIntensity) || hex;
+        const preview = q('[data-id="island-preview"]'), first = tone(current.islandColor), second = current.islandFill === 'gradient' ? tone(current.islandColor2) : first;
+        preview.style.setProperty('--island-preview', current.islandFill === 'gradient' ? `linear-gradient(${current.islandAngle}deg, ${first}, ${second})` : first);
+        preview.style.setProperty('--island-preview-ink', globalThis.WMEStudioIslandInk?.(first, second) === 'light' ? '#f4f6f8' : '#111820');
+      }
       q('[data-id="accent-value"]').textContent = current.accent.toUpperCase();
-      syncColorPicker(current.accent);
-      for (const key of ['compactHeaderWidth','compactIslandOpacity','eyeSaver','satelliteBrightness','viewportBrightness','gpsOpacity','hudScale','panelScale','fontScale']) {
+      syncColorPicker(current[pickerKey]);
+      for (const key of ['compactHeaderWidth','compactIslandOpacity','islandIntensity','eyeSaver','satelliteBrightness','viewportBrightness','gpsOpacity','hudScale','panelScale','fontScale']) {
         const value = key === 'compactHeaderWidth' && !current.compactHeaderFullWidth ? 0 : current[key];
         const input = q(`[data-id="${key}"]`);
         if (Number(input.value) !== value) input.value = value;
@@ -20023,9 +21254,14 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         const min = Number(input.min) || 0, max = Number(input.max) || 100, value = Number(input.value) || 0;
         input.style.setProperty('--range-fill', `${Math.max(0, Math.min(100, (value - min) * 100 / Math.max(1, max - min)))}%`);
       });
-      qa('[data-setting]').forEach(button => button.setAttribute('aria-pressed', String(current[button.dataset.setting] === button.dataset.value)));
+      // Island colors of your own (in Floating mode) stand in for the theme (3.0.0): no theme shows as chosen then, and
+      // picking one goes back to the theme's colors.
+      const ownColors = current.compactMode && current.islandFill !== 'theme';
+      qa('[data-setting]').forEach(button => button.setAttribute('aria-pressed', String(String(current[button.dataset.setting]) === button.dataset.value && !(ownColors && button.dataset.setting === 'theme'))));
+      qa('[data-island-gradient]').forEach(button => button.setAttribute('aria-pressed', String(current.islandFill === 'gradient' && button.dataset.islandGradient === `${current.islandColor},${current.islandColor2}`)));
+      paintHome();
       const status = q('[data-id="themeSchedule-status"]'), note = q('[data-id="theme-note"]');
-      note.textContent = status.hidden ? '' : status.textContent; note.hidden = !note.textContent;
+      note.textContent = ownColors ? `${current.islandFill === 'gradient' ? 'Your gradient' : 'Your color'} is in use. Pick a theme to go back.` : status.hidden ? '' : status.textContent; note.hidden = !note.textContent;
       paintChanged();
     }
     // A row whose setting differs from the default shows a dot and a Reset link.
@@ -20040,13 +21276,15 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       return [...keys];
     }
     function paintChanged() {
-      for (const row of qa('.srow')) {
+      // Touch & iPad tools are on or off as each person needs them: there is no "default" to go back to there.
+      for (const row of qa('.srow:not([data-page="screens"] .srow)')) {
         const keys = rowSettingKeys(row);
         const changed = keys.some(key => JSON.stringify(current[key]) !== JSON.stringify(config.defaults[key]));
         row.toggleAttribute('data-changed', changed);
-        let reset = row.querySelector(':scope > .srow-text > .row-reset');
+        let reset = row.querySelector(':scope > .srow-text .row-reset');
         if (changed && !reset && keys.length) {
-          const text = row.querySelector(':scope > .srow-text');
+          // Beside the setting's name, so a changed row keeps its height (3.0.0).
+          const text = row.querySelector(':scope > .srow-text > strong:not([data-ws-plus])') || row.querySelector(':scope > .srow-text');
           if (!text) continue;
           reset = document.createElement('button'); reset.type = 'button'; reset.className = 'row-reset'; reset.textContent = 'Reset to default';
           reset.addEventListener('click', event => {
@@ -20060,7 +21298,11 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
     // Scheduling an eye saver set to Off gives it a strength to use.
     function settingPatch(key, value) {
+      // Buttons carry text: a number or a yes/no setting gets its own type back (Home's text size and workspace).
+      const kind = typeof config.defaults[key];
+      if (kind === 'number') value = Number(value); else if (kind === 'boolean') value = value === 'true';
       const patch = { [key]: value };
+      if (key === 'theme' && current.compactMode && current.islandFill !== 'theme') patch.islandFill = 'theme';
       if (key === 'eyeSaverSchedule' && value !== 'off' && current.eyeSaver === 0) patch.eyeSaver = 50;
       return patch;
     }
@@ -20075,10 +21317,10 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       q('[data-id="dark-schedule"]').hidden = current.theme !== 'light';
       qa('[data-when]').forEach(node => {
         const [key, mode] = node.dataset.when.split('-');
-        node.hidden = mode ? current[key] !== mode : current[key] === 'off';
+        node.hidden = mode ? !mode.split('|').includes(String(current[key])) : current[key] === 'off';
       });
       qa('[data-time]').forEach(input => { if (input !== shadow.activeElement && input.value !== current[input.dataset.time]) input.value = current[input.dataset.time]; });
-      scheduleText(q('[data-id="eyeSaver-hint"]'), eyeOn ? 'Strength during the scheduled hours.' : 'Warmer colors across the editor.');
+      scheduleText(q('[data-id="eyeSaver-hint"]'), 'Warmer colors across the editor.');
       const sunLine = () => !state.sun ? '' : state.sun.polar === 'day' ? 'The sun stays up all day where the map is' : state.sun.polar === 'night' ? 'The sun stays down all day where the map is' :
         `Sunrise ${at(state.sun.rise)} · sunset ${at(state.sun.set)} where the map is`;
       scheduleText(q('[data-id="themeSchedule-status"]'), !themeOn ? '' : state.night
@@ -20092,6 +21334,9 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
     const colorPicker = q('[data-id="color-picker"]'), colorPlane = q('[data-id="picker-plane"]');
     let pickerHSV = {h:204,s:1,v:1}, pickerHex = '', pickerDrag = null, pickerTimer = 0;
+    // The picker serves the accent and the two island colors (3.0.0): which one it is changing, from which button.
+    const PICKER_TARGETS = { accent: { opener: 'accent-picker-open', title: 'Custom accent', reset: '#0099ff', resetLabel: 'Waze blue' }, islandColor: { opener: 'island-color-open', title: 'Island color', reset: '#1e3a5f', resetLabel: 'Default' }, islandColor2: { opener: 'island-color2-open', title: 'Second island color', reset: '#6d28d9', resetLabel: 'Default' } };
+    const pickerOpener = () => q(`[data-id="${PICKER_TARGETS[pickerKey].opener}"]`);
     function colorRGB(hex) { return [1,3,5].map(index => parseInt(hex.slice(index,index + 2),16)); }
     function colorHSV(hex) {
       const [r,g,b] = colorRGB(hex).map(value => value / 255), max = Math.max(r,g,b), min = Math.min(r,g,b), delta = max - min;
@@ -20122,16 +21367,16 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
     function commitPickerColor() {
       clearTimeout(pickerTimer); pickerTimer = 0;
-      if (current.accent === pickerHex) change({accent:pickerHex});
+      if (current[pickerKey] === pickerHex) change({[pickerKey]:pickerHex});
     }
     function previewPickerColor(hex = colorHex(pickerHSV)) {
       pickerHex = hex;
-      current = config.sanitize({...current,accent:hex}); render();
+      current = config.sanitize({...current,[pickerKey]:hex}); render();
       clearTimeout(pickerTimer); pickerTimer = setTimeout(commitPickerColor,100);
     }
     function positionColorPicker() {
       if (!colorPicker.matches(':popover-open')) return;
-      const anchor = q('[data-id="accent-picker-open"]').getBoundingClientRect(), size = colorPicker.getBoundingClientRect();
+      const anchor = pickerOpener().getBoundingClientRect(), size = colorPicker.getBoundingClientRect();
       const x = Math.max(12,Math.min(anchor.right - size.width,innerWidth - size.width - 12));
       const y = anchor.bottom + 10 + size.height <= innerHeight - 12 ? anchor.bottom + 10 : anchor.top - size.height - 10;
       colorPicker.style.left = `${Math.round(x)}px`; colorPicker.style.top = `${Math.round(Math.max(12,Math.min(y,innerHeight - size.height - 12)))}px`;
@@ -20140,16 +21385,22 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       if (pickerTimer) commitPickerColor();
       pickerDrag = null;
       if (colorPicker.matches(':popover-open')) colorPicker.hidePopover();
-      q('[data-id="accent-picker-open"]').setAttribute('aria-expanded','false');
-      q('[data-id="accent-picker-open"]').focus({preventScroll:true});
+      pickerOpener().setAttribute('aria-expanded','false');
+      pickerOpener().focus({preventScroll:true});
     }
-    q('[data-id="accent-picker-open"]').addEventListener('click',() => {
-      if (colorPicker.matches(':popover-open')) { closeColorPicker(); return; }
-      syncColorPicker(current.accent); colorPicker.showPopover(); positionColorPicker();
-      q('[data-id="accent-picker-open"]').setAttribute('aria-expanded','true'); colorPlane.focus({preventScroll:true});
+    for (const key of Object.keys(PICKER_TARGETS)) q(`[data-id="${PICKER_TARGETS[key].opener}"]`).addEventListener('click',() => {
+      const open = colorPicker.matches(':popover-open'), same = pickerKey === key;
+      if (open) { closeColorPicker(); if (same) return; }
+      pickerKey = key;
+      const target = PICKER_TARGETS[key];
+      q('.picker-head strong').textContent = translate(target.title);
+      colorPicker.setAttribute('aria-label', translate(target.title));
+      q('[data-id="picker-reset"]').textContent = translate(target.resetLabel);
+      syncColorPicker(current[key]); colorPicker.showPopover(); positionColorPicker();
+      pickerOpener().setAttribute('aria-expanded','true'); colorPlane.focus({preventScroll:true});
     });
     colorPicker.addEventListener('toggle',event => {
-      q('[data-id="accent-picker-open"]').setAttribute('aria-expanded',String(event.newState === 'open'));
+      pickerOpener().setAttribute('aria-expanded',String(event.newState === 'open'));
       if (event.newState === 'closed' && pickerTimer) commitPickerColor();
     });
     const pickPlane = event => {
@@ -20191,14 +21442,14 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       const hex = '#' + values.map(value => Math.max(0,Math.min(255,Math.round(value))).toString(16).padStart(2,'0')).join('');
       pickerHSV = colorHSV(hex); previewPickerColor(hex); commitPickerColor();
     });
-    q('[data-id="picker-reset"]').addEventListener('click',() => { pickerHSV = colorHSV('#0099ff'); previewPickerColor('#0099ff'); commitPickerColor(); });
+    q('[data-id="picker-reset"]').addEventListener('click',() => { const hex = PICKER_TARGETS[pickerKey].reset; pickerHSV = colorHSV(hex); previewPickerColor(hex); commitPickerColor(); });
     q('[data-id="picker-close"]').addEventListener('click',closeColorPicker);
     q('[data-id="picker-done"]').addEventListener('click',closeColorPicker);
     window.addEventListener('resize',positionColorPicker,{passive:true});
     function setStatus(text, state = 'saved') {
       status.textContent = text;
       q('.notice').dataset.state = state;
-      q('.save-indicator').textContent = state === 'saving' ? '…' : state === 'error' ? '!' : '✓';
+      q('.save-indicator').textContent = state === 'saving' ? '…' : state === 'error' ? '!' : '';
     }
     function savedStatus() { setStatus(current.enabled ? 'Saved' : 'Paused'); }
     let workspaceModeChange = 0, pendingWorkspaceMode = null;
@@ -20297,7 +21548,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
     const liveRangeKeys = () => { const keys = new Set(); for (const [key,state] of sliderWrites) if (state.busy || sliderTimers.has(key)) for (const name of Object.keys(rangePatch(key,state.value))) keys.add(name); return keys; };
     // Sliders whose effect shows in the editor behind the window; dragging one hides everything but its own row.
-    const peekKeys = new Set(['compactHeaderWidth','compactIslandOpacity','eyeSaver','satelliteBrightness','viewportBrightness','gpsOpacity','hudScale','panelScale','fontScale']);
+    const peekKeys = new Set(['compactHeaderWidth','compactIslandOpacity','islandIntensity','eyeSaver','satelliteBrightness','viewportBrightness','gpsOpacity','hudScale','panelScale','fontScale']);
     function setPeek(input) {
       qa('[data-peek-row]').forEach(node=>node.removeAttribute('data-peek-row'));
       const row = input?.closest('.srow');
@@ -20341,10 +21592,13 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       studioPanelOpen = true;
       backdrop.hidden = false;
       panel.classList.add('open');
+      centerInputs();
+      requestAnimationFrame(chipEdges);
       document.addEventListener('keydown', modalKeydown, true);
       setLauncherActive(true);
       panel.focus({ preventScroll: true });
-      config.read().then(v => { current = v; currentRead = true; render(); savedStatus(); }).catch((studioError) => { reportStudioError("open",studioError); return setStatus('Could not load preferences.', 'error'); });
+      if (currentRead) render();   // at once, with the values already known; again below once the stored ones are read
+      config.read().then(v => { const same = currentRead && JSON.stringify(v) === renderedSettings; current = v; currentRead = true; if (!same) render(); savedStatus(); }).catch((studioError) => { reportStudioError("open",studioError); return setStatus('Could not load preferences.', 'error'); });
       refreshProfiles();
     }
     function close() {
@@ -20382,7 +21636,9 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     qa('[data-preset]').forEach(button=>button.addEventListener('click',()=>usePreset(button.dataset.preset)));
     q('[data-id="preset-undo"]').addEventListener('click',undoPreset);
     arrangeViewport.addEventListener('change',()=>{if(studioPanelOpen)render();});
-    qa('[data-setting]').forEach(button => button.addEventListener('click', () => change(settingPatch(button.dataset.setting, button.dataset.value), true)));
+    // An island color picked from the quick colors brings a matching accent with it (3.0.0), as an idea of what goes together.
+    qa('[data-setting]').forEach(button => button.addEventListener('click', () => change({ ...settingPatch(button.dataset.setting, button.dataset.value), ...(button.dataset.accent ? { accent: button.dataset.accent } : {}) }, true)));
+    qa('[data-island-gradient]').forEach(button => button.addEventListener('click', () => { const [islandColor, islandColor2] = button.dataset.islandGradient.split(','); change({ islandFill: 'gradient', islandColor, islandColor2, ...(button.dataset.accent ? { accent: button.dataset.accent } : {}) }, true); }));
     for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','createMenuClick','closeAfterReply','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
     qa('[data-time]').forEach(input => input.addEventListener('change', () => { if (/^\d\d:\d\d$/.test(input.value)) change({ [input.dataset.time]: input.value }); else paintSchedule(); }));
     setInterval(() => { if (studioPanelOpen) paintSchedule(); }, 30000);
@@ -20391,9 +21647,9 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }));
     q('[data-id="layerColumnsToggle"]').addEventListener('change', e => change({ layerColumns: e.target.checked ? 'two' : 'one' }, true));
     q('[data-id="accent"]').addEventListener('change', e => change({ accent: e.target.value }));
-    for (const key of ['compactHeaderWidth','compactIslandOpacity','eyeSaver','satelliteBrightness','viewportBrightness','gpsOpacity','hudScale','panelScale','fontScale','discussionVisible']) {
+    for (const key of ['compactHeaderWidth','compactIslandOpacity','islandIntensity','eyeSaver','satelliteBrightness','viewportBrightness','gpsOpacity','hudScale','panelScale','fontScale','discussionVisible']) {
       bindRangeDrag(q(`[data-id="${key}"]`),key);
-      q(`[data-id="${key}"]`).addEventListener('input', e => { if (key === 'discussionVisible') globalThis.WMEStudioPanelSizes?.forgetRequestHeights?.(); previewRange(key, Number(e.target.value)); });
+      q(`[data-id="${key}"]`).addEventListener('input', e => { if (key === 'discussionVisible' && Number(e.target.value) !== Number(current.discussionVisible)) globalThis.WMEStudioPanelSizes?.forgetRequestHeights?.(); previewRange(key, Number(e.target.value)); });
       q(`[data-id="${key}"]`).addEventListener('change', e => { clearTimeout(sliderTimers.get(key)); sliderTimers.delete(key); change(rangePatch(key,Number(e.target.value))); });
     }
     qa('[data-action="arrange"]').forEach(button=>button.addEventListener('click',async()=>{
@@ -20416,6 +21672,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     // Screen displays › All tools (2.3.0): everything on, or everything off, at once.
     const screenTools = on => ({ screenDisplays: on, screenRoadButton: on, screenShapeButton: on, screenDrawButton: on, screenLongPress: on });
     q('[data-id="sd-userjs"]').addEventListener('click', downloadStudioUserFile);
+    for (const type of ['pointerenter', 'touchstart', 'focus']) q('[data-id="sd-userjs"]').addEventListener(type, prefetchStudioUserFile, { once: true, passive: true });
     q('[data-id="sd-all-on"]').addEventListener('click', () => change(screenTools(true), true));
     q('[data-id="sd-all-off"]').addEventListener('click', () => change(screenTools(false), true));
     // Report a bug: a plain-text summary of this setup for the feedback page. It holds no account details, no
@@ -20517,9 +21774,15 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     const endpointReady = /^https:\/\/[^/\s]+/.test(BUG_REPORT_ENDPOINT);
     // The settings panel is localized from its DOM (see WMEStudioI18n.localize), so text is set in English here.
     const translate = text => text;
-    const CATEGORY_LABELS = { layout: 'Floating mode and islands', arrange: 'Arrange', theme: 'Theme and colors', panels: 'Panels and windows', menu: 'Right-click menu', addons: 'Another script', speed: 'Speed', other: 'Something else' };
+    const CATEGORY_LABELS = { layout: 'Floating mode and islands', arrange: 'Arrange', theme: 'Theme and colors', panels: 'Panels and windows', menu: 'Right-click menu', addons: 'Another script', speed: 'Speed', mobile: 'Mobile', feature: 'Feature request', other: 'Something else' };
     function bugText() {
       const what = bug.what.value.trim(), steps = bug.steps.value.trim();
+      if (bug.mode === 'feature') return bugReport()
+        .replace('### WME Studio bug report', '### WME Studio feature request')
+        .replace('**What happened:** (describe it here)', `**Idea:** ${what || '(not filled in)'}`)
+        .replace('**What you expected:** \n', '')
+        .replace('**Steps to reproduce:** ', `**How it would help:** ${steps || '(not filled in)'}`)
+        .replace('\n---\n', '\n**Where:** Feature request\n---\n');
       return bugReport()
         .replace('**What happened:** (describe it here)', `**What happened:** ${what || '(not filled in)'}`)
         .replace('**What you expected:** \n', '')
@@ -20528,11 +21791,22 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
     function refreshBugDiag() { bug.diag.textContent = bugReport().split('\n---\n')[1] || ''; }
     function showBugError(text) { bug.error.textContent = text || ''; bug.error.hidden = !text; }
-    function openBugDialog() {
+    // The same dialog takes a bug or an idea (3.0.0): an idea has no "where", and its words change with it.
+    const BUG_WORDS = {
+      bug: { title: 'Report a bug', what: 'What happened?', whatHint: 'For example: after I moved the zoom buttons to the left, the + menu opens under the header.', steps: 'Steps to see it again', stepsHint: '1. Open Arrange  2. …', send: 'Send report' },
+      feature: { title: 'Suggest a feature', what: 'What would you like?', whatHint: 'For example: a button that hides every island at once.', steps: 'How would it help?', stepsHint: 'For example: I review requests on a small laptop screen.', send: 'Send idea' }
+    };
+    function openBugDialog(mode) {
+      bug.mode = mode === 'feature' ? 'feature' : 'bug';
+      const words = BUG_WORDS[bug.mode];
+      q('#bug-title').textContent = words.title;
+      q('[data-id="bug-what-label"]').textContent = words.what; bug.what.placeholder = words.whatHint;
+      q('[data-id="bug-steps-label"]').textContent = words.steps; bug.steps.placeholder = words.stepsHint;
+      q('[data-id="bug-where-field"]').hidden = bug.mode === 'feature';
       bug.opener = shadow.activeElement;
       bug.done.hidden = true; showBugError(''); bug.what.closest('.bug-field').classList.remove('invalid'); q('[data-id="bug-category-control"]').closest('.bug-field').classList.remove('invalid');
       bug.note.textContent = translate(endpointReady ? 'Sent. Thanks, I\'ll take a look.' : 'Copied for the feedback page.');
-      bug.send.textContent = translate(endpointReady ? 'Send report' : 'Copy & open feedback page');
+      bug.send.textContent = translate(endpointReady ? words.send : 'Copy & open feedback page');
       const user = wmeUserName();
       bug.as.hidden = !endpointReady;
       if (user) { bug.asText.textContent = ''; bug.asText.append(Object.assign(document.createElement('span'), { textContent: translate('Sent as') }), ' ', Object.assign(document.createElement('b'), { textContent: user }), ' · ', Object.assign(document.createElement('span'), { textContent: translate("You'll get a note in the editor when it's fixed.") })); }
@@ -20687,9 +21961,9 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     async function submitBugReport() {
       if (bug.sending) return;
       const what = bug.what.value.trim();
-      if (what.length < 5) { bug.what.closest('.bug-field').classList.add('invalid'); showBugError(translate('Please say what happened first.')); bug.what.focus(); return; }
+      if (what.length < 5) { bug.what.closest('.bug-field').classList.add('invalid'); showBugError(translate(bug.mode === 'feature' ? 'Please describe your idea first.' : 'Please say what happened first.')); bug.what.focus(); return; }
       bug.what.closest('.bug-field').classList.remove('invalid');
-      if (!bug.category.value) { q('[data-id="bug-category-control"]').closest('.bug-field').classList.add('invalid'); showBugError(translate('Please choose where it happened.')); bug.category.focus(); return; }
+      if (bug.mode !== 'feature' && !bug.category.value) { q('[data-id="bug-category-control"]').closest('.bug-field').classList.add('invalid'); showBugError(translate('Please choose where it happened.')); bug.category.focus(); return; }
       showBugError('');
       const text = bugText();
       if (!endpointReady) {
@@ -20701,8 +21975,9 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       bug.sending = true; bug.send.disabled = true; bug.send.textContent = translate('Sending…');
       try {
         const result = await bugApi('POST', '/api/report', { report: text, version: USERSCRIPT_VERSION, editor: `${location.hostname}${location.pathname}`, browser: navigator.userAgent,
-          summary: what.slice(0, 200), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.category.value, screenshot: bug.shots[0]?.data || '', screenshots: bug.shots.map(shot => shot.data), token: await studioReporterKey() });
-        let doneText = (result.id ? translate('Got your report #{0}. Thanks, I\'ll take a look.') : translate('Got your report. Thanks, I\'ll take a look.')).replace('{0}', String(result.id || ''));
+          summary: what.slice(0, 200), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.mode === 'feature' ? 'feature' : bug.category.value, screenshot: bug.shots[0]?.data || '', screenshots: bug.shots.map(shot => shot.data), token: await studioReporterKey() });
+        let doneText = (bug.mode === 'feature' ? (result.id ? translate('Got your idea #{0}. Thanks, I\'ll read it.') : translate('Got your idea. Thanks, I\'ll read it.'))
+          : (result.id ? translate('Got your report #{0}. Thanks, I\'ll take a look.') : translate('Got your report. Thanks, I\'ll take a look.'))).replace('{0}', String(result.id || ''));
         if (bug.clip) {
           bug.send.textContent = translate('Uploading video…');
           try {
@@ -20716,7 +21991,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         bug.done.hidden = false; resetBugDialog();
       } catch (error) {
         showBugError(`${translate('The report could not be sent')}: ${error.message}. ${translate('Use "Copy report" and paste it on the feedback page instead.')}`);
-      } finally { bug.sending = false; bug.send.disabled = false; bug.send.textContent = translate('Send report'); }
+      } finally { bug.sending = false; bug.send.disabled = false; bug.send.textContent = translate(BUG_WORDS[bug.mode]?.send || 'Send report'); }
     }
     async function copyBugReportText(text) {
       try { await navigator.clipboard.writeText(text); return true; } catch (_) {
@@ -20755,7 +22030,12 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       fix.items = items; fix.working = working; fix.messages = messages; fix.rejected = rejected; fix.user = user;
       setBugBadge(items.length + working.length + messages.length + rejected.length);
       const kinds = [items.length, working.length, messages.length, rejected.length].filter(Boolean).length;
-      fix.title.textContent = translate(kinds > 1 ? 'News about your bug reports'
+      const ideas = [...items, ...working, ...rejected].length > 0 && [...items, ...working, ...rejected].every(item => item.category === 'feature') && !messages.length;
+      if (ideas) fix.title.textContent = translate(kinds > 1 ? 'News about your ideas'
+        : items.length ? (items.length > 1 ? 'Your ideas are in Studio now' : 'Your idea is in Studio now')
+        : working.length ? (working.length > 1 ? 'Your ideas are under construction' : 'Your idea is under construction')
+        : (rejected.length > 1 ? 'Your ideas will not be added' : 'Your idea will not be added'));
+      else fix.title.textContent = translate(kinds > 1 ? 'News about your bug reports'
         : items.length ? (items.length > 1 ? 'Your bug reports were fixed' : 'Your bug report was fixed')
         : working.length ? (working.length > 1 ? 'Your bug reports are under construction' : 'Your bug report is under construction')
         : rejected.length ? (rejected.length > 1 ? 'Your bug reports will not be fixed' : 'Your bug report will not be fixed')
@@ -20766,7 +22046,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       for (const item of rejected) {
         const row = document.createElement('div'); row.className = 'fix-item';
         const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.id).slice(0, 120);
-        const state = document.createElement('span'); state.className = 'fix-version'; state.textContent = translate('will not be fixed');
+        const state = document.createElement('span'); state.className = 'fix-version'; state.textContent = translate(item.category === 'feature' ? 'will not be added' : 'will not be fixed');
         row.append(quote, ' — ', state);
         if (item.note) { const note = document.createElement('span'); note.className = 'fix-note'; note.setAttribute('data-ws-keep', ''); note.textContent = item.note.slice(0, 300); row.append(note); }
         fix.list.append(row);
@@ -20846,24 +22126,49 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     q('[data-id="bug-check"]').addEventListener('click', () => { checkBugFixes(true); });
     studioUIFixes = { check: checkBugFixes };
     // "My reports" (2.0.4): every report this editor account sent, with where it stands, from GET /api/mine.
-    const mine = { backdrop: q('[data-id="mine-backdrop"]'), body: q('[data-id="mine-body"]'), sub: q('[data-id="mine-sub"]'), opener: null, loading: false, focus: null };
+    // My reports (3.0.0): a page of its own, Settings › My reports, with every report and idea, open and closed.
+    const mine = { backdrop: q('[data-id="mine-backdrop"]'), body: q('[data-id="reports-body"]'), sub: q('[data-id="reports-sub"]'), opener: null, loading: false, focus: null, reports: null, user: '', loadedAt: 0, filter: 'all', kind: 'all' };
     q('[data-row="bugMine"]').hidden = !endpointReady;
     const mineDate = iso => { const date = new Date(iso); if (Number.isNaN(date.getTime())) return ''; try { return date.toLocaleDateString(document.documentElement.lang || undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch (_) { return date.toISOString().slice(0, 10); } };
     const mineMessage = text => { const box = document.createElement('p'); box.className = 'mine-empty'; box.textContent = text; mine.body.replaceChildren(box); };
     function mineState(report) {
-      if (report.status === 'fixed') return translate('Fixed in {0}').replace('{0}', report.fixed_version || '?');
-      return translate({ new: 'Sent', seen: 'Seen', working: 'under construction', rejected: 'Will not be fixed', closed: 'Closed' }[report.status] || 'Sent');
+      const idea = report.category === 'feature';
+      if (report.status === 'fixed') return translate(idea ? 'Added in {0}' : 'Fixed in {0}').replace('{0}', report.fixed_version || '?');
+      // Removed from my list (3.0.0): still shown here, so nothing a person sent disappears; one that had been fixed says so.
+      if (report.status === 'deleted') return report.fixed_before ? `${translate('Removed')} · ${translate(idea ? 'Added in {0}' : 'Fixed in {0}').replace('{0}', report.fixed_before)}` : translate('Removed');
+      return translate({ new: 'Sent', seen: 'Seen', working: 'under construction', rejected: idea ? 'Will not be added' : 'Will not be fixed', closed: 'Closed' }[report.status] || 'Sent');
+    }
+    const MINE_OPEN = new Set(['new', 'seen', 'working']);
+    function loadMyReportsIfOld() { if (!mine.reports || Date.now() - mine.loadedAt > 60000) loadMyReports(); else renderMyReports(); }
+    function paintMineFilters() {
+      qa('[data-reports-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.reportsFilter === mine.filter)));
+      qa('[data-reports-kind]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.reportsKind === mine.kind)));
     }
     async function loadMyReports() {
       if (mine.loading) return;
       const user = wmeUserName();
       if (!user) { mine.sub.textContent = ''; mineMessage(translate('Sign in to the editor first.')); return; }
       mine.sub.textContent = translate('Sent as {0}, newest first.').replace('{0}', user);
-      mine.loading = true; mineMessage(translate('Loading…'));
+      mine.loading = true; if (!mine.reports) mineMessage(translate('Loading…'));
       try {
-        const data = await bugApi('GET', `/api/mine?user=${encodeURIComponent(user)}`);
-        const reports = Array.isArray(data?.reports) ? data.reports.filter(item => item && Number.isInteger(item.id)) : [];
-        if (!reports.length) { mineMessage(translate('No reports from {0} yet.').replace('{0}', user)); return; }
+        const data = await bugApi('GET', `/api/mine?user=${encodeURIComponent(user)}&v=${encodeURIComponent(USERSCRIPT_VERSION)}`);
+        mine.reports = Array.isArray(data?.reports) ? data.reports.filter(item => item && Number.isInteger(item.id)) : [];
+        mine.user = user; mine.loadedAt = Date.now();
+        renderMyReports();
+      } catch (error) {
+        mineMessage(`${translate('Could not load your reports')}: ${error?.message || error}`);
+      } finally { mine.loading = false; }
+    }
+    function renderMyReports() {
+      const user = mine.user, all = mine.reports || [];
+      paintMineFilters();
+      const open = all.filter(report => MINE_OPEN.has(report.status)).length;
+      mine.sub.textContent = all.length ? `${translate('Sent as {0}, newest first.').replace('{0}', user)} ${translate('{0} open · {1} closed').replace('{0}', String(open)).replace('{1}', String(all.length - open))}` : '';
+      if (!all.length) { mineMessage(translate('No reports from {0} yet.').replace('{0}', user)); return; }
+      const reports = all.filter(report => (mine.filter === 'all' || (mine.filter === 'open') === MINE_OPEN.has(report.status))
+        && (mine.kind === 'all' || (mine.kind === 'feature') === (report.category === 'feature')));
+      if (!reports.length) { mineMessage(translate('Nothing here with these filters.')); return; }
+      {
         const list = document.createElement('ul'); list.className = 'mine-list';
         for (const report of reports) {
           const item = document.createElement('li'); item.className = 'mine-item';
@@ -20871,7 +22176,9 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
           const state = document.createElement('span'); state.className = 'mine-state'; state.dataset.s = report.status; state.textContent = mineState(report);
           if (report.status === 'working') state.textContent = state.textContent.charAt(0).toLocaleUpperCase() + state.textContent.slice(1);
           const when = document.createElement('span'); when.className = 'mine-when'; when.setAttribute('data-ws-keep', ''); when.textContent = `#${report.id} · ${mineDate(report.created_at)}`;
-          top.append(state, when);
+          const kind = document.createElement('span'); kind.className = 'mine-kind'; kind.dataset.k = report.category === 'feature' ? 'idea' : 'bug';
+          kind.textContent = report.category === 'feature' ? translate('Idea') : translate(CATEGORY_LABELS[report.category] || 'Bug');
+          top.append(state, kind, when);
           const summary = document.createElement('div'); summary.className = 'mine-sum'; summary.setAttribute('data-ws-keep', ''); summary.textContent = report.summary || `${translate('Report')} #${report.id}`;
           item.append(top, summary);
           const noteText = report.status === 'fixed' ? report.fixed_note : report.status === 'working' ? report.working_note : report.status === 'rejected' ? report.rejected_note : '';
@@ -20899,10 +22206,13 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
           focus.querySelector('.mine-reply-open')?.click();
           mine.focus = null;
         }
-      } catch (error) {
-        mineMessage(`${translate('Could not load your reports')}: ${error?.message || error}`);
-      } finally { mine.loading = false; }
+      }
     }
+    qa('[data-reports-filter]').forEach(button => button.addEventListener('click', () => { mine.filter = button.dataset.reportsFilter; renderMyReports(); }));
+    qa('[data-reports-kind]').forEach(button => button.addEventListener('click', () => { mine.kind = button.dataset.reportsKind; renderMyReports(); }));
+    q('[data-id="reports-reload"]').addEventListener('click', () => loadMyReports());
+    q('[data-id="reports-new-bug"]').addEventListener('click', () => openBugDialog('bug'));
+    q('[data-id="reports-new-idea"]').addEventListener('click', () => openBugDialog('feature'));
     // Answering the author (2.2.1): a button that opens a box under the report.
     function mineReply(report, answered) {
       const box = document.createElement('div');
@@ -20928,11 +22238,9 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     }
     function openMyReports(focusId = null) {
       mine.focus = Number.isInteger(focusId) ? focusId : null;
-      mine.opener = shadow.activeElement;
-      mine.backdrop.hidden = false;
-      mine.body.scrollTop = 0;
-      requestAnimationFrame(() => q('[data-id="mine-done"]').focus({ preventScroll: true }));
-      loadMyReports();
+      if (mine.focus != null) { mine.filter = 'all'; mine.kind = 'all'; }
+      if (!studioPanelOpen) open('reports'); else selectPage('reports');
+      if (mine.focus != null) loadMyReports();
     }
     function closeMyReports() {
       if (mine.backdrop.hidden) return;
@@ -20969,11 +22277,47 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       log.box.style.top = `${Math.max(16, Math.floor((innerHeight - log.box.offsetHeight) / 2))}px`;
       addEventListener('resize', placeChangelog);
     }
-    function showChangelog(mode = 'new') {
+    // The 3.0 welcome (3.0.0): shown in place of the "What's changed" note for this release.
+    const release = { backdrop: q('[data-id="release-backdrop"]'), stage: q('[data-id="release-stage"]'), opener: null };
+    function releaseKey(event) {
+      if (release.backdrop.hidden) { document.removeEventListener('keydown', releaseKey, true); return; }
+      if (event.key === 'Escape') { event.preventDefault(); closeRelease(); }
+      if (!event.ctrlKey && !event.metaKey) event.stopImmediatePropagation();
+    }
+    function showRelease() {
+      release.opener = shadow.activeElement || document.activeElement;
+      release.backdrop.hidden = false;
+      document.addEventListener('keydown', releaseKey, true);
+      requestAnimationFrame(() => q('.release')?.focus({ preventScroll: true }));
+    }
+    function closeRelease() {
+      if (release.backdrop.hidden) return;
+      document.removeEventListener('keydown', releaseKey, true);
+      release.backdrop.hidden = true; markChangelogSeen();
+      release.opener?.focus?.({ preventScroll: true }); release.opener = null;
+    }
+    // The scene leans a little towards the pointer.
+    release.stage.addEventListener('pointermove', event => {
+      const box = release.stage.getBoundingClientRect(), x = (event.clientX - box.left) / box.width - .5, y = (event.clientY - box.top) / box.height - .5;
+      const scene = release.stage.querySelector('.rs-scene');
+      scene.style.setProperty('--rx', `${52 - y * 10}deg`); scene.style.setProperty('--rz', `${-28 + x * 12}deg`);
+    });
+    release.stage.addEventListener('pointerleave', () => { const scene = release.stage.querySelector('.rs-scene'); scene.style.removeProperty('--rx'); scene.style.removeProperty('--rz'); });
+    q('[data-id="release-ok"]').addEventListener('click', closeRelease);
+    q('[data-id="release-close"]').addEventListener('click', closeRelease);
+    q('[data-id="release-all"]').addEventListener('click', () => { closeRelease(); showChangelog('all'); });
+    release.backdrop.addEventListener('pointerdown', event => { if (event.target === release.backdrop) closeRelease(); });
+    function showChangelog(mode = 'new', since = '') {
+      if (mode === 'new' && /^3\.0\./.test(USERSCRIPT_VERSION)) { log.box.hidden = true; showRelease(); return; }
       if (mode === 'new') {
-        const release = STUDIO_CHANGELOG[0];
+        // Every release since the version last seen (3.0.0 and 2.3.0 for someone coming from 2.2.2), newest first; a
+        // version number heads each one when there is more than one.
+        const fresh = /^\d+(?:\.\d+)+$/.test(since) ? STUDIO_CHANGELOG.filter(entry => !versionAtMost(entry.version, since)).slice(0, 4) : [];
+        const releases = fresh.length ? fresh : [STUDIO_CHANGELOG[0]];
         log.version.textContent = `WME Studio ${USERSCRIPT_VERSION}`;
-        log.list.replaceChildren(...changelogRelease(release));
+        log.list.replaceChildren(...releases.flatMap(release => releases.length > 1
+          ? [Object.assign(document.createElement('h4'), { className: 'log-version', textContent: release.version }), ...changelogRelease(release)]
+          : changelogRelease(release)));
         log.box.hidden = false;
         placeChangelog();
         return;
@@ -21011,11 +22355,154 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     for (const id of ['log-close', 'log-done']) q(`[data-id="${id}"]`).addEventListener('click', closeChangelog);
     log.backdrop.addEventListener('pointerdown', event => { if (event.target === log.backdrop) closeChangelog(); });
     q('[data-id="changelog"]').addEventListener('click', () => showChangelog('all'));
+    // Polls (3.0.0): questions the author asks from the reports site. One at a time, once the editor is up. A "Review
+    // look" poll shows each choice as a small preview and switches the list behind to it while it is picked; Vote keeps
+    // it. Not now (or closing) puts things back and asks again another time, three times at most per poll.
+    const POLL_STORE = 'wmeStudio.polls.v2';
+    // A Review look poll shows each choice as a small preview of the list; voting only votes, nothing changes in the
+    // editor (the looks aren't a setting yet).
+    const poll = { backdrop: q('[data-id="poll-backdrop"]'), vote: q('[data-id="poll-vote"]'), note: q('[data-id="poll-note"]'), list: q('[data-id="poll-options"]'), current: null, choice: '', sending: false, opener: null };
+    async function pollState() {
+      const all = await Promise.resolve(studioKeep.get(POLL_STORE, {})).catch(() => ({}));
+      return all && typeof all === 'object' ? all : {};
+    }
+    async function savePoll(id, patch) {
+      const all = await pollState();
+      all[id] = { ...(all[id] || {}), ...patch };
+      try { await Promise.resolve(studioKeep.set(POLL_STORE, all)); } catch (studioError) { reportStudioError('poll', studioError); }
+    }
+    // The poll's buttons act on a click, or on the press itself when no click follows: something else on the page (a
+    // script or an add-on) can catch clicks before they get here, and then the poll could not be answered (3.0.0).
+    function pollPress(button, act) {
+      let pressed = false, timer = 0;
+      button.addEventListener('pointerdown', event => { pressed = event.button === 0; });
+      button.addEventListener('pointerup', event => {
+        if (!pressed || event.button !== 0) return;
+        pressed = false; clearTimeout(timer);
+        timer = setTimeout(() => { reportStudioError('poll click lost', new Error(button.dataset.pollChoice || button.dataset.id || 'button')); act(); }, 400);
+      });
+      button.addEventListener('click', () => { pressed = false; clearTimeout(timer); act(); });
+    }
+    const pollLooks = item => item?.kind === 'review-cards';
+    function pollLook(item, choice) {
+      const option = item?.options?.find(entry => entry.id === choice), value = option?.value || option?.id;
+      return pollLooks(item) && ['classic', 'edge', 'dot', 'fade'].includes(value) ? value : '';
+    }
+    function pollPreview(look) {
+      const preview = document.createElement('span');
+      preview.className = 'poll-preview'; preview.dataset.look = look; preview.setAttribute('aria-hidden', 'true');
+      for (const [state, title, when] of [['unread', 'Missing road', 'Reported 2 days ago'], ['read', 'Wrong turn', 'Reported 1 month ago']]) {
+        const card = document.createElement('span'); card.className = `pc ${state}`;
+        const icon = document.createElement('i'); icon.className = 'pi';
+        const text = document.createElement('span'); text.className = 'pt';
+        text.append(Object.assign(document.createElement('b'), { textContent: translate(title) }), Object.assign(document.createElement('small'), { textContent: translate(when) }));
+        card.append(icon, text); preview.append(card);
+      }
+      return preview;
+    }
+    function pickPoll(choice) {
+      poll.choice = choice;
+      qa('[data-poll-choice]').forEach(button => button.setAttribute('aria-checked', String(button.dataset.pollChoice === choice)));
+      poll.vote.disabled = !choice || poll.sending;
+    }
+    function pollKey(event) {
+      if (poll.backdrop.hidden) { document.removeEventListener('keydown', pollKey, true); return; }
+      if (event.key === 'Escape') { event.preventDefault(); laterPoll(); }
+      if (!event.ctrlKey && !event.metaKey) event.stopImmediatePropagation();
+    }
+    function hidePoll() {
+      document.removeEventListener('keydown', pollKey, true);
+      poll.backdrop.hidden = true; poll.current = null;
+      poll.opener?.focus?.({ preventScroll: true }); poll.opener = null;
+    }
+    // The pictures come from the reports site and are drawn from data (the editor's page may not load pictures from
+    // elsewhere): each one is fetched once and kept for the session.
+    const pollImages = new Map();
+    function pollImage(id, slot, hash) {
+      const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/polls/${encodeURIComponent(id)}/image/${encodeURIComponent(slot)}?h=${encodeURIComponent(hash)}`;
+      if (!pollImages.has(url)) pollImages.set(url, new Promise((resolve, reject) => {
+        const done = blob => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || '')); reader.onerror = reject; reader.readAsDataURL(blob); };
+        if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, responseType: 'blob', timeout: 20000, anonymous: true, onload: response => (response.status === 200 && response.response ? done(response.response) : reject(new Error(String(response.status)))), onerror: reject, ontimeout: reject });
+        else fetch(url, { mode: 'cors' }).then(response => response.ok ? response.blob() : Promise.reject(new Error(String(response.status)))).then(done, reject);
+      }).catch(error => { pollImages.delete(url); throw error; }));
+      return pollImages.get(url);
+    }
+    function fillPollImage(img, item, slot, hash) {
+      if (!hash) { img.hidden = true; return; }
+      img.hidden = false; img.removeAttribute('src');
+      pollImage(item.id, slot, hash).then(data => { if (/^data:image\//.test(data)) img.src = data; else img.hidden = true; }).catch(() => { img.hidden = true; });
+    }
+    function showPoll(item) {
+      if (!item?.options?.length || !poll.backdrop.hidden) return;
+      // Not over the "What's changed" note, the settings or another of Studio's windows: asked a little later.
+      if (!log.box.hidden || studioPanelOpen || !bug.backdrop.hidden || !log.backdrop.hidden || !release.backdrop.hidden) { setTimeout(() => showPoll(item), 20000); return; }
+      savePoll(item.id, { lastAsked: Date.now() });
+      poll.current = item; poll.choice = ''; poll.sending = false;
+      q('[data-id="poll-title"]').textContent = item.title || '';
+      const sub = q('[data-id="poll-sub"]'); sub.textContent = item.body || ''; sub.hidden = !item.body;
+      poll.note.textContent = '';
+      poll.list.classList.toggle('plain', !pollLooks(item));
+      poll.list.setAttribute('aria-label', item.title || '');
+      fillPollImage(q('[data-id="poll-cover"]'), item, 'cover', item.image);
+      poll.list.classList.toggle('pictures', item.options.some(option => option.image));
+      poll.list.replaceChildren(...item.options.map(option => {
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'poll-option'; button.setAttribute('role', 'radio'); button.setAttribute('aria-checked', 'false');
+        button.dataset.pollChoice = option.id;
+        if (option.image) { const img = document.createElement('img'); img.className = 'poll-pic'; img.alt = ''; button.append(img); fillPollImage(img, item, option.id, option.image); }
+        const look = pollLook(item, option.id);
+        if (look) button.append(pollPreview(look));
+        button.append(Object.assign(document.createElement('span'), { className: 'poll-name', textContent: option.label || option.id }));
+        if (option.description) button.append(Object.assign(document.createElement('span'), { className: 'poll-desc', textContent: option.description }));
+        pollPress(button, () => pickPoll(option.id));
+        return button;
+      }));
+      pickPoll('');
+      poll.opener = shadow.activeElement || document.activeElement;
+      poll.backdrop.hidden = false;
+      document.addEventListener('keydown', pollKey, true);
+      // The window takes the keyboard (Tab reaches the choices) without showing one of them as picked.
+      requestAnimationFrame(() => q('.poll-dialog')?.focus({ preventScroll: true }));
+    }
+    async function laterPoll() {
+      if (poll.sending || !poll.current) return;
+      const item = poll.current;
+      hidePoll();
+      const state = (await pollState())[item.id] || {};
+      await savePoll(item.id, { later: (Number(state.later) || 0) + 1 });
+    }
+    const sendPollVote = (id, choice) => bugApi('POST', `/api/polls/${encodeURIComponent(id)}/vote`, { choice, version: USERSCRIPT_VERSION, user: wmeUserName() || '' });
+    // A vote that did not get through is sent again the next time the editor opens.
+    async function retryPolls() {
+      const all = await pollState();
+      for (const [id, state] of Object.entries(all)) {
+        if (!state?.pending) continue;
+        try { await sendPollVote(id, state.pending); await savePoll(id, { pending: null }); } catch (_) { /* tried again next time */ }
+      }
+    }
+    pollPress(q('[data-id="poll-later"]'), laterPoll);
+    pollPress(q('[data-id="poll-close"]'), laterPoll);
+    poll.backdrop.addEventListener('pointerdown', event => { if (event.target === poll.backdrop) laterPoll(); });
+    pollPress(poll.vote, async () => {
+      if (!poll.choice || poll.sending || !poll.current) return;
+      const item = poll.current, choice = poll.choice;
+      poll.sending = true; poll.vote.disabled = true;
+      await savePoll(item.id, { answered: choice });
+      try {
+        await sendPollVote(item.id, choice);
+        poll.note.textContent = translate('Thanks for voting!');
+      } catch (_) {
+        await savePoll(item.id, { pending: choice });
+        poll.note.textContent = translate('Your pick is saved. The vote didn’t get through, so I’ll send it next time.');
+      }
+      setTimeout(() => { poll.sending = false; hidePoll(); }, 1600);
+    });
     // The count of reports still waiting, shown on the Report a bug page, is refreshed now and then from here.
     if (endpointReady) setTimeout(() => { checkBugFixes(false).catch(error => reportStudioError('bug fixes check', error)); }, 12000);
     function bugDialogSending() { return !!bug.sending; }
     function hideBugDialog() { if (!bug.backdrop.hidden) bug.backdrop.hidden = true; }
-    q('[data-id="bug-report"]').addEventListener('click', openBugDialog);
+    q('[data-id="bug-report"]').addEventListener('click', () => openBugDialog('bug'));
+    q('[data-id="feature-request"]').addEventListener('click', () => openBugDialog('feature'));
     q('[data-id="bug-close"]').addEventListener('click', closeBugDialog);
     q('[data-id="bug-cancel"]').addEventListener('click', closeBugDialog);
     q('[data-id="bug-done-close"]').addEventListener('click', () => { bug.done.hidden = true; closeBugDialog(); });
@@ -21061,16 +22548,69 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     // Scrolls one setting into view and outlines it briefly; used by the command palette's search results.
     function reveal(id) {
       const target = q(`[data-row="${id}"]`) || q(`[data-id="${id}"]`);if (!target) return;
-      const row = target.closest('.srow,.saved,.group') || target;
+      revealElement(target);
+    }
+    function revealElement(target) {
+      const row = target.closest('.srow,.saved,.mode-card,.group') || target;
       requestAnimationFrame(()=>{
         row.scrollIntoView({block:'nearest'});row.removeAttribute('data-flash');void row.offsetWidth;row.setAttribute('data-flash','');
         setTimeout(()=>row.removeAttribute('data-flash'),1400);
       });
     }
-    studioUI = { host, shadow, open, close, reveal, showChangelog };
+    // Wraps every button's bare text in a span.tx (see .tx), now and whenever a label is replaced later.
+    const LABELLED = '.reset,.primary,.ghost,.seg button,.picker-done,.picker-reset,.code-copy,.sec-chip,.bug-option,.language-option,.fix-actions>button,.mine-state,.mine-kind';
+    function trimLabels(root) {
+      for (const button of root.querySelectorAll ? [root, ...root.querySelectorAll(LABELLED)].filter(node => node.matches?.(LABELLED)) : []) {
+        for (const node of [...button.childNodes]) {
+          if (node.nodeType !== 3 || !node.nodeValue.trim()) continue;
+          const span = document.createElement('span'); span.className = 'tx';
+          node.replaceWith(span); span.append(node);
+        }
+      }
+    }
+    trimLabels(shadow);
+    // Text boxes can't be trimmed like labels: the browser centres the whole line, and where the capitals land in it
+    // depends on the font the system picks. Measure that font and even it out with the top or bottom padding.
+    let inputMetrics = null;
+    function centerInputs() {
+      const inputs = shadow.querySelectorAll('.search-field input,.bug-field input');
+      if (!inputs.length) return;
+      const style = getComputedStyle(inputs[0]), font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      if (inputMetrics?.font !== font) {
+        try {
+          const context = (inputMetrics?.context) || document.createElement('canvas').getContext('2d');
+          context.font = font;
+          const line = context.measureText('Hg'), cap = context.measureText('H').actualBoundingBoxAscent;
+          // The capitals' middle sits this far below the middle of the line (above it when negative).
+          const low = (line.fontBoundingBoxAscent - line.fontBoundingBoxDescent - cap) / 2;
+          inputMetrics = { font, context, shift: Number.isFinite(low) ? Math.round(low * 8) / 4 : 0 };
+        } catch (_) { inputMetrics = { font, shift: 0 }; }
+      }
+      const { shift } = inputMetrics;
+      for (const input of inputs) {
+        input.style.paddingTop = shift < 0 ? `${-shift}px` : '0px';
+        input.style.paddingBottom = shift > 0 ? `${shift}px` : '0px';
+      }
+    }
+    centerInputs();
+    document.fonts?.ready?.then(centerInputs).catch(() => {});
+    new MutationObserver(records => {
+      for (const record of records) {
+        if (record.type !== 'childList') continue;
+        const target = record.target;
+        if (target.nodeType === 1 && target.matches?.(LABELLED)) trimLabels(target);
+        for (const node of record.addedNodes) if (node.nodeType === 1) trimLabels(node);
+      }
+    }).observe(shadow, { childList: true, subtree: true });
+    studioUI = { host, shadow, open, close, reveal, showChangelog, searchIndex: settingIndex, revealElement, selectPage: name => selectPage(name), poll: { show: showPoll, retry: retryPolls, state: pollState } };
     return studioUI;
   }
 
+  // Settings are built ahead, while the editor is idle, so the first open is as quick as every other (3.0.0).
+  if (window.top === window.self && uiRouteAllowed()) {
+    const prebuild = () => { if (!studioUI) { try { buildStudioUI(); } catch (studioError) { reportStudioError('Building settings ahead', studioError); } } };
+    setTimeout(() => { if (typeof requestIdleCallback === 'function') requestIdleCallback(prebuild, { timeout: 15000 }); else prebuild(); }, 8000);
+  }
   function openStudioUI(page,section) {
     const ui = buildStudioUI();
     ui?.open(page);
@@ -21088,7 +22628,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
 ${studioControlsCSS()}
       :host{all:initial;color-scheme:inherit}:host([hidden]){display:none!important}*{box-sizing:border-box}[hidden]{display:none!important}button,input{font:inherit}button{cursor:pointer}button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:-2px}input:focus,input:focus-visible{outline:none!important;box-shadow:none!important;border:0!important}
       .shade{position:fixed;inset:0;background:#0006}.commands{position:fixed;top:clamp(12px,14vh,140px);left:50%;transform:translateX(-50%);width:min(540px,calc(100vw - 24px));max-height:calc(100dvh - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--wme-studio-border,#d5d7db);border-radius:17px;background:var(--wme-studio-surface,#fff);color:var(--wme-studio-text,#202830);box-shadow:0 20px 65px #0005;font:13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif}
-      .search{display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--wme-studio-border,#d5d7db)}input{flex:1;min-width:0;border:0;background:transparent;color:inherit;padding:5px 4px;font-size:15px;border-radius:6px}input::placeholder{color:var(--wme-studio-text-muted,#72767d)}.close{display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:8px;background:var(--wme-studio-surface-2,#f5f7fa);color:inherit;font-size:18px;line-height:1}.close:hover{background:var(--wme-studio-hover,#e8eaed)}
+      .search{display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--wme-studio-border,#d5d7db)}input{flex:1;min-width:0;border:0;background:transparent;color:inherit;padding:5px 4px;font-size:15px;border-radius:6px}input::placeholder{color:var(--wme-studio-text-muted,#72767d)}input::-webkit-search-cancel-button,input::-webkit-search-decoration{-webkit-appearance:none;appearance:none;display:none}.close{display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:8px;background:var(--wme-studio-surface-2,#f5f7fa);color:inherit;font-size:18px;line-height:1}.close:hover{background:var(--wme-studio-hover,#e8eaed)}
       .close{flex:0 0 28px;align-self:center;min-height:28px;margin:0;line-height:0;font-size:0}.close svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
       .results{min-height:0;overflow:auto;overscroll-behavior:contain;max-height:330px;padding:7px;scrollbar-width:thin;scrollbar-color:var(--wme-studio-border-strong,#90959c) transparent}.results::-webkit-scrollbar{width:5px}.results::-webkit-scrollbar-thumb{border-radius:6px;background:var(--wme-studio-border-strong,#90959c)}.choice{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:10px;border:0;border-radius:9px;background:transparent;color:inherit;text-align:left}.choice strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:550}.choice small{flex-shrink:0;font-size:10px;color:var(--wme-studio-text-muted,#72767d)}.choice[aria-selected="true"],.choice:hover:not(:disabled){background:var(--wme-studio-hover,#e8eaed)}.choice:disabled{opacity:.45;cursor:default}.empty{padding:12px;color:var(--wme-studio-text-muted,#72767d)}.foot{padding:9px 15px;border-top:1px solid var(--wme-studio-border,#d5d7db);color:var(--wme-studio-text-muted,#72767d);font-size:10px}.foot p{margin:5px 0 0;color:var(--wme-studio-text,#202830)}
       @media(max-height:550px){.commands{top:12px}.results{max-height:calc(100dvh - 145px)}}
@@ -21159,23 +22699,30 @@ ${studioControlsCSS()}
         const cfg = globalThis.WMEStudioSettings, api = globalThis.WMEStudioWorkspaces, [prefs,profiles] = await Promise.all([cfg.read(),api.list()]);
         if (host.hidden || token !== generation) return;
         const page = (label,target,keywords,section)=>({label:translate(label),category:'Settings',keywords,run:()=>openStudioUI(target,section)});
-        const sections = {layout:'Layout',look:'Look',map:'Map',panels:'Panels',screens:'Screen displays',studio:'General',bug:'Report a bug',developers:'Developers'};
+        const sections = {home:'Home',layout:'Layout',look:'Appearance',map:'Map',panels:'Panels',screens:'Touch & iPad',studio:'General',bug:'Report a bug',developers:'Developers'};
         const setting = (label,target,section,keywords)=>({label:translate(label),category:sections[target],keywords,run:()=>openStudioUI(target,section)});
-        commands = [page('Open settings','layout','settings options preferences'),page('Saved workspaces','layout','profiles presets layouts save','workspace-profiles'),page('Backup & restore','studio','import export backup restore','backup-tools'),page('Report a bug','bug','bug report issue problem feedback support help','bugReport'),
+        commands = [page('Open settings','home','settings options preferences'),page('Saved workspaces','layout','profiles presets layouts save','workspace-profiles'),page('Backup & restore','studio','import export backup restore','backup-tools'),page('Report a bug','bug','bug report issue problem feedback support help','bugReport'),
           setting('Presets','layout','preset-current','starting layout balanced left-handed review desk wide header'),setting('Header width','layout','compactHeaderWidth','floating header extend full page'),setting('HUD size','layout','hudScale','floating scale islands header'),
-          setting('Accent colour','look','accent','color highlight custom'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','look','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','look','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
+          setting('Accent colour','look','accent','color highlight custom'),setting('Island color','look','islandFill','islands background colour gradient custom contrast'),setting('Color intensity','look','islandIntensity','island colour gradient strength strong soft muted vivid blend'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','map','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','map','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
           setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Open the + menu on click','map','createMenuClick','plus add create hover click menu roads places'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),
           setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Enable Screen displays','screens','screenDisplays','touch screen tablet tap select multiple segments places nodes several'),setting('Draw a road','screens','screenDrawButton','touch draw new road segment create add points snap junction finish'),setting('Shape a road','screens','screenShapeButton','touch shape geometry points vertex vertices move add delete junction node drag snap undo redo'),setting('Road between two segments','screens','screenRoadButton','touch select road path street between segments'),setting('Long-press for the right-click menu','screens','screenLongPress','touch hold press context menu right click'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
           setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script developers','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
           {label:translate('Arrange layout'),category:'Workspace',keywords:'move position panels islands controls hide split custom island buttons',disabled:!prefs.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches,run:async()=>{await cfg.write({compactMode:true});globalThis.WMEStudioCompactLayout.open();}},
-          ...[['Standard',false],['Floating compact',true]].map(([label,value])=>({label:translate(label),category:'Workspace',keywords:'workspace mode layout',disabled:!prefs.enabled,run:()=>cfg.write({compactMode:value})})),
-          ...['light','dark','black'].map(theme=>({label:translate('Theme')+': '+translate(theme === 'black' ? 'Full black' : theme[0].toUpperCase()+theme.slice(1)),category:'Appearance',keywords:'theme color '+theme,run:()=>cfg.write({theme})})),
+          ...[['Standard',false],['Floating',true]].map(([label,value])=>({label:translate(label),category:'Workspace',keywords:'workspace mode layout',disabled:!prefs.enabled,run:()=>cfg.write({compactMode:value})})),
+          ...['light','dark','black'].map(theme=>({label:translate('Theme')+': '+translate(theme === 'black' ? 'Full black' : theme[0].toUpperCase()+theme.slice(1)),category:'Appearance',keywords:'theme color '+theme,run:()=>cfg.write({theme,...(prefs.compactMode && prefs.islandFill !== 'theme' ? {islandFill:'theme'} : {})})})),
           {label:translate('Export backup'),category:'Backup',keywords:'download json settings',run:()=>api.download()},
           {label:'Record performance (15 s)',category:'Troubleshooting',keywords:'slow lag fps speed report',run:()=>recordStudioPerformance(15)},
           {label:'Script tabs report',category:'Troubleshooting',keywords:'scripts missing tabs sidebar report',run:()=>showScriptTabsReport()},
           {label:'Inspect an element',category:'Troubleshooting',keywords:'report element colour color theme not themed wrong style describe pick',run:()=>{setTimeout(inspectStudioElement,150);}},
           {label:translate(prefs.enabled ? 'Pause Studio' : 'Enable Studio'),category:'Settings',keywords:'toggle disable enable',run:()=>cfg.write({enabled:!prefs.enabled})},
           ...profiles.map(item=>({label:item.name,category:'Saved workspaces',keywords:'workspace profile layout '+item.name,disabled:!prefs.enabled,run:async()=>{previousLayout = await api.apply(item.id);}}))];
+        // Every other setting in the window, found by its name and description as shown there (3.0.0).
+        const listed = new Set(commands.map(item => item.label));
+        for (const entry of buildStudioUI()?.searchIndex?.() || []) {
+          if (entry.isSection || listed.has(entry.title)) continue;
+          listed.add(entry.title);
+          commands.push({label:entry.title,category:entry.pageName,keywords:`${entry.desc} ${entry.section}`,run:()=>{const ui = buildStudioUI();ui?.open(entry.page);ui?.revealElement(entry.el);}});
+        }
         if (previousLayout) commands.push({label:translate('Undo layout switch'),category:'Workspace',keywords:'undo restore previous profile',disabled:!prefs.enabled,run:async()=>{await api.restoreLayout(previousLayout);previousLayout = null;}});
         render();
       } catch(err) { reportStudioError("open",err);message.textContent = translate(err.message || 'Could not load preferences.');message.hidden = false;}
@@ -21263,12 +22810,9 @@ ${studioControlsCSS()}
       return null;
     }
     const attempt = (fn, fallback = null) => { try { const value = fn(); return value === undefined ? fallback : value; } catch (_) { return fallback; } };
-    const olMap = () => attempt(() => { const map = page.W?.map; return map?.getOLMap?.() || map?.olMap || null; });
     const fmt = value => (Math.round(value * 1e6) / 1e6).toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
     const R = 6378137;
-    const toLonLat = (x, y) => ({ lon: x / R * 180 / Math.PI, lat: (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI });
     const toMercator = (lon, lat) => ({ x: lon * Math.PI / 180 * R, y: Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) * R });
-    const geographic = ol => /4326|CRS:84/.test(String(attempt(() => ol.getProjectionObject?.()?.getCode?.() || ol.getProjection?.() || ol.projection, '')));
 
     function lonLatAt(clientX, clientY) {
       const api = getSDK() || studioSDK.get();
@@ -21278,36 +22822,19 @@ ${studioControlsCSS()}
         const point = attempt(() => api.Map.getLonLatFromPixel({ x: clientX - (box?.left || 0), y: clientY - (box?.top || 0) }));
         if (point && Number.isFinite(point.lon) && Number.isFinite(point.lat)) return { lon: point.lon, lat: point.lat };
       }
-      const ol = olMap();
-      if (ol?.div && typeof ol.getLonLatFromPixel === 'function') {
-        const box = ol.div.getBoundingClientRect(), Pixel = page.OpenLayers?.Pixel;
-        const x = clientX - box.left, y = clientY - box.top;
-        const point = attempt(() => ol.getLonLatFromPixel(Pixel ? new Pixel(x, y) : { x, y }));
-        if (point && Number.isFinite(point.lon) && Number.isFinite(point.lat)) return geographic(ol) ? { lon: point.lon, lat: point.lat } : toLonLat(point.lon, point.lat);
-      }
       return null;
     }
     function zoomLevel() {
       const api = getSDK();
-      for (const read of [() => api?.Map?.getZoomLevel?.(), () => api?.Map?.getZoom?.(), () => page.W?.map?.getZoom?.(), () => Number(new URLSearchParams(location.search).get('zoomLevel'))]) {
+      for (const read of [() => (api || studioSDK.get())?.Map?.getZoomLevel?.(), () => Number(new URLSearchParams(location.search).get('zoomLevel'))]) {
         const value = attempt(read);
         if (Number.isFinite(value) && value > 0) return Math.round(value);
       }
       return null;
     }
     function moveMap(center, zoom = null) {
-      const api = getSDK();
-      if (typeof api?.Map?.setMapCenter === 'function' && attempt(() => (api.Map.setMapCenter(zoom == null ? { lonLat: center } : { lonLat: center, zoomLevel: zoom }), true))) return true;
-      if (typeof api?.Map?.setCenter === 'function' && attempt(() => { api.Map.setCenter(center); if (zoom != null) api.Map.setZoom?.({ zoomLevel: zoom }); return true; })) return true;
-      const ol = olMap();
-      if (ol?.setCenter) {
-        const point = geographic(ol) ? { x: center.lon, y: center.lat } : toMercator(center.lon, center.lat);
-        const LonLat = page.OpenLayers?.LonLat, target = LonLat ? new LonLat(point.x, point.y) : { lon: point.x, lat: point.y };
-        const current = zoomLevel(), olZoom = attempt(() => ol.getZoom());
-        const next = zoom != null && current != null && Number.isFinite(olZoom) ? olZoom + (zoom - current) : undefined;
-        return attempt(() => (ol.setCenter(target, next), true), false);
-      }
-      return false;
+      const api = getSDK() || studioSDK.get();
+      return typeof api?.Map?.setMapCenter === 'function' && attempt(() => (api.Map.setMapCenter(zoom == null ? { lonLat: center } : { lonLat: center, zoomLevel: zoom }), true), false);
     }
     function selection() {
       const api = getSDK();
@@ -21331,15 +22858,6 @@ ${studioControlsCSS()}
           addCoordinates(object?.geometry?.coordinates);
         }
       }
-      if (!points.length) {
-        const ol = olMap(), degrees = ol && geographic(ol);
-        const models = picked.models || (spec ? picked.ids.map(id => attempt(() => page.W?.model?.[spec.model]?.getObjectById?.(Number(id)))).filter(Boolean) : []);
-        for (const model of models) {
-          const box = attempt(() => (model.getOLGeometry?.() || model.geometry)?.getBounds?.());
-          if (!box) continue;
-          for (const [x, y] of [[box.left, box.bottom], [box.right, box.top]]) points.push(degrees ? { lon: x, lat: y } : toLonLat(x, y));
-        }
-      }
       if (!points.length) return null;
       const lons = points.map(point => point.lon), lats = points.map(point => point.lat);
       return { west: Math.min(...lons), east: Math.max(...lons), south: Math.min(...lats), north: Math.max(...lats) };
@@ -21350,7 +22868,7 @@ ${studioControlsCSS()}
       const api = getSDK();
       const pad = Math.max((box.east - box.west), (box.north - box.south)) * .15 || .0006;
       if (typeof api?.Map?.zoomToExtent === 'function' && attempt(() => (api.Map.zoomToExtent({ bbox: [box.west - pad, box.south - pad, box.east + pad, box.north + pad] }), true))) return true;
-      const view = (olMap()?.div || document.querySelector('#WazeMap, #map'))?.getBoundingClientRect() || { width: innerWidth, height: innerHeight };
+      const view = (attempt(() => (api || studioSDK.get())?.Map?.getMapViewportElement?.()) || document.querySelector('#WazeMap, #map'))?.getBoundingClientRect() || { width: innerWidth, height: innerHeight };
       const a = toMercator(box.west, box.south), b = toMercator(box.east, box.north);
       const resolution = Math.max((b.x - a.x) / Math.max(1, view.width * .75), (b.y - a.y) / Math.max(1, view.height * .75), .01);
       const zoom = Math.max(12, Math.min(22, Math.floor(Math.log2(156543.03392 / resolution))));
@@ -21383,26 +22901,6 @@ ${studioControlsCSS()}
           const line = segment?.geometry?.coordinates;
           if (Array.isArray(line)) measure(segment.id, line.map(([lon, lat]) => toMercator(lon, lat)));
         }
-        return best;
-      }
-      // The older way: OpenLayers and the editor's own models.
-      const ol = olMap();
-      if (!ol?.div || typeof ol.getLonLatFromPixel !== 'function') return null;
-      const box = ol.div.getBoundingClientRect(), Pixel = page.OpenLayers?.Pixel, x = clientX - box.left, y = clientY - box.top;
-      const raw = attempt(() => ol.getLonLatFromPixel(Pixel ? new Pixel(x, y) : { x, y }));
-      if (!raw || !Number.isFinite(raw.lon) || !Number.isFinite(raw.lat)) return null;
-      const degrees = geographic(ol);
-      here = degrees ? toMercator(raw.lon, raw.lat) : { x: raw.lon, y: raw.lat };
-      const zoom = zoomLevel();
-      resolution = attempt(() => ol.getResolution()) || (zoom != null ? 156543.03392 / 2 ** zoom : 0);
-      if (!(resolution > 0)) return null;
-      bestDistance = resolution * 9;
-      const models = attempt(() => page.W?.model?.segments?.getObjectArray?.(), []) || [];
-      for (const model of models) {
-        const id = attempt(() => model.getID?.()) ?? model.attributes?.id;
-        const parts = attempt(() => (model.getOLGeometry?.() || model.geometry)?.components);
-        if (id == null || !Array.isArray(parts)) continue;
-        measure(id, parts.map(part => degrees ? toMercator(part.x, part.y) : { x: part.x, y: part.y }));
       }
       return best;
     }
@@ -21423,18 +22921,9 @@ ${studioControlsCSS()}
         const number = Number(id);
         if (picked.type === 'segment') {
           const segment = attempt(() => api?.DataModel?.Segments?.getById?.({ segmentId: number }));
-          let name = attempt(() => api?.DataModel?.Streets?.getById?.({ streetId: segment?.primaryStreetId })?.name);
-          if (typeof name !== 'string') {
-            const model = attempt(() => page.W?.model?.segments?.getObjectById?.(number));
-            const streetId = model?.attributes?.primaryStreetID ?? attempt(() => model?.getPrimaryStreetID?.());
-            const street = streetId == null ? null : attempt(() => page.W?.model?.streets?.getObjectById?.(streetId));
-            name = street?.attributes?.name ?? street?.name;
-          }
-          add(name);
+          add(attempt(() => api?.DataModel?.Streets?.getById?.({ streetId: segment?.primaryStreetId })?.name));
         } else if (picked.type === 'venue') {
-          let name = attempt(() => api?.DataModel?.Venues?.getById?.({ venueId: id })?.name);
-          if (typeof name !== 'string') { const model = attempt(() => page.W?.model?.venues?.getObjectById?.(id)); name = model?.attributes?.name ?? model?.name; }
-          add(name);
+          add(attempt(() => api?.DataModel?.Venues?.getById?.({ venueId: id })?.name));
         }
       }
       return out;
@@ -21449,21 +22938,13 @@ ${studioControlsCSS()}
       if (withSelection && spec) params.set(spec.param, picked.ids.join(','));
       return `${location.origin}${location.pathname}?${params}`;
     }
-    const actions = () => attempt(() => page.W?.model?.actionManager);
     function unsavedCount() {
-      const api = getSDK();
-      for (const read of [() => api?.Editing?.getUnsavedChangesCount?.(), () => actions()?.unsavedActionsNum?.(), () => actions()?.getUnsavedActionsNum?.()]) {
-        const value = attempt(read);
-        if (Number.isFinite(value)) return value;
-      }
-      return null;
+      const value = attempt(() => (getSDK() || studioSDK.get())?.Editing?.getUnsavedChangesCount?.());
+      return Number.isFinite(value) ? value : null;
     }
     function refreshData() {
       const api = getSDK() || studioSDK.get();
-      if (typeof api?.DataModel?.refreshData === 'function') return () => api.DataModel.refreshData();
-      const controller = attempt(() => page.W?.controller);
-      for (const name of ['reloadData', 'reload']) if (typeof controller?.[name] === 'function') return () => controller[name]();
-      return null;
+      return typeof api?.DataModel?.refreshData === 'function' ? () => api.DataModel.refreshData() : null;
     }
     async function copy(text) {
       try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* the clipboard API needs focus; try the older way */ }
@@ -21525,9 +23006,9 @@ ${studioControlsCSS()}
 kbd,.count{flex:none;font:600 10.5px/1 var(--ws-font,system-ui,sans-serif);color:var(--wme-studio-text-muted,#747e88);padding:4px 6px;border-radius:var(--wme-studio-radius,5px);
   background:var(--wme-studio-input,#f6f7f9);border:1px solid var(--wme-studio-border,#dde3e8);white-space:nowrap}
 .count{color:var(--wme-studio-on-accent,#fff);background:var(--wme-studio-accent,#0099ff);border-color:transparent;border-radius:999px;padding:4px 7px}
-.switch{flex:none;position:relative;width:30px;height:18px;border-radius:999px;background:var(--wme-studio-border-strong,#bdc7d0);transition:background-color .15s ease}
+.switch{flex:none;position:relative;width:30px;height:18px;border-radius:999px;background:color-mix(in srgb,var(--wme-studio-text,#202830) 30%,transparent);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--wme-studio-text,#202830) 40%,transparent);transition:background-color .15s ease}
 .switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #0000004d;transition:transform .15s ease}
-.item[aria-checked="true"] .switch{background:var(--wme-studio-accent,#0099ff)}
+.item[aria-checked="true"] .switch{background:var(--wme-studio-accent,#0099ff);box-shadow:none}
 .item[aria-checked="true"] .switch::after{transform:translateX(12px)}
 .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:5px -5px -5px;padding:6px 6px 6px 5px;border-top:1px solid var(--wme-studio-border,#dde3e8);
   background:color-mix(in srgb,var(--wme-studio-input,#f6f7f9) 70%,transparent)}
@@ -21836,7 +23317,6 @@ kbd,.count{flex:none;font:600 10.5px/1 var(--ws-font,system-ui,sans-serif);color
   let studioSetup = null;
   let setupSeen = null;
   let setupStarted = false;
-  const setupPage = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
   function detectFixUI() {
     return document.documentElement.hasAttribute('data-wme-studio-fume') ||
       !!document.querySelector('#abAlerts,#WMEFUzoom,#WMEFUPC,#FUME_DSA,#_cbShrinkTopBars,#sidepanel-FixUI,[id^="WMEFU"]');
@@ -21857,13 +23337,6 @@ kbd,.count{flex:none;font:600 10.5px/1 var(--ws-font,system-ui,sans-serif);color
   function detectNativeCompact() {
     const fromSDK = studioSDK.value(api => { const value = api.Settings.getUserSettings()?.isCompactMode; return typeof value === 'boolean' ? value : null; }, null);
     if (fromSDK !== null) return fromSDK;
-    try {
-      const prefs = setupPage.W?.prefs?.attributes;
-      if (prefs) {
-        const flags = Object.entries(prefs).filter(([key, value]) => /^(is)?compact/i.test(key) && typeof value === 'boolean');
-        if (flags.length) return flags.some(([, value]) => value);
-      }
-    } catch (studioError) { reportStudioError("detectNativeCompact",studioError);}
     return !!document.querySelector(':is(html,body,.app,#wz-app):is(.compact-density,.compact-mode,.is-compact,[data-density="compact"],[density="compact"])');
   }
   // Shared shell of the setup and the update tour: the dialog, its copy column, buttons and the miniature editor.
@@ -22968,6 +24441,40 @@ ${studioControlsCSS()}
     setInterval(() => { autoCheckBugFixes(); }, BUG_RECHECK_EVERY);
   })();
 
+  // Polls (3.0.0): the open polls are asked for once the editor is up and the first-run setup is behind. The first
+  // one this person hasn't answered (on any computer: the server knows their reporter key) is shown, never more than
+  // once in six hours per poll, and no more after "Not now" three times.
+  async function fetchLivePolls() {
+    const key = await studioReporterKey();
+    return new Promise((resolve, reject) => {
+      const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/polls/live?v=${encodeURIComponent(USERSCRIPT_VERSION)}`;
+      const headers = key ? { 'X-Reporter-Token': key } : {};
+      const done = (status, text) => { let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ } (status >= 200 && status < 300 && data?.ok ? resolve : reject)(data); };
+      if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, headers, timeout: 20000, anonymous: true, onload: response => done(response.status, response.responseText || ''), onerror: reject, ontimeout: reject });
+      else fetch(url, { mode: 'cors', headers }).then(async response => done(response.status, await response.text())).catch(reject);
+    });
+  }
+  (() => {
+    let tries = 0;
+    const ask = async () => {
+      if (!/^https:\/\/[^/\s]+/.test(BUG_REPORT_ENDPOINT) || !uiRouteAllowed() || window.top !== window.self || document.documentElement.getAttribute('data-wme-studio') !== 'on') return;
+      if (setupSeen !== true || document.hidden || studioPanelOpen || !wmeUserName()) { if (++tries < 20) setTimeout(ask, 15000); return; }
+      let data;
+      try { data = await fetchLivePolls(); } catch (_) { return; }
+      if (!buildStudioUI() || !studioUI?.poll) return;
+      studioUI.poll.retry();
+      const state = await studioUI.poll.state();
+      const voted = new Set((Array.isArray(data?.voted) ? data.voted : []).map(entry => String(entry?.id)));
+      const next = (Array.isArray(data?.polls) ? data.polls : []).find(item => {
+        const mine = state[item?.id] || {};
+        return item && Array.isArray(item.options) && item.options.length >= 2 && !voted.has(String(item.id)) && !mine.answered &&
+          (Number(mine.later) || 0) < 3 && Date.now() - (Number(mine.lastAsked) || 0) >= 6 * 3600 * 1000;
+      });
+      if (next) studioUI.poll.show(next);
+    };
+    setTimeout(ask, 9000);
+  })();
+
   refreshStudioLauncher = () => {
     if (uiRouteAllowed()) mountStudioLauncher();
     if (setupSeen === false && !setupStarted) maybeStartSetup();
@@ -23258,7 +24765,7 @@ ${studioControlsCSS()}
     };
     // iPad and iPhone draw no scrollbar until a list is being scrolled (2.3.0): a limited discussion gets a thin bar of
     // its own on its right edge, showing that it scrolls and where you are in it, and a finger scrolls it up and down.
-    const touchScreenList = navigator.maxTouchPoints > 0 && matchMedia('(any-pointer: coarse)').matches;
+    const touchScreenList = navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse)').matches;
     const thumbLists = new WeakSet();
     let thumbStyle = null;
     const paintListThumb = list => {
@@ -23456,7 +24963,7 @@ ${studioControlsCSS()}
         margin: auto -64px 0 !important; padding: var(--ws-reply-pad-top, 8px) 64px var(--ws-reply-pad-bottom, 8px) !important;
         width: auto !important; min-width: 0 !important; max-width: none !important; box-sizing: border-box !important;
         align-self: stretch !important;
-        background: var(--ws-reply-bg, var(--wme-studio-surface, #fff)) !important;
+        background: var(--ws-reply-image, none) var(--ws-reply-pos, 0 0) / var(--ws-reply-size, auto) no-repeat, var(--ws-reply-bg, var(--wme-studio-surface, #fff)) !important;
         box-shadow: 0 -10px 14px -12px #00000066 !important;
       }
       /* A request window sized by hand (its bottom edge dragged) keeps the height chosen (2.3.0); it used to grow with
@@ -23522,14 +25029,22 @@ ${studioControlsCSS()}
         }
         for (const node of panel.querySelectorAll('[data-wme-studio-reply-scroller]')) if (node !== scroller) node.removeAttribute('data-wme-studio-reply-scroller');
         if (!scroller.hasAttribute('data-wme-studio-reply-scroller')) scroller.setAttribute('data-wme-studio-reply-scroller', '');
-        // The window's own colour behind the box, made solid (it can be see-through in Floating mode).
-        let paint = '';
-        for (let node = scroller; node && !paint; node = node.parentElement) {
-          const color = getComputedStyle(node).backgroundColor;
-          if (color && !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(color)) paint = color;
+        // The window's own colour behind the box, made solid (it can be see-through in Floating mode). A window painted
+        // with the islands' gradient (3.0.0) lends the box the same gradient, laid out over the whole window, so the
+        // box's part of it lines up with the window around it.
+        let paint = '', image = '', painted = null;
+        for (let node = scroller; node && !paint && !image; node = node.parentElement) {
+          const style = getComputedStyle(node), color = style.backgroundColor;
+          if (style.backgroundImage && style.backgroundImage !== 'none' && /gradient/.test(style.backgroundImage)) { image = style.backgroundImage; painted = node; }
+          else if (color && !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(color)) paint = color;
         }
-        const solid = paint.replace(/^rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)$/, 'rgb($1, $2, $3)');
+        const solid = image ? (getComputedStyle(root).getPropertyValue('--ws-island-a').trim() || '') : paint.replace(/^rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)$/, 'rgb($1, $2, $3)');
         if (solid && form.style.getPropertyValue('--ws-reply-bg') !== solid) form.style.setProperty('--ws-reply-bg', solid);
+        if (image) {
+          const box = painted.getBoundingClientRect(), own = form.getBoundingClientRect(), zoom = form.currentCSSZoom || 1;
+          const values = { '--ws-reply-image': image, '--ws-reply-size': `${Math.round(box.width / zoom)}px ${Math.round(box.height / zoom)}px`, '--ws-reply-pos': `${Math.round((box.left - own.left) / zoom)}px ${Math.round((box.top - own.top) / zoom)}px` };
+          for (const [name, value] of Object.entries(values)) if (form.style.getPropertyValue(name) !== value) form.style.setProperty(name, value);
+        } else for (const name of ['--ws-reply-image', '--ws-reply-size', '--ws-reply-pos']) if (form.style.getPropertyValue(name)) form.style.removeProperty(name);
         // Stuck to the very bottom: a sticky box stops at the area's bottom padding, so it is moved past that padding.
         const bottom = `${-(parseFloat(getComputedStyle(scroller).paddingBottom) || 0)}px`;
         if (form.style.getPropertyValue('--ws-reply-bottom') !== bottom) form.style.setProperty('--ws-reply-bottom', bottom);
