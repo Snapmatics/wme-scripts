@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      3.0.3
+// @version      3.0.4
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -365,7 +365,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '3.0.3';
+  const USERSCRIPT_VERSION = '3.0.4';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -1011,7 +1011,7 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
   // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
   // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
   // report shows it instead of a layout that looks broken for no reason.
-  const RESOURCES_BUILD = '3.0.3-2026-10-23';
+  const RESOURCES_BUILD = '3.0.4-2026-10-23b';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -2920,7 +2920,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     background: transparent !important; box-shadow: none !important;
   }
 }
-
+  
 @media all {
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-drawer {
     width: 100% !important; height: auto !important; min-height: 0 !important; border-inline-end: 0 !important;
@@ -4925,12 +4925,14 @@ html[data-wme-studio="on"][data-wme-studio-compact="on"] .app.sidebar-fullscreen
 html[data-wme-studio="on"][data-wme-studio-compact="on"] .app.sidebar-fullscreen[data-wme-studio-hub-window] #sidebar .tab-pane.active > [class*="header--"] { cursor: grab; }
 html[data-wme-studio="on"][data-wme-studio-hub-moving] .app.sidebar-fullscreen[data-wme-studio-hub-window] #sidebar .tab-pane.active > [class*="header--"] { cursor: grabbing; }
 `);
-  // The row with "Sort by" and the page numbers stays one row (WMEStudioFitRows); it wraps only when told to.
+  // The row with "Sort by" and the page numbers stays one row (WMEStudioFitRows); it wraps only when told to. A column
+  // holding the page count (Events) never wraps (3.0.4).
   // Ask Waze: its lower parts were rounder than the window, so their corners stuck out; the window's own rounding
   // clips them now.
   GM_addStyle(`
 html[data-wme-studio="on"] [data-testid="ai-helper-window"] :is([class*="container--"],[class*="disclaimer--"]) { border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
-html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row][data-wme-studio-fit-row]:has(> [class*="pagination--"]) { flex-wrap: nowrap !important; align-items: center; }
+html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row][data-wme-studio-fit-row]:has(> [class*="pagination--"]) { flex-wrap: nowrap !important; }
+html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row]:not([data-wme-studio-fit-row="column"]):has(> [class*="pagination--"]) { align-items: center; }
 html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row="wrap"][data-wme-studio-fit-row]:has(> [class*="pagination--"]) { flex-wrap: wrap !important; }
 `);
   // WME's small pop-up panels (a closure's Status history, say) fade the list into the header with a white band drawn
@@ -6379,7 +6381,8 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       for (const animation of scope.getAnimations?.() || []) animations.add(animation);
     }
     for (const animation of animations) {
-      try { animation.finish(); } catch (studioError) { reportStudioError("syncInterfaceMotion",studioError); }
+      // A looping one (a spinner) has no end to jump to: it is only stopped (3.0.4).
+      try { if (Number.isFinite(animation.effect?.getComputedTiming?.().endTime)) animation.finish(); } catch (studioError) { reportStudioError("syncInterfaceMotion",studioError); }
       animation.cancel();
     }
   }
@@ -9995,9 +9998,17 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => queue()) : null;
     function queue() { if (!frame) frame = requestAnimationFrame(fitAll); }
     function fit(row) {
+      const style = getComputedStyle(row);
+      // A column holding the page count (the Events panel: its title, the count, then the events) has nothing side by
+      // side to fit, and must never wrap: a column that wraps put the events in a second column (3.0.4).
+      if (!/flex/.test(style.display) || /column/.test(style.flexDirection)) {
+        for (const kid of row.children) if (kid.style.zoom) kid.style.zoom = '';
+        if (row.getAttribute('data-wme-studio-fit-row') !== 'column') row.setAttribute('data-wme-studio-fit-row', 'column');
+        return;
+      }
       const kids = [...row.children].filter(kid => getComputedStyle(kid).display !== 'none');
       if (!kids.length) return;
-      const zoom = Number(kids[0].style.zoom) || 1, style = getComputedStyle(row);
+      const zoom = Number(kids[0].style.zoom) || 1;
       const gap = parseFloat(style.columnGap) || 0;
       const natural = kids.reduce((sum, kid) => sum + kid.getBoundingClientRect().width / zoom, 0) + gap * (kids.length - 1) + 1;
       const room = row.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
@@ -19394,9 +19405,15 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '3.0.3-2026-10-23';
+  const STUDIO_BUILD = '3.0.4-2026-10-23b';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '3.0.4', groups: [
+      { title: 'Fixes', items: [
+        "With Screen displays on, the map follows your fingers smoothly again when you drag or pinch it on an iPad. Taps, long-presses and the map buttons work as before.",
+        "The Events panel shows its events under the title again, instead of squeezed into a second column beside it."
+      ] }
+    ] },
     { version: '3.0.3', groups: [
       { title: 'Fixes', items: [
         "The speed signs from WME Speedhelper keep their black numbers in the dark themes, so you can read them again."
