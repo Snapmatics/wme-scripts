@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      3.0.2
+// @version      3.0.3
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -365,7 +365,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '3.0.2';
+  const USERSCRIPT_VERSION = '3.0.3';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -1011,7 +1011,7 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
   // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
   // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
   // report shows it instead of a layout that looks broken for no reason.
-  const RESOURCES_BUILD = '3.0.2-2026-10-23';
+  const RESOURCES_BUILD = '3.0.3-2026-10-23';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -8124,9 +8124,12 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       }
       const text = rgbaOf(style.color);
       if (!text || lightness(text) > .35 || element.hasAttribute('data-wme-studio-addon-text') || !element.textContent.trim()) return;
-      // The first box behind it that has a color of its own.
+      // The first box behind it that has a color of its own. Text drawn on a picture keeps its color: the numbers on
+      // WME Speedhelper's speed signs are black on the sign's white circle (3.0.3).
       for (let node = element; node && node !== document.body; node = node.parentElement) {
-        const behind = node === element ? back : rgbaOf(getComputedStyle(node).backgroundColor);
+        const look = node === element ? style : getComputedStyle(node);
+        if (look.backgroundImage !== 'none') break;
+        const behind = node === element ? back : rgbaOf(look.backgroundColor);
         if (!behind || behind.a < .5) continue;
         if (node.hasAttribute('data-wme-studio-addon-surface') || lightness(behind) < .3) element.setAttribute('data-wme-studio-addon-text', '');
         break;
@@ -8138,6 +8141,21 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       for (const root of roots) {
         visit(root);
         for (const element of root.querySelectorAll('*')) { if (budget <= 0) return; visit(element); }
+      }
+    }
+  }
+  // WME Speedhelper's speed signs (3.0.3): each number keeps the color the script gives it for that country's signs
+  // (black on the usual white sign), whatever color Studio gives the side panel's text.
+  function keepSpeedSigns(nodes) {
+    for (const node of nodes) {
+      if (!node?.isConnected || node.nodeType !== 1) continue;
+      const signs = node.matches?.('#_wmesh_signsholder [id^="spd_"]') ? [node] : node.querySelectorAll?.('#_wmesh_signsholder [id^="spd_"]') || [];
+      for (const sign of signs) {
+        const color = sign.style.getPropertyValue('color');
+        if (!color || sign.style.getPropertyPriority('color') === 'important') continue;
+        sign.style.setProperty('color', color, 'important');
+        sign.style.setProperty('-webkit-text-fill-color', color, 'important');
+        sign.removeAttribute('data-wme-studio-addon-text');
       }
     }
   }
@@ -18714,6 +18732,7 @@ ${studioControlsCSS()}
         if (ready && settings.enabled && settings.viewportBrightness < 100 && !viewportOverlay?.isConnected) syncViewportOverlay();
         try { themeAddonSurfaces(added); } catch (studioError) { reportStudioError('themeAddonSurfaces', studioError); }
         try { foldAddonBlocks(added); } catch (studioError) { reportStudioError('foldAddonBlocks', studioError); }
+        try { keepSpeedSigns(added); } catch (studioError) { reportStudioError('keepSpeedSigns', studioError); }
       });
     }
   }
@@ -19375,9 +19394,14 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '3.0.2-2026-10-23';
+  const STUDIO_BUILD = '3.0.3-2026-10-23';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '3.0.3', groups: [
+      { title: 'Fixes', items: [
+        "The speed signs from WME Speedhelper keep their black numbers in the dark themes, so you can read them again."
+      ] }
+    ] },
     { version: '3.0.2', groups: [
       { title: 'Fixes', items: [
         "Switching Map Layers between one and two columns is quicker, and the panel comes back to exactly the same spot.",
