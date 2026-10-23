@@ -2920,7 +2920,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     background: transparent !important; box-shadow: none !important;
   }
 }
-
+  
 @media all {
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-drawer {
     width: 100% !important; height: auto !important; min-height: 0 !important; border-inline-end: 0 !important;
@@ -8121,6 +8121,41 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
       }
     }
   }
+  // UR2T's answers in a request window (3.0.1) fold away under a header like the URC-E Shortcuts above them, and stay
+  // folded or open from one request to the next.
+  const ADDON_FOLDS = [{ block: '.UR2T-responses-block', label: 'UR2T', key: 'wmeStudio.fold.ur2t.v1' }];
+  const addonFolded = {};
+  for (const fold of ADDON_FOLDS) Promise.resolve(studioKeep.get(fold.key, false)).then(value => {
+    addonFolded[fold.key] = value === true;
+    for (const block of document.querySelectorAll(fold.block)) paintAddonFold(block, fold);
+  }).catch(studioError => reportStudioError('foldAddonBlocks', studioError));
+  function paintAddonFold(block, fold) {
+    const head = block.previousElementSibling?.matches?.('.ws-addon-fold') ? block.previousElementSibling : null;
+    const folded = addonFolded[fold.key] === true;
+    block.toggleAttribute('data-wme-studio-folded', folded);
+    if (head && head.getAttribute('aria-expanded') !== String(!folded)) head.setAttribute('aria-expanded', String(!folded));
+  }
+  function foldAddonBlocks(nodes) {
+    for (const fold of ADDON_FOLDS) for (const node of nodes) {
+      if (!node?.isConnected || node.nodeType !== 1) continue;
+      for (const block of node.matches(fold.block) ? [node] : node.querySelectorAll(fold.block)) {
+        if (!block.closest('.problem-edit, .place-update-edit')) continue;
+        if (!block.previousElementSibling?.matches?.('.ws-addon-fold')) {
+          const head = document.createElement('button');
+          head.type = 'button'; head.className = 'ws-addon-fold';
+          head.innerHTML = `<span>${fold.label}</span><i class="w-icon w-icon-chevron-up" aria-hidden="true"></i>`;
+          head.addEventListener('click', event => {
+            event.preventDefault(); event.stopPropagation();
+            addonFolded[fold.key] = !addonFolded[fold.key];
+            try { Promise.resolve(studioKeep.set(fold.key, addonFolded[fold.key])).catch(studioError => reportStudioError('foldAddonBlocks', studioError)); } catch (studioError) { reportStudioError('foldAddonBlocks', studioError); }
+            for (const other of document.querySelectorAll(fold.block)) paintAddonFold(other, fold);
+          });
+          block.before(head);
+        }
+        paintAddonFold(block, fold);
+      }
+    }
+  }
   // The theme turned dark: the boxes already on the page are looked at once.
   new MutationObserver(() => { if (/^(?:dark|black)$/.test(root.getAttribute('data-wme-studio-theme') || '')) requestAnimationFrame(() => { try { themeAddonSurfaces([document.body]); } catch (studioError) { reportStudioError('themeAddonSurfaces', studioError); } }); })
     .observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio-theme'] });
@@ -12646,6 +12681,17 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       border: 1px solid var(--wme-studio-border, #3d444b) !important; border-radius: 10px !important; box-shadow: 0 12px 30px #00000066 !important; }
     html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"], [data-wme-studio-theme="black"]) ul.UR2T-dropdown-menu > li { color: var(--wme-studio-text, #edf1f4) !important; }
     html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"], [data-wme-studio-theme="black"]) ul.UR2T-dropdown-menu > li:is(:hover, :focus, .active, .selected) { background: var(--wme-studio-hover, #363c42) !important; }
+    /* The fold header over UR2T's answers: the same as the URC-E Shortcuts header above it (3.0.1). */
+    html[data-wme-studio="on"] .ws-addon-fold { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+      padding: 0 0 4px; margin: 0 0 8px; border-bottom: 1px solid var(--wme-studio-border, #3d444b); color: var(--wme-studio-text, inherit);
+      font: 13px/14px var(--ws-font, Inter, "Segoe UI", system-ui, sans-serif); cursor: pointer; grid-column: 1 / -1; }
+    html[data-wme-studio="on"] :is(.problem-edit, .place-update-edit, body) button.ws-addon-fold { border: 0 !important; border-bottom: 1px solid var(--wme-studio-border, #3d444b) !important;
+      border-radius: 0 !important; background: none !important; box-shadow: none !important; min-height: 0 !important; height: auto !important; padding: 0 0 4px !important; margin: 0 0 8px !important; }
+    html[data-wme-studio="on"] .ws-addon-fold:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 2px; border-radius: 4px; }
+    html[data-wme-studio="on"] .ws-addon-fold > i { display: inline-block; font-size: 13px; font-weight: 900; line-height: 13px; transition: transform 160ms ease; }
+    html[data-wme-studio="on"] .ws-addon-fold[aria-expanded="false"] > i { transform: rotate(180deg); }
+    html:not([data-wme-studio="on"]) .ws-addon-fold { display: none !important; }
+    html[data-wme-studio="on"] [data-wme-studio-folded] { display: none !important; }
     /* A request's comment box: some scripts give it a fixed height (UR2T: 120 px), which left an empty band under the
        compact box and squeezed the discussion. The box grows with its text instead. */
     html[data-wme-studio="on"][data-wme-studio-requests="compact"] :is(.problem-edit, .place-update-edit) wz-textarea.new-comment-text { height: auto !important; }
@@ -18645,6 +18691,7 @@ ${studioControlsCSS()}
         refreshStudioLauncher();
         if (ready && settings.enabled && settings.viewportBrightness < 100 && !viewportOverlay?.isConnected) syncViewportOverlay();
         try { themeAddonSurfaces(added); } catch (studioError) { reportStudioError('themeAddonSurfaces', studioError); }
+        try { foldAddonBlocks(added); } catch (studioError) { reportStudioError('foldAddonBlocks', studioError); }
       });
     }
   }
@@ -19312,7 +19359,9 @@ ${studioControlsCSS()}
     { version: '3.0.1', groups: [
       { title: 'Fixes', items: [
         "Lists and fields that other scripts draw in white, like UR2T's answers, now take your dark theme, so their text is easy to read.",
-        "With UR2T in a compact request window, the discussion keeps its room and there is no empty band under the comment box."
+        "With UR2T in a compact request window, the discussion keeps its room and there is no empty band under the comment box.",
+        "UR2T's answers fold away under their own header in a request window, like the URC-E Shortcuts, and stay the way you left them.",
+        "Polls wait until you close the update news, and each editor name votes once: if you've voted on another computer, you won't be asked again."
       ] }
     ] },
     { version: '3.0.0', groups: [
@@ -19480,7 +19529,12 @@ ${studioControlsCSS()}
   ]);
   const CHANGELOG_KEY = 'wmeStudio.changelog.v1';
   let changelogStarted = false;
+  // Whatever waits for the update news to be closed (a poll, 3.0.1) goes on as soon as it is.
+  const newsWaiters = new Set();
+  function afterNews(go) { newsWaiters.add(go); }
   function markChangelogSeen() {
+    const waiting = [...newsWaiters]; newsWaiters.clear();
+    if (waiting.length) setTimeout(() => waiting.forEach(go => { try { go(); } catch (studioError) { reportStudioError('after news', studioError); } }), 450);
     try { Promise.resolve(studioKeep.set(CHANGELOG_KEY, STUDIO_BUILD)).catch(studioError => reportStudioError('markChangelogSeen', studioError)); } catch (studioError) { reportStudioError('markChangelogSeen', studioError); }
   }
   // ---- Studio as a file to download (2.3.0) -------------------------------------------------------------------------
@@ -20135,6 +20189,12 @@ ${studioControlsCSS()}
   .rt-gradient i{width:18px;height:18px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#b06cff 55%,#ff8a5c);box-shadow:0 0 0 2px color-mix(in srgb,var(--surface) 70%,transparent),0 3px 8px color-mix(in srgb,#b06cff 40%,transparent)}
   .rt-icon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
   .rt-text{display:flex;flex-direction:column;gap:3px;min-width:0}.rt-text b{font-size:13px;line-height:1.25}.rt-text span{color:var(--muted);font-size:11.5px;line-height:1.35}
+  .release-more{margin:16px 0 0;padding:14px 16px;border-radius:16px;background:var(--surface2);box-shadow:inset 0 0 0 1px var(--line)}
+  .release-more h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:12px;line-height:1;font-weight:700;color:var(--muted)}
+  .release-more h3 b{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:11px;line-height:1}
+  .release-more h3 span{display:block;line-height:1}
+  .release-more ul{display:flex;flex-direction:column;gap:6px;margin:0;padding:0 0 0 18px}
+  .release-more li{color:var(--text);font-size:12.5px;line-height:1.45}.release-more li::marker{color:var(--accent)}
   .release-foot{display:flex;justify-content:flex-end;gap:10px;padding:18px 26px 22px}
   .release-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;margin:0;padding:0 18px;border:0;border-radius:13px;cursor:pointer;
     font:600 13.5px/1 var(--ws-font,Inter,system-ui,sans-serif);color:var(--text);background:color-mix(in srgb,var(--text) 8%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text) 12%,transparent);transition:background-color .15s ease,transform .15s ease,box-shadow .15s ease}
@@ -20799,6 +20859,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       <h2 id="release-title" data-ws-keep>WME Studio 3.0</h2>
       <p class="release-lead">The biggest update yet. Here is what's new.</p>
       <ul class="release-grid"><li><span class="rt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6"/></svg></span><span class="rt-text"><b>Polls</b><span>Vote on what comes next, right in the editor.</span></span></li><li><span class="rt-icon rt-gradient"><i></i></span><span class="rt-text"><b>Custom gradients</b><span>Paint the islands any color, or a gradient of two.</span></span></li><li><span class="rt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c3 3.6 5.5 6.6 5.5 9.6a5.5 5.5 0 0 1-11 0c0-3 2.5-6 5.5-9.6z"/><path d="M12 19v-8"/></svg></span><span class="rt-text"><b>Color intensity</b><span>Soften island colors toward your theme.</span></span></li><li><span class="rt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M3.5 9h17M15 15l3 3M18 15v3h-3"/></svg></span><span class="rt-text"><b>A window for Your hub</b><span>Move and resize it, the islands stay put.</span></span></li><li><span class="rt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M9 12h6M9 16h4"/></svg></span><span class="rt-text"><b>My reports</b><span>Every report you sent, even removed ones.</span></span></li><li><span class="rt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V10l4.2.9a2 2 0 0 1 1.6 2.2l-.6 4.4a3 3 0 0 1-3 2.5H11a3 3 0 0 1-2.4-1.2L5.5 14.6a1.4 1.4 0 0 1 2-2L9 14"/></svg></span><span class="rt-text"><b>Touch tools</b><span>Clearer icons, tooltips, and aiming above your finger.</span></span></li></ul>
+      <section class="release-more" data-id="release-more" hidden><h3><b data-ws-keep data-id="release-more-version"></b><span>Also in this update</span></h3><ul data-id="release-more-list"></ul></section>
     </div>
     <div class="release-foot"><button class="release-btn" type="button" data-id="release-all"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h11M8 12h11M8 18h11"/><circle cx="4" cy="6" r=".9"/><circle cx="4" cy="12" r=".9"/><circle cx="4" cy="18" r=".9"/></svg><span>See all changes</span></button><button class="release-btn primary" type="button" data-id="release-ok"><span>Let's go</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
   </div>
@@ -22348,7 +22409,15 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       if (event.key === 'Escape') { event.preventDefault(); closeRelease(); }
       if (!event.ctrlKey && !event.metaKey) event.stopImmediatePropagation();
     }
+    // The 3.0 welcome, with what the 3.0.x updates after it added (3.0.1).
     function showRelease() {
+      const extra = STUDIO_CHANGELOG.filter(entry => /^3\.0\.\d+$/.test(entry.version) && entry.version !== '3.0.0' && versionAtMost(entry.version, USERSCRIPT_VERSION));
+      const more = q('[data-id="release-more"]');
+      more.hidden = !extra.length;
+      if (extra.length) {
+        q('[data-id="release-more-version"]').textContent = extra.length > 1 ? `${extra[extra.length - 1].version}–${extra[0].version}` : extra[0].version;
+        changelogItems(q('[data-id="release-more-list"]'), extra.flatMap(entry => (entry.groups || [{ items: entry.items || [] }]).flatMap(group => group.items)));
+      }
       release.opener = shadow.activeElement || document.activeElement;
       release.backdrop.hidden = false;
       document.addEventListener('keydown', releaseKey, true);
@@ -22372,7 +22441,8 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     q('[data-id="release-all"]').addEventListener('click', () => { closeRelease(); showChangelog('all'); });
     release.backdrop.addEventListener('pointerdown', event => { if (event.target === release.backdrop) closeRelease(); });
     function showChangelog(mode = 'new', since = '') {
-      if (mode === 'new' && /^3\.0\./.test(USERSCRIPT_VERSION) && /^\d+(?:\.\d+)+$/.test(since) && versionAtMost(since, '2.99.99')) { log.box.hidden = true; showRelease(); return; }
+      // Every 3.0.x update (and "Show what's new") opens the 3.0 welcome, with the later fixes under it (3.0.1).
+      if (mode === 'new' && /^3\.0\./.test(USERSCRIPT_VERSION) && (!since || (/^\d+(?:\.\d+)+$/.test(since) && !versionAtMost(USERSCRIPT_VERSION, since)))) { log.box.hidden = true; showRelease(); return; }
       if (mode === 'new') {
         // Every release since the version last seen (3.0.0 and 2.3.0 for someone coming from 2.2.2), newest first; a
         // version number heads each one when there is more than one.
@@ -22499,7 +22569,8 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     function showPoll(item) {
       if (!item?.options?.length || !poll.backdrop.hidden) return;
       // Not over the "What's changed" note, the settings or another of Studio's windows: asked a little later.
-      if (!log.box.hidden || studioPanelOpen || !bug.backdrop.hidden || !log.backdrop.hidden || !release.backdrop.hidden) { setTimeout(() => showPoll(item), 20000); return; }
+      if (!log.box.hidden || !release.backdrop.hidden) { afterNews(() => showPoll(item)); return; }
+      if (studioPanelOpen || !bug.backdrop.hidden || !log.backdrop.hidden) { setTimeout(() => showPoll(item), 5000); return; }
       savePoll(item.id, { lastAsked: Date.now() });
       poll.current = item; poll.choice = ''; poll.sending = false;
       q('[data-id="poll-title"]').textContent = item.title || '';
@@ -24505,13 +24576,14 @@ ${studioControlsCSS()}
     setInterval(() => { autoCheckBugFixes(); }, BUG_RECHECK_EVERY);
   })();
 
-  // Polls (3.0.0): the open polls are asked for once the editor is up and the first-run setup is behind. The first
-  // one this person hasn't answered (on any computer: the server knows their reporter key) is shown, never more than
-  // once in six hours per poll, and no more after "Not now" three times.
+  // Polls (3.0.0): the open polls are asked for 2 seconds after the editor is up (3.0.1), or, when the update news is
+  // due, right after it is closed. The first one this person hasn't answered is shown: the server knows their reporter
+  // key and, since 3.0.1, their editor name, so a name that has voted is never asked again, from any computer. Never
+  // more than once in six hours per poll, and no more after "Not now" three times.
   async function fetchLivePolls() {
     const key = await studioReporterKey();
     return new Promise((resolve, reject) => {
-      const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/polls/live?v=${encodeURIComponent(USERSCRIPT_VERSION)}`;
+      const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/polls/live?v=${encodeURIComponent(USERSCRIPT_VERSION)}&u=${encodeURIComponent(wmeUserName() || '')}`;
       const headers = key ? { 'X-Reporter-Token': key } : {};
       const done = (status, text) => { let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ } (status >= 200 && status < 300 && data?.ok ? resolve : reject)(data); };
       if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, headers, timeout: 20000, anonymous: true, onload: response => done(response.status, response.responseText || ''), onerror: reject, ontimeout: reject });
@@ -24519,10 +24591,13 @@ ${studioControlsCSS()}
     });
   }
   (() => {
-    let tries = 0;
+    let tries = 0, waitedForNews = false;
     const ask = async () => {
       if (!/^https:\/\/[^/\s]+/.test(BUG_REPORT_ENDPOINT) || !uiRouteAllowed() || window.top !== window.self || document.documentElement.getAttribute('data-wme-studio') !== 'on') return;
-      if (setupSeen !== true || document.hidden || studioPanelOpen || !wmeUserName()) { if (++tries < 20) setTimeout(ask, 15000); return; }
+      if (setupSeen !== true || document.hidden || studioPanelOpen || !wmeUserName()) { if (++tries < 150) setTimeout(ask, 2000); return; }
+      // The update news comes first: the poll follows when it is closed.
+      const seen = await Promise.resolve(studioKeep.get(CHANGELOG_KEY, STUDIO_BUILD)).catch(() => STUDIO_BUILD);
+      if (seen !== STUDIO_BUILD && !waitedForNews) { waitedForNews = true; afterNews(ask); setTimeout(() => { if (newsWaiters.delete(ask)) ask(); }, 120000); return; }
       let data;
       try { data = await fetchLivePolls(); } catch (_) { return; }
       if (!buildStudioUI() || !studioUI?.poll) return;
@@ -24536,7 +24611,7 @@ ${studioControlsCSS()}
       });
       if (next) studioUI.poll.show(next);
     };
-    setTimeout(ask, 9000);
+    setTimeout(ask, 2000);
   })();
 
   refreshStudioLauncher = () => {
