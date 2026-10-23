@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      3.0.0
+// @version      3.0.1
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -365,7 +365,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '3.0.0';
+  const USERSCRIPT_VERSION = '3.0.1';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -1011,7 +1011,7 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
   // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
   // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
   // report shows it instead of a layout that looks broken for no reason.
-  const RESOURCES_BUILD = '3.0.0-2026-10-22';
+  const RESOURCES_BUILD = '3.0.1-2026-10-23';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -3667,6 +3667,7 @@ ${studioRangeCSS(':host-context(html[data-wme-studio="on"]) input[type="range"]'
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host-context([class*="panelHeaderActions--"]) .wz-button.icon-only:hover:not(:disabled) { background: var(--wme-studio-hover) !important; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host-context(.preferences-container) .wz-badge { font: 12px/16px var(--ws-font) !important; color: var(--wme-studio-text-secondary) !important; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.comment) .wz-list-item { padding: 5px 10px !important; }
+:host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) { height: auto !important; }
 :host-context(html[data-wme-studio="on"][data-wme-studio-requests="compact"]):host-context(:is(.problem-edit,.place-update-edit)):host(.new-comment-text) textarea {
   display: block; box-sizing: border-box; height: auto !important; min-height: 32px !important; max-height: 84px !important;   /* 4 lines */
   padding: 6px 10px !important; line-height: 18px !important; resize: none !important; field-sizing: content;
@@ -8082,6 +8083,47 @@ html[data-wme-studio-chat="on"] [data-testid="signin-page"] :is(canvas,img[src^=
   let headerGuardQueued = false, headerGuardHeader = null, headerGuardFooter = null;
   const headerGuardProperties = ['translate', 'max-height', 'min-height', 'overflow-y','--ws-request-body-max-height'];
   const AI_HELPER_WINDOW_SELECTOR = '#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]';
+  // Other scripts' boxes in the dark themes (3.0.1). A box a script paints white keeps the light text Studio gives the
+  // panels, which leaves light grey on white (UR2T's list of answers, for one). Inside the side panel or a request
+  // window, such a box takes the theme's own field color instead, and dark text on a dark box takes the theme's text
+  // color. Coloured boxes (a green "Resolved", a red warning) keep their colors: only near-white ones change.
+  const ADDON_SKIP = /^(?:img|svg|path|canvas|video|picture|iframe|script|style|br|hr|option|wz-[a-z-]+)$/;
+  const ADDON_OWN = /(?:^|\s)(?:ws-|wme-studio)|--[A-Za-z0-9_-]{5}(?:\s|$)/;
+  const rgbaOf = value => { const m = /rgba?\(([^)]+)\)/.exec(value || ''); if (!m) return null; const [r, g, b, a = 1] = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); return { r, g, b, a }; };
+  const lightness = c => (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
+  function themeAddonSurfaces(nodes) {
+    if (!ready || !settings.enabled || !settings.addons || !/^(?:dark|black)$/.test(activeTheme())) return;
+    const scope = `#sidebar, .problem-edit, .place-update-edit, ${REQUEST_WINDOW_SELECTOR}`;
+    let budget = 800;
+    const visit = element => {
+      if (budget-- <= 0 || ADDON_SKIP.test(element.localName) || element.id?.startsWith?.('wme-studio') || ADDON_OWN.test(element.getAttribute('class') || '')) return;
+      const style = getComputedStyle(element), back = rgbaOf(style.backgroundColor);
+      if (back && back.a >= .9 && back.r >= 245 && back.g >= 245 && back.b >= 245 && style.backgroundImage === 'none' && (/^(?:input|select|textarea)$/.test(element.localName) || element.textContent.trim())) {
+        if (!element.hasAttribute('data-wme-studio-addon-surface')) element.setAttribute('data-wme-studio-addon-surface', '');
+        return;
+      }
+      const text = rgbaOf(style.color);
+      if (!text || lightness(text) > .35 || element.hasAttribute('data-wme-studio-addon-text') || !element.textContent.trim()) return;
+      // The first box behind it that has a color of its own.
+      for (let node = element; node && node !== document.body; node = node.parentElement) {
+        const behind = node === element ? back : rgbaOf(getComputedStyle(node).backgroundColor);
+        if (!behind || behind.a < .5) continue;
+        if (node.hasAttribute('data-wme-studio-addon-surface') || lightness(behind) < .3) element.setAttribute('data-wme-studio-addon-text', '');
+        break;
+      }
+    };
+    for (const node of nodes) {
+      if (!node?.isConnected || node.nodeType !== 1) continue;
+      const roots = node.closest?.(scope) ? [node] : [...node.querySelectorAll?.(scope) || []];
+      for (const root of roots) {
+        visit(root);
+        for (const element of root.querySelectorAll('*')) { if (budget <= 0) return; visit(element); }
+      }
+    }
+  }
+  // The theme turned dark: the boxes already on the page are looked at once.
+  new MutationObserver(() => { if (/^(?:dark|black)$/.test(root.getAttribute('data-wme-studio-theme') || '')) requestAnimationFrame(() => { try { themeAddonSurfaces([document.body]); } catch (studioError) { reportStudioError('themeAddonSurfaces', studioError); } }); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio-theme'] });
   const REQUEST_WINDOW_SELECTOR = `[data-issues-tracker-window],[id^="ISSUE_WINDOW"],[data-testid="floating-window"],${AI_HELPER_WINDOW_SELECTOR}`;
   function isAIHelperComponent(host) {
     if (host.localName !== 'chat-messenger' && !/^(?:df|chat|md)-/.test(host.localName)) return false;
@@ -12597,6 +12639,21 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     /* House numbers of a selected road (3.0.0): WME draws their boxes white in every theme, so the numbers stay dark.
        The dark themes' light text for fields reached these too, leaving white numbers on white. */
     html[data-wme-studio="on"] #WazeMap .house-numbers-layer .house-number :is(input, .content, .input-wrapper) { color: #202830 !important; -webkit-text-fill-color: #202830; caret-color: #202830; }
+    /* Other scripts' white boxes and dark text in the dark themes (3.0.1, see themeAddonSurfaces). */
+    /* UR2T (3.0.1): its list of answers opens over the page, outside the request window, so it is themed by name. */
+    html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"], [data-wme-studio-theme="black"]) ul.UR2T-dropdown-menu {
+      background: var(--wme-studio-surface, #292d31) !important; color: var(--wme-studio-text, #edf1f4) !important;
+      border: 1px solid var(--wme-studio-border, #3d444b) !important; border-radius: 10px !important; box-shadow: 0 12px 30px #00000066 !important; }
+    html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"], [data-wme-studio-theme="black"]) ul.UR2T-dropdown-menu > li { color: var(--wme-studio-text, #edf1f4) !important; }
+    html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"], [data-wme-studio-theme="black"]) ul.UR2T-dropdown-menu > li:is(:hover, :focus, .active, .selected) { background: var(--wme-studio-hover, #363c42) !important; }
+    /* A request's comment box: some scripts give it a fixed height (UR2T: 120 px), which left an empty band under the
+       compact box and squeezed the discussion. The box grows with its text instead. */
+    html[data-wme-studio="on"][data-wme-studio-requests="compact"] :is(.problem-edit, .place-update-edit) wz-textarea.new-comment-text { height: auto !important; }
+    /* Opaque, since such a box is often a list that opens over the rest of the panel. */
+    html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"], [data-wme-studio-theme="black"]) [data-wme-studio-addon-surface] {
+      background-color: color-mix(in srgb, var(--wme-studio-text, #edf1f4) 7%, var(--wme-studio-bg, #202326)) !important; color: var(--wme-studio-text, #edf1f4) !important; border-color: var(--wme-studio-border, #3d444b) !important; }
+    html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"], [data-wme-studio-theme="black"]) [data-wme-studio-addon-text] { color: var(--wme-studio-text, #edf1f4) !important; }
+    html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"], [data-wme-studio-theme="black"]) :is(input, select, textarea)[data-wme-studio-addon-surface]::placeholder { color: var(--wme-studio-text-muted, #99a4ae) !important; }
     /* The one/two columns button in the Map Layers title (3.0.0): the size of WME's own title buttons. */
     .layer-switcher .menu > .title > .ws-layer-columns-toggle { all: unset; box-sizing: border-box; flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; margin: 0;
       border-radius: var(--ws-island-button-radius, 9px); color: var(--wme-studio-text, #edf1f4); cursor: pointer; transition: background-color 140ms ease; }
@@ -18587,6 +18644,7 @@ ${studioControlsCSS()}
         if (chatFrames.size && ready && !chatStyleText) syncChatTheme();
         refreshStudioLauncher();
         if (ready && settings.enabled && settings.viewportBrightness < 100 && !viewportOverlay?.isConnected) syncViewportOverlay();
+        try { themeAddonSurfaces(added); } catch (studioError) { reportStudioError('themeAddonSurfaces', studioError); }
       });
     }
   }
@@ -19248,9 +19306,15 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '3.0.0-2026-10-22';
+  const STUDIO_BUILD = '3.0.1-2026-10-23';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    { version: '3.0.1', groups: [
+      { title: 'Fixes', items: [
+        "Lists and fields that other scripts draw in white, like UR2T's answers, now take your dark theme, so their text is easy to read.",
+        "With UR2T in a compact request window, the discussion keeps its room and there is no empty band under the comment box."
+      ] }
+    ] },
     { version: '3.0.0', groups: [
       { title: 'Settings', items: [
         'I redesigned Settings. It is frosted glass now, like the islands, and opens on a new Home page with the things you change most.',
@@ -22308,7 +22372,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     q('[data-id="release-all"]').addEventListener('click', () => { closeRelease(); showChangelog('all'); });
     release.backdrop.addEventListener('pointerdown', event => { if (event.target === release.backdrop) closeRelease(); });
     function showChangelog(mode = 'new', since = '') {
-      if (mode === 'new' && /^3\.0\./.test(USERSCRIPT_VERSION)) { log.box.hidden = true; showRelease(); return; }
+      if (mode === 'new' && /^3\.0\./.test(USERSCRIPT_VERSION) && /^\d+(?:\.\d+)+$/.test(since) && versionAtMost(since, '2.99.99')) { log.box.hidden = true; showRelease(); return; }
       if (mode === 'new') {
         // Every release since the version last seen (3.0.0 and 2.3.0 for someone coming from 2.2.2), newest first; a
         // version number heads each one when there is more than one.
