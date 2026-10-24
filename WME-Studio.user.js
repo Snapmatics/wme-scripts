@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      3.0.4
+// @version      3.0.5
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -365,7 +365,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '3.0.4';
+  const USERSCRIPT_VERSION = '3.0.5';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -1011,7 +1011,7 @@ ${scope} .wmeRcFriendsHeaderLauncher:focus-visible {
   // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
   // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
   // report shows it instead of a layout that looks broken for no reason.
-  const RESOURCES_BUILD = '3.0.4-2026-10-23b';
+  const RESOURCES_BUILD = '3.0.5-2026-10-24c';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -1034,7 +1034,8 @@ ${STUDIO_DARK} select option:checked { background-color: color-mix(in srgb, var(
 ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
 `);
   // After WME's stylesheet, which the page lists after this script has started.
-  const lastFormStyle = () => { const style = globalThis.WMEStudioFormStyle; if (style?.parentNode && document.head && style !== document.head.lastElementChild) document.head.append(style); };
+  // The islands' field colors (3.0.5) come right after it, so on a colored island they win over the theme's.
+  const lastFormStyle = () => { const style = globalThis.WMEStudioFormStyle, island = globalThis.WMEStudioIslandFieldStyle; if (style?.parentNode && document.head && style !== document.head.lastElementChild) document.head.append(style); if (island?.parentNode && document.head) document.head.append(island); };
   document.addEventListener('DOMContentLoaded', lastFormStyle, { once: true });
   window.addEventListener('load', lastFormStyle, { once: true });
 
@@ -2920,7 +2921,7 @@ ${studioGlassFeedbackCSS(':host-context(html[data-wme-studio="on"])', ':host-con
     background: transparent !important; box-shadow: none !important;
   }
 }
-  
+
 @media all {
 :host-context(html[data-wme-studio="on"][data-wme-studio-compact="on"]):host-context(#drawer) .wz-navigation-drawer {
     width: 100% !important; height: auto !important; min-height: 0 !important; border-inline-end: 0 !important;
@@ -4772,8 +4773,28 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
   // Dialogs (Map build status, the restriction editor…) take the colors too; their box is painted from inside (see
   // the wz-dialog rule in the components' style), the dialog element itself covers the whole page.
   const ISLAND_PANELS = `${ISLAND_PANEL_PAINT},wz-dialog`;
+  // Other scripts' fields on colored islands (3.0.5). Their fields followed only the theme, so a dark island color
+  // under the light theme (or a light one under a dark theme) left them light, and the list a select opens drew in the
+  // theme's colors. On an island they take the island's colors now, and the browser draws its own parts (a select's
+  // list, a date picker, scrollbars) dark or light to match the island. The field rules weigh as much as the theme's,
+  // so a script that colors its own fields keeps its colors.
+  const ISLAND_HOSTS = `#app-head,#drawer,#overlay-buttons,.ws-custom-island,#wme-studio-userscript-ui,${ISLAND_PANELS}`;
+  const ON_ISLAND = ink => `:where(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink${ink ? `="${ink}"` : ''}]:not([data-wme-studio-glass-contrast]) :is(${ISLAND_HOSTS}))`;
+  globalThis.WMEStudioIslandFieldStyle = GM_addStyle(`
+${ON_ISLAND('light')} { color-scheme: dark; }
+${ON_ISLAND('dark')} { color-scheme: light; }
+${ON_ISLAND()} ${STUDIO_FORM_FIELDS} { color: var(--wme-studio-text); caret-color: var(--wme-studio-text); background-color: var(--wme-studio-input); border-color: var(--wme-studio-border); }
+${ON_ISLAND('light')} ${STUDIO_FORM_FIELDS} { color-scheme: dark; }
+${ON_ISLAND('dark')} ${STUDIO_FORM_FIELDS} { color-scheme: light; }
+${ON_ISLAND('light')} select { color-scheme: dark !important; }
+${ON_ISLAND('dark')} select { color-scheme: light !important; }
+${ON_ISLAND()} ${STUDIO_FORM_FIELDS}::placeholder { color: var(--wme-studio-text-muted); opacity: 1; }
+${ON_ISLAND()} ${STUDIO_FORM_FIELDS}:disabled { color: var(--wme-studio-text-muted); }
+${ON_ISLAND()} :is(select, datalist) option, ${ON_ISLAND()} select optgroup { background-color: var(--ws-island-a); color: var(--ws-island-ink); }
+${ON_ISLAND()} select option:checked { background-color: color-mix(in srgb, var(--wme-studio-accent) 34%, var(--ws-island-a)); color: var(--ws-island-ink); }
+`);
   GM_addStyle(`
-html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(#app-head,#drawer,#overlay-buttons,[data-wme-studio-online-editors-panel="on"],[data-wme-studio-online-editors-status="on"],.online-editors-bubble,.wz-map-ol-footer,#tile-build-status,.notifications-box-container,.ws-custom-island,.ws-sd-island,.ws-sd-handle,.ws-sd-bubble,.ws-sd-tip) {
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(#app-head,#drawer,#overlay-buttons,[data-wme-studio-online-editors-panel="on"],[data-wme-studio-online-editors-status="on"],.online-editors-bubble,.wz-map-ol-footer,#tile-build-status,.notifications-box-container,.ws-custom-island,.ws-sd-island,.ws-sd-handle,.ws-sd-bubble,.ws-sd-tip,#wme-studio-userscript-ui) {
   ${ISLAND_ALIASES}
   --wme-studio-surface: var(--ws-island-a); --wme-studio-bg: var(--ws-island-a); --wme-studio-surface-3: var(--ws-island-a); --ws-notification-surface: var(--ws-island-a);
   --wme-studio-input: color-mix(in srgb, var(--ws-island-ink) 9%, var(--ws-island-a)); --wme-studio-surface-2: var(--wme-studio-input);
@@ -4785,6 +4806,11 @@ html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-
   --content_default: var(--wme-studio-text); --content_p1: var(--wme-studio-text-secondary); --content_p2: var(--wme-studio-text-muted); --hint_text: var(--wme-studio-text-muted);
   --background_default: var(--wme-studio-surface); --background_variant: var(--wme-studio-input); --surface_default: var(--wme-studio-input); --surface_variant: var(--wme-studio-hover);
   --hairline: var(--wme-studio-border); --hairline_strong: var(--wme-studio-border-strong);
+}
+/* Studio's own windows (3.0.5): Settings, the update card, the changelog and the notes take the islands' color, or
+   their gradient, solid like the side panel. */
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) #wme-studio-userscript-ui {
+  --ws-window-paint: var(--ws-island-paint-solid, var(--ws-island-a)); --wme-studio-border-strong: color-mix(in srgb, var(--ws-island-ink) 30%, transparent);
 }
 /* The Touch & iPad tools island (Screen Displays) is painted like the other islands: the color or the gradient, at
    the glass opacity, fuller under the pointer. */
@@ -4810,7 +4836,7 @@ html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-
   --background_default: transparent; --background_variant: var(--wme-studio-input); --surface_default: var(--wme-studio-input); --surface_variant: var(--wme-studio-hover);
   --hairline: var(--wme-studio-border); --hairline_strong: var(--wme-studio-border-strong); color: var(--ws-island-ink);
 }
-html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(${ISLAND_PANELS}) :is([role="listbox"],[role="menu"],wz-menu,wz-select,wz-autocomplete,.dropdown-menu,.select2-dropdown,.tippy-box,.options-container,wz-tooltip-content) {
+html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) :is(${ISLAND_PANELS}) :is([role="listbox"],[role="menu"],wz-menu,wz-select,wz-autocomplete,.dropdown-menu,.select2-dropdown,.tippy-box,.options-container,wz-tooltip-content,option,optgroup) {
   --wme-studio-surface: var(--ws-island-a); --wme-studio-bg: var(--ws-island-a); --wme-studio-surface-3: var(--ws-island-a); --background_default: var(--ws-island-a);
 }
 html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast]) .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #sidebar#sidebar,
@@ -19405,13 +19431,21 @@ ${studioControlsCSS()}
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '3.0.4-2026-10-23b';
+  const STUDIO_BUILD = '3.0.5-2026-10-24c';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    // quiet (3.0.5): no announcement card for this update; its lines stay in Settings › What's new.
+    { version: '3.0.5', quiet: true, groups: [
+      { title: 'Fixes', items: [
+        "Settings, the update news and the changelog take your island color or gradient, with the same thin scrollbar everywhere.",
+        "Other scripts' fields and drop-down lists take your island color too, so they're easy to read on a dark island under the light theme."
+      ] }
+    ] },
     { version: '3.0.4', groups: [
       { title: 'Fixes', items: [
         "With Screen displays on, the map follows your fingers smoothly again when you drag or pinch it on an iPad. Taps, long-presses and the map buttons work as before.",
-        "The Events panel shows its events under the title again, instead of squeezed into a second column beside it."
+        "The Events panel shows its events under the title again, instead of squeezed into a second column beside it.",
+        "When a fix is still on its way, the note about your bug report names the version that will fix it, instead of saying it is already fixed."
       ] }
     ] },
     { version: '3.0.3', groups: [
@@ -19860,6 +19894,12 @@ ${studioControlsCSS()}
     const seen = await Promise.resolve(studioKeep.get(CHANGELOG_KEY, '')).catch(() => STUDIO_BUILD);
     if (seen === STUDIO_BUILD) return;
     if (setupSeen === false) { markChangelogSeen(); markMobileNewsSeen(); return; }
+    // An update whose news is all quiet (3.0.5) shows no card: it only counts as seen (and the polls waiting for the
+    // news go ahead).
+    const seenVersion = String(seen || '').split('-')[0], parts = v => String(v).split('.').map(n => parseInt(n, 10) || 0);
+    const newer = v => { const a = parts(v), b = parts(seenVersion); for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); return false; };
+    const unseen = seenVersion ? STUDIO_CHANGELOG.filter(entry => newer(entry.version)) : [];
+    if (seenVersion && unseen.every(entry => entry.quiet)) { markChangelogSeen(); return; }   // a new build of the same version counts too
     await new Promise(ok => { const go = () => setTimeout(ok, 3500); if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true }); });
     if (document.visibilityState !== 'visible') await new Promise(ok => document.addEventListener('visibilitychange', function shown() { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', shown); ok(); } }));
     const value = await globalThis.WMEStudioSettings.read().catch(() => null);
@@ -20499,6 +20539,9 @@ ${studioControlsCSS()}
   .notice[data-state="saved"] .save-indicator::before{content:"";display:block;width:8px;height:4px;border:solid currentColor;border-width:0 0 2px 2px;border-radius:0 0 0 1px;transform:translate(0.5px,-1px) rotate(-45deg)}.notice [data-id="status"]{display:none}.srow{flex-wrap:wrap;row-gap:8px}.srow:has(>input[type="range"]) .srow-text,.srow:has(>.actions) .srow-text,.srow:has(>.swatches) .srow-text{flex-basis:100%}.srow input[type="range"]{flex:1 1 160px;width:auto}.stack-main{flex-wrap:wrap;row-gap:8px}.modes{grid-template-columns:1fr}.preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.themes{gap:8px}}
   @media(max-width:580px){.panel{border-radius:17px}.head{padding:14px 12px 10px 16px}.head h2{font-size:19px}.body{padding:14px 16px 18px}.theme{padding:8px;border-radius:12px}.preview{height:64px}.theme-desc{font-size:9.5px}.theme-name{font-size:11px}.swatches{gap:7px}}
   @media(prefers-reduced-motion:reduce){.panel.open{animation:none}*,*::before,*::after{transition:none!important}}
+  /* The islands' color or gradient when one is set (3.0.5), and the same thin scrollbar as Settings. */
+  .panel,.release,.bug-dialog,.fix-notice{background:var(--ws-window-paint,var(--surface))}
+  .release-body,.bug-body,.log-list,.nav,.code pre{scrollbar-width:thin;scrollbar-color:var(--wme-studio-border-strong,#90959c) transparent}
 </style>
 <div class="backdrop" hidden aria-hidden="true"></div>
 <section class="panel" role="dialog" aria-modal="true" aria-label="WME Studio settings" tabindex="-1">
@@ -22225,12 +22268,14 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
       setBugBadge(items.length + working.length + messages.length + rejected.length);
       const kinds = [items.length, working.length, messages.length, rejected.length].filter(Boolean).length;
       const ideas = [...items, ...working, ...rejected].length > 0 && [...items, ...working, ...rejected].every(item => item.category === 'feature') && !messages.length;
+      // A fix still on its way (3.0.4): the version that will bring it is named, and nothing says it is fixed yet.
+      const upcoming = items.length > 0 && items.every(item => item.upcoming);
       if (ideas) fix.title.textContent = translate(kinds > 1 ? 'News about your ideas'
-        : items.length ? (items.length > 1 ? 'Your ideas are in Studio now' : 'Your idea is in Studio now')
+        : items.length ? (upcoming ? (items.length > 1 ? 'Your ideas are coming in an update' : 'Your idea is coming in an update') : items.length > 1 ? 'Your ideas are in Studio now' : 'Your idea is in Studio now')
         : working.length ? (working.length > 1 ? 'Your ideas are under construction' : 'Your idea is under construction')
         : (rejected.length > 1 ? 'Your ideas will not be added' : 'Your idea will not be added'));
       else fix.title.textContent = translate(kinds > 1 ? 'News about your bug reports'
-        : items.length ? (items.length > 1 ? 'Your bug reports were fixed' : 'Your bug report was fixed')
+        : items.length ? (upcoming ? (items.length > 1 ? 'Your bug reports will be fixed' : 'Your bug report will be fixed') : items.length > 1 ? 'Your bug reports were fixed' : 'Your bug report was fixed')
         : working.length ? (working.length > 1 ? 'Your bug reports are under construction' : 'Your bug report is under construction')
         : rejected.length ? (rejected.length > 1 ? 'Your bug reports will not be fixed' : 'Your bug report will not be fixed')
         : 'I sent you a message');
@@ -22269,12 +22314,12 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
         const row = document.createElement('div'); row.className = 'fix-item';
         const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.id).slice(0, 120);
         row.append(quote, ' — ');
-        const version = document.createElement('span'); version.className = 'fix-version'; version.textContent = `${translate('fixed in WME Studio')} ${item.version || ''}`.trim();
+        const version = document.createElement('span'); version.className = 'fix-version'; version.textContent = `${translate(item.upcoming ? (item.category === 'feature' ? 'coming in WME Studio' : 'will be fixed in WME Studio') : 'fixed in WME Studio')} ${item.version || ''}`.trim();
         row.append(version);
         if (item.note) { const note = document.createElement('span'); note.className = 'fix-note'; note.textContent = item.note.slice(0, 300); row.append(note); }
         fix.list.append(row);
       }
-      fix.update.hidden = !items.some(item => versionNewer(item.version, USERSCRIPT_VERSION));
+      fix.update.hidden = !items.some(item => !item.upcoming && versionNewer(item.version, USERSCRIPT_VERSION));
       fix.box.hidden = false;
     }
     async function dismissFixNotice() {
@@ -22327,7 +22372,7 @@ window.addEventListener('resize', () =&gt; placeBelowHeader(myBox));</code></pre
     const mineMessage = text => { const box = document.createElement('p'); box.className = 'mine-empty'; box.textContent = text; mine.body.replaceChildren(box); };
     function mineState(report) {
       const idea = report.category === 'feature';
-      if (report.status === 'fixed') return translate(idea ? 'Added in {0}' : 'Fixed in {0}').replace('{0}', report.fixed_version || '?');
+      if (report.status === 'fixed') return translate(report.fixed_upcoming ? (idea ? 'Coming in {0}' : 'Will be fixed in {0}') : idea ? 'Added in {0}' : 'Fixed in {0}').replace('{0}', report.fixed_version || '?');
       // Removed from my list (3.0.0): still shown here, so nothing a person sent disappears; one that had been fixed says so.
       if (report.status === 'deleted') return report.fixed_before ? `${translate('Removed')} · ${translate(idea ? 'Added in {0}' : 'Fixed in {0}').replace('{0}', report.fixed_before)}` : translate('Removed');
       return translate({ new: 'Sent', seen: 'Seen', working: 'under construction', rejected: idea ? 'Will not be added' : 'Will not be fixed', closed: 'Closed' }[report.status] || 'Sent');
