@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.0.0
+// @version      4.0.1
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -295,7 +295,7 @@ const wmeStudioMain = () => {
   // Big style sheets and page templates live in the WME Studio Interface library (4.0.0), so this script stays under
   // Greasy Fork's size limit. studioPart(name, values) gives one of them, built from the values it needs.
   function studioPart(name, values) {
-    const BUILD = '4.0.0-2026-10-26z1', parts = globalThis.WMEStudioInterface, part = parts?.parts?.[name];
+    const BUILD = '4.0.1-2026-10-26z4', parts = globalThis.WMEStudioInterface, part = parts?.parts?.[name];
     if (part === undefined) {
       if (!studioPart.warned) { studioPart.warned = true; console.error('[WME Studio] The WME Studio Interface library did not load (or is an older copy). Check the @require line in the script header.'); }
       return '';
@@ -396,7 +396,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.0.0';
+  const USERSCRIPT_VERSION = '4.0.1';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -1115,7 +1115,7 @@ ${scope} #online-editors:has(.online-editors-list-wrapper) .online-editors-bubbl
   // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
   // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
   // report shows it instead of a layout that looks broken for no reason.
-  const RESOURCES_BUILD = '4.0.0-2026-10-26z57';
+  const RESOURCES_BUILD = '4.0.1-2026-10-26z59';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -8005,7 +8005,9 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         return { item, name, side: reporter ? 'reporter' : auto ? 'auto' : 'editor', time, text: item.querySelector('.text')?.textContent || '' };
       });
       const checked = panel.querySelector('.actions input[type="radio"]:checked')?.value;
-      const closed = attrs.open === false || attrs.resolution != null || checked === 'solved' || checked === 'not-identified';
+      // WME shows "Closed on … by …" in place of the Solved / Not identified buttons once a request is closed (4.0.1): the
+      // model isn't always loaded, so that line counts too.
+      const closed = attrs.open === false || attrs.resolution != null || checked === 'solved' || checked === 'not-identified' || !!panel.querySelector('.actions .close-details, .close-details');
       const resolution = attrs.resolution === 0 || checked === 'solved' ? 'solved' : attrs.resolution === 1 || checked === 'not-identified' ? 'not-identified' : '';
       return { header, id, title: match ? match[1] : subtitle, type: Number(attrs.type), city: attrs.cityName || '', driveTime: Number(attrs.driveDate) || NaN, messages, closed, resolution,
         ...(() => { const own = reporterLanguage(messages.filter(message => message.side === 'reporter').map(message => message.text), attrs.reporterLanguage); return { ownLanguage: own, language: (Number.isFinite(id) && chosenLanguage.get(id)) || own }; })() };
@@ -8043,6 +8045,10 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     };
 
     function paintHead(state, data) {
+      // WME's "Username:" line for the reporter (when Waze knows who reported) stays under the title, its profile link
+      // and chat button included, labelled with Studio's own word (4.0.0). WME may add it after the head is painted.
+      const who = data.header?.querySelector?.('[class*="username--"]');
+      if (who && who.getAttribute('data-ws-label') !== tr('Reporter')) who.setAttribute('data-ws-label', tr('Reporter'));
       const key = `${data.type}|${data.title}|${data.id}|${data.city}`;
       if (state.head?.isConnected && state.headKey === key) return;
       state.head?.remove();
@@ -8454,7 +8460,11 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
           device: panel.querySelector('.reporter-preferences wz-badge.os')?.textContent.trim() || '',
           avoid: { tolls: attrs.avoidTolls === true, ferries: attrs.avoidFerries === true, highways: attrs.avoidPrimaries === true, unpaved: !!attrs.avoidTrails && !/^allow$/i.test(String(attrs.avoidTrails)), turns: attrs.avoidDangerousTurns === true },
           // When I'd close it without an answer: my quiet days after my last message (from today when it's my turn).
-          quietDays: Math.max(1, Number(settings.requestQuietDays) || 7), closed: data.closed };
+          quietDays: Math.max(1, Number(settings.requestQuietDays) || 7), closed: data.closed,
+          // The reporter's Waze username, from the Username line of the request's details (4.0.1); '' when WME hides it.
+          reporter: (() => { const link = panel.querySelector('[class*="username--"] wz-a, [class*="username--"] a'); if (!link) return '';
+            const own = [...link.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join(' ');
+            return (own.trim() || link.textContent).replace(/\s*\(\d+\)\s*$/, '').replace(/[↗\s]+$/, '').replace(/\s+/g, ' ').trim().slice(0, 60); })() };
       },
       // The street, the nearest junction and the municipality at the request's spot, from the roads on the map
       // (3.1.0). Kept for a minute per request: it looks through every road that is loaded.
@@ -8646,15 +8656,14 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       ['daysago', 'Days since the report', 'request'], ['reportago', 'How long ago it was reported', 'request'],
       ['description', 'What the reporter wrote', 'request'], ['link', 'A link to this request in WME', 'request'],
       ['lat', 'Latitude', 'request'], ['lon', 'Longitude', 'request'],
-      ['device', 'The reporter’s device', 'drive'], ['vehicle', 'The reporter’s vehicle', 'drive'],
+      ['reporter', 'The reporter’s username (Wazer when WME hides it)', 'drive'], ['device', 'The reporter’s device', 'drive'], ['vehicle', 'The reporter’s vehicle', 'drive'],
       ['avoids', 'What the reporter’s app avoids', 'drive'], ['language', 'The reporter’s language', 'drive'],
       ['lastmessage', 'The reporter’s last message', 'conversation'], ['lasteditor', 'The last editor who replied', 'conversation'],
       ['lastdate', 'Date of the last message', 'conversation'], ['waited', 'Days since the last message', 'conversation'],
       ['messages', 'Number of messages', 'conversation'], ['closedate', 'The day you’ll close it if nobody answers', 'conversation'],
       ['closein', 'Days until you’d close it', 'conversation'],
       ['greeting', 'Good morning, afternoon or evening, in their language', 'you'], ['me', 'Your editor name', 'you'],
-      ['rank', 'Your editor level', 'you'], ['today', 'Today’s date', 'you'], ['now', 'The time now', 'you'],
-      ['reporter', 'The reporter (Wazer)', '']];
+      ['rank', 'Your editor level', 'you'], ['today', 'Today’s date', 'you'], ['now', 'The time now', 'you']];
     const BUILT_IN_NAMES = new Set(VARIABLES.map(([name]) => name));
     // Words that go in a reply, in the reporter's language.
     const VEHICLES = { en: ['car', 'taxi', 'motorcycle'], el: ['αυτοκίνητο', 'ταξί', 'μοτοσικλέτα'], es: ['coche', 'taxi', 'moto'], pt: ['carro', 'táxi', 'mota'], fr: ['voiture', 'taxi', 'moto'],
@@ -8720,7 +8729,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const base = lastMessage && lastMessage.side !== 'reporter' ? start(lastMessage.time) : start(Date.now());
       const closeAt = Math.max(start(Date.now()), base + quiet * day), closein = facts.id && !facts.closed ? String(Math.round((closeAt - start(Date.now())) / day)) : '';
       const closedate = closein ? (() => { try { return new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(closeAt)); } catch (_) { return new Date(closeAt).toDateString(); } })() : '';
-      const known = { greeting, me, reporter: 'Wazer', type: facts.title || '', id: facts.id ? String(facts.id) : '', city: facts.city || '', description: facts.description || '',
+      const known = { greeting, me, reporter: facts.reporter || 'Wazer', type: facts.title || '', id: facts.id ? String(facts.id) : '', city: facts.city || '', description: facts.description || '',
         reportdate: date(facts.driveTime), reporttime: clock(facts.driveTime), daysago: days(facts.driveTime), lastdate: date(last), waited: days(last),
         messages: String(messages.length), today: date(Date.now()), now: clock(Date.now()), link, language: (() => { try { const name = new Intl.DisplayNames([lang], { type: 'language' }).of(lang); return name ? name[0].toLocaleUpperCase(lang) + name.slice(1) : facts.languageName || ''; } catch (_) { return facts.languageName || ''; } })(),
         lat: round(where?.lat), lon: round(where?.lon), weekday, timeofday, reportago, device, vehicle, avoids,
@@ -21304,9 +21313,27 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '4.0.0-2026-10-26z78';
+  const STUDIO_BUILD = '4.0.1-2026-10-26z81';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
+    // quiet (4.0.1): no card of its own; the 4.0 welcome lists it under "Also in this update", and the changelog keeps it.
+    { version: '4.0.1', quiet: true, groups: [
+      { title: 'Fixes', items: [
+        "A closed request no longer says it's waiting for an answer: the case file shows it as closed, without Close with a note and Remind once.",
+        "The reporter's Waze username shows under a request's title again, with its profile link and chat button, when Waze knows who reported.",
+        "On an iPad, one tap on the Quick replies tab opens it, and the keyboard no longer pops up with it.",
+        "Cloud Sync sends a change right away, and brings changes from your other devices when you come back to the editor, instead of a while later.",
+        "Always show the scale finds its place beside + and − again after Cloud Sync moves your islands."
+      ] },
+      { title: 'Quick replies', items: [
+        "The first times you open Quick replies, Manage and ⋯ are highlighted, with a line on what they hold.",
+        "{reporter} is the reporter's Waze username when WME shows it, and still Wazer when it doesn't. It's in the + menu of the reply box with the reporter's other details.",
+        "The language list in Quick replies management has a search field at the top, so you can type a language instead of scrolling through all 40."
+      ] },
+      { title: 'Cloud Sync', items: [
+        "Cloud Sync says that on an iPad, islands arranged on a computer may need a look in Arrange."
+      ] }
+    ] },
     { version: '4.0.0', groups: [
       { title: 'Discord', items: [
         "WME Studio has its own Discord server. Join it from Settings › Report a bug: ask me something, see what I'm working on and talk with other editors who use Studio."
