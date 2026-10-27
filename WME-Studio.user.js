@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.0.1
+// @version      4.0.2
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -396,7 +396,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.0.1';
+  const USERSCRIPT_VERSION = '4.0.2';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -933,7 +933,7 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
     'wmeStudio.workspaceProfiles.v1','wmeStudio.scriptTabPins.v1','wmeStudio.panelSizes.v1','wmeStudio.chatPanelOffset.v3','wmeStudio.streetViewWindow.v1',
     'wmeStudio.enabled','wmeStudio.theme','wmeStudio.corners','wmeStudio.accent',
     'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.islandFill','wmeStudio.islandColor','wmeStudio.islandColor2','wmeStudio.islandAngle','wmeStudio.islandIntensity','wmeStudio.taskStyle','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.compactRequests','wmeStudio.commandShortcut',
-    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.showZoomLevel','wmeStudio.zoomScaleAlways','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.closeAfterReply','wmeStudio.requestCaseFile','wmeStudio.requestQuietDays','wmeStudio.screenDisplays','wmeStudio.screenLongPress','wmeStudio.screenRoadButton','wmeStudio.screenShapeButton','wmeStudio.screenDrawButton','wmeStudio.islandControls.v1'
+    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.showZoomLevel','wmeStudio.zoomScaleAlways','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.closeAfterReply','wmeStudio.requestCaseFile','wmeStudio.requestQuietDays','wmeStudio.urceHandoff','wmeStudio.screenDisplays','wmeStudio.screenLongPress','wmeStudio.screenRoadButton','wmeStudio.screenShapeButton','wmeStudio.screenDrawButton','wmeStudio.islandControls.v1'
   ];
   const emitStorage = changes => {
     if (!Object.keys(changes).length) return;
@@ -1115,7 +1115,7 @@ ${scope} #online-editors:has(.online-editors-list-wrapper) .online-editors-bubbl
   // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
   // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
   // report shows it instead of a layout that looks broken for no reason.
-  const RESOURCES_BUILD = '4.0.1-2026-10-26z59';
+  const RESOURCES_BUILD = '4.0.2-2026-10-27z60';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -1387,6 +1387,8 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     closeAfterReply: false,
     // 3.1.0: the Case file request window (off: WME's own layout), and after how many quiet days it suggests closing.
     requestCaseFile: true, requestQuietDays: 7,
+    // 4.0.2: with URCE (URComments-Enhanced) installed, replies, reminders and closing are left to it.
+    urceHandoff: true,
     // 3.0.0: how Review sets the requests you haven't opened apart from the ones you have (picked in a vote).
     taskStyle: 'classic',
     // 2.2.1: Screen displays (touch screens, iPad first): finger control of the map and map buttons to select
@@ -6765,16 +6767,16 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const tagIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12.5V4h8.5l8.5 8.5-8.5 8.5Z"/><path d="M8 8.5h.01"/></svg>';
     function render() {
       placeHeader();
-      if (!host && !items.size && !followUps.size && !naming) return;
+      if (!host && !items.size && !followCount() && !naming) return;
       ensureUI();
-      if (!items.size && !followUps.size && menuOpen) closeMenu(false);
+      if (!items.size && !followCount() && menuOpen) closeMenu(false);
       if (menuOpen) paintMenu();
       if (!settings.enabled || compactLayoutEditing) { hideMinimizeTip(); closeName(); closeMenu(false); shadow.querySelector('.status').hidden=true; }
       refreshButtons(); positionDock();
     }
     // The button in the header: the saved requests' own icons, up to three, then how many more.
     function placeHeader() {
-      const show = settings.enabled && !compactLayoutEditing && (items.size > 0 || followUps.size > 0);
+      const show = settings.enabled && !compactLayoutEditing && (items.size > 0 || followCount() > 0);
       const bar = document.querySelector('#app-head .user-toolbar') || document.querySelector('#app-head .secondary-toolbar');
       if (!show || !bar) { if (headerSlot) headerSlot.hidden = true; if (!show && menuOpen) closeMenu(false); watchHeader(); return; }
       if (!headerSlot) {
@@ -6792,7 +6794,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (headerSlot.parentElement !== bar || (anchor !== headerSlot && headerSlot.previousElementSibling !== spacer)) bar.insertBefore(headerSlot, anchor === headerSlot ? anchor.nextElementSibling : anchor);
       headerSlot.hidden = false;
       const button = headerShadow.querySelector('.saved'), list = [...items.values()], due = dueFollowUps().length;
-      const key = list.slice(0, 3).map(item => `${item.id}:${item.color}:${item.icon}`).join('|') + `#${list.length}|${followUps.size}|${due}`;
+      const key = list.slice(0, 3).map(item => `${item.id}:${item.color}:${item.icon}`).join('|') + `#${list.length}|${followCount()}|${due}`;
       if (button.dataset.key !== key) {
         button.dataset.key = key;
         // Nothing saved but follow-ups waiting: a clock stands in for the saved requests' icons.
@@ -6807,7 +6809,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         if (arrow.title !== text) { arrow.title = text; arrow.setAttribute('aria-label', text); }
       }
       const saving = list.length ? (list.length === 1 ? tr('1 saved request') : tr('{0} saved requests', list.length)) : '';
-      const waiting = due ? (due === 1 ? tr('1 follow-up due') : tr('{0} follow-ups due', due)) : !list.length ? (followUps.size === 1 ? tr('1 follow-up') : tr('{0} follow-ups', followUps.size)) : '';
+      const waiting = due ? (due === 1 ? tr('1 follow-up due') : tr('{0} follow-ups due', due)) : !list.length ? (followCount() === 1 ? tr('1 follow-up') : tr('{0} follow-ups', followCount())) : '';
       const label = [saving, waiting].filter(Boolean).join(' · ');
       if (button.title !== label) { button.title = label; button.setAttribute('aria-label', label); }
       button.setAttribute('aria-expanded', String(menuOpen));
@@ -6845,7 +6847,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (!box.hasAttribute('data-fade-watch')) { box.setAttribute('data-fade-watch', ''); box.addEventListener('scroll', () => paintMenuFade(box), { passive: true }); }
     }
     function openMenu(focus = false) {
-      if (!settings.enabled || compactLayoutEditing || (!items.size && !followUps.size) || naming) return;
+      if (!settings.enabled || compactLayoutEditing || (!items.size && !followCount()) || naming) return;
       ensureUI(); message('');
       menuOpen = true; paintMenu(); placeMenu();
       const menu = shadow.querySelector('.menu'); menu.hidden = false;
@@ -7683,7 +7685,9 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const quietDays = () => Math.max(1, Number(settings.requestQuietDays) || 7);
     const followDayStart = time => { const date = new Date(time); date.setHours(0, 0, 0, 0); return date.getTime(); };
     const followLeft = item => quietDays() - Math.round((followDayStart(Date.now()) - followDayStart(item.sentAt)) / 86400000);
-    function dueFollowUps() { return [...followUps.values()].filter(item => followLeft(item) <= 0); }
+    function dueFollowUps() { return urceLeads() ? [] : [...followUps.values()].filter(item => followLeft(item) <= 0); }
+    // URCE keeps its own reminders (4.0.2): while it leads, follow-ups aren't kept or shown (the ones kept before wait).
+    function followCount() { return urceLeads() ? 0 : followUps.size; }
     function storedFollowUp(raw) {
       if (!raw || typeof raw !== 'object' || raw.id == null || !Number.isFinite(Number(raw.sentAt))) return null;
       const where = raw.where && Number.isFinite(raw.where.lon) && Number.isFinite(raw.where.lat) ? { lon: raw.where.lon, lat: raw.where.lat } : null;
@@ -7706,6 +7710,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     // A message I sent: the request is followed (again) from now.
     function noteSent(panel) {
       try {
+        if (urceLeads()) return;
         readCurrent();
         if (!active?.id || active.type !== 'mapUpdateRequest' || !isUpdate(panel)) return;
         let facts = {}; try { facts = caseFile.facts(panel) || {}; } catch (_) { facts = {}; }
@@ -7743,7 +7748,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       return tr('Due in {0} days', left);
     }
     function followUpRows() {
-      if (!followUps.size) return [];
+      if (!followCount()) return [];
       const list = [...followUps.values()].sort((one, two) => followLeft(one) - followLeft(two) || one.sentAt - two.sentAt);
       const label = document.createElement('div'); label.className = 'group'; label.innerHTML = iconSVG('clock'); label.append(tr('Follow-ups'));
       return [label, ...list.map(item => {
@@ -7761,7 +7766,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         open.addEventListener('click', () => { closeMenu(false); openFollowUp(item); });
         const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'tool'; remove.dataset.tool = 'remove'; remove.innerHTML = removeIcon;
         remove.title = tr('Stop following {0}', name); remove.setAttribute('aria-label', remove.title);
-        remove.addEventListener('click', () => { forgetFollowUp(item.id); if (menuOpen && (items.size || followUps.size)) shadow.querySelector('.menu .open, .menu .chip')?.focus({ preventScroll: true }); });
+        remove.addEventListener('click', () => { forgetFollowUp(item.id); if (menuOpen && (items.size || followCount())) shadow.querySelector('.menu .open, .menu .chip')?.focus({ preventScroll: true }); });
         row.append(open, remove);
         return row;
       })];
@@ -7810,6 +7815,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     document.addEventListener('DOMContentLoaded',connect,{once:true}); window.addEventListener('load',connect,{once:true});
     connect();
     loadItems(); loadFollowUps();
+    document.addEventListener('wme-studio-urce', () => render());
     // Another editor tab saved or removed a request: this tab shows the same list.
     try { GM_addValueChangeListener?.(SAVED_KEY, (key, before, after, remote) => { if (!remote || !Array.isArray(after)) return; const kept = new Map(items); items.clear(); for (const raw of after.slice(0, limit)) { const item = storedItem(raw); if (item) { const old = kept.get(item.id); items.set(item.id, old ? Object.assign(old, item, { model: old.model }) : item); } } render(); }); } catch (_) { /* no change listener: each tab keeps its own list until reload */ }
     return Object.freeze({inspect,refresh:()=>{connect();render();},prune:()=>{refreshButtons();if(naming && !naming.edit && !naming.panel?.isConnected)closeName();},
@@ -7996,19 +8002,27 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const model = Number.isFinite(id) ? requestModel(id) : null, attrs = model?.attributes || {};
       const items = [...panel.querySelectorAll('.conversation-view .comment-list > :is(.comment, wz-list-item)')];
       const stored = Number.isFinite(id) ? sessionComments(id) : null;
+      // Me, so other editors' messages can look different from mine (4.0.2).
+      const me = (() => { let meId = null, meName = ''; try { const user = pageWindow.W?.loginManager?.user; const value = Number(user?.attributes?.id ?? user?.id); if (Number.isFinite(value)) meId = value; } catch (_) { meId = null; } try { meName = String(wmeUserName() || '').trim().toLowerCase(); } catch (_) { meName = ''; } return { id: meId, name: meName }; })();
       const messages = items.map((item, index) => {
         const name = item.querySelector('.username')?.textContent.trim() || '';
         const reporter = !!item.querySelector('.username.reporter') || stored?.[index]?.userID === -1;
         const auto = !reporter && /^map[\s_-]*team/i.test(name);
         let time = Number(stored?.length === items.length ? stored[index]?.createdOn : NaN);
         if (!Number.isFinite(time)) { const parsed = Date.parse(item.querySelector('.comment-title .date:not(.urce)')?.textContent || ''); time = Number.isFinite(parsed) ? parsed : NaN; }
-        return { item, name, side: reporter ? 'reporter' : auto ? 'auto' : 'editor', time, text: item.querySelector('.text')?.textContent || '' };
+        // Unknown when Studio can't tell who I am: then every editor's message keeps the one color.
+        const mine = me.id == null && !me.name ? null : !reporter && !auto && ((me.id != null && stored?.length === items.length && stored[index]?.userID === me.id) || (!!me.name && name.replace(/\s*\(\d+\)\s*$/, '').trim().toLowerCase() === me.name));
+        return { item, name, side: reporter ? 'reporter' : auto ? 'auto' : 'editor', mine, time, text: item.querySelector('.text')?.textContent || '' };
       });
       const checked = panel.querySelector('.actions input[type="radio"]:checked')?.value;
       // WME shows "Closed on … by …" in place of the Solved / Not identified buttons once a request is closed (4.0.1): the
       // model isn't always loaded, so that line counts too.
       const closed = attrs.open === false || attrs.resolution != null || checked === 'solved' || checked === 'not-identified' || !!panel.querySelector('.actions .close-details, .close-details');
-      const resolution = attrs.resolution === 0 || checked === 'solved' ? 'solved' : attrs.resolution === 1 || checked === 'not-identified' ? 'not-identified' : '';
+      // Without the request in the map data, WME's "Closed" line says how (4.0.2): by a class it carries, or its words.
+      const closeLine = attrs.resolution == null && !checked ? panel.querySelector('.actions .close-details, .close-details') : null;
+      const closeWords = closeLine ? `${closeLine.className} ${closeLine.innerHTML.match(/class="[^"]*"/g)?.join(' ') || ''} ${closeLine.textContent}`.toLowerCase() : '';
+      const closedAs = /not[\s_-]*identified|unidentified|not-?identif/.test(closeWords) ? 'not-identified' : /solved|resolved/.test(closeWords) ? 'solved' : '';
+      const resolution = attrs.resolution === 0 || checked === 'solved' ? 'solved' : attrs.resolution === 1 || checked === 'not-identified' ? 'not-identified' : closedAs;
       return { header, id, title: match ? match[1] : subtitle, type: Number(attrs.type), city: attrs.cityName || '', driveTime: Number(attrs.driveDate) || NaN, messages, closed, resolution,
         ...(() => { const own = reporterLanguage(messages.filter(message => message.side === 'reporter').map(message => message.text), attrs.reporterLanguage); return { ownLanguage: own, language: (Number.isFinite(id) && chosenLanguage.get(id)) || own }; })() };
     }
@@ -8021,7 +8035,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (data.closed) return { step: 4, tone: 'done', label: data.resolution === 'not-identified' ? tr('Closed as not identified') : data.resolution === 'solved' ? tr('Closed as solved') : tr('Closed'), value: '' };
       if (!last || !asked) return { step: 1, tone: 'new', label: tr('New · no reply yet'), value: Number.isFinite(data.driveTime) ? daysText(calendarDays(data.driveTime, now)) : '' };
       if (last.side === 'reporter') return { step: 3, tone: 'answer', third: tr('Answered'), label: tr('The reporter answered · your turn'), value: days == null ? '' : daysText(days) };
-      return { step: 3, tone: days != null && days >= quiet ? 'late' : 'wait', third: tr('Waiting'), label: tr('Waiting on the reporter'), value: days == null ? '' : daysText(days), days, quiet, since: last.time };
+      return { step: 3, tone: days != null && days >= quiet && !urceLeads() ? 'late' : 'wait', third: tr('Waiting'), label: tr('Waiting on the reporter'), value: days == null ? '' : daysText(days), days, quiet, since: last.time };
     }
 
     function fillReply(panel, text) {
@@ -8049,13 +8063,26 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       // and chat button included, labelled with Studio's own word (4.0.0). WME may add it after the head is painted.
       const who = data.header?.querySelector?.('[class*="username--"]');
       if (who && who.getAttribute('data-ws-label') !== tr('Reporter')) who.setAttribute('data-ws-label', tr('Reporter'));
-      const key = `${data.type}|${data.title}|${data.id}|${data.city}`;
+      // WME's own line ("Submitted on: …"), for when the request isn't in the loaded map data and its time is unknown.
+      const wmeWhen = String(data.header?.querySelector?.('[class*="reported--"]')?.textContent || '').replace(/^[^:]*:\s*/, '').replace(/\s+/g, ' ').trim();
+      const key = `${data.type}|${data.title}|${data.id}|${data.city}|${data.driveTime}|${wmeWhen}`;
       if (state.head?.isConnected && state.headKey === key) return;
       state.head?.remove();
       const head = document.createElement('div'); head.className = 'ws-case-head'; head.setAttribute('data-ws-keep', '');
-      head.innerHTML = `<span class="ws-case-type">${svg(TYPE_ICONS[typeIcon(data.type)])}</span><span class="ws-case-names"><strong></strong><small></small></span>`;
+      head.innerHTML = `<span class="ws-case-type">${svg(TYPE_ICONS[typeIcon(data.type)])}</span><span class="ws-case-names"><strong></strong><small></small><small class="ws-case-when"></small></span>`;
       head.querySelector('strong').textContent = data.title;
       head.querySelector('small').textContent = [Number.isFinite(data.id) ? `#${data.id}` : '', data.city].filter(Boolean).join(' · ');
+      // When it was reported, date and time (4.0.2): WME's own "Submitted on" line is hidden with the rest of its header.
+      // Short (no year when it's this year's) so it fits beside the window's buttons; the full date is its tooltip.
+      const when = head.querySelector('.ws-case-when'), time = Number.isFinite(data.driveTime) ? data.driveTime : wmeWhen ? Date.parse(wmeWhen) : NaN;
+      const format = (value, options) => { try { return new Intl.DateTimeFormat(uiLocale(), options).format(new Date(value)); } catch (_) { return new Date(value).toLocaleString(); } };
+      if (Number.isFinite(time)) {
+        const thisYear = new Date(time).getFullYear() === new Date().getFullYear();
+        when.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" style="margin-right:4px;vertical-align:-1px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+        when.append(format(time, { day: 'numeric', month: 'short', ...(thisYear ? {} : { year: 'numeric' }), hour: '2-digit', minute: '2-digit' }));
+        when.title = tr('Reported {0}', format(time, { dateStyle: 'full', timeStyle: 'short' }));
+      } else if (wmeWhen) { when.textContent = wmeWhen; when.title = tr('Reported {0}', wmeWhen); }
+      else when.remove();
       data.header.prepend(head);
       state.head = head; state.headKey = key;
     }
@@ -8072,7 +8099,9 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       state.status?.remove();
       const steps = [tr('Reported'), tr('Asked'), stand.third || tr('Waiting'), tr('Closed')];
       const status = document.createElement('div'); status.className = 'ws-case-status'; status.setAttribute('data-tone', stand.tone); status.setAttribute('role', 'status');
-      status.title = (late ? tr('No answer since {0} ({1}). Requests are usually closed after {2} quiet days.', shortDate(stand.since), daysText(stand.days), stand.quiet) + '\n' : '') + steps.map((name, index) => (index + 1 === stand.step ? `› ${name}` : name)).join(' · ');
+      if (stand.tone === 'done' && data.resolution) status.setAttribute('data-resolution', data.resolution);
+      status.title = (late ? tr('No answer since {0} ({1}). Requests are usually closed after {2} quiet days.', shortDate(stand.since), daysText(stand.days), stand.quiet) + '\n' : '') + steps.map((name, index) => (index + 1 === stand.step ? `› ${name}` : name)).join(' · ')
+        + (stand.step < 4 && urceLeads() ? '\n' + tr('Reminders and closing: URCE (URComments-Enhanced).') : '');
       status.innerHTML = '<div class="ws-case-line"><span class="ws-case-dot"></span><b></b><em></em></div><div class="ws-case-bars" aria-hidden="true"></div>';
       status.querySelector('b').textContent = label;
       status.querySelector('em').textContent = value;
@@ -8091,12 +8120,153 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       data.header.append(status);
       state.status = status; state.statusKey = key;
     }
+    // The reporter's description is never cut down to a few lines with a scrollbar of its own (4.0.2): WME gives its
+    // box a fixed height, so a long one scrolled inside it however tall the window was made. It now takes the room it
+    // needs and the window grows (or the request scrolls as a whole, with the description's text easy to reach).
+    GM_addStyle(`html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data,
+html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data > .section[class*="description"],
+html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data > .section[class*="description"] > :is(.content,.collapsible,div) {
+  max-height: none !important; overflow: visible !important; }
+html[data-wme-studio="on"] [data-ws-desc-free] { max-height: none !important; height: auto !important; overflow: visible !important; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] { --ws-case-tone: #30a46c !important; }
+html[data-wme-studio="on"][data-wme-studio-theme="light"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] { --ws-case-tone: #1f8a55 !important; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] .ws-case-bars span { background-color: var(--ws-case-tone) !important; }`);
+    // A request closed as solved is green; closed as not identified stays grey (4.0.2).
+    // The description folds to one line (4.0.2), with the arrow at its top right, so a small screen has room for the
+    // discussion. One choice for every request, remembered.
+    const DESC_KEY = 'wmeStudio.descriptionFolded';
+    let descFolded = (() => { try { return localStorage.getItem(DESC_KEY) === '1'; } catch (_) { return false; } })();
+    const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>';
+    GM_addStyle(`html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] { position: relative !important; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] > .content { padding-right: 30px !important; }
+html[data-wme-studio="on"] .ws-desc-fold { position: absolute; top: 0; right: var(--ws-pad, 12px); z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 24px; height: 24px; margin: 0; padding: 0; border: 0; border-radius: 999px; background: var(--wme-studio-input); color: var(--wme-studio-text-muted); font: 12px/16px var(--ws-font); cursor: pointer; }
+html[data-wme-studio="on"] .ws-desc-fold:hover { background: var(--wme-studio-hover); color: var(--wme-studio-text); }
+html[data-wme-studio="on"] .ws-desc-fold:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 2px; }
+html[data-wme-studio="on"] .ws-desc-fold svg { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s ease; }
+html[data-wme-studio="on"] .ws-desc-fold span { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .problem-data > .section[class*="description"] > :not(.ws-desc-fold):not(#ws-none) { display: none !important; }
+html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .ws-desc-fold { position: static; justify-content: flex-start; width: 100%; height: 26px; padding: 0 10px 0 6px; border-radius: 8px; text-align: left; }
+html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .ws-desc-fold svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { html[data-wme-studio="on"] .ws-desc-fold svg { transition: none; } }`);
+    function foldDescription(panel) {
+      const description = panel.querySelector('.problem-data > .section[class*="description"]');
+      let button = description?.querySelector(':scope > .ws-desc-fold');
+      const text = description ? (description.querySelector(':scope > .content')?.textContent || [...description.children].filter(node => node !== button).map(node => node.textContent).join(' ')).replace(/\s+/g, ' ').trim() : '';
+      if (!text) { button?.remove(); if (panel.hasAttribute('data-ws-desc-folded')) panel.removeAttribute('data-ws-desc-folded'); return; }
+      if (!button) {
+        button = document.createElement('button'); button.type = 'button'; button.className = 'ws-desc-fold'; button.setAttribute('data-ws-keep', '');
+        button.addEventListener('click', event => {
+          event.preventDefault(); event.stopPropagation();
+          descFolded = !descFolded;
+          try { localStorage.setItem(DESC_KEY, descFolded ? '1' : '0'); } catch (_) { /* this visit only */ }
+          for (const other of document.querySelectorAll('.problem-edit[data-wme-studio-case="on"]')) foldDescription(other);
+        });
+        description.prepend(button);
+      }
+      const key = `${descFolded}|${text.slice(0, 160)}|${uiLocale()}`;
+      if (button.dataset.key !== key) {
+        button.dataset.key = key;
+        const label = descFolded ? tr('Show description') : tr('Hide description');
+        button.title = label; button.setAttribute('aria-label', label); button.setAttribute('aria-expanded', String(!descFolded));
+        button.innerHTML = CHEVRON;
+        if (descFolded) { const line = document.createElement('span'); line.textContent = text; button.append(line); }
+      }
+      if (panel.hasAttribute('data-ws-desc-folded') !== descFolded) panel.toggleAttribute('data-ws-desc-folded', descFolded);
+    }
+    // Whatever box WME scrolls the description in (its markup changes): found by what it does, and let go.
+    function freeDescription(panel) {
+      const description = panel.querySelector('.problem-data > .section[class*="description"]') || panel.querySelector('.section[class*="description"]');
+      if (!description) return;
+      for (const node of [description.parentElement, description, ...description.querySelectorAll('*')]) {
+        if (!node || node.hasAttribute('data-ws-desc-free') || node.matches('.problem-edit, .body, [data-wme-studio-reply-scroller]')) continue;
+        const style = getComputedStyle(node);
+        if (/^(auto|scroll|hidden|clip)$/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 2) node.setAttribute('data-ws-desc-free', '');
+      }
+    }
+    // Other editors' messages in another color than mine (4.0.2): the accent turned a third of the way round the color
+    // wheel, so it never matches it (a plain violet where the browser can't turn colors).
+    GM_addStyle(`html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment[data-ws-side="editor"][data-ws-who="other"] {
+  background: color-mix(in srgb, #9b6bff 24%, var(--wme-studio-input)) !important;
+  background: color-mix(in srgb, oklch(from var(--wme-studio-accent, #0099ff) l c calc(h + 110)) 24%, var(--wme-studio-input)) !important; }
+/* Names you can read (4.0.2): bold, in the accent (a little lighter or darker toward the text so it reads on the bubbles)
+   like the reporter's name at the top, instead of the muted grey. The bubble's color tells who's who. */
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment[data-ws-side] .comment-title .username {
+  color: color-mix(in srgb, var(--wme-studio-accent, #0099ff) 78%, var(--wme-studio-text)) !important; font-weight: 700 !important; }
+/* The reporter's name at the top and its icons in the accent too. */
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] [class*="issuePanelHeader--"] [class*="username--"] wz-a {
+  --wz-a-color: var(--wme-studio-accent, #0099ff) !important; color: var(--wme-studio-accent, #0099ff) !important; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] [class*="issuePanelHeader--"] [class*="username--"] :is(.w-icon,i,svg) {
+  color: var(--wme-studio-accent, #0099ff) !important; fill: currentColor; }
+/* An editor's name opens their editor profile. */
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment [data-ws-profile] { cursor: pointer !important; border-radius: 4px; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment [data-ws-profile]:hover { text-decoration: underline !important; text-underline-offset: 2px; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment [data-ws-profile]:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff) !important; outline-offset: 1px; }`);
+    // An editor's name in the discussion opens their editor profile in a new tab (4.0.2). The reporter is a driver, not an
+    // editor, so their name stays plain.
+    // The reporter's name goes where WME's own link at the top of the request goes.
+    const profileOf = node => node?.closest?.('.problem-edit[data-wme-studio-case="on"] .comment[data-ws-side] [data-ws-profile]');
+    const openProfile = node => {
+      if (node.getAttribute('data-ws-profile') === '@reporter') {
+        const link = node.closest('.problem-edit')?.querySelector('[class*="username--"] wz-a, [class*="username--"] a'); if (!link) return;
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#') || /^javascript:/i.test(href)) { link.click(); return; }   // WME handles it itself
+        try { pageWindow.open(new URL(href, location.href).href, '_blank', 'noopener'); } catch (_) { link.click(); }
+        return;
+      }
+      const url = `https://www.waze.com/user/editor/${encodeURIComponent(node.getAttribute('data-ws-profile'))}`;
+      try { pageWindow.open(url, '_blank', 'noopener'); } catch (_) { window.open(url, '_blank', 'noopener'); }
+    };
+    document.addEventListener('click', event => { const node = profileOf(event.target); if (!node) return; event.preventDefault(); event.stopPropagation(); openProfile(node); }, true);
+    document.addEventListener('keydown', event => { if (event.key !== 'Enter' && event.key !== ' ') return; const node = profileOf(event.target); if (!node) return; event.preventDefault(); event.stopPropagation(); openProfile(node); }, true);
+    function linkEditor(item, message) {
+      const label = item.querySelector('.comment-title .username'); if (!label) return;
+      const name = String(message.name || label.textContent || '').replace(/\s*\(\d+\)\s*$/, '').trim();
+      if (!/^[\w.\-]{2,40}$/.test(name)) { unlinkEditor(label); return; }
+      if (label.getAttribute('data-ws-profile') === name) return;
+      label.setAttribute('data-ws-profile', name); label.setAttribute('role', 'link'); label.tabIndex = 0;
+      label.title = tr('Open {0}’s editor profile', name);
+    }
+    function linkReporter(item, name) {
+      const label = item.querySelector('.username.reporter') || item.querySelector('.comment-title .username'); if (!label) return;
+      if (!name) { unlinkEditor(label); return; }
+      if (label.getAttribute('data-ws-profile') === '@reporter' && label.title.includes(name)) return;
+      label.setAttribute('data-ws-profile', '@reporter'); label.setAttribute('role', 'link'); label.tabIndex = 0;
+      label.title = tr('Open {0}’s profile', name);
+    }
+    function unlinkEditor(label) {
+      if (!label?.hasAttribute('data-ws-profile')) return;
+      for (const name of ['data-ws-profile', 'role', 'tabindex', 'title']) label.removeAttribute(name);
+    }
     // Who wrote each message, the time between them, and the automatic first message folded.
+    // The reporter's Waze username, from the Username line of the request's details (4.0.1); '' when WME hides it.
+    function reporterName(panel) {
+      const link = panel.querySelector('[class*="username--"] wz-a, [class*="username--"] a'); if (!link) return '';
+      const own = [...link.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join(' ');
+      return (own.trim() || link.textContent).replace(/\s*\(\d+\)\s*$/, '').replace(/[↗\s]+$/, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    }
+    // The reporter's messages carry their username instead of WME's "Reporter" (4.0.2), when Waze says who reported.
+    function nameReporter(item, name) {
+      const label = item.querySelector('.username.reporter') || item.querySelector('.comment-title .username');
+      if (!label) return;
+      if (name) {
+        if (!label.hasAttribute('data-ws-label')) label.setAttribute('data-ws-label', label.textContent.trim());
+        if (label.textContent !== name) label.textContent = name;
+      } else unnameReporter(label);
+    }
+    function unnameReporter(label) {
+      if (!label?.hasAttribute('data-ws-label')) return;
+      label.textContent = label.getAttribute('data-ws-label'); label.removeAttribute('data-ws-label'); label.removeAttribute('title');
+    }
     function paintMessages(state, data, stand) {
+      const reporter = reporterName(state.panel);
       let previous = null;
       data.messages.forEach((message, index) => {
         const item = message.item;
         if (item.getAttribute('data-ws-side') !== message.side) item.setAttribute('data-ws-side', message.side);
+        if (message.side === 'reporter') { nameReporter(item, reporter); linkReporter(item, reporter); }
+        else if (message.side === 'editor') linkEditor(item, message);
+        const who = message.side === 'editor' && message.mine != null ? (message.mine ? 'me' : 'other') : '';
+        if ((item.getAttribute('data-ws-who') || '') !== who) { if (who) item.setAttribute('data-ws-who', who); else item.removeAttribute('data-ws-who'); }
         const gapDays = previous && Number.isFinite(previous.time) && Number.isFinite(message.time) ? calendarDays(previous.time, message.time) : 0;
         const gap = gapDays >= 1 ? (gapDays === 1 ? tr('1 day later') : tr('{0} days later', gapDays)) : '';
         if ((item.getAttribute('data-ws-gap') || '') !== gap) { if (gap) item.setAttribute('data-ws-gap', gap); else item.removeAttribute('data-ws-gap'); }
@@ -8320,8 +8490,11 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (state) { state.translate = 'off'; untranslate(state); }
       state?.driveSize?.disconnect(); panel.style.removeProperty('--ws-drive-w');
       panel.removeAttribute('data-wme-studio-case');
-      for (const item of panel.querySelectorAll('[data-ws-side]')) for (const name of ['data-ws-side', 'data-ws-gap', 'data-ws-after', 'data-ws-open']) item.removeAttribute(name);
+      for (const item of panel.querySelectorAll('[data-ws-side]')) for (const name of ['data-ws-side', 'data-ws-who', 'data-ws-gap', 'data-ws-after', 'data-ws-open']) item.removeAttribute(name);
       for (const title of panel.querySelectorAll('[data-ws-toggle]')) title.removeAttribute('data-ws-toggle');
+      for (const label of panel.querySelectorAll('.comment-title .username[data-ws-label]')) unnameReporter(label);
+      for (const label of panel.querySelectorAll('.comment-title .username[data-ws-profile]')) unlinkEditor(label);
+      panel.querySelector('.ws-desc-fold')?.remove(); panel.removeAttribute('data-ws-desc-folded');
       states.delete(panel);
     }
     const places = new Map();
@@ -8381,7 +8554,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         state = { panel, head: null, status: null, card: null, driveTitle: null, driveSize: null, tab: null, translate: 'off', translating: null };
         state.observer = new MutationObserver(records => {
           // Only WME's own changes (a new message, the request swapped): what Studio adds is left out.
-          if (records.every(record => [record.target, ...record.addedNodes, ...record.removedNodes].every(node => node.nodeType !== 1 ? node.parentElement?.closest?.('.ws-case-head,.ws-case-status,.ws-case-next,.ws-case-translate,.ws-case-tr,.ws-reply-tools,.ws-dm,.ws-dm-note') : node.closest?.('.ws-case-head,.ws-case-status,.ws-case-next,.ws-case-translate,.ws-case-tr,.ws-reply-tools,.ws-dm,.ws-dm-note')))) return;
+          if (records.every(record => [record.target, ...record.addedNodes, ...record.removedNodes].every(node => node.nodeType !== 1 ? node.parentElement?.closest?.('.ws-case-head,.ws-case-status,.ws-case-next,.ws-case-translate,.ws-case-tr,.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-desc-fold') : node.closest?.('.ws-case-head,.ws-case-status,.ws-case-next,.ws-case-translate,.ws-case-tr,.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-desc-fold')))) return;
           queue();
         });
         state.observer.observe(panel, { childList: true, subtree: true, characterData: true });
@@ -8398,6 +8571,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         states.set(panel, state);
       }
       if (panel.getAttribute('data-wme-studio-case') !== 'on') panel.setAttribute('data-wme-studio-case', 'on');
+      try { freeDescription(panel); foldDescription(panel); } catch (studioError) { reportStudioError('caseFile description', studioError); }
       // A followed request that the reporter answered, or that was closed, is no longer waited on (3.1.0).
       try { if (Number.isFinite(data.id)) requestMinimizer.noteState(data.id, data.closed, data.messages.at(-1)); } catch (studioError) { reportStudioError('caseFile follow-up', studioError); }
       const stand = standing(data);
@@ -8413,6 +8587,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       });
     }
     setInterval(() => { if (states.size) queue(); }, 60000);   // "18 days" turns into "19 days" without a reload
+    document.addEventListener('wme-studio-urce', () => queue());
     return Object.freeze({ inspect: panel => { if (panel?.matches?.('.problem-edit')) queue(); }, refresh: queue,
       // For Quick replies: the reporter's language and the replies written in it, and putting text in the reply box.
       allReplies: () => JSON.parse(JSON.stringify(REPLIES)),
@@ -8462,9 +8637,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
           // When I'd close it without an answer: my quiet days after my last message (from today when it's my turn).
           quietDays: Math.max(1, Number(settings.requestQuietDays) || 7), closed: data.closed,
           // The reporter's Waze username, from the Username line of the request's details (4.0.1); '' when WME hides it.
-          reporter: (() => { const link = panel.querySelector('[class*="username--"] wz-a, [class*="username--"] a'); if (!link) return '';
-            const own = [...link.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join(' ');
-            return (own.trim() || link.textContent).replace(/\s*\(\d+\)\s*$/, '').replace(/[↗\s]+$/, '').replace(/\s+/g, ' ').trim().slice(0, 60); })() };
+          reporter: reporterName(panel) };
       },
       // The street, the nearest junction and the municipality at the request's spot, from the roads on the map
       // (3.1.0). Kept for a minute per request: it looks through every road that is loaded.
@@ -8478,6 +8651,64 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const env = new URLSearchParams(location.search).get('env') || 'row';
     const place = where && Number.isFinite(where.lat) && Number.isFinite(where.lon) ? `&lat=${round(where.lat)}&lon=${round(where.lon)}&zoomLevel=17` : '';
     return `${location.origin}/editor?env=${encodeURIComponent(env)}${place}&mapUpdateRequest=${encodeURIComponent(id)}`;
+  }
+
+  // URCE (4.0.2). Many editors answer requests with URComments-Enhanced: its comment lists (kept per country by the
+  // community), its reminder and its close days. With it installed, Studio leaves that work to it and only styles the
+  // request window: the Quick replies tab opens URCE's comments, follow-ups aren't kept, and the case strip doesn't
+  // suggest closing after Studio's own quiet days. Settings › Panels turns this off. Nothing of URCE's is changed.
+  let urceSeen = false, urceLooked = 0;
+  const URCE_TABS = '#sidebar :is(.userscripts-drawer-tabs,#user-tabs) > .nav-tabs a';
+  // WME names script tabs itself (#userscript-tab-32), and URCE's shows only an icon titled "URC-E", so its tab is the
+  // one whose page holds URCE's panel.
+  const isUrceTab = a => {
+    const href = a.getAttribute('href') || '', named = value => /^\s*URC-?E\s*$/i.test(value || '');
+    if (href === '#sidepanel-urc-e' || named(a.textContent) || named(a.title) || named(a.querySelector('[title]')?.getAttribute('title'))) return true;
+    try { return href.startsWith('#') && !!document.getElementById(href.slice(1))?.querySelector('#sidepanel-urc-e'); } catch (_) { return false; }
+  };
+  function urceInstalled() {
+    if (urceSeen) return true;
+    const now = Date.now();
+    if (now - urceLooked < 1500) return false;
+    urceLooked = now;
+    try { urceSeen = !!(document.getElementById('sidepanel-urc-e') || document.getElementById('urceDiv') || [...document.querySelectorAll(URCE_TABS)].some(isUrceTab)); }
+    catch (_) { urceSeen = false; }
+    // Found after the windows were drawn (scripts start in any order): the parts that step back are told.
+    if (urceSeen) setTimeout(() => { try { document.dispatchEvent(new CustomEvent('wme-studio-urce')); } catch (_) { /* nothing listens */ } }, 0);
+    return urceSeen;
+  }
+  function urceLeads() { return !!settings.enabled && settings.urceHandoff !== false && urceInstalled(); }
+  globalThis.WMEStudioURCE = Object.freeze({ installed: urceInstalled, leads: urceLeads });   // for Settings, built in a scope of its own
+  // URCE's tab, in WME's Scripts section. A script's tab is only switched while that section is on screen (switched
+  // from another section, its page showed up inside that one), so the section is opened first.
+  function openUrce() {
+    try {
+      const tab = [...document.querySelectorAll(URCE_TABS)].find(isUrceTab);
+      if (!tab) return false;
+      globalThis.WMEStudioScriptChosen?.();
+      // Studio's script bar hides WME's own row of tabs, so the Scripts section counts as open when the box around the
+      // tabs is drawn, not the tabs themselves.
+      const box = tab.closest('#user-tabs,.userscripts-drawer-tabs') || tab.parentElement;
+      const onScreen = () => !!document.querySelector('.app.show-sidebar') && !!box?.getClientRects().length && !!box.offsetParent;
+      if (!onScreen()) {
+        const ids = new Set();
+        for (let node = box; node && node !== document.body; node = node.parentElement) if (node.id) ids.add(node.id);
+        const items = [...(document.getElementById('drawer')?.querySelectorAll('wz-navigation-item') || [])];
+        const points = item => ['data-for', 'aria-controls', 'data-panel', 'data-target', 'href'].map(name => String(item.getAttribute(name) || '').replace(/^#/, '')).some(id => id && ids.has(id));
+        const words = item => [item.getAttribute('data-for'), item.id, item.getAttribute('label'), item.getAttribute('aria-label'), item.getAttribute('title'), item.textContent, item.querySelector?.('[class*="w-icon-"]')?.className].join(' ');
+        const scripts = items.find(item => item.getAttribute('data-for') === 'userscript_tab') || items.find(points) || items.find(item => /script/i.test(words(item)));
+        if (!scripts) { console.info('[WME Studio] URCE: no Scripts button found', items.map(item => item.getAttribute('data-for') || item.textContent.trim()), [...ids]); return false; }
+        // The button inside it is what WME listens to; a click on the item itself does nothing.
+        (scripts.shadowRoot?.querySelector('button.navigation-button, button') || scripts).click();
+      }
+      let tries = 0, clicks = 0;
+      const shown = () => !!document.getElementById('sidepanel-urc-e')?.getClientRects().length;
+      // Clicked again if something else took the section's place (up to three times).
+      const press = () => { tab.click(); if (++clicks < 3) setTimeout(() => { if (!shown()) press(); }, 350); };
+      const go = () => { if (onScreen()) { press(); return; } if (++tries < 30) setTimeout(go, 50); else { console.info('[WME Studio] URCE: the Scripts section did not open'); press(); } };
+      requestAnimationFrame(go);
+      return true;
+    } catch (studioError) { reportStudioError('openUrce', studioError); return false; }
   }
 
   // Quick replies (3.1.0): a tab on the outside edge of an update request window. It opens ready replies: a few in the
@@ -9371,7 +9602,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     function attach(win) {
       let state = states.get(win);
-      if (state?.host.isConnected && state.host.parentElement === win) { place(state); return; }
+      if (state?.host.isConnected && state.host.parentElement === win) { urceMode(state); place(state); return; }
       state?.host.remove(); state?.observer?.disconnect(); state?.size?.disconnect();
       const host = el('div'); host.className = 'ws-quick-replies'; host.setAttribute('data-ws-keep', '');
       const shadow = host.attachShadow({ mode: 'open' });
@@ -9380,7 +9611,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       state.panel.tabIndex = -1;
       state.tab.querySelector('span').textContent = tr('Quick replies');
       state.tab.title = tr('Quick replies'); state.panel.setAttribute('aria-label', tr('Quick replies'));
-      state.tab.addEventListener('click', event => { event.stopPropagation(); if (state.panel.hidden) open(state); else close(state); });
+      state.tab.addEventListener('click', event => { event.stopPropagation(); if (urceLeads() && openUrce()) { close(state); return; } if (state.panel.hidden) open(state); else close(state); });
       // Keys and clicks inside stay here: WME's shortcuts listen on the whole page, and its map would take the clicks.
       for (const type of ['keydown', 'keyup', 'keypress']) shadow.addEventListener(type, event => {
         if (type === 'keydown') {
@@ -9404,8 +9635,31 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         state.size.observe(win); state.size.observe(shadow.querySelector('.stack'));
       }
       states.set(win, state);
+      urceMode(state);
       place(state);
     }
+    // With URCE leading (4.0.2), the tab opens URCE's comments instead of Studio's replies.
+    // It carries URCE's own name and icon (the one on its Greasy Fork page, when Studio's script bar has it), so it's
+    // plain whose comments these are.
+    function urceMode(state) {
+      const lead = urceLeads(), icon = lead ? String(globalThis.WMEStudioScriptIcon?.('375430') || '') : '';
+      const key = lead ? 'urce:' + icon : '';
+      if (state.urce === key) return;
+      state.urce = key;
+      state.tab.querySelector('span').textContent = lead ? 'URCE' : tr('Quick replies');
+      state.tab.title = lead ? tr('URCE (URComments-Enhanced) by dBsooner. Opens its comments; replies are left to URCE while it’s installed (Settings › Panels).') : tr('Quick replies');
+      state.tab.toggleAttribute('data-urce', lead);
+      const art = state.tab.querySelector('svg, img');
+      if (icon) {
+        const img = document.createElement('img'); img.src = icon; img.alt = ''; img.draggable = false;
+        img.style.cssText = 'width:15px;height:15px;flex:none;border-radius:4px;object-fit:contain';
+        art?.replaceWith(img);
+      } else if (art?.localName === 'img') {
+        const holder = document.createElement('span'); holder.innerHTML = svg(ICONS.tab); art.replaceWith(holder.firstElementChild);
+      }
+      if (lead && !state.panel.hidden) close(state);
+    }
+    document.addEventListener('wme-studio-urce', () => { for (const state of states.values()) urceMode(state); });
     // A reply box made taller gives its room from the discussion, so the window doesn't get a scrollbar (which also
     // made everything in it narrower).
     function scroller(from, stop) {
@@ -9547,7 +9801,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       return true;
     }
     // Q opens or closes the list of the request window it was pressed in (3.1.0).
-    function toggle(win) { sync(); const state = states.get(win); if (!state) return false; if (state.panel.hidden) open(state); else close(state, false); return true; }
+    function toggle(win) { sync(); const state = states.get(win); if (!state) return false; if (urceLeads() && openUrce()) { close(state, false); return true; } if (state.panel.hidden) open(state); else close(state, false); return true; }
     // For the chat (Waze Chat Plus): my own replies, with their variables filled from the open request. With no
     // request open, only the ones that don't need one are filled (greeting, me, today, now); the rest stay as written.
     function fillFor(text) {
@@ -11663,6 +11917,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         {
           const pillLimits = areaPillLimits({ top: -Infinity, bottom: Infinity }, wanted.left, wanted.width);
           if (wanted.top < pillLimits.top) wanted.top = pillLimits.top;
+          // A window made taller by hand slides up once its bottom reaches the screen's (4.0.2): it used to stop there, so
+          // a window opened low on a short screen couldn't be made tall enough to show a long description.
+          const lowest = Math.min(pillLimits.bottom, innerHeight - 12);
+          if (userHeight && wanted.top + wanted.height > lowest) wanted.top = Math.max(pillLimits.top, 12, lowest - wanted.height);
           if (wanted.top + wanted.height > pillLimits.bottom) wanted.height = Math.max(200, pillLimits.bottom - wanted.top);
         }
         const placed = (state.requestPoint && compactFitInPlace(wanted,occupied)) || compactFitPanel(wanted,occupied);
@@ -11698,7 +11956,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const horizontal = standardPanelHorizontalBounds(rect.width, geometry);
       const left = Math.max(horizontal.left, Math.min(preferred.left, horizontal.right));
       const limits = headerPanelLimits(left, rect.width, 12, geometry, rect);
-      const anchor = state.requestPoint ? Math.max(limits.top, Math.min(preferred.top, limits.bottom - 200)) : limits.top;
+      // A window made taller by hand slides up rather than stopping at the screen's bottom (4.0.2).
+      const anchor = state.requestPoint ? Math.max(limits.top, Math.min(preferred.top, limits.bottom - (userHeight ? Math.min(userHeight, limits.bottom - limits.top) : 200))) : limits.top;
       const available = Math.max(1, Math.min(Math.floor(limits.bottom - anchor), preferredHeightLimit, floatingHeader.position && state.cap != null && !userHeight ? state.cap : Infinity));
       const border = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
       const naturalHeight = userHeight || Math.max(rect.height, (element.scrollHeight + border) * (element.currentCSSZoom || 1));
@@ -19615,6 +19874,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const explicit=block[1].match(/^\s*\/\/\s*@iconURL\s+([^\r\n]+)$/im), alias=block[1].match(/^\s*\/\/\s*@icon\s+([^\r\n]+)$/im);
       return {iconURL:safeIconURL((explicit || alias)?.[1] || '',source)};
     }
+    // The icon of a script by its Greasy Fork id, for the URCE tab on request windows (4.0.2).
+    globalThis.WMEStudioScriptIcon=id=>iconCache.get(metadataSource(String(id)))?.iconURL || '';
     const iconCacheRead=Promise.resolve(studioKeep.get(ICON_CACHE_KEY,{})).then(saved=>{
       const now=Date.now();
       if(saved && typeof saved==='object') for(const [source,item] of Object.entries(saved)) {
@@ -19892,6 +20153,9 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     // themselves, the earliest pinned script that is there gets opened; a pin that comes earlier in the bar and
     // arrives later takes over. After half a minute the choice is left alone.
     let userChoseScript=false, autoOpenedRank=Infinity, autoOpenSince=0;
+    // A script opened for the user from elsewhere (URCE from a request window, 4.0.2) counts as their choice, so the
+    // first pinned script doesn't take its place a moment later.
+    globalThis.WMEStudioScriptChosen=()=>{ userChoseScript=true; };
     document.addEventListener('click',event=>{
       if (!event.isTrusted) return;
       for (const state of states.values()) if (event.composedPath().includes(state.source)) { userChoseScript=true;return; }
@@ -21301,7 +21565,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       () => studioSDK.value(api => api.State.getUserInfo()?.userName, null),
       () => { try { return page.getWmeSdk?.({ scriptId: 'wme-studio', scriptName: 'WME Studio' })?.State?.getUserInfo?.()?.userName; } catch (_) { return null; } },
       () => { const box = document.querySelector('wz-user-box'); return box && (box.getAttribute('user-name') || box.getAttribute('username') || box.getAttribute('name') || box.querySelector('[slot="label"], [slot="name"]')?.textContent || box.shadowRoot?.querySelector('.user-name, .username, [class*="userName"], [class*="user-name"]')?.textContent); },
-      () => document.querySelector('#user-info .user-name, .user-info .user-name, [class*="userName--"], [class*="username--"]')?.textContent
+      // Never the reporter's Username line in a request window (4.0.2), which has the same class names.
+      () => [...document.querySelectorAll('#user-info .user-name, .user-info .user-name, [class*="userName--"], [class*="username--"]')].find(node => !node.closest('.problem-edit, [id^="ISSUE_WINDOW"], [data-testid="floating-window"]'))?.textContent
     ];
     for (const attempt of tries) {
       let name = '';
@@ -21313,10 +21578,29 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '4.0.1-2026-10-26z81';
+  const STUDIO_BUILD = '4.0.2-2026-10-27z96';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
     // quiet (4.0.1): no card of its own; the 4.0 welcome lists it under "Also in this update", and the changelog keeps it.
+    { version: '4.0.2', quiet: true, groups: [
+      { title: 'Fixes', items: [
+        "Requests show when they were reported again, date and time, under the request number.",
+        "A long description shows in full again, instead of in a small box with a scrollbar of its own.",
+        "A request closed as solved shows its status in green.",
+        "The reporter's messages in the discussion carry their Waze username instead of “Reporter”, when Waze knows who reported.",
+        "A request window you make taller moves up once it reaches the bottom of the screen, so a long description fits without scrolling."
+      ] },
+      { title: 'Update requests', items: [
+        "Other editors' messages in a request have their own color, so you can tell them from yours.",
+        "Names in the discussion are in your accent color and easier to read. An editor's name opens their editor profile in a new tab, and the reporter's name opens theirs.",
+        "The reporter's description folds to one line with the arrow at its top right, so a small screen has more room for the discussion. Studio remembers your choice.",
+        "With URCE installed, Studio leaves replies, reminders and closing to it and only styles the request window. The Quick replies tab opens URCE's comments instead. You can change this in Settings › Panels. Source: URCE (URComments-Enhanced) by dBsooner, based on rickzabel's URComments."
+      ] },
+      { title: 'Report a bug', items: [
+        "My reports shows the screenshots and the video you attached to each report.",
+        "My reports shows everything you wrote in a report, not only its first 200 characters."
+      ] }
+    ] },
     { version: '4.0.1', quiet: true, groups: [
       { title: 'Fixes', items: [
         "A closed request no longer says it's waiting for an answer: the case file shows it as closed, without Close with a note and Remind once.",
@@ -21825,7 +22109,14 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     // Keep editor-wide wheel shortcuts out of the settings dialog without blocking native scrolling.
     host.addEventListener('wheel', event => event.stopPropagation(), { passive: true });
     queueMicrotask(() => globalThis.WMEStudioI18n?.localize(shadow));
-    shadow.innerHTML = studioPart('part26206', { USERSCRIPT_VERSION, layoutThumb, studioButtonMotionCSS, studioControlsCSS, studioIcon, studioRangeCSS, studioStripCSS });
+    // The URCE row (4.0.2) goes in from here, so the Interface library stays as it is.
+    shadow.innerHTML = studioPart('part26206', { USERSCRIPT_VERSION, layoutThumb, studioButtonMotionCSS, studioControlsCSS, studioIcon, studioRangeCSS, studioStripCSS })
+      .replace('<span class="value" data-id="requestQuietDays-value">7</span></div>', '<span class="value" data-id="requestQuietDays-value">7</span></div>'
+        + '<label class="srow togrow" data-row="urceHandoff"><span class="srow-text"><strong>Leave replies and reminders to URCE</strong>'
+        + '<span class="small">When URComments-Enhanced is installed, its comments, reminders and closing do that work, and Studio only styles the request window. Off: Studio\'s quick replies, follow-ups and closing suggestions stay too.</span>'
+        + '<span class="small"><span>Source: URCE (URComments-Enhanced) by dBsooner, based on rickzabel\'s URComments.</span> <a href="https://greasyfork.org/scripts/375430" target="_blank" rel="noopener noreferrer">Greasy Fork</a></span>'
+        + '<span class="small" data-id="urceHandoff-missing" hidden>URCE isn\'t installed in this editor.</span></span>'
+        + '<span class="switch"><input data-id="urceHandoff" type="checkbox"><i></i></span></label>');
     (document.documentElement || document).appendChild(host);
 
     const q = sel => shadow.querySelector(sel);
@@ -22303,7 +22594,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
       if (currentRead) globalThis.WMEStudioI18n.setLanguage(current.language);
       paintShortcut();
-      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).checked = current[key];
+      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).checked = current[key];
       q('[data-id="screenDisplays-missing"]').hidden = !current.screenDisplays || !!globalThis.WMEStudioScreenDisplays;
       q('[data-row="zoomScaleAlways"]').hidden = !current.showZoomLevel;
       paintSchedule();
@@ -22341,7 +22632,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       q('[data-id="discussionVisible-value"]').textContent = String(current.discussionVisible);
       q('[data-id="requestQuietDays"]').value = current.requestQuietDays;
       q('[data-id="requestQuietDays-value"]').textContent = String(current.requestQuietDays);
-      q('[data-id="requestQuietDays"]').disabled = !current.requestCaseFile;
+      q('[data-id="requestQuietDays"]').disabled = !current.requestCaseFile || (current.urceHandoff !== false && !!globalThis.WMEStudioURCE?.installed());
+      q('[data-id="urceHandoff-missing"]').hidden = !!globalThis.WMEStudioURCE?.installed();
       qa('input[type="range"]').forEach(input => {
         const min = Number(input.min) || 0, max = Number(input.max) || 100, value = Number(input.value) || 0;
         input.style.setProperty('--range-fill', `${Math.max(0, Math.min(100, (value - min) * 100 / Math.max(1, max - min)))}%`);
@@ -22735,7 +23027,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     // An island color picked from the quick colors brings a matching accent with it (3.0.0), as an idea of what goes together.
     qa('[data-setting]').forEach(button => button.addEventListener('click', () => change({ ...settingPatch(button.dataset.setting, button.dataset.value), ...(button.dataset.accent ? { accent: button.dataset.accent } : {}) }, true)));
     qa('[data-island-gradient]').forEach(button => button.addEventListener('click', () => { const [islandColor, islandColor2] = button.dataset.islandGradient.split(','); change({ islandFill: 'gradient', islandColor, islandColor2, ...(button.dataset.accent ? { accent: button.dataset.accent } : {}) }, true); }));
-    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
+    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
     qa('[data-time]').forEach(input => input.addEventListener('change', () => { if (/^\d\d:\d\d$/.test(input.value)) change({ [input.dataset.time]: input.value }); else paintSchedule(); }));
     setInterval(() => { if (studioPanelOpen) paintSchedule(); }, 30000);
     qa('input[name="workspace-mode"]').forEach(input => input.addEventListener('change', e => {
@@ -23371,8 +23663,16 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           const kind = document.createElement('span'); kind.className = 'mine-kind'; kind.dataset.k = report.category === 'feature' ? 'idea' : 'bug';
           kind.textContent = report.category === 'feature' ? translate('Idea') : translate(CATEGORY_LABELS[report.category] || 'Bug');
           top.append(state, kind, when);
-          const summary = document.createElement('div'); summary.className = 'mine-sum'; summary.setAttribute('data-ws-keep', ''); summary.textContent = report.summary || `${translate('Report')} #${report.id}`;
+          // What you wrote in full (4.0.2), from a Worker that sends it; the summary stops at 200 characters.
+          const summary = document.createElement('div'); summary.className = 'mine-sum'; summary.setAttribute('data-ws-keep', ''); summary.style.whiteSpace = 'pre-line'; summary.style.overflowWrap = 'anywhere';
+          summary.textContent = String(report.text || report.summary || `${translate('Report')} #${report.id}`);
           item.append(top, summary);
+          if (report.more) {
+            const more = document.createElement('div'); more.className = 'mine-note'; more.style.fontStyle = 'normal'; more.style.whiteSpace = 'pre-line'; more.style.overflowWrap = 'anywhere';
+            const label = document.createElement('b'); label.textContent = translate(report.category === 'feature' ? 'How would it help?' : 'Steps to see it again'); if (String(report.more).includes('\n')) label.style.display = 'block';
+            const words = document.createElement('span'); words.setAttribute('data-ws-keep', ''); words.textContent = String(report.more).includes('\n') ? String(report.more) : ` ${String(report.more)}`;
+            more.append(label, words); item.append(more);
+          }
           const noteText = report.status === 'fixed' ? report.fixed_note : report.status === 'working' ? report.working_note : report.status === 'rejected' ? report.rejected_note : '';
           if (noteText) { const note = document.createElement('div'); note.className = 'mine-note'; note.setAttribute('data-ws-keep', ''); note.textContent = noteText.slice(0, 500); item.append(note); }
           item.dataset.report = String(report.id);
@@ -23387,6 +23687,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
             }
             item.append(thread);
           }
+          const attached = mineAttachments(report, user);
+          if (attached) item.append(attached);
           if (report.can_reply) item.append(mineReply(report, messages.length > 0));
           list.append(item);
         }
@@ -23405,6 +23707,96 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     q('[data-id="reports-reload"]').addEventListener('click', () => loadMyReports());
     q('[data-id="reports-new-bug"]').addEventListener('click', () => openBugDialog('bug'));
     q('[data-id="reports-new-idea"]').addEventListener('click', () => openBugDialog('feature'));
+    // What was attached to a report (4.0.2): its screenshots and video, behind a chip so nothing loads until asked.
+    // They come with the reporter key, like the rest of My reports, and stay for the visit once loaded.
+    const mineMediaCache = new Map();
+    // Pictures come back as data: addresses (the editor's page lets those show everywhere); a video as a blob: one.
+    const asDataUrl = blob => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || '')); reader.onerror = () => reject(reader.error || new Error('read')); reader.readAsDataURL(blob); });
+    function bugBlob(path, asData = false) {
+      if (mineMediaCache.has(path)) return mineMediaCache.get(path);
+      const job = Promise.resolve(studioReporterKey()).then(key => new Promise((resolve, reject) => {
+        const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`, headers = key ? { 'X-Reporter-Token': key } : {};
+        const failed = status => reject(new Error(status ? `${translate('The server answered')} ${status}` : translate('Could not reach the server')));
+        if (typeof GM_xmlhttpRequest === 'function') {
+          GM_xmlhttpRequest({ method: 'GET', url, headers, responseType: 'arraybuffer', timeout: 60000, anonymous: true,
+            onload: response => {
+              if (response.status < 200 || response.status >= 300 || !response.response) { failed(response.status); return; }
+              const type = /content-type:\s*([^\r\n;]+)/i.exec(response.responseHeaders || '')?.[1]?.trim() || '';
+              const blob = new Blob([response.response], { type });
+              if (asData) asDataUrl(blob).then(resolve, reject); else resolve(URL.createObjectURL(blob));
+            },
+            onerror: () => failed(0), ontimeout: () => reject(new Error(translate('The server took too long'))) });
+        } else {
+          fetch(url, { headers, mode: 'cors' }).then(async response => { if (!response.ok) { failed(response.status); return; } const blob = await response.blob(); resolve(asData ? await asDataUrl(blob) : URL.createObjectURL(blob)); }).catch(() => failed(0));
+        }
+      }));
+      mineMediaCache.set(path, job);
+      job.catch(() => mineMediaCache.delete(path));
+      return job;
+    }
+    const MINE_MEDIA_CSS = `.mine-media{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.mine-media-chip{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;height:26px;margin:0;padding:0 10px;border:1px solid var(--line);border-radius:13px;background:transparent;color:var(--text);font:inherit;font-size:12px;font-weight:600;line-height:1;cursor:pointer}
+.mine-media-chip svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.mine-media-chip:hover{background:var(--surface2)}.mine-media-chip[aria-expanded="true"]{border-color:var(--accent)}
+.mine-media-row{display:flex;flex-wrap:wrap;gap:8px}
+.mine-shot{position:relative;display:grid;place-items:center;width:96px;height:64px;margin:0;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:var(--muted);font:inherit;font-size:11px;line-height:1.2;cursor:zoom-in}
+.mine-shot img{display:block;width:100%;height:100%;object-fit:cover}.mine-shot.video{cursor:pointer}
+.mine-shot.video svg{width:26px;height:26px;fill:currentColor;stroke:none}
+.mine-light{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:28px;background:rgba(5,7,10,.78);cursor:zoom-out}
+.mine-light img,.mine-light video{max-width:100%;max-height:100%;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);cursor:default;background:#000}
+.mine-light-close{position:absolute;top:12px;right:12px;display:grid;place-items:center;width:36px;height:36px;margin:0;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:20px;line-height:1;cursor:pointer}`;
+    function mineLight(node) {
+      const root = mine.body.getRootNode();
+      const light = document.createElement('div'); light.className = 'mine-light'; light.setAttribute('role', 'dialog'); light.setAttribute('aria-modal', 'true');
+      const close = document.createElement('button'); close.type = 'button'; close.className = 'mine-light-close'; close.setAttribute('aria-label', translate('Close')); close.textContent = '×';
+      const done = () => { light.remove(); if (node.tagName === 'VIDEO') node.pause(); };
+      light.addEventListener('click', event => { if (event.target === light) done(); });
+      light.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); done(); } });
+      close.addEventListener('click', done);
+      light.append(node, close); (root.host ? root : document.body).append(light);
+      close.focus({ preventScroll: true });
+    }
+    function mineAttachments(report, user) {
+      const images = Array.isArray(report.media?.images) ? report.media.images.filter(n => Number.isInteger(n) && n >= 0).slice(0, 8) : [], video = !!report.media?.video;
+      if (!images.length && !video) return null;
+      const root = mine.body.getRootNode();
+      if (root && !root.querySelector?.('style[data-mine-media]')) { const style = document.createElement('style'); style.setAttribute('data-mine-media', ''); style.textContent = MINE_MEDIA_CSS; (root.host ? root : document.head).append(style); }
+      const box = document.createElement('div'); box.className = 'mine-media';
+      const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'mine-media-chip'; chip.setAttribute('aria-expanded', 'false');
+      const parts = [images.length === 1 ? translate('1 screenshot') : images.length ? translate('{0} screenshots').replace('{0}', String(images.length)) : '', video ? translate('Video') : ''].filter(Boolean);
+      chip.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.3 3.3 0 0 1 4.7 4.7L10.2 17a1.7 1.7 0 0 1-2.4-2.4L15.5 7"/></svg>';
+      // One text per part, so the panel's own translation finds each ("2 screenshots", "Video").
+      parts.forEach((part, index) => { if (index) chip.append(' · '); chip.append(Object.assign(document.createElement('span'), { textContent: part })); });
+      const row = document.createElement('div'); row.className = 'mine-media-row'; row.hidden = true;
+      const query = `?user=${encodeURIComponent(user || '')}`;
+      chip.addEventListener('click', () => {
+        const opening = row.hidden; row.hidden = !opening; chip.setAttribute('aria-expanded', String(opening));
+        if (!opening || row.childElementCount) return;
+        images.forEach((n, index) => {
+          const shot = document.createElement('button'); shot.type = 'button'; shot.className = 'mine-shot'; shot.textContent = translate('Loading…');
+          shot.setAttribute('aria-label', translate('Screenshot'));
+          bugBlob(`/api/mine/${report.id}/image/${n}${query}`, true).then(url => {
+            const img = document.createElement('img'); img.src = url; img.alt = ''; shot.replaceChildren(img);
+            shot.addEventListener('click', () => { const big = document.createElement('img'); big.src = url; big.alt = translate('Screenshot'); mineLight(big); });
+          }, () => { shot.textContent = translate('Could not load it'); shot.disabled = true; });
+          row.append(shot);
+        });
+        if (video) {
+          const play = document.createElement('button'); play.type = 'button'; play.className = 'mine-shot video'; play.setAttribute('aria-label', translate('Video'));
+          play.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+          play.addEventListener('click', () => {
+            play.disabled = true; play.textContent = translate('Loading…');
+            bugBlob(`/api/mine/${report.id}/video${query}`).then(url => {
+              play.disabled = false; play.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+              const player = document.createElement('video'); player.src = url; player.controls = true; player.autoplay = true; player.playsInline = true; mineLight(player);
+            }, () => { play.textContent = translate('Could not load it'); });
+          });
+          row.append(play);
+        }
+      });
+      box.append(chip, row);
+      return box;
+    }
     // Answering the author (2.2.1): a button that opens a box under the report.
     function mineReply(report, answered) {
       const box = document.createElement('div');
@@ -24022,7 +24414,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           setting('Presets','layout','preset-current','starting layout balanced left-handed review desk wide header'),setting('Header width','layout','compactHeaderWidth','floating header extend full page'),setting('HUD size','layout','hudScale','floating scale islands header'),
           setting('Accent colour','look','accent','color highlight custom'),setting('Island color','look','islandFill','islands background colour gradient custom contrast'),setting('Color intensity','look','islandIntensity','island colour gradient strength strong soft muted vivid blend'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','map','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','map','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
           setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Open the + menu on click','map','createMenuClick','plus add create hover click menu roads places'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),setting('Show the zoom level','map','showZoomLevel','zoom level number scale plus minus buttons'),
-          setting('Case file request window','panels','requestCaseFile','ur update request case conversation status waiting reply'),setting('Quiet days before closing','panels','requestQuietDays','ur request quiet days close reminder reporter'),setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Enable Screen displays','screens','screenDisplays','touch screen tablet tap select multiple segments places nodes several'),setting('Draw a road','screens','screenDrawButton','touch draw new road segment create add points snap junction finish'),setting('Shape a road','screens','screenShapeButton','touch shape geometry points vertex vertices move add delete junction node drag snap undo redo'),setting('Road between two segments','screens','screenRoadButton','touch select road path street between segments'),setting('Long-press for the right-click menu','screens','screenLongPress','touch hold press context menu right click'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
+          setting('Case file request window','panels','requestCaseFile','ur update request case conversation status waiting reply'),setting('Quiet days before closing','panels','requestQuietDays','ur request quiet days close reminder reporter'),setting('Leave replies and reminders to URCE','panels','urceHandoff','urce urcomments enhanced comments replies reminders close'),setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Enable Screen displays','screens','screenDisplays','touch screen tablet tap select multiple segments places nodes several'),setting('Draw a road','screens','screenDrawButton','touch draw new road segment create add points snap junction finish'),setting('Shape a road','screens','screenShapeButton','touch shape geometry points vertex vertices move add delete junction node drag snap undo redo'),setting('Road between two segments','screens','screenRoadButton','touch select road path street between segments'),setting('Long-press for the right-click menu','screens','screenLongPress','touch hold press context menu right click'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
           setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script developers','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
           {label:translate('Arrange layout'),category:'Workspace',keywords:'move position panels islands controls hide split custom island buttons',disabled:!prefs.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches,run:async()=>{await cfg.write({compactMode:true});globalThis.WMEStudioCompactLayout.open();}},
           ...[['Standard',false],['Floating',true]].map(([label,value])=>({label:translate(label),category:'Workspace',keywords:'workspace mode layout',disabled:!prefs.enabled,run:()=>cfg.write({compactMode:value})})),
