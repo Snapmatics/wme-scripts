@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.0.2
+// @version      4.0.3
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -396,7 +396,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.0.2';
+  const USERSCRIPT_VERSION = '4.0.3';
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -1115,7 +1115,7 @@ ${scope} #online-editors:has(.online-editors-list-wrapper) .online-editors-bubbl
   // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
   // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
   // report shows it instead of a layout that looks broken for no reason.
-  const RESOURCES_BUILD = '4.0.2-2026-10-27z60';
+  const RESOURCES_BUILD = '4.0.3-2026-10-27z1';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -6455,6 +6455,64 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     return 'updateRequest';
   }
   // Keep named requests available for cycling through the native single-request editor.
+  // URCE (4.0.2; up here since 4.0.3, because the saved requests and follow-ups ask about it while they load). Many editors answer requests with URComments-Enhanced: its comment lists (kept per country by the
+  // community), its reminder and its close days. With it installed, Studio leaves that work to it and only styles the
+  // request window: the Quick replies tab opens URCE's comments, follow-ups aren't kept, and the case strip doesn't
+  // suggest closing after Studio's own quiet days. Settings › Panels turns this off. Nothing of URCE's is changed.
+  let urceSeen = false, urceLooked = 0;
+  const URCE_TABS = '#sidebar :is(.userscripts-drawer-tabs,#user-tabs) > .nav-tabs a';
+  // WME names script tabs itself (#userscript-tab-32), and URCE's shows only an icon titled "URC-E", so its tab is the
+  // one whose page holds URCE's panel.
+  const isUrceTab = a => {
+    const href = a.getAttribute('href') || '', named = value => /^\s*URC-?E\s*$/i.test(value || '');
+    if (href === '#sidepanel-urc-e' || named(a.textContent) || named(a.title) || named(a.querySelector('[title]')?.getAttribute('title'))) return true;
+    try { return href.startsWith('#') && !!document.getElementById(href.slice(1))?.querySelector('#sidepanel-urc-e'); } catch (_) { return false; }
+  };
+  function urceInstalled() {
+    if (urceSeen) return true;
+    const now = Date.now();
+    if (now - urceLooked < 1500) return false;
+    urceLooked = now;
+    try { urceSeen = !!(document.getElementById('sidepanel-urc-e') || document.getElementById('urceDiv') || [...document.querySelectorAll(URCE_TABS)].some(isUrceTab)); }
+    catch (_) { urceSeen = false; }
+    // Found after the windows were drawn (scripts start in any order): the parts that step back are told.
+    if (urceSeen) setTimeout(() => { try { document.dispatchEvent(new CustomEvent('wme-studio-urce')); } catch (_) { /* nothing listens */ } }, 0);
+    return urceSeen;
+  }
+  function urceLeads() { return !!settings.enabled && settings.urceHandoff !== false && urceInstalled(); }
+  globalThis.WMEStudioURCE = Object.freeze({ installed: urceInstalled, leads: urceLeads });   // for Settings, built in a scope of its own
+  // URCE's tab, in WME's Scripts section. A script's tab is only switched while that section is on screen (switched
+  // from another section, its page showed up inside that one), so the section is opened first.
+  function openUrce() {
+    try {
+      const tab = [...document.querySelectorAll(URCE_TABS)].find(isUrceTab);
+      if (!tab) return false;
+      globalThis.WMEStudioScriptChosen?.();
+      // Studio's script bar hides WME's own row of tabs, so the Scripts section counts as open when the box around the
+      // tabs is drawn, not the tabs themselves.
+      const box = tab.closest('#user-tabs,.userscripts-drawer-tabs') || tab.parentElement;
+      const onScreen = () => !!document.querySelector('.app.show-sidebar') && !!box?.getClientRects().length && !!box.offsetParent;
+      if (!onScreen()) {
+        const ids = new Set();
+        for (let node = box; node && node !== document.body; node = node.parentElement) if (node.id) ids.add(node.id);
+        const items = [...(document.getElementById('drawer')?.querySelectorAll('wz-navigation-item') || [])];
+        const points = item => ['data-for', 'aria-controls', 'data-panel', 'data-target', 'href'].map(name => String(item.getAttribute(name) || '').replace(/^#/, '')).some(id => id && ids.has(id));
+        const words = item => [item.getAttribute('data-for'), item.id, item.getAttribute('label'), item.getAttribute('aria-label'), item.getAttribute('title'), item.textContent, item.querySelector?.('[class*="w-icon-"]')?.className].join(' ');
+        const scripts = items.find(item => item.getAttribute('data-for') === 'userscript_tab') || items.find(points) || items.find(item => /script/i.test(words(item)));
+        if (!scripts) { console.info('[WME Studio] URCE: no Scripts button found', items.map(item => item.getAttribute('data-for') || item.textContent.trim()), [...ids]); return false; }
+        // The button inside it is what WME listens to; a click on the item itself does nothing.
+        (scripts.shadowRoot?.querySelector('button.navigation-button, button') || scripts).click();
+      }
+      let tries = 0, clicks = 0;
+      const shown = () => !!document.getElementById('sidepanel-urc-e')?.getClientRects().length;
+      // Clicked again if something else took the section's place (up to three times).
+      const press = () => { tab.click(); if (++clicks < 3) setTimeout(() => { if (!shown()) press(); }, 350); };
+      const go = () => { if (onScreen()) { press(); return; } if (++tries < 30) setTimeout(go, 50); else { console.info('[WME Studio] URCE: the Scripts section did not open'); press(); } };
+      requestAnimationFrame(go);
+      return true;
+    } catch (studioError) { reportStudioError('openUrce', studioError); return false; }
+  }
+
   const requestMinimizer = (() => {
     // 3.1.0: minimized requests wait behind a button in the header instead of pills at the bottom of the map. Each
     // one has a name, a color, an icon and an optional tag; the header menu groups them by tag. They are kept
@@ -8651,64 +8709,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     const env = new URLSearchParams(location.search).get('env') || 'row';
     const place = where && Number.isFinite(where.lat) && Number.isFinite(where.lon) ? `&lat=${round(where.lat)}&lon=${round(where.lon)}&zoomLevel=17` : '';
     return `${location.origin}/editor?env=${encodeURIComponent(env)}${place}&mapUpdateRequest=${encodeURIComponent(id)}`;
-  }
-
-  // URCE (4.0.2). Many editors answer requests with URComments-Enhanced: its comment lists (kept per country by the
-  // community), its reminder and its close days. With it installed, Studio leaves that work to it and only styles the
-  // request window: the Quick replies tab opens URCE's comments, follow-ups aren't kept, and the case strip doesn't
-  // suggest closing after Studio's own quiet days. Settings › Panels turns this off. Nothing of URCE's is changed.
-  let urceSeen = false, urceLooked = 0;
-  const URCE_TABS = '#sidebar :is(.userscripts-drawer-tabs,#user-tabs) > .nav-tabs a';
-  // WME names script tabs itself (#userscript-tab-32), and URCE's shows only an icon titled "URC-E", so its tab is the
-  // one whose page holds URCE's panel.
-  const isUrceTab = a => {
-    const href = a.getAttribute('href') || '', named = value => /^\s*URC-?E\s*$/i.test(value || '');
-    if (href === '#sidepanel-urc-e' || named(a.textContent) || named(a.title) || named(a.querySelector('[title]')?.getAttribute('title'))) return true;
-    try { return href.startsWith('#') && !!document.getElementById(href.slice(1))?.querySelector('#sidepanel-urc-e'); } catch (_) { return false; }
-  };
-  function urceInstalled() {
-    if (urceSeen) return true;
-    const now = Date.now();
-    if (now - urceLooked < 1500) return false;
-    urceLooked = now;
-    try { urceSeen = !!(document.getElementById('sidepanel-urc-e') || document.getElementById('urceDiv') || [...document.querySelectorAll(URCE_TABS)].some(isUrceTab)); }
-    catch (_) { urceSeen = false; }
-    // Found after the windows were drawn (scripts start in any order): the parts that step back are told.
-    if (urceSeen) setTimeout(() => { try { document.dispatchEvent(new CustomEvent('wme-studio-urce')); } catch (_) { /* nothing listens */ } }, 0);
-    return urceSeen;
-  }
-  function urceLeads() { return !!settings.enabled && settings.urceHandoff !== false && urceInstalled(); }
-  globalThis.WMEStudioURCE = Object.freeze({ installed: urceInstalled, leads: urceLeads });   // for Settings, built in a scope of its own
-  // URCE's tab, in WME's Scripts section. A script's tab is only switched while that section is on screen (switched
-  // from another section, its page showed up inside that one), so the section is opened first.
-  function openUrce() {
-    try {
-      const tab = [...document.querySelectorAll(URCE_TABS)].find(isUrceTab);
-      if (!tab) return false;
-      globalThis.WMEStudioScriptChosen?.();
-      // Studio's script bar hides WME's own row of tabs, so the Scripts section counts as open when the box around the
-      // tabs is drawn, not the tabs themselves.
-      const box = tab.closest('#user-tabs,.userscripts-drawer-tabs') || tab.parentElement;
-      const onScreen = () => !!document.querySelector('.app.show-sidebar') && !!box?.getClientRects().length && !!box.offsetParent;
-      if (!onScreen()) {
-        const ids = new Set();
-        for (let node = box; node && node !== document.body; node = node.parentElement) if (node.id) ids.add(node.id);
-        const items = [...(document.getElementById('drawer')?.querySelectorAll('wz-navigation-item') || [])];
-        const points = item => ['data-for', 'aria-controls', 'data-panel', 'data-target', 'href'].map(name => String(item.getAttribute(name) || '').replace(/^#/, '')).some(id => id && ids.has(id));
-        const words = item => [item.getAttribute('data-for'), item.id, item.getAttribute('label'), item.getAttribute('aria-label'), item.getAttribute('title'), item.textContent, item.querySelector?.('[class*="w-icon-"]')?.className].join(' ');
-        const scripts = items.find(item => item.getAttribute('data-for') === 'userscript_tab') || items.find(points) || items.find(item => /script/i.test(words(item)));
-        if (!scripts) { console.info('[WME Studio] URCE: no Scripts button found', items.map(item => item.getAttribute('data-for') || item.textContent.trim()), [...ids]); return false; }
-        // The button inside it is what WME listens to; a click on the item itself does nothing.
-        (scripts.shadowRoot?.querySelector('button.navigation-button, button') || scripts).click();
-      }
-      let tries = 0, clicks = 0;
-      const shown = () => !!document.getElementById('sidepanel-urc-e')?.getClientRects().length;
-      // Clicked again if something else took the section's place (up to three times).
-      const press = () => { tab.click(); if (++clicks < 3) setTimeout(() => { if (!shown()) press(); }, 350); };
-      const go = () => { if (onScreen()) { press(); return; } if (++tries < 30) setTimeout(go, 50); else { console.info('[WME Studio] URCE: the Scripts section did not open'); press(); } };
-      requestAnimationFrame(go);
-      return true;
-    } catch (studioError) { reportStudioError('openUrce', studioError); return false; }
   }
 
   // Quick replies (3.1.0): a tab on the outside edge of an update request window. It opens ready replies: a few in the
@@ -21578,10 +21578,18 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '4.0.2-2026-10-27z96';
+  const STUDIO_BUILD = '4.0.3-2026-10-27z1';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
     // quiet (4.0.1): no card of its own; the 4.0 welcome lists it under "Also in this update", and the changelog keeps it.
+    { version: '4.0.3', quiet: true, groups: [
+      { title: 'Fixes', items: [
+        "Your saved requests and follow-ups load again when the editor opens."
+      ] },
+      { title: 'Discord', items: [
+        "Verify on Discord: press Verify in #verify on the WME Studio Discord, then type the code in Settings › Report a bug. The server then knows you edit the map and opens up for you."
+      ] },
+    ] },
     { version: '4.0.2', quiet: true, groups: [
       { title: 'Fixes', items: [
         "Requests show when they were reported again, date and time, under the request number.",
@@ -22116,7 +22124,17 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         + '<span class="small">When URComments-Enhanced is installed, its comments, reminders and closing do that work, and Studio only styles the request window. Off: Studio\'s quick replies, follow-ups and closing suggestions stay too.</span>'
         + '<span class="small"><span>Source: URCE (URComments-Enhanced) by dBsooner, based on rickzabel\'s URComments.</span> <a href="https://greasyfork.org/scripts/375430" target="_blank" rel="noopener noreferrer">Greasy Fork</a></span>'
         + '<span class="small" data-id="urceHandoff-missing" hidden>URCE isn\'t installed in this editor.</span></span>'
-        + '<span class="switch"><input data-id="urceHandoff" type="checkbox"><i></i></span></label>');
+        + '<span class="switch"><input data-id="urceHandoff" type="checkbox"><i></i></span></label>')
+      // Verify on Discord (4.0.3): the code from #verify, under "Studio on Discord".
+      .replace('<div class="srow" data-row="bugFixes" hidden>', '<div class="srow" data-row="discordVerify"><div class="srow-text"><strong>Verify on Discord</strong>'
+        + '<span class="small">Press Verify in #verify on the WME Studio Discord and type the code here. Studio sends your WME name, rank and user id, so the server knows you edit the map.</span>'
+        + '<span class="small ws-verify-say" data-id="verify-status" data-ws-keep hidden></span></div>'
+        + '<div class="actions"><input class="ws-verify-code" data-id="verify-code" type="text" maxlength="9" placeholder="Code" aria-label="Code from Discord" autocomplete="off" autocapitalize="characters" spellcheck="false">'
+        + '<button class="reset primary" data-id="verify-send" type="button">Verify</button></div></div>'
+        + '<style>.ws-verify-code{width:112px;height:34px;margin:0;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:color-mix(in srgb,var(--text) 9%,transparent)!important;color:var(--text);font:600 13px/32px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.14em;text-align:center;text-transform:uppercase;box-sizing:border-box;outline:none}'
+        + '.ws-verify-code::placeholder{color:var(--muted)!important;opacity:1;letter-spacing:normal;text-transform:none;font-family:inherit;font-weight:500}.ws-verify-code:focus-visible{border-color:var(--accent)}'
+        + '.ws-verify-say{margin-top:4px;font-weight:600}.ws-verify-say[data-tone="ok"]{color:#3ddc97}.ws-verify-say[data-tone="error"]{color:#ff6b6b}</style>'
+        + '<div class="srow" data-row="bugFixes" hidden>');
     (document.documentElement || document).appendChild(host);
 
     const q = sel => shadow.querySelector(sel);
@@ -23124,6 +23142,53 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     q('[data-id="home-discord"]')?.addEventListener('click', openDiscord);
     document.addEventListener('wme-studio-discord', showDiscord);
     showDiscord();
+    // Verify on Discord (4.0.3): the code from #verify goes to my Worker with who you are in the editor (your WME name,
+    // rank and user id, from the signed-in editor itself), and the Discord bot gives you the roles.
+    {
+      const field = q('[data-id="verify-code"]'), send = q('[data-id="verify-send"]'), status = q('[data-id="verify-status"]');
+      const vt = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? text; } catch (_) { return text; } };
+      const tell = (text, tone = '') => { status.hidden = !text; status.textContent = text; status.dataset.tone = tone; };
+      const PROBLEMS = {
+        'bad-code': 'That isn’t a code from the Discord. It has 6 letters and numbers.',
+        'unknown-code': 'That code doesn’t exist or was already used. Press Verify in the Discord for a new one.',
+        'expired-code': 'That code ran out. Press Verify in the Discord for a new one.',
+        'slow-down': 'Too many tries. Wait a few minutes and get a new code.',
+        'no-editor': 'Sign in to the editor first, then try again.'
+      };
+      const me = () => {
+        try {
+          const user = (typeof unsafeWindow === 'undefined' ? window : unsafeWindow).W?.loginManager?.user, a = user?.attributes || {};
+          const id = Number(a.id ?? user?.getID?.()), name = String(a.userName ?? user?.getUsername?.() ?? '').trim(), rank = Number(a.rank ?? user?.getRank?.());
+          if (!Number.isSafeInteger(id) || id <= 0 || !name || !Number.isFinite(rank)) return null;
+          return { id, name, rank: rank + 1, editor: a.isEditor !== false && !a.mapEditingBanned };   // WME counts ranks from 0
+        } catch (_) { return null; }
+      };
+      let sending = false;
+      const verify = () => {
+        if (sending) return;
+        const code = field.value.toUpperCase().replace(/[\s-]+/g, '');
+        if (!code) { tell(vt('Type the code from the Discord first.'), 'error'); field.focus(); return; }
+        const who = me();
+        if (!who) { tell(vt(PROBLEMS['no-editor']), 'error'); return; }
+        if (!who.editor) { tell(vt('Your Waze account can’t edit the map yet, so it can’t be verified.'), 'error'); return; }
+        sending = true; send.disabled = true; tell(vt('Checking…'));
+        const done = (status, text) => {
+          sending = false; send.disabled = false;
+          let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+          if (status >= 200 && status < 300 && data?.ok) { field.value = ''; tell(vt('Done! You’re verified on Discord as {0} (L{1}). The roles come in a few seconds.', data.wme_name || who.name, Math.min(6, who.rank)), 'ok'); return; }
+          if (data?.code === 'taken') { tell(vt('{0} is already linked to another Discord account. Ask a moderator if that isn’t you.', who.name), 'error'); return; }
+          tell(PROBLEMS[data?.code] ? vt(PROBLEMS[data.code]) : vt(status ? 'The server answered' : 'Could not reach the server') + (status ? ` ${status}` : ''), 'error');
+        };
+        try {
+          GM_xmlhttpRequest({ method: 'POST', url: `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/verify`, anonymous: true, timeout: 20000,
+            headers: { 'Content-Type': 'application/json' }, data: JSON.stringify({ code, wme_id: who.id, wme_name: who.name, rank: who.rank }),
+            onload: response => done(response.status, response.responseText || ''), onerror: () => done(0, ''), ontimeout: () => done(0, '') });
+        } catch (_) { done(0, ''); }
+      };
+      send?.addEventListener('click', verify);
+      field?.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); verify(); } });
+      field?.addEventListener('input', () => { if (status.dataset.tone === 'error') tell(''); });
+    }
     // ---- Report a bug: the dialog ------------------------------------------------------------------------------
     const bug = {
       backdrop: q('[data-id="bug-backdrop"]'), form: q('[data-id="bug-dialog"]'), what: q('[data-id="bug-what"]'), steps: q('[data-id="bug-steps"]'),
@@ -24410,7 +24475,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         const page = (label,target,keywords,section)=>({label:translate(label),category:'Settings',keywords,run:()=>openStudioUI(target,section)});
         const sections = {home:'Home',layout:'Layout',look:'Appearance',map:'Map',panels:'Panels',screens:'Touch & iPad',studio:'General',bug:'Report a bug',developers:'Developers'};
         const setting = (label,target,section,keywords)=>({label:translate(label),category:sections[target],keywords,run:()=>openStudioUI(target,section)});
-        commands = [page('Open settings','home','settings options preferences'),page('Saved workspaces','layout','profiles presets layouts save','workspace-profiles'),page('Backup & restore','studio','import export backup restore','backup-tools'),page('Report a bug','bug','bug report issue problem feedback support help','bugReport'),...(globalThis.WMEStudioDiscord?.invite ? [{label:translate('Join the Discord'),category:'Studio',keywords:'discord chat community server help questions',run:()=>window.open(globalThis.WMEStudioDiscord.invite,'_blank','noopener')}] : []),
+        commands = [page('Open settings','home','settings options preferences'),page('Saved workspaces','layout','profiles presets layouts save','workspace-profiles'),page('Backup & restore','studio','import export backup restore','backup-tools'),page('Report a bug','bug','bug report issue problem feedback support help','bugReport'),page('Verify on Discord','bug','discord verify verification code editor roles rank','discordVerify'),...(globalThis.WMEStudioDiscord?.invite ? [{label:translate('Join the Discord'),category:'Studio',keywords:'discord chat community server help questions',run:()=>window.open(globalThis.WMEStudioDiscord.invite,'_blank','noopener')}] : []),
           setting('Presets','layout','preset-current','starting layout balanced left-handed review desk wide header'),setting('Header width','layout','compactHeaderWidth','floating header extend full page'),setting('HUD size','layout','hudScale','floating scale islands header'),
           setting('Accent colour','look','accent','color highlight custom'),setting('Island color','look','islandFill','islands background colour gradient custom contrast'),setting('Color intensity','look','islandIntensity','island colour gradient strength strong soft muted vivid blend'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','map','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','map','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
           setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Open the + menu on click','map','createMenuClick','plus add create hover click menu roads places'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),setting('Show the zoom level','map','showZoomLevel','zoom level number scale plus minus buttons'),
