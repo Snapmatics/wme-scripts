@@ -1115,7 +1115,7 @@ ${scope} #online-editors:has(.online-editors-list-wrapper) .online-editors-bubbl
   // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
   // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
   // report shows it instead of a layout that looks broken for no reason.
-  const RESOURCES_BUILD = '4.0.3-2026-10-27z1';
+  const RESOURCES_BUILD = '4.0.3-2026-10-27z2';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -21578,13 +21578,14 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '4.0.3-2026-10-27z1';
+  const STUDIO_BUILD = '4.0.3-2026-10-27z2';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
     // quiet (4.0.1): no card of its own; the 4.0 welcome lists it under "Also in this update", and the changelog keeps it.
     { version: '4.0.3', quiet: true, groups: [
       { title: 'Fixes', items: [
-        "Your saved requests and follow-ups load again when the editor opens."
+        "Your saved requests and follow-ups load again when the editor opens.",
+        "A screenshot or video you open in My reports closes again, with ×, a click beside it or Esc."
       ] },
       { title: 'Discord', items: [
         "Verify on Discord: press Verify in #verify on the WME Studio Discord, then type the code in Settings › Report a bug. The server then knows you edit the map and opens up for you."
@@ -23807,16 +23808,18 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
 .mine-shot{position:relative;display:grid;place-items:center;width:96px;height:64px;margin:0;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:var(--muted);font:inherit;font-size:11px;line-height:1.2;cursor:zoom-in}
 .mine-shot img{display:block;width:100%;height:100%;object-fit:cover}.mine-shot.video{cursor:pointer}
 .mine-shot.video svg{width:26px;height:26px;fill:currentColor;stroke:none}
-.mine-light{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:28px;background:rgba(5,7,10,.78);cursor:zoom-out}
+.mine-light{position:fixed;inset:0;z-index:2147483000;pointer-events:auto;display:flex;align-items:center;justify-content:center;padding:28px;background:rgba(5,7,10,.78);cursor:zoom-out}
 .mine-light img,.mine-light video{max-width:100%;max-height:100%;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);cursor:default;background:#000}
 .mine-light-close{position:absolute;top:12px;right:12px;display:grid;place-items:center;width:36px;height:36px;margin:0;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:20px;line-height:1;cursor:pointer}`;
     function mineLight(node) {
       const root = mine.body.getRootNode();
       const light = document.createElement('div'); light.className = 'mine-light'; light.setAttribute('role', 'dialog'); light.setAttribute('aria-modal', 'true');
       const close = document.createElement('button'); close.type = 'button'; close.className = 'mine-light-close'; close.setAttribute('aria-label', translate('Close')); close.textContent = '×';
-      const done = () => { light.remove(); if (node.tagName === 'VIDEO') node.pause(); };
+      // Esc closes the picture first, not Settings (caught before the panel's own Esc does).
+      const escape = event => { if (event.key !== 'Escape' || !light.isConnected) return; event.preventDefault(); event.stopImmediatePropagation(); done(); };
+      const done = () => { light.remove(); window.removeEventListener('keydown', escape, true); if (node.tagName === 'VIDEO') node.pause(); };
+      window.addEventListener('keydown', escape, true);
       light.addEventListener('click', event => { if (event.target === light) done(); });
-      light.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); done(); } });
       close.addEventListener('click', done);
       light.append(node, close); (root.host ? root : document.body).append(light);
       close.focus({ preventScroll: true });
