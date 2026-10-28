@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.2.0
+// @version      4.2.1
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -75,7 +75,7 @@ function wmeStudioBridgeNote(text, bad) {
   } catch (_) {   }
 }
 
-const WME_STUDIO_WANTED = { resources: '4.1.1-2026-10-28z9', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.2.0-2026-10-28z3', cloudSync: '4.1.0-2026-10-28' };
+const WME_STUDIO_WANTED = { resources: '4.1.1-2026-10-28z9', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.2.1-2026-10-28z2', cloudSync: '4.1.0-2026-10-28' };
 const WME_STUDIO_LIBRARIES = [
   { key: 'resources', name: 'Resources', code: 'WMEStudioResourcesCode', mark: /\bresources\.build = '([^'\n]{1,60})'/, url: 'https://update.greasyfork.org/scripts/600831/WME%20Studio%20Resources.js' },
   { key: 'screenDisplays', name: 'Screen displays', code: 'WMEStudioScreenDisplaysCode', mark: /\bconst BUILD = '([^'\n]{1,60})'/, url: 'https://update.greasyfork.org/scripts/601144/WME%20Studio%20Screen%20Displays.js' },
@@ -370,7 +370,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.2.0';
+  const USERSCRIPT_VERSION = '4.2.1';
   const STUDIO_VERIFY_LINK = (() => {
     const KEY = 'wmeStudio.verifyLink';
     try {
@@ -588,7 +588,7 @@ const wmeStudioMain = () => {
     const attribute = 'data-wme-studio-safari-context';
     const selectors = new Map(), compiled = new Map(), hosts = new Map(), ancestors = new Map();
     const dirty = new Map(), documents = new Map(), attributes = new Set(['class','id','slot']);
-    let frame = 0, rebuild = false;
+    let frame = 0, rebuild = false, stale = 0, staleTimer = 0, filter = null;
     const parent = node => node.assignedSlot || node.parentElement || node.getRootNode?.().host;
     const chain = host => {
       const nodes = [];
@@ -621,7 +621,7 @@ const wmeStudioMain = () => {
           context = {selector,token:`s${selectors.size}`,rootOnly:/^html(?:\[[^\]]+\]|:not\(\[[^\]]+\]\))*$/.test(selector)};
           selectors.set(selector,context);
           for (const match of selector.matchAll(/\[([\w-]+)/g)) {
-            if (!attributes.has(match[1])) { attributes.add(match[1]); rebuild = true; }
+            if (!attributes.has(match[1])) { attributes.add(match[1]); filter = null; rebuild = true; }
           }
         }
         contexts.add(context);
@@ -631,16 +631,22 @@ const wmeStudioMain = () => {
       parts.push(text.slice(from));
       const result = {css:viewportCSS(parts.join('')),contexts}; compiled.set(text,result); return result;
     }
-    const observe = node => observer.observe(node,{attributes:true,attributeFilter:[...attributes],childList:true});
+    const observe = node => observer.observe(node,{attributes:true,attributeFilter:filter || (filter = [...attributes]),childList:true});
     function refreshObservers() {
       if (!rebuild) return;
-      rebuild = false; observer.disconnect();
+      rebuild = false; stale = 0; if (staleTimer) { clearTimeout(staleTimer); staleTimer = 0; }
+      observer.disconnect();
       for (const node of ancestors.keys()) observe(node);
+    }
+    function dropStale() {
+      if (!stale) return;
+      if (stale > ancestors.size) { rebuild = true; refreshObservers(); return; }
+      if (!staleTimer) staleTimer = setTimeout(() => { staleTimer = 0; if (stale) { rebuild = true; refreshObservers(); } }, 4000);
     }
     function unlink(item) {
       for (const node of item.nodes) {
         const set = ancestors.get(node); set?.delete(item);
-        if (set && !set.size) { ancestors.delete(node); rebuild = true; }
+        if (set && !set.size) { ancestors.delete(node); stale++; }
       }
     }
     function release(host) {
@@ -653,7 +659,7 @@ const wmeStudioMain = () => {
         host.ownerDocument.removeEventListener('pointerout',record.hover,true);
         documents.delete(host.ownerDocument);
       }
-      refreshObservers();
+      refreshObservers(); dropStale();
     }
     function sync(item, cache = new Map()) {
       const {host} = item;
@@ -699,7 +705,7 @@ const wmeStudioMain = () => {
     function flush() {
       frame = 0; const pending = [...dirty], cache = new Map(); dirty.clear();
       for (const [item, which] of pending) { if (which === 'all') sync(item,cache); else syncSome(item,which,cache); }
-      refreshObservers();
+      refreshObservers(); dropStale();
     }
     function enqueue(node, contexts = null) {
       for (const item of ancestors.get(node) || []) {
@@ -772,6 +778,7 @@ const wmeStudioMain = () => {
       const { all, owners, neighbours, deep } = contextKinds();
       for (const record of records) {
         const node = record.target;
+        if (!ancestors.has(node)) continue;
         if (record.type === 'attributes') {
           if (deep || record.attributeName === 'slot') { answers.delete(node); enqueue(node); continue; }
           recheck(node, all, owners);
@@ -809,7 +816,12 @@ const wmeStudioMain = () => {
       }
       item.text = text;
       for (const context of result.contexts) item.contexts.add(context);
-      sync(item); refreshObservers(); return result.css;
+      sync(item, burstCache()); refreshObservers(); return result.css;
+    }
+    let burst = null;
+    function burstCache() {
+      if (!burst) { burst = new Map(); queueMicrotask(() => { burst = null; }); }
+      return burst;
     }
     document.documentElement.setAttribute('data-wme-studio-safari','on');
     const webkit = /AppleWebKit\//.test(navigator.userAgent) && !/\b(?:Chrome|Chromium|Edg|OPR|Firefox)\//.test(navigator.userAgent);
@@ -9265,8 +9277,21 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         }
       });
     }
+    const CSV_NAMES = { title: 'title', name: 'title', text: 'text', comment: 'text', message: 'text', reply: 'text', group: 'group', folder: 'group',
+      type: 'type', action: 'action', status: 'action', button: 'button' };
+    function csvSeparator(text) {
+      let commas = 0, semicolons = 0, quoted = false;
+      for (let index = 0; index < text.length; index++) {
+        const char = text[index];
+        if (char === '"') quoted = !quoted;
+        else if (!quoted && (char === '\n' || char === '\r')) break;
+        else if (!quoted && char === ',') commas++;
+        else if (!quoted && char === ';') semicolons++;
+      }
+      return semicolons > commas ? ';' : ',';
+    }
     function parseCsv(text) {
-      const rows = [], first = text.split(/\r?\n/, 1)[0] || '', sep = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
+      const rows = [], sep = csvSeparator(text);
       let row = [], cell = '', quoted = false;
       for (let index = 0; index < text.length; index++) {
         const char = text[index];
@@ -9274,9 +9299,14 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         if (char === '"') quoted = true; else if (char === sep) { row.push(cell); cell = ''; } else if (char === '\n' || char === '\r') { if (char === '\r' && text[index + 1] === '\n') index++; row.push(cell); rows.push(row); row = []; cell = ''; } else cell += char;
       }
       if (cell || row.length) { row.push(cell); rows.push(row); }
-      const head = (rows.shift() || []).map(name => name.trim().toLowerCase().replace(/^\ufeff/, ''));
-      return rows.filter(one => one.some(value => value.trim())).map(one => Object.fromEntries(head.map((name, at) => [name, one[at] ?? ''])));
+      let head = (rows[0] || []).map(name => CSV_NAMES[name.trim().toLowerCase().replace(/^\ufeff/, '')] || '');
+      if (head.includes('title') || head.includes('text')) rows.shift();
+      else head = ['title', 'text', 'action'];
+      return rows.filter(one => one.some(value => value.trim())).map(one => Object.fromEntries(head.map((name, at) => [name, one[at] ?? '']).filter(([name]) => name)));
     }
+    const actionFrom = value => ({ solved: 'solved', notidentified: 'not-identified' })[String(value || '').toLowerCase().replace(/[\s_-]+/g, '')] || '';
+    const DOLLAR_WORDS = { URD: 'description', SELSEGS: 'selected', USERNAME: 'me', URTYPE: 'type' };
+    const fromDollarWords = text => String(text ?? '').replace(/\$([A-Z_]+)\$/g, (all, name) => (DOLLAR_WORDS[name] ? `{${DOLLAR_WORDS[name]}}` : all));
     function readRepliesFile(text) {
       const trimmed = text.replace(/^\ufeff/, '').trim();
       let list = [];
@@ -9287,7 +9317,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       } else if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         try { const data = JSON.parse(trimmed); list = Array.isArray(data) ? data : Array.isArray(data?.replies) ? data.replies : []; } catch (_) { return null; }
       } else list = parseCsv(trimmed).map(one => ({ ...one, button: /^(yes|true|1)$/i.test(one.button || '') }));
-      return clean(list.map(item => ({ ...item, id: undefined, pinned: false, uses: 0, lastUsed: 0, created: Date.now() })));
+      return clean(list.map(item => ({ ...item, text: fromDollarWords(item?.text), action: actionFrom(item?.action), id: undefined, pinned: false, uses: 0, lastUsed: 0, created: Date.now() })));
     }
     function importFile(state) {
       const input = document.createElement('input'); input.type = 'file'; input.accept = '.csv,.xml,.json,text/csv,application/xml,text/xml,application/json';
@@ -20918,8 +20948,13 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     return '';
   }
-  const STUDIO_BUILD = '4.2.0-2026-10-28z5';
+  const STUDIO_BUILD = '4.2.1-2026-10-28z2';
   const STUDIO_CHANGELOG = Object.freeze([
+    { version: '4.2.1', groups: [
+      { title: 'Fixes', items: [
+        "In Firefox and Safari, selecting segments with Ctrl+Shift and a drag no longer waits half a second before each selection shows."
+      ] }
+    ] },
     { version: '4.2.0', groups: [
       { title: 'Layout', items: [
         "Pointing at a button in the left rail shows its name, like the map tools on the right.",
