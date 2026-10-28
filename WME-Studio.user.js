@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.1.0
+// @version      4.1.1
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -75,13 +75,21 @@ function wmeStudioBridgeNote(text, bad) {
   } catch (_) {   }
 }
 
+const WME_STUDIO_WANTED = { resources: '4.1.1-2026-10-28z9', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.1.0-2026-10-28', cloudSync: '4.1.0-2026-10-28' };
+const WME_STUDIO_LIBRARIES = [
+  { key: 'resources', name: 'Resources', code: 'WMEStudioResourcesCode', mark: /\bresources\.build = '([^'\n]{1,60})'/, url: 'https://update.greasyfork.org/scripts/600831/WME%20Studio%20Resources.js' },
+  { key: 'screenDisplays', name: 'Screen displays', code: 'WMEStudioScreenDisplaysCode', mark: /\bconst BUILD = '([^'\n]{1,60})'/, url: 'https://update.greasyfork.org/scripts/601144/WME%20Studio%20Screen%20Displays.js' },
+  { key: 'interface', name: 'Interface', code: 'WMEStudioInterfaceCode', mark: /WMEStudioInterface = Object\.freeze\(\{ build: '([^'\n]{1,60})'/, url: 'https://update.greasyfork.org/scripts/602356/WME%20Studio%20Interface.js' },
+  { key: 'cloudSync', name: 'Cloud Sync', code: 'WMEStudioCloudSyncCode', mark: /\bconst BUILD = '([^'\n]{1,60})'/, url: 'https://update.greasyfork.org/scripts/602308/WME%20Studio%20Cloud%20Sync.js' }
+];
+
 function wmeStudioStartBridge(main) {
   wmeStudioBridgeNote(`starting for ${(typeof GM_info === 'object' && GM_info?.scriptHandler) || GM?.info?.scriptHandler || 'this manager'}…`);
   const token = `ws${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
   const say = (...parts) => console.info('[WME Studio]', ...parts);
   const resourcesCode = globalThis.WMEStudioResourcesCode, screenDisplaysCode = globalThis.WMEStudioScreenDisplaysCode, interfaceCode = globalThis.WMEStudioInterfaceCode, cloudSyncCode = globalThis.WMEStudioCloudSyncCode;
-  if (typeof resourcesCode !== 'function') say('the Resources library did not load: Studio starts without its theme and languages');
-  if (typeof interfaceCode !== 'function') say('the Interface library did not load: Studio starts without its settings window and panel styles');
+  if (typeof resourcesCode !== 'function') say('the userscript manager has no Resources library: Studio asks Greasy Fork for it');
+  if (typeof interfaceCode !== 'function') say('the userscript manager has no Interface library: Studio asks Greasy Fork for it');
   const ALLOWED = /^https:\/\/(?:update\.greasyfork\.org|greasyfork\.org|wme-studio-reports\.charalamposavgenikos\.workers\.dev)\//i;
 
   const requests = new Map();
@@ -90,6 +98,7 @@ function wmeStudioStartBridge(main) {
     const url = String(details.url || '');
     if (!ALLOWED.test(url)) { answer(id, 'error', { status: 0, statusText: 'Not allowed', responseText: '' }); return; }
     const method = String(details.method || 'GET').toUpperCase();
+    const binary = details.responseType === 'arraybuffer' || details.responseType === 'blob';
     const body = details.buffer ? new Blob([details.buffer], { type: details.bufferType || '' }) : details.data;
     const controller = new AbortController();
     let timedOut = false;
@@ -98,15 +107,18 @@ function wmeStudioStartBridge(main) {
     try {
       const response = await fetch(url, { method, headers: details.headers || {}, body: method === 'GET' || method === 'HEAD' ? undefined : body,
         credentials: details.anonymous ? 'omit' : 'include', signal: controller.signal, cache: 'no-store' });
-      const responseText = await response.text();
       const responseHeaders = [...response.headers].map(([name, value]) => `${name}: ${value}`).join('\r\n');
-      answer(id, 'load', { status: response.status, statusText: response.statusText, responseText, response: responseText, responseHeaders, finalUrl: response.url, readyState: 4 });
+      if (binary) answer(id, 'load', { status: response.status, statusText: response.statusText, responseText: '', response: await response.arrayBuffer(), responseHeaders, finalUrl: response.url, readyState: 4 });
+      else { const responseText = await response.text(); answer(id, 'load', { status: response.status, statusText: response.statusText, responseText, response: responseText, responseHeaders, finalUrl: response.url, readyState: 4 }); }
     } catch (error) {
       if (timedOut) answer(id, 'timeout', { status: 0, statusText: '', responseText: '' });
       else if (controller.signal.aborted) answer(id, 'abort', { status: 0, statusText: '', responseText: '' });
       else if (typeof GM.xmlHttpRequest === 'function' && typeof body !== 'object' && (method === 'GET' || method === 'HEAD')) {
-        GM.xmlHttpRequest({ method, url, headers: details.headers || {}, data: body, timeout: details.timeout || 0, anonymous: !!details.anonymous,
-          onload: r => answer(id, 'load', { status: r.status, statusText: r.statusText, responseText: r.responseText, response: r.responseText, responseHeaders: r.responseHeaders || '', finalUrl: r.finalUrl || url, readyState: 4 }),
+        GM.xmlHttpRequest({ method, url, headers: details.headers || {}, data: body, timeout: details.timeout || 0, anonymous: !!details.anonymous, ...(binary ? { responseType: 'arraybuffer' } : {}),
+          onload: async r => {
+            const bytes = binary ? (r.response instanceof Blob ? await r.response.arrayBuffer() : r.response) : null;
+            answer(id, 'load', { status: r.status, statusText: r.statusText, responseText: binary ? '' : r.responseText, response: binary ? bytes : r.responseText, responseHeaders: r.responseHeaders || '', finalUrl: r.finalUrl || url, readyState: 4 });
+          },
           onerror: () => answer(id, 'error', { status: 0, statusText: '', responseText: '' }),
           ontimeout: () => answer(id, 'timeout', { status: 0, statusText: '', responseText: '' }),
           onabort: () => answer(id, 'abort', { status: 0, statusText: '', responseText: '' }) });
@@ -150,8 +162,29 @@ function wmeStudioStartBridge(main) {
     timer = setTimeout(done, 15000);
   });
 
+  const readText = url => new Promise(resolve => {
+    const viaManager = () => {
+      if (typeof GM?.xmlHttpRequest !== 'function') { resolve(''); return; }
+      GM.xmlHttpRequest({ method: 'GET', url, timeout: 30000, anonymous: true, onload: r => resolve(r.status === 200 ? String(r.responseText || '') : ''), onerror: () => resolve(''), ontimeout: () => resolve('') });
+    };
+    fetch(url, { credentials: 'omit' }).then(r => (r.ok ? r.text() : '')).then(text => (text ? resolve(text) : viaManager()), viaManager);
+  });
+  const freshLibraries = () => Promise.all(WME_STUDIO_LIBRARIES.map(async lib => {
+    const saved = globalThis[lib.code], wanted = WME_STUDIO_WANTED[lib.key];
+    const savedText = typeof saved === 'function' ? String(saved) : '', savedBuild = lib.mark.exec(savedText)?.[1] || '';
+    const fromManager = { name: lib.name, text: savedText ? `(${savedText})();` : '', build: savedBuild };
+    if (savedBuild === wanted) return fromManager;
+    const text = await readText(lib.url), build = lib.mark.exec(text)?.[1] || '';
+    if (text.includes(`globalThis.${lib.code}`) && (build === wanted || !savedText)) {
+      say(`${lib.name}: the userscript manager has ${savedBuild || 'no copy'}, so Studio uses ${build} from Greasy Fork`);
+      return { name: lib.name, text, build, fresh: true };
+    }
+    return fromManager;
+  }));
+  let libraries = [];
+
   const pageCode = values => `(function (seed) {
-  const TOKEN = seed.token, unsafeWindow = window, GM_info = seed.info;
+  const TOKEN = seed.token, unsafeWindow = window, GM_info = seed.info, WME_STUDIO_WANTED = seed.wanted;
   const store = seed.values, listeners = new Map();
   const copy = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
   const post = message => window.postMessage(Object.assign({ wsBridge: TOKEN, from: 'page' }, message), '*');
@@ -201,6 +234,10 @@ function wmeStudioStartBridge(main) {
     const details = calls.get(message.id);
     if (!details) return;
     calls.delete(message.id);
+    const bytes = message.response?.response;
+    if (details.responseType === 'blob' && bytes instanceof ArrayBuffer) {
+      message.response.response = new Blob([bytes], { type: /content-type:\\s*([^\\r\\n;]+)/i.exec(message.response.responseHeaders || '')?.[1]?.trim() || '' });
+    }
     const handler = details['on' + message.kind];
     try { handler?.(message.response); } catch (error) { console.error(error); }
     try { details.onloadend?.(message.response); } catch (error) { console.error(error); }
@@ -208,7 +245,7 @@ function wmeStudioStartBridge(main) {
   function GM_xmlhttpRequest(details) {
     const id = ++lastCall;
     calls.set(id, details);
-    const plain = { method: details.method, url: String(details.url), headers: details.headers, timeout: details.timeout, anonymous: details.anonymous };
+    const plain = { method: details.method, url: String(details.url), headers: details.headers, timeout: details.timeout, anonymous: details.anonymous, responseType: details.responseType };
     const data = details.data;
     if (data instanceof Blob) data.arrayBuffer().then(buffer => post({ op: 'xhr', id, details: Object.assign(plain, { buffer, bufferType: data.type }) }));
     else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) post({ op: 'xhr', id, details: Object.assign(plain, { buffer: data instanceof ArrayBuffer ? data : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) }) });
@@ -216,16 +253,14 @@ function wmeStudioStartBridge(main) {
     return { abort() { post({ op: 'abort', id }); } };
   }
   document.documentElement.setAttribute('data-wme-studio-bridge', 'on');
-  try { (${typeof resourcesCode === 'function' ? String(resourcesCode) : 'function () {}'})(); } catch (error) { console.error('[WME Studio] Resources', error); }
-  try { (${typeof screenDisplaysCode === 'function' ? String(screenDisplaysCode) : 'function () {}'})(); } catch (error) { console.error('[WME Studio] Screen displays', error); }
-  try { (${typeof interfaceCode === 'function' ? String(interfaceCode) : 'function () {}'})(); } catch (error) { console.error('[WME Studio] Interface', error); }
-  try { (${typeof cloudSyncCode === 'function' ? String(cloudSyncCode) : 'function () {}'})(); } catch (error) { console.error('[WME Studio] Cloud Sync', error); }
+${libraries.map(lib => `  try {\n${lib.text}\n;} catch (error) { console.error('[WME Studio] ${lib.name}', error); }`).join('\n')}
   (${String(main)})();
-})(${JSON.stringify({ token, info, values })});`;
+})(${JSON.stringify({ token, info, values, wanted: WME_STUDIO_WANTED })});`;
 
   let blocked = '';
   document.addEventListener('securitypolicyviolation', event => { if (!blocked) blocked = `${event.violatedDirective || event.effectiveDirective || ''} ${event.blockedURI || ''}`.trim(); }, true);
-  Promise.all([readStore(), pageReady()]).then(([values]) => {
+  Promise.all([readStore(), pageReady(), freshLibraries()]).then(([values, , libs]) => {
+    libraries = libs.filter(lib => lib.text);
     const script = document.createElement('script');
     const nonce = nonceOf();
     if (nonce) script.nonce = nonce;
@@ -237,7 +272,10 @@ function wmeStudioStartBridge(main) {
       const why = nonce ? 'the editor turned the script away' : 'no nonce could be read from the page, so the editor turned the script away';
       console.error(`[WME Studio] could not start in the page: ${why}.`, blocked);
       wmeStudioBridgeNote(`could not start: ${why} (Content Security Policy${blocked ? ': ' + blocked : ''}). Tap to close.`, true);
-    } else wmeStudioBridgeNote(`running (Resources ${typeof resourcesCode === 'function' ? 'loaded' : 'MISSING'}, Screen displays ${typeof screenDisplaysCode === 'function' ? 'loaded' : 'MISSING'}).`, typeof resourcesCode !== 'function');
+    } else {
+      const state = name => { const lib = libs.find(item => item.name === name); return !lib?.text ? 'MISSING' : lib.fresh ? `${lib.build} from Greasy Fork` : 'loaded'; };
+      wmeStudioBridgeNote(`running (Resources ${state('Resources')}, Screen displays ${state('Screen displays')}, Interface ${state('Interface')}, Cloud Sync ${state('Cloud Sync')}).`, state('Resources') === 'MISSING');
+    }
   }).catch(error => wmeStudioBridgeNote(`could not start: ${error?.message || error}`, true));
 }
 
@@ -248,7 +286,7 @@ const wmeStudioMain = () => {
   globalThis.__WME_STUDIO_USER_SCRIPT__ = true;
 
   function studioPart(name, values) {
-    const BUILD = '4.1.0-2026-10-28', parts = globalThis.WMEStudioInterface, part = parts?.parts?.[name];
+    const BUILD = WME_STUDIO_WANTED.interface, parts = globalThis.WMEStudioInterface, part = parts?.parts?.[name];
     if (part === undefined) {
       if (!studioPart.warned) { studioPart.warned = true; console.error('[WME Studio] The WME Studio Interface library did not load (or is an older copy). Check the @require line in the script header.'); }
       return '';
@@ -332,7 +370,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.1.0';
+  const USERSCRIPT_VERSION = '4.1.1';
   const STUDIO_VERIFY_LINK = (() => {
     const KEY = 'wmeStudio.verifyLink';
     try {
@@ -1016,7 +1054,7 @@ ${scope} #online-editors:has(.online-editors-list-wrapper) .online-editors-bubbl
   const studioResources = globalThis.WMEStudioResources;
   if (!studioResources?.pageSheet) console.error('[WME Studio] The WME Studio Resources library did not load. Check the @require line in the script header.');
   else if (String(studioResources.version).split('.').slice(0, 2).join('.') !== USERSCRIPT_VERSION.split('.').slice(0, 2).join('.')) console.warn(`[WME Studio] Resources ${studioResources.version} loaded with Studio ${USERSCRIPT_VERSION}; update both scripts together.`);
-  const RESOURCES_BUILD = '4.1.0-2026-10-28';
+  const RESOURCES_BUILD = WME_STUDIO_WANTED.resources;
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -5227,7 +5265,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const content = shadow.querySelector('.item-content');
     const label = button?.getAttribute('aria-label') || item.host.getAttribute('aria-label') || content?.textContent?.trim() || item.host.textContent?.trim();
     if (!button || !label) return;
-    button.title = label;
+    button.removeAttribute('title');
     button.setAttribute('aria-label', label);
     markNavigationLabelText(shadow.querySelector('.wz-navigation-item') || button);
     markNavigationLabelText(item.host);
@@ -8088,6 +8126,8 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       rail: [['mm-rail-done', 'Railroad crossing added'], ['mm-rail-none', 'No railroad crossing found']],
       camera: [['mm-camera-done', 'Speed camera added'], ['mm-camera-none', 'No speed camera found']],
       '': [['mm-done', 'Map updated'], ['mm-none', 'No change needed']] };
+    const TYPE_GROUP_NAMES = { turn: 'Turns', address: 'Addresses', route: 'Routes', roundabout: 'Roundabouts', general: 'General errors', junction: 'Junctions',
+      direction: 'Driving direction', road: 'Missing roads', landmark: 'Places', blocked: 'Closures', speed: 'Speed limits' };
     const MAP_MATE_KIND_NAMES = { bump: 'Speed bump', light: 'Traffic lights', curve: 'Dangerous curve', rail: 'Railroad crossing', camera: 'Speed camera' };
     const BUILT_IN = [['spot', 'Ask for the spot', 'misc'], ['fixed', 'Fixed, thanks', 'misc'], ['remind', 'Remind once', 'misc'], ['close', 'Close with a note', 'misc'],
       ['nothing', 'Map checked, nothing found', 'misc'],
@@ -8152,6 +8192,9 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       builtButtons: [...new Set((Array.isArray(value?.builtButtons) ? value.builtButtons : []).filter(key => BUILT_KEYS.has(key)))].slice(0, BUTTONS_MAX),
       suggest: value?.suggest === true,
       translate: value?.translate !== false,
+      openOn: typeof value?.openOn === 'string' && /^(all|type|studio|pinned|none|f:.{1,40})$/.test(value.openOn) ? value.openOn : 'all',
+      remember: value?.remember === true,
+      lastFilter: typeof value?.lastFilter === 'string' && /^(all|type|studio|pinned|none|f:.{1,40})$/.test(value.lastFilter) ? value.lastFilter : 'all',
       tour: { more: value?.tour?.more === 1 ? 1 : 0, manage: value?.tour?.manage === 1 ? 1 : 0 } });
     const saveView = () => { try { Promise.resolve(studioKeep.set(VIEW_KEY, view)).catch(error => reportStudioError('quick replies save', error)); } catch (error) { reportStudioError('quick replies save', error); } };
     const GUIDE_KEY = 'wmeStudio.quickRepliesGuide.v1', USAGE_KEY = 'wmeStudio.quickRepliesUsage.v1', SEEN_KEY = 'wmeStudio.quickRepliesSeen.v1';
@@ -8212,13 +8255,16 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       braces: '<path d="M8 4H7a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2h1M16 4h1a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2h-1"/>',
       external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
       pin: '<path d="m12 3.8 2.5 5.1 5.6.8-4 3.9.9 5.6-5-2.6-5 2.6.9-5.6-4-3.9 5.6-.8Z"/>', dots: '<circle cx="5" cy="12" r="2" style="fill:currentColor;stroke:none"/><circle cx="12" cy="12" r="2" style="fill:currentColor;stroke:none"/><circle cx="19" cy="12" r="2" style="fill:currentColor;stroke:none"/>',
+      bulb: '<path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.7 10.7c.8.6 1.2 1.4 1.2 2.3v.5h5V16c0-.9.4-1.7 1.2-2.3A6 6 0 0 0 12 3Z"/>',
+      grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
       studio: '<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/>', chev: '<path d="m6 9 6 6 6-6"/>', chevRight: '<path d="m9 6 6 6-6 6"/>', chevLeft: '<path d="m15 6-6 6 6 6"/>',
       lang: '<path d="M3 5h10M8 3v2M5.5 5c.8 3.2 3.2 5.8 6.5 7.2M10.5 5c-.9 3.6-3.4 6.4-7 8"/><path d="m13 21 4-9 4 9M14.4 18h5.2"/>',
       up: '<path d="M12 19V6M6 11l6-6 6 6"/>', down: '<path d="M12 5v13M6 13l6 6 6-6"/>', hide: '<path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 9 6 9 6a17 17 0 0 1-3 3.4M6.2 7.6C4.2 9.2 3 12 3 12s4 6 9 6c1.5 0 2.8-.4 4-1"/>',
       inbox: '<path d="M4 13h4l2 3h4l2-3h4"/><path d="M5 6h14l1 7v5H4v-5z"/>', flag: '<path d="M5 21V4h10l-1 4h5v8h-9l1-4H5"/>'
     };
     const svg = path => `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
-    const CSS = studioPart('CSS', { studioStripCSS });
+    const QR_RAIL_CSS = `.panel{width:min(400px,calc(100vw - 24px))}.qsplit{flex:1;min-height:0;display:flex}.rail{flex:none;width:56px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;border-right:1px solid var(--wme-studio-border,#3d444b)}.rail::-webkit-scrollbar{display:none}.rail .chip.ri{position:relative;display:flex;align-items:center;justify-content:center;flex:none;width:42px;height:42px;margin:0;padding:0;gap:0;border-radius:12px}.rail .chip.ri .mark{display:flex;align-items:center;justify-content:center}.rail .chip.ri .mark svg{width:18px;height:18px}.mark.logo img{display:block;width:16px;height:14px;object-fit:contain}.rail .chip.ri .mark.logo img{width:24px;height:21px}.rail .chip.ri b{position:absolute;right:1px;top:2px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:color-mix(in srgb,var(--wme-studio-text,#edf1f4) 16%,var(--wme-studio-bg,#202326));color:var(--wme-studio-text,#edf1f4);font-size:9.5px;font-weight:700;line-height:1}.rail .chip.ri{box-shadow:none;color:var(--wme-studio-text-secondary,#c6ccd2)}.rail .chip.ri[aria-pressed="true"]{background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 18%,transparent);box-shadow:none;color:var(--wme-studio-accent,#0099ff)}.rail .chip.ri[aria-pressed="true"] b{opacity:1}.rail .rf{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:7px;background:var(--c);color:#fff;font-size:11.5px;font-weight:800;line-height:1}.rail .rf.icon{background:color-mix(in srgb,var(--c) 22%,transparent);color:var(--c)}.rail .rf.icon svg{width:14px;height:14px}.rsep{flex:none;width:26px;height:1px;margin:3px 0;background:var(--wme-studio-border,#3d444b)}.qmain{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}.qtitle{display:flex;align-items:center;gap:6px;min-height:22px;margin:9px 14px 2px;color:var(--wme-studio-text-muted,#9aa3ad);font-size:12px;line-height:16px}.qtitle strong{min-width:0;overflow:hidden;color:var(--wme-studio-text,#edf1f4);font-size:13px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}.qtitle .qm{flex:none;white-space:nowrap}.qtitle .qm::before{content:'·';margin-right:6px}.qtitle .qlang{display:inline-flex;align-items:center;gap:4px;flex:none;height:20px;margin-left:auto;padding:0 7px;border:1px solid var(--wme-studio-border,#3d444b);border-radius:10px;font-size:11px;font-weight:600;line-height:1;white-space:nowrap}.qmain .item{height:auto;min-height:48px}.qmain .row{padding:6px 8px}.qmain .words{flex-wrap:wrap;align-content:center;row-gap:1px}.qmain .words b{flex:0 1 auto;max-width:100%}.qmain .words .x{flex:1 0 100%;order:9}.qmain .qtag:not(.act){display:none}.qmain .item+.item::before{content:'';position:absolute;top:0;left:38px;right:8px;height:1px;background:color-mix(in srgb,var(--wme-studio-text,#edf1f4) 9%,transparent);pointer-events:none}.qmain .item:hover::before,.qmain .item:hover+.item::before,.qmain .item:focus-within::before,.qmain .item:focus-within+.item::before{opacity:0}.qmain .gh{position:relative}.qmain .body>.gh:not(:first-child){margin-top:14px}.qmain .body>.gh:not(:first-child)::before{content:'';position:absolute;top:-8px;left:6px;right:6px;height:1px;background:color-mix(in srgb,var(--wme-studio-text,#edf1f4) 16%,transparent);pointer-events:none}.num{box-sizing:border-box;padding:1px 0 0;font-variant-numeric:tabular-nums}.mbox{display:flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;width:16px;height:16px;border:1.5px solid var(--wme-studio-text-muted,#9aa3ad);border-radius:4px}.mo[aria-checked="true"] .mbox{border-color:var(--wme-studio-accent,#0099ff);background:var(--wme-studio-accent,#0099ff);color:#fff}.mo .mbox svg{width:12px;height:12px;margin:0;fill:none;stroke:#fff!important;color:#fff!important;opacity:1!important;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}.mo[role="menuitemcheckbox"]::after{content:none;display:none}.menu:has(.mo[role="menuitemcheckbox"]){width:max-content;min-width:min(240px,calc(100% - 16px));max-width:calc(100% - 16px)}.mo[role="menuitemcheckbox"]>span:last-child{white-space:nowrap}.mo[role="menuitemcheckbox"][aria-checked="true"]{font-weight:inherit}.mo.off{opacity:.45;cursor:default}.menu .mo>.dot{margin:0 4.5px}.menu .mo>.fmark{width:16px}.mo .mark.logo img{width:16px;height:14px}`;
+    const CSS = studioPart('CSS', { studioStripCSS }) + QR_RAIL_CSS;
     GM_addStyle(`html[data-wme-studio="on"][data-wme-studio-compact="on"] #panel-container > :has(> .ws-quick-replies) { overflow: visible !important; }
 html[data-wme-studio="on"][data-wme-studio-compact="on"] #panel-container > :has(> .ws-quick-replies) > wz-card { border-radius: 17px !important; overflow: clip !important; }`);
     GM_addStyle(`html[data-wme-studio="on"] :is(.ws-quick-replies,.ws-reply-details) { visibility: inherit !important; }
@@ -8419,7 +8465,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     async function open(state) {
       await load();
       state.panel.hidden = false; state.tab.setAttribute('aria-expanded', 'true');
-      state.filter = 'all'; place(state); renderList(state); place(state);
+      state.filter = firstFilter(); place(state); renderList(state); place(state);
       state.panel.focus({ preventScroll: true });
     }
     const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
@@ -8442,7 +8488,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     function row(state, item, tagged = false) {
       const isCustom = !item.builtIn;
       const box = el('div', isCustom ? 'item custom' : 'item');
-      const button = el('button', 'row'); button.type = 'button'; button.title = item.text;
+      const button = el('button', 'row'); button.type = 'button';
       const words = el('span', 'words');
       const name = el('b', '', item.title); name.dir = 'auto'; words.append(name);
       if (item.countries?.length) { const flags = el('span', 'flags'); flags.title = item.countries.join(', '); for (const code of item.countries.slice(0, 3)) { const flag = studioFlags.img(code, 'flag'); if (flag) flags.append(flag); } if (flags.childElementCount) words.append(flags); }
@@ -8480,8 +8526,8 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         if (event.key === 'ArrowDown') { event.preventDefault(); state.panel.querySelector('.body .row')?.focus({ preventScroll: false }); }
         else if (event.key === 'Enter') { event.preventDefault(); state.panel.querySelector('.body .row')?.click(); }
       });
-      const chips = el('div', 'chips'); chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', tr('Folders'));
-      studioChipStrip(chips);
+      const rail = el('div', 'rail'); rail.setAttribute('role', 'group'); rail.setAttribute('aria-label', tr('Folders'));
+      const title = el('div', 'qtitle');
       const body = el('div', 'body');
       const foot = el('div', 'foot');
       const add = el('button', 'btn'); add.type = 'button'; add.innerHTML = svg(ICONS.plus); add.append(tr('New reply'));
@@ -8503,7 +8549,9 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         const ok = el('button', 'btn ghost', tr('Got it')); ok.type = 'button'; ok.addEventListener('click', event => { event.stopPropagation(); seeTour(state, 'more', 'manage'); });
         tip.append(ok);
       }
-      state.panel.replaceChildren(head(state, tr('Quick replies'), tools), search, chips, body, ...(tip ? [tip] : []), foot);
+      const main = el('div', 'qmain'); main.append(search, title, body, ...(tip ? [tip] : []), foot);
+      const split = el('div', 'qsplit'); split.append(rail, main);
+      state.panel.replaceChildren(head(state, tr('Quick replies'), tools), split);
       paintRows(state);
     }
     function seeTour(state, ...keys) {
@@ -8542,6 +8590,32 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
           ...languages.list.map(({ code, name }) => { const option = item(null, name, languages.chosen && languages.language === code, pick(code), true); const flag = studioFlags.img(studioFlags.forLanguage(code), 'flag'); if (flag) option.prepend(flag); return option; }));
         (menu.querySelector('[aria-checked="true"]') || back).focus({ preventScroll: true });
       };
+      const openName = key => key === 'all' ? tr('All') : key === 'type' ? tr('Suggested for this request') : key === 'studio' ? tr('Studio’s replies') : key === 'pinned' ? tr('Pinned') : key === 'none' ? tr('No folder') : key.slice(2);
+      const openPage = () => {
+        const back = el('button', 'mo'); back.type = 'button'; back.setAttribute('role', 'menuitem');
+        back.innerHTML = svg(ICONS.chevLeft); back.append(el('span', '', tr('Opens on')));
+        back.addEventListener('click', event => { event.stopPropagation(); toggleMenu(state, true); });
+        const remember = el('button', 'mo'); remember.type = 'button'; remember.setAttribute('role', 'menuitemcheckbox'); remember.setAttribute('aria-checked', String(view.remember));
+        const box = el('span', 'mbox'); box.innerHTML = view.remember ? svg('<path d="m5 12.5 4.5 4.5L19 7.5"/>') : ''; remember.append(box, el('span', '', tr('Remember the last one I used')));
+        remember.addEventListener('click', event => { event.stopPropagation(); view = cleanView({ ...view, remember: !view.remember, lastFilter: state.filter }); saveView(); openPage(); });
+        const keys = ['all', 'type', 'studio', 'pinned', ...folderNames().map(name => `f:${name}`), 'none'];
+        const options = keys.map(key => {
+          const option = el('button', 'mo'); option.type = 'button'; option.setAttribute('role', 'menuitemradio');
+          option.setAttribute('aria-checked', String(!view.remember && view.openOn === key));
+          if (view.remember) { option.setAttribute('aria-disabled', 'true'); option.classList.add('off'); }
+          option.append(key.startsWith('f:') ? folderMark(key.slice(2)) : markFor({ all: 'grid', type: 'bulb', studio: 'logo', pinned: 'pin', none: 'inbox' }[key]), el('span', '', openName(key)));
+          option.addEventListener('click', event => { event.stopPropagation(); if (view.remember) return; view = cleanView({ ...view, openOn: key }); saveView(); toggleMenu(state, false); button?.focus({ preventScroll: true }); });
+          return option;
+        });
+        menu.replaceChildren(back, el('div', 'sep'), remember, el('div', 'sep'), ...options);
+        (menu.querySelector('[aria-checked="true"]') || back).focus({ preventScroll: true });
+      };
+      const openItem = () => {
+        const option = el('button', 'mo'); option.type = 'button'; option.setAttribute('role', 'menuitem'); option.setAttribute('aria-haspopup', 'menu');
+        option.innerHTML = svg(ICONS.grid); option.append(el('span', '', tr('Opens on')), el('span', 'mv', view.remember ? tr('The last one') : openName(view.openOn)));
+        option.addEventListener('click', event => { event.stopPropagation(); openPage(); });
+        return option;
+      };
       const languageItem = () => {
         const option = el('button', 'mo'); option.type = 'button'; option.setAttribute('role', 'menuitem'); option.setAttribute('aria-haspopup', 'menu');
         const value = el('span', 'mv', languages.list.find(one => one.code === languages.language)?.name || languages.language);
@@ -8550,7 +8624,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         option.addEventListener('click', event => { event.stopPropagation(); languagePage(); });
         return option;
       };
-      menu.append(el('div', 'mh', tr('Studio’s replies')),
+      menu.append(openItem(), el('div', 'sep'), el('div', 'mh', tr('Studio’s replies')),
         item('up', tr('Show them first'), view.studio === 'first', order('first'), true),
         item('down', tr('Show them last'), view.studio === 'last', order('last'), true),
         item('hide', tr('Hide them'), view.studio === 'hidden', order('hidden'), true),
@@ -8561,6 +8635,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         el('div', 'sep'), el('div', 'mh', tr('Replies')),
         item('studio', tr('Suggest a first reply'), !!view.suggest, () => { view = cleanView({ ...view, suggest: !view.suggest }); saveView(); suggestFirst(state); }, true),
         item('lang', tr('Translate my replies for the reporter'), !!view.translate, () => { view = cleanView({ ...view, translate: !view.translate }); saveView(); }, true),
+        el('div', 'sep'),
         item('down', tr('Export as CSV'), false, () => exportFile('csv')),
         item('down', tr('Export as XML'), false, () => exportFile('xml')),
         item('up', tr('Import a CSV, XML or JSON file'), false, () => importFile(state)));
@@ -8573,6 +8648,11 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (picked) return picked[light ? 1 : 0];
       const set = FOLDER_COLORS[light ? 'light' : 'dark'], at = folderNames().indexOf(name); return set[Math.max(0, at) % set.length];
     };
+    function markFor(icon) {
+      const mark = el('span', `mark ${icon}`);
+      if (icon === 'logo') { const img = el('img'); img.src = STUDIO_LOGO_DATA_URI; img.alt = ''; mark.append(img); } else mark.innerHTML = svg(ICONS[icon] || ICONS.grid);
+      return mark;
+    }
     function folderMark(name) {
       const color = folderColor(name), icon = FOLDER_LOOK.icons[folderMeta[name]?.icon];
       const node = el('span', icon ? 'fmark' : 'dot'); node.style.setProperty('--c', color);
@@ -8584,31 +8664,36 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const panel = state.win.querySelector('.problem-edit');
       const keys = folderNames().filter(name => custom.some(item => item.group === name)).map(name => `f:${name}`);
       if (custom.some(item => !item.group)) keys.push('none');
-      try { if (caseFile.replies(panel).set) keys.push('studio'); } catch (_) {   }
+      try { if (caseFile.replies(panel).set) keys.push('studio', ...Object.keys(TYPE_BUILT).map(group => `studio:${group}`), 'studio:mapmate'); } catch (_) {   }
       return keys;
     }
     function paintChips(state, chips) {
-      const strip = state.panel.querySelector('.chips'); if (!strip) return;
-      const keep = strip.scrollLeft;
-      strip.hidden = chips.length < 3;
-      strip.replaceChildren(...chips.map(({ key, label, count, color, icon, folder }) => {
-        const chip = el('button', 'chip'); chip.type = 'button'; chip.dataset.key = key;
+      const rail = state.panel.querySelector('.rail'); if (!rail) return;
+      const keep = rail.scrollTop, nodes = [];
+      for (const { key, label, count, icon, folder } of chips) {
+        if (folder != null && !nodes.some(node => node.classList.contains('rsep'))) nodes.push(el('span', 'rsep'));
+        const chip = el('button', 'chip ri'); chip.type = 'button'; chip.dataset.key = key; chip.dataset.wsTipSide = 'right';
         chip.setAttribute('aria-pressed', String(state.filter === key)); chip.tabIndex = state.filter === key ? 0 : -1;
-        if (folder != null) chip.append(folderMark(folder));
-        else if (color) { const dot = el('span', 'dot'); dot.style.setProperty('--c', color); chip.append(dot); }
-        else if (icon) { const mark = el('span', `mark ${icon}`); mark.innerHTML = svg(ICONS[icon]); chip.append(mark); }
-        chip.append(el('span', 'label', label), el('b', '', String(count))); chip.title = label;
+        chip.setAttribute('aria-label', `${label} (${count})`); chip.title = label;
+        if (folder != null) {
+          const look = FOLDER_LOOK.icons[folderMeta[folder]?.icon], mark = el('span', look ? 'rf icon' : 'rf', look ? '' : [...String(folder).trim()][0]?.toLocaleUpperCase() || '?');
+          mark.style.setProperty('--c', folderColor(folder)); if (look) mark.innerHTML = svg(look);
+          chip.append(mark);
+        } else chip.append(markFor(icon || 'grid'));
+        chip.append(el('b', '', String(count)));
         chip.addEventListener('click', () => pickChip(state, key));
-        return chip;
-      }));
-      strip.scrollLeft = keep;
-      strip.wsStrip?.edges();
+        nodes.push(chip);
+      }
+      rail.replaceChildren(...nodes);
+      rail.scrollTop = keep;
     }
+    const firstFilter = () => (view.remember ? view.lastFilter : view.openOn) || 'all';
     function pickChip(state, key, focus = false) {
       state.filter = key;
+      if (view.remember && view.lastFilter !== key) { view.lastFilter = key; saveView(); }
       paintRows(state);
       const chip = [...state.panel.querySelectorAll('.chip')].find(one => one.dataset.key === key);
-      state.panel.querySelector('.chips')?.wsStrip?.centre(chip);
+      chip?.scrollIntoView({ block: 'nearest' });
       if (focus) chip?.focus({ preventScroll: true });
       const body = state.panel.querySelector('.body'); if (body) body.scrollTop = 0;
     }
@@ -8626,6 +8711,11 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const hit = item => !query || fold(`${item.title} ${item.group || ''} ${item.group ? folderTags(item.group) : ''} ${item.text}`).includes(query);
       const builtIns = BUILT_IN.filter(([key, , group]) => group === 'misc' && set[key]).map(([key]) => ({ ...builtReply(language, key, set), pinned: view.builtPins.includes(key) }));
       const shownBuilt = builtIns.filter(item => !item.hidden);
+      const builtFor = prefix => BUILT_IN.filter(([key, , group]) => group === prefix || group.startsWith(`${prefix}:`)).filter(([key]) => set[key])
+        .map(([key]) => ({ ...builtReply(language, key, set), pinned: view.builtPins.includes(key) })).filter(item => !item.hidden);
+      const studioTypes = Object.keys(TYPE_BUILT).map(group => [group, builtFor(`type:${group}`)]).filter(([, list]) => list.length);
+      const studioMapMate = builtFor('mapmate');
+      const studioCount = shownBuilt.length + studioTypes.reduce((sum, [, list]) => sum + list.length, 0) + studioMapMate.length;
       const names = folderNames();
       let facts = {}; try { facts = caseFile.facts(panel) || {}; } catch (_) { facts = {}; }
       const mm = facts.mapMate || null;
@@ -8636,13 +8726,13 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const forMe = item => sameType(item.type, type) || (!!mm && /map\s*-?\s*mate/i.test(item.type || ''));
       const forType = typeLabel ? [...typeBuilt.filter(item => !item.pinned), ...mine.filter(item => !item.pinned && forMe(item))] : [];
       const requestKey = `${facts.id}|${mm ? 'mm' : facts.group}`;
-      if (state.autoFor !== requestKey) { state.autoFor = requestKey; if (!query) state.filter = 'all'; }
+      if (state.autoFor !== requestKey) { state.autoFor = requestKey; if (!query) state.filter = firstFilter(); }
       const rest = mine.filter(item => !item.pinned && !forType.includes(item));
       const studioShown = view.studio !== 'hidden' && shownBuilt.length;
       const chips = [{ key: 'all', label: tr('All'), count: mine.length + (studioShown ? shownBuilt.length : pinned.filter(item => item.builtIn).length) }];
       if (pinned.length) chips.push({ key: 'pinned', label: tr('Pinned'), count: pinned.length, icon: 'pin' });
-      if (forType.length) chips.push({ key: 'type', label: typeLabel, count: forType.length, icon: 'flag' });
-      if (studioShown) chips.push({ key: 'studio', label: tr('Studio’s replies'), count: shownBuilt.length, icon: 'studio' });
+      if (forType.length) chips.push({ key: 'type', label: typeLabel, count: forType.length, icon: 'bulb' });
+      if (studioShown) chips.push({ key: 'studio', label: tr('Studio’s replies'), count: studioCount, icon: 'logo' });
       for (const folder of names) { const count = mine.filter(item => item.group === folder).length; if (count) chips.push({ key: `f:${folder}`, label: folder, count, color: folderColor(folder), folder }); }
       const loose = mine.filter(item => !item.group).length;
       if (loose && names.length) chips.push({ key: 'none', label: tr('No folder'), count: loose, icon: 'inbox' });
@@ -8656,7 +8746,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         box.dataset.key = key;
         if (options.folder != null) box.append(folderMark(options.folder));
         else if (color) { const dot = el('span', 'dot'); dot.style.setProperty('--c', color); box.append(dot); }
-        else if (icon) { const mark = el('span', `mark ${icon}`); mark.innerHTML = svg(ICONS[icon]); box.append(mark); }
+        else if (icon) box.append(markFor(icon));
         box.append(el('span', 'label', label));
         if (badge) { const chip = el('span', 'badge', badge); const flag = options.badgeFlag && studioFlags.img(options.badgeFlag, 'flag'); if (flag) chip.prepend(flag); box.append(chip); }
         box.append(el('span', 'n', String(count)));
@@ -8676,18 +8766,22 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         back.addEventListener('click', () => { for (const item of builtIns) if (item.hidden) { const edit = builtEdits[language]?.[item.key]; if (edit) { edit.hidden = false; if (!edit.title && !edit.text?.trim()) delete builtEdits[language][item.key]; } } saveBuilt(); paintRows(state); });
         nodes.push(back);
       };
-      const studio = () => { if (!studioShown) return; section('studio', tr('Studio’s replies'), shownBuilt.filter(item => !item.pinned), { icon: 'studio', badge: name, badgeFlag: studioFlags.forLanguage(language), foldable: true }); if (!view.folded.includes('studio') || query) hiddenLink(); };
+      const studio = () => { if (!studioShown) return; section('studio', tr('Studio’s replies'), shownBuilt.filter(item => !item.pinned), { icon: 'logo', badge: name, badgeFlag: studioFlags.forLanguage(language), foldable: true }); if (!view.folded.includes('studio') || query) hiddenLink(); };
       if (filter === 'all') {
         section('pinned', tr('Pinned'), pinned, { icon: 'pin', tags: true });
-        section('type', tr('For {0}', typeLabel), forType, { icon: 'flag' });
+        section('type', tr('For {0}', typeLabel), forType, { icon: 'bulb' });
         if (view.studio === 'first') studio();
         for (const folder of names) section(`f:${folder}`, folder, rest.filter(item => item.group === folder), { color: folderColor(folder), folder, foldable: true });
         section('none', names.length ? tr('No folder') : tr('Your replies'), rest.filter(item => !item.group), { icon: 'inbox', foldable: true });
         if (view.studio === 'last') studio();
+      } else if (filter === 'studio') {
+        section('studio', tr('For every request'), shownBuilt, { icon: 'logo', badge: name, badgeFlag: studioFlags.forLanguage(language) });
+        hiddenLink();
+        for (const [group, list] of studioTypes) section(`studio:${group}`, tr(TYPE_GROUP_NAMES[group]), list, { icon: 'bulb', foldable: true });
+        if (studioMapMate.length) section('studio:mapmate', 'Map Mate', studioMapMate, { icon: 'flag', foldable: true });
       } else {
-        const list = filter === 'pinned' ? pinned : filter === 'type' ? forType : filter === 'studio' ? shownBuilt : filter === 'none' ? mine.filter(item => !item.group) : mine.filter(item => item.group === filter.slice(2));
+        const list = filter === 'pinned' ? pinned : filter === 'type' ? forType : filter === 'none' ? mine.filter(item => !item.group) : mine.filter(item => item.group === filter.slice(2));
         for (const item of list.filter(hit)) nodes.push(row(state, item, filter === 'pinned'));
-        if (filter === 'studio') hiddenLink();
       }
       if (elsewhere.length && !query) {
         const toggle = el('button', 'link', state.allCountries ? tr('Hide replies for other countries') : elsewhere.length === 1 ? tr('Show 1 reply for other countries') : tr('Show {0} replies for other countries', elsewhere.length));
@@ -8700,6 +8794,16 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (!query && !custom.length && filter === 'all') nodes.push(el('p', 'hint', tr('Add your own replies for different occasions, and keep them in groups like Closures or Speed limits.')));
       body.replaceChildren(...nodes);
       [...body.querySelectorAll('.row')].forEach((button, index) => { const num = button.querySelector('.num'); if (num) num.textContent = index < 9 ? String(index + 1) : ''; });
+      const titleBox = state.panel.querySelector('.qtitle');
+      if (titleBox) {
+        const picked = chips.find(chip => chip.key === filter), count = query || !picked ? body.querySelectorAll('.row').length : picked.count;
+        const words = query ? tr('Search replies') : filter === 'all' ? tr('All') : filter === 'type' ? tr('For {0}', typeLabel) : picked?.label || '';
+        const parts = [el('strong', '', words), el('span', 'qm', count === 1 ? tr('1 reply') : tr('{0} replies', count))];
+        if (['all', 'type', 'studio', 'pinned'].includes(filter) && (studioShown || typeBuilt.length) && name) {
+          const lang = el('span', 'qlang', name); const flag = studioFlags.img(studioFlags.forLanguage(language), 'flag'); if (flag) lang.prepend(flag); parts.push(lang);
+        }
+        titleBox.replaceChildren(...parts);
+      }
       const heightKey = `${state.autoFor}|${state.panel.style.getPropertyValue('--ws-qr-max') || state.host.style.getPropertyValue('--ws-qr-max')}`;
       if (state.heightFor !== heightKey && !state.measuring && !state.panel.hidden) {
         state.heightFor = heightKey; state.panel.style.height = '';
@@ -8722,13 +8826,14 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         return true;
       }
       if (focused?.classList?.contains('chip')) {
-        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-          const chips = [...state.panel.querySelectorAll('.chip')], index = chips.indexOf(focused), next = chips[index + (event.key === 'ArrowRight' ? 1 : -1)];
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          const chips = [...state.panel.querySelectorAll('.chip')], index = chips.indexOf(focused), next = chips[index + (event.key === 'ArrowDown' ? 1 : -1)];
           if (next) pickChip(state, next.dataset.key, true);
           return true;
         }
-        if (event.key === 'ArrowDown') { rows[0]?.focus({ preventScroll: false }); return true; }
+        if (event.key === 'ArrowRight') { rows[0]?.focus({ preventScroll: false }); return true; }
       }
+      if (event.key === 'ArrowLeft' && at >= 0) { state.panel.querySelector('.chip[aria-pressed="true"]')?.focus({ preventScroll: true }); return true; }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         if (inSearch && event.key === 'ArrowUp') return false;
         const next = event.key === 'ArrowDown' ? Math.min(rows.length - 1, at + 1) : at - 1;
@@ -10592,6 +10697,80 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     return Object.freeze({ refresh: queue });
   })();
   (() => {
+    if (window.top !== window.self) return;
+    GM_addStyle(`.ws-tip{position:fixed;z-index:2147483000;display:flex;align-items:center;box-sizing:border-box;max-width:320px;min-height:28px;margin:0;padding:6px 10px;border-radius:var(--wme-studio-panel-radius,10px);background:var(--wme-studio-bg,#202124);color:var(--wme-studio-text,#fff);box-shadow:var(--wme-studio-shadow,0 6px 18px rgba(0,0,0,.28));font-size:12px;font-weight:500;line-height:16px;white-space:pre-line;overflow-wrap:anywhere;pointer-events:none}.ws-tip[hidden]{display:none}html[data-ws-tip-on] wz-tooltip-content:not(:has(button,wz-button,a[href],input)){visibility:hidden!important}`);
+    const INTERACTIVE = 'button,wz-button,a[href],input,select,textarea,[role="button"],[contenteditable="true"]';
+    let tip = null, over = null, hiddenWme = null, borrowed = null;
+    const clean = text => String(text || '').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+    const railLabel = item => clean(item.shadowRoot?.querySelector('.navigation-button')?.getAttribute('aria-label') || item.getAttribute('aria-label') || item.getAttribute('label')
+      || item.shadowRoot?.querySelector('.item-content')?.textContent || item.textContent).replace(/\n/g, ' ');
+    function hide() {
+      over = null;
+      if (hiddenWme) { hiddenWme.style.removeProperty('visibility'); hiddenWme = null; }
+      if (borrowed) { if (!borrowed.node.hasAttribute('title')) borrowed.node.setAttribute('title', borrowed.text); borrowed = null; }
+      if (tip) tip.hidden = true;
+      delete document.documentElement.dataset.wsTipOn;
+    }
+    function show(target, text, side) {
+      document.documentElement.dataset.wsTipOn = '1';
+      if (!tip) { tip = document.createElement('div'); tip.className = 'ws-tip'; tip.setAttribute('role', 'tooltip'); document.body.append(tip); }
+      tip.textContent = text; tip.hidden = false;
+      const at = target.getBoundingClientRect(), box = tip.getBoundingClientRect(), gap = 10;
+      let left, top;
+      if (side === 'right' || side === 'left') {
+        left = side === 'right' ? at.right + gap : at.left - gap - box.width;
+        top = at.top + (at.height - box.height) / 2;
+      } else {
+        left = at.left + (at.width - box.width) / 2;
+        top = at.bottom + gap + box.height <= innerHeight - 8 ? at.bottom + gap : at.top - gap - box.height;
+      }
+      tip.style.left = `${Math.round(Math.max(8, Math.min(innerWidth - box.width - 8, left)))}px`;
+      tip.style.top = `${Math.round(Math.max(8, Math.min(innerHeight - box.height - 8, top)))}px`;
+    }
+    document.addEventListener('pointerover', event => {
+      if (event.pointerType === 'touch') return;
+      if (document.documentElement.dataset.wmeStudio !== 'on') { if (over) hide(); return; }
+      const path = event.composedPath();
+      const rail = path.find(node => node?.id === 'drawer'), asked = path.find(node => node?.dataset?.wsTipSide)?.dataset.wsTipSide;
+      const side = asked || (rail ? 'right' : path.some(node => node?.id === 'overlay-buttons') ? 'left' : 'below');
+      let target = null, text = '', wme = null, titled = null;
+      for (const node of path) {
+        if (!node || node === document.body || node === document) break;
+        if (node.nodeType !== 1) continue;
+        if (node === over) return;
+        if (node.localName === 'wz-navigation-item' && rail) {
+          if (rail.getBoundingClientRect().width <= 120) { text = railLabel(node); target = text ? node : null; }
+          break;
+        }
+        if (node.localName === 'wz-tooltip' || node.localName === 'wz-basic-tooltip') {
+          const content = toolTooltipContent(node);
+          text = content && !content.querySelector(INTERACTIVE) ? clean(content.textContent) : '';
+          if (text) { target = node.querySelector(':scope > wz-tooltip-source') || node; wme = content; }
+          break;
+        }
+        if (node.localName === 'wz-rich-tooltip') break;
+        const title = node.getAttribute?.('title');
+        if (title && title.trim() && node.localName !== 'iframe') {
+          text = clean(title); target = node; titled = node;
+          for (const up of path.slice(path.indexOf(node) + 1)) {
+            if (!up || up === document.body) break;
+            if (up.localName === 'wz-tooltip' || up.localName === 'wz-basic-tooltip') { const content = toolTooltipContent(up); wme = content && !content.querySelector(INTERACTIVE) ? content : null; break; }
+          }
+          break;
+        }
+      }
+      if (!target) { if (over) hide(); return; }
+      hide(); over = target;
+      if (titled) { borrowed = { node: titled, text: titled.getAttribute('title') }; titled.removeAttribute('title'); }
+      if (wme) { hiddenWme = wme; wme.style.setProperty('visibility', 'hidden', 'important'); }
+      show(target, text, side);
+    }, true);
+    document.addEventListener('pointerdown', hide, true);
+    document.addEventListener('keydown', hide, true);
+    addEventListener('blur', hide);
+    addEventListener('scroll', () => { if (over) hide(); }, { capture: true, passive: true });
+  })();
+  (() => {
     const FRAMES = '[id^="ISSUE_WINDOW"],[data-testid="floating-window"],#sidebar,#panel-container > *';
     let frame = 0;
     function fit() {
@@ -10600,6 +10779,7 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
       for (const menu of document.querySelectorAll('wz-menu')) {
         const inner = menu.shadowRoot?.querySelector('.wz-menu'); if (!inner) continue;
         if (!menu.hasAttribute('expanded')) { if (inner.style.translate) inner.style.translate = ''; continue; }
+        if (menu.hasAttribute('fixed')) { if (inner.style.translate) inner.style.translate = ''; continue; }
         const box = menu.closest(FRAMES); if (!box) continue;
         inner.style.translate = '';
         const edge = box.getBoundingClientRect(), own = inner.getBoundingClientRect();
@@ -19610,7 +19790,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         if (target===tipTarget) return;
         state.hideTip();
         if (!target || event.pointerType!=='mouse' || target.matches('.tab[aria-selected="true"]') && target.lastElementChild.scrollWidth<=target.lastElementChild.clientWidth) return;
-        tipTarget=target;tipTimer=setTimeout(()=>showTip(target),450);
+        tipTarget=target;showTip(target);
       });
       state.bar.addEventListener('pointerleave',()=>state.hideTip());
       state.bar.addEventListener('pointerdown',()=>state.hideTip());
@@ -20595,30 +20775,59 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   });
 })();
 
-  function studioChipStrip(strip) {
+  function studioChipStrip(strip, options = {}) {
     if (strip.wsStrip) return strip.wsStrip;
-    let raf = 0, speed = 0;
+    const mode = () => (typeof options.mode === 'function' && options.mode() === 'hover' ? 'hover' : 'arrows');
+    const reduced = () => { const motion = document.documentElement.getAttribute('data-wme-studio-motion'); return (motion && motion !== 'normal') || matchMedia('(prefers-reduced-motion: reduce)').matches; };
+    const arrowIcon = turn => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${turn ? 'm15 6-6 6 6 6' : 'm9 6 6 6-6 6'}"/></svg>`;
+    let raf = 0, speed = 0, target = 0, pos = 0, back = null, next = null;
+    function arrows() {
+      if (back) return true;
+      if (!strip.parentNode) return false;
+      const button = (side, label) => {
+        const one = document.createElement('button'); one.type = 'button'; one.className = `ws-strip-arrow ${side}`; one.tabIndex = -1;
+        one.setAttribute('aria-label', label); one.innerHTML = `<span>${arrowIcon(side === 'back')}</span>`; one.hidden = true;
+        one.addEventListener('click', event => { event.stopPropagation(); strip.scrollBy({ left: (side === 'back' ? -1 : 1) * Math.max(80, strip.clientWidth * 0.66), behavior: reduced() ? 'auto' : 'smooth' }); });
+        one.addEventListener('pointerdown', event => event.stopPropagation());
+        return one;
+      };
+      back = button('back', options.backLabel || 'Back'); next = button('next', options.nextLabel || 'More');
+      strip.after(back, next);
+      return true;
+    }
     const edges = () => {
-      const more = strip.scrollWidth > strip.clientWidth + 1;
-      strip.classList.toggle('ws-fade-start', more && strip.scrollLeft > 1);
-      strip.classList.toggle('ws-fade-end', more && strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1);
+      const more = !strip.hidden && strip.scrollWidth > strip.clientWidth + 1;
+      const start = more && strip.scrollLeft > 1, end = more && strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1;
+      const withArrows = mode() === 'arrows';
+      strip.classList.toggle('ws-fade-start', start);
+      strip.classList.toggle('ws-fade-end', end);
+      strip.classList.toggle('ws-strip-arrows', withArrows);
+      if (withArrows && (back || more) && arrows()) {
+        for (const [one, show] of [[back, start], [next, end]]) {
+          one.hidden = !show;
+          one.style.top = `${strip.offsetTop}px`; one.style.height = `${strip.offsetHeight}px`;
+          one.style.left = one === back ? `${strip.offsetLeft}px` : `${strip.offsetLeft + strip.offsetWidth - one.offsetWidth}px`;
+        }
+      } else if (back) { back.hidden = true; next.hidden = true; }
     };
     const step = () => {
-      if (!speed) { raf = 0; return; }
-      const before = strip.scrollLeft; strip.scrollLeft += speed; edges();
-      if (strip.scrollLeft === before) { raf = 0; return; }
+      speed += (target - speed) * 0.12;
+      if (Math.abs(speed) < 0.05 && !target) { speed = 0; raf = 0; return; }
+      const end = strip.scrollWidth - strip.clientWidth;
+      pos = Math.max(0, Math.min(end, pos + speed)); strip.scrollLeft = pos; edges();
+      if ((pos <= 0 && speed < 0) || (pos >= end && speed > 0)) { speed = 0; raf = 0; return; }
       raf = requestAnimationFrame(step);
     };
     strip.addEventListener('pointermove', event => {
-      if (event.pointerType && event.pointerType !== 'mouse') return;
-      if (strip.scrollWidth <= strip.clientWidth + 1) { speed = 0; return; }
-      const box = strip.getBoundingClientRect(), zone = Math.min(44, box.width / 4);
+      if ((event.pointerType && event.pointerType !== 'mouse') || mode() !== 'hover') { target = 0; return; }
+      if (strip.scrollWidth <= strip.clientWidth + 1) { target = 0; return; }
+      const box = strip.getBoundingClientRect(), zone = Math.min(56, box.width / 4);
       const into = event.clientX < box.left + zone ? -(box.left + zone - event.clientX) : event.clientX > box.right - zone ? event.clientX - (box.right - zone) : 0;
-      speed = into ? Math.sign(into) * Math.max(1.5, Math.min(1, Math.abs(into) / zone) * 9) : 0;
-      if (speed && !raf) raf = requestAnimationFrame(step);
+      target = into ? Math.sign(into) * (0.6 + Math.min(1, Math.abs(into) / zone) * 3.4) : 0;
+      if (target && !raf) { pos = strip.scrollLeft; raf = requestAnimationFrame(step); }
     });
-    strip.addEventListener('pointerleave', () => { speed = 0; });
-    strip.addEventListener('pointerdown', () => { speed = 0; });
+    strip.addEventListener('pointerleave', () => { target = 0; });
+    strip.addEventListener('pointerdown', () => { target = 0; speed = 0; });
     strip.addEventListener('wheel', event => {
       if (strip.scrollWidth <= strip.clientWidth + 1 || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       event.preventDefault(); strip.scrollLeft += event.deltaY; edges();
@@ -20630,7 +20839,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         if (!chip || strip.scrollWidth <= strip.clientWidth + 1) { edges(); return; }
         const zoom = strip.currentCSSZoom || 1, box = strip.getBoundingClientRect(), one = chip.getBoundingClientRect();
         const left = Math.max(0, Math.min(strip.scrollWidth - strip.clientWidth, strip.scrollLeft + ((one.left + one.width / 2) - (box.left + box.width / 2)) / zoom));
-        const motion = document.documentElement.getAttribute('data-wme-studio-motion'), still = !smooth || (motion && motion !== 'normal') || matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const still = !smooth || reduced();
         strip.scrollTo({ left, behavior: still ? 'auto' : 'smooth' });
         if (still) edges();
       }
@@ -20639,7 +20848,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     requestAnimationFrame(edges);
     return api;
   }
-  function studioStripCSS() { return '.ws-fade-end{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent)}.ws-fade-start{-webkit-mask-image:linear-gradient(90deg,transparent,#000 30px);mask-image:linear-gradient(90deg,transparent,#000 30px)}.ws-fade-start.ws-fade-end{-webkit-mask-image:linear-gradient(90deg,transparent,#000 30px,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,transparent,#000 30px,#000 calc(100% - 30px),transparent)}'; }
+  function studioStripCSS() { return '.ws-fade-end{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent)}.ws-fade-start{-webkit-mask-image:linear-gradient(90deg,transparent,#000 30px);mask-image:linear-gradient(90deg,transparent,#000 30px)}.ws-fade-start.ws-fade-end{-webkit-mask-image:linear-gradient(90deg,transparent,#000 30px,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,transparent,#000 30px,#000 calc(100% - 30px),transparent)}.ws-strip-arrows.ws-fade-end{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 56px),transparent calc(100% - 6px));mask-image:linear-gradient(90deg,#000 calc(100% - 56px),transparent calc(100% - 6px))}.ws-strip-arrows.ws-fade-start{-webkit-mask-image:linear-gradient(90deg,transparent 6px,#000 56px);mask-image:linear-gradient(90deg,transparent 6px,#000 56px)}.ws-strip-arrows.ws-fade-start.ws-fade-end{-webkit-mask-image:linear-gradient(90deg,transparent 6px,#000 56px,#000 calc(100% - 56px),transparent calc(100% - 6px));mask-image:linear-gradient(90deg,transparent 6px,#000 56px,#000 calc(100% - 56px),transparent calc(100% - 6px))}.ws-strip-arrow{position:absolute;z-index:2;display:flex;align-items:center;width:30px;margin:0;padding:0;border:0;background:none;color:inherit;cursor:pointer}.ws-strip-arrow.back{justify-content:flex-start}.ws-strip-arrow.next{justify-content:flex-end}.ws-strip-arrow[hidden]{display:none}.ws-strip-arrow>span{display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:26px;height:26px;border-radius:50%;border:1px solid color-mix(in srgb,currentColor 28%,transparent);background:color-mix(in srgb,currentColor 16%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:0 1px 6px rgba(0,0,0,.22)}.ws-strip-arrow:hover>span{background:color-mix(in srgb,currentColor 26%,transparent);border-color:color-mix(in srgb,currentColor 45%,transparent)}.ws-strip-arrow svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}'; }
 
 
 
@@ -20726,8 +20935,22 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     return '';
   }
-  const STUDIO_BUILD = '4.1.0-2026-10-28';
+  const STUDIO_BUILD = '4.1.1-2026-10-28z9';
   const STUDIO_CHANGELOG = Object.freeze([
+    { version: '4.1.1', quiet: true, groups: [
+      { title: 'Layout', items: [
+        "Pointing at a button in the left rail shows its name, like the map tools on the right.",
+        "Tooltips show as soon as you point at something, without the wait.",
+        "Quick replies has its folders down the left side, each one click away, and each reply shows a line of its text under its name.",
+        "Studio’s replies in Quick replies lists all of them, by request type. ⋯ › Opens on picks where the list starts, or remembers the last one you used."
+      ] },
+      { title: 'Fixes', items: [
+        "On iPad and in Safari, pictures and videos in My reports show again.",
+        "With Userscripts, Studio gets its current libraries from Greasy Fork when Userscripts kept older copies, so nothing is missing after an update.",
+        "Your country on the Discord server now comes from where you save your edits, not from wherever the map happened to be.",
+        "A closure’s ⋮ menu opens beside it again, instead of the closure disappearing and the menu ending up at the bottom of the panel."
+      ] }
+    ] },
     { version: '4.1.0', groups: [
       { title: 'Update requests', items: [
         "Quick replies come with ready replies for each type of request, and the ones for the request in front of you come first.",
@@ -23142,7 +23365,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
       log.rail.replaceChildren(...rail);
       log.rail.setAttribute('data-ws-keep', '');
-      studioChipStrip(log.rail).edges();
+      studioChipStrip(log.rail, { backLabel: globalThis.WMEStudioI18n?.translate?.('Back') || 'Back', nextLabel: globalThis.WMEStudioI18n?.translate?.('More') || 'More' }).edges();
       const keepLeft = log.body.querySelector('.log-chips')?.scrollLeft || 0, sameVersion = log.shown === release.version;
       log.shown = release.version;
       const groups = logGroups(release), count = logCount(release);
@@ -23177,7 +23400,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       log.body.setAttribute('data-ws-keep', '');
       log.body.scrollTop = 0;
       const strip = log.body.querySelector('.log-chips');
-      if (strip) { const api = studioChipStrip(strip); if (sameVersion) strip.scrollLeft = keepLeft; api.centre(strip.querySelector('[aria-pressed="true"]'), sameVersion); }
+      if (strip) { const api = studioChipStrip(strip, { backLabel: globalThis.WMEStudioI18n?.translate?.('Back') || 'Back', nextLabel: globalThis.WMEStudioI18n?.translate?.('More') || 'More' }); if (sameVersion) strip.scrollLeft = keepLeft; api.centre(strip.querySelector('[aria-pressed="true"]'), sameVersion); }
       if (focusRail) log.rail.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true });
       log.rail.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
@@ -24616,7 +24839,39 @@ ${studioControlsCSS()}
     })();
   }
   const studioDiscord = (() => {
-    const STORE = 'wmeStudio.discord.v1', EVERY = 6 * 3600000;
+    const STORE = 'wmeStudio.discord.v1', EVERY = 6 * 3600000, SAVES = 'wmeStudio.saveCountries.v1';
+    let saved = {};
+    const readSaved = () => Promise.resolve(studioKeep.get(SAVES, {})).then(value => (value && typeof value === 'object' && !Array.isArray(value) ? value : {}), () => ({}));
+    const loadSaved = async () => { saved = await readSaved(); return saved; };
+    function mapCountry() {
+      const W = page().W;
+      let country = null;
+      try { country = W?.model?.getTopCountry?.()?.attributes || null; } catch (_) { country = null; }
+      if (!country) { try { country = studioSDK.get()?.DataModel?.Countries?.getTopCountry?.() || null; } catch (_) { country = null; } }
+      return country?.name ? { name: String(country.name).slice(0, 60), abbr: String(country.abbr || '').slice(0, 3) } : null;
+    }
+    async function countSave(event) {
+      if (event?.success === false) return;
+      const country = mapCountry();
+      if (!country) return;
+      const all = await readSaved(), key = country.abbr || country.name;
+      all[key] = { name: country.name, abbr: country.abbr, n: Math.min(1e6, (Number(all[key]?.n) || 0) + 1), at: Date.now() };
+      saved = Object.fromEntries(Object.keys(all).sort((a, b) => (all[b].n || 0) - (all[a].n || 0)).slice(0, 12).map(k => [k, all[k]]));
+      await Promise.resolve(studioKeep.set(SAVES, saved)).catch(() => {});
+    }
+    const topSaved = () => {
+      let best = null;
+      for (const entry of Object.values(saved)) if (entry?.name && (!best || entry.n > best.n || (entry.n === best.n && (entry.at || 0) > (best.at || 0)))) best = entry;
+      return best;
+    };
+    let watchingSaves = false, saveTries = 0;
+    function watchSaves() {
+      if (watchingSaves) return;
+      const api = studioSDK.get();
+      if (!api?.Events?.on) { if (++saveTries < 40) setTimeout(watchSaves, 3000); return; }
+      watchingSaves = true;
+      try { api.Events.on({ eventName: 'wme-save-finished', eventHandler: event => { countSave(event).catch(() => {}); } }); } catch (error) { watchingSaves = false; reportStudioError('save countries', error); }
+    }
     const vt = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? text; } catch (_) { return text; } };
     const page = () => (typeof unsafeWindow === 'undefined' ? window : unsafeWindow);
     function who() {
@@ -24625,16 +24880,15 @@ ${studioControlsCSS()}
         const id = Number(a.id ?? user?.getID?.()), name = String(a.userName ?? user?.getUsername?.() ?? '').trim(), rank = Number(a.rank ?? user?.getRank?.());
         if (!Number.isSafeInteger(id) || id <= 0 || !name || !Number.isFinite(rank)) return null;
         let info = null; try { info = studioSDK.get()?.State?.getUserInfo?.() || null; } catch (_) { info = null; }
-        let country = null;
-        try { country = W?.model?.getTopCountry?.()?.attributes || null; } catch (_) { country = null; }
-        if (!country) { try { country = studioSDK.get()?.DataModel?.Countries?.getTopCountry?.() || null; } catch (_) { country = null; } }
+        const top = topSaved(), country = top ? { name: top.name, abbr: top.abbr || '' } : mapCountry();
         const managed = (Array.isArray(info?.managedAreas) ? info.managedAreas : []).map(area => String(area?.name || '').trim()).filter(Boolean).slice(0, 12);
         return {
           wme_id: id, wme_name: name, rank: rank + 1,
           editor: a.isEditor !== false && !a.mapEditingBanned,
           area_manager: info?.isAreaManager === true || a.isAreaManager === true || managed.length > 0,
           country_manager: info?.isCountryManager === true || a.isCountryManager === true,
-          managed, country: country?.name ? { name: String(country.name), abbr: String(country.abbr || '') } : null
+          managed, country: country?.name ? { name: String(country.name), abbr: String(country.abbr || '') } : null,
+          country_from: top ? 'saves' : 'map'
         };
       } catch (_) { return null; }
     }
@@ -24651,6 +24905,7 @@ ${studioControlsCSS()}
     }
     const remember = value => Promise.resolve(studioKeep.set(STORE, value)).catch(() => {});
     async function verify(code) {
+      await loadSaved();
       const me = who();
       if (!me) return { status: 0, data: { code: 'no-editor' } };
       const answer = await post('/api/verify', { code, ...me });
@@ -24660,6 +24915,7 @@ ${studioControlsCSS()}
     async function sync() {
       if (window.top !== window.self || !uiRouteAllowed()) return;
       const kept = await Promise.resolve(studioKeep.get(STORE, null)).catch(() => null);
+      await loadSaved();
       const me = who();
       if (!kept?.wme_id || !me || me.wme_id !== kept.wme_id || Date.now() - (kept.at || 0) < EVERY) return;
       const answer = await post('/api/verify/sync', me);
@@ -24725,6 +24981,7 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
       let tries = 0;
       const start = () => {
         if (!who()) { if (++tries < 90) setTimeout(start, 2000); return; }
+        watchSaves();
         if (STUDIO_VERIFY_LINK && uiRouteAllowed()) setTimeout(() => offer(STUDIO_VERIFY_LINK), 1200);
         setTimeout(() => sync().catch(() => {}), 15000);
       };
