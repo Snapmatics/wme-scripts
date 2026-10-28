@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.0.3
+// @version      4.1.0
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -120,7 +120,7 @@ function wmeStudioStartBridge(main) {
   wmeStudioBridgeNote(`starting for ${(typeof GM_info === 'object' && GM_info?.scriptHandler) || GM?.info?.scriptHandler || 'this manager'}…`);
   const token = `ws${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
   const say = (...parts) => console.info('[WME Studio]', ...parts);
-  const resourcesCode = globalThis.WMEStudioResourcesCode, screenDisplaysCode = globalThis.WMEStudioScreenDisplaysCode, interfaceCode = globalThis.WMEStudioInterfaceCode;
+  const resourcesCode = globalThis.WMEStudioResourcesCode, screenDisplaysCode = globalThis.WMEStudioScreenDisplaysCode, interfaceCode = globalThis.WMEStudioInterfaceCode, cloudSyncCode = globalThis.WMEStudioCloudSyncCode;
   if (typeof resourcesCode !== 'function') say('the Resources library did not load: Studio starts without its theme and languages');
   if (typeof interfaceCode !== 'function') say('the Interface library did not load: Studio starts without its settings window and panel styles');
   const ALLOWED = /^https:\/\/(?:update\.greasyfork\.org|greasyfork\.org|wme-studio-reports\.charalamposavgenikos\.workers\.dev)\//i;
@@ -265,6 +265,7 @@ function wmeStudioStartBridge(main) {
   try { (${typeof resourcesCode === 'function' ? String(resourcesCode) : 'function () {}'})(); } catch (error) { console.error('[WME Studio] Resources', error); }
   try { (${typeof screenDisplaysCode === 'function' ? String(screenDisplaysCode) : 'function () {}'})(); } catch (error) { console.error('[WME Studio] Screen displays', error); }
   try { (${typeof interfaceCode === 'function' ? String(interfaceCode) : 'function () {}'})(); } catch (error) { console.error('[WME Studio] Interface', error); }
+  try { (${typeof cloudSyncCode === 'function' ? String(cloudSyncCode) : 'function () {}'})(); } catch (error) { console.error('[WME Studio] Cloud Sync', error); }
   (${String(main)})();
 })(${JSON.stringify({ token, info, values })});`;
 
@@ -295,7 +296,7 @@ const wmeStudioMain = () => {
   // Big style sheets and page templates live in the WME Studio Interface library (4.0.0), so this script stays under
   // Greasy Fork's size limit. studioPart(name, values) gives one of them, built from the values it needs.
   function studioPart(name, values) {
-    const BUILD = '4.0.1-2026-10-26z4', parts = globalThis.WMEStudioInterface, part = parts?.parts?.[name];
+    const BUILD = '4.1.0-2026-10-28', parts = globalThis.WMEStudioInterface, part = parts?.parts?.[name];
     if (part === undefined) {
       if (!studioPart.warned) { studioPart.warned = true; console.error('[WME Studio] The WME Studio Interface library did not load (or is an older copy). Check the @require line in the script header.'); }
       return '';
@@ -396,7 +397,25 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.0.3';
+  const USERSCRIPT_VERSION = '4.1.0';
+  // Verify on Discord in one click (4.1.0): the bot's link opens the editor with #wmeStudioVerify=CODE. The code is
+  // taken off the address at once (so it isn't shared by a copied link) and kept for this tab for 15 minutes, which
+  // carries it through a sign-in page.
+  const STUDIO_VERIFY_LINK = (() => {
+    const KEY = 'wmeStudio.verifyLink';
+    try {
+      const found = /(?:^#|[#&])wmeStudioVerify=([A-Za-z0-9]{3}[\s-]?[A-Za-z0-9]{3})/.exec(location.hash || '');
+      if (found) {
+        const rest = location.hash.replace(/(?:^#|&)wmeStudioVerify=[^&]*/, '').replace(/^#?&?/, '');
+        history.replaceState(history.state, '', location.pathname + location.search + (rest ? `#${rest}` : ''));
+        sessionStorage.setItem(KEY, JSON.stringify({ code: found[1].toUpperCase().replace(/[\s-]/g, ''), until: Date.now() + 15 * 60000 }));
+      }
+      const kept = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+      if (kept && kept.until > Date.now() && /^[A-Z0-9]{6}$/.test(kept.code)) return { code: kept.code, forget: () => { try { sessionStorage.removeItem(KEY); } catch (_) { /* gone with the tab */ } } };
+      sessionStorage.removeItem(KEY);
+    } catch (_) { /* no address to read or no storage: the code can still be typed */ }
+    return null;
+  })();
   // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
   // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
@@ -1115,7 +1134,7 @@ ${scope} #online-editors:has(.online-editors-list-wrapper) .online-editors-bubbl
   // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
   // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
   // report shows it instead of a layout that looks broken for no reason.
-  const RESOURCES_BUILD = '4.0.3-2026-10-27z2';
+  const RESOURCES_BUILD = '4.1.0-2026-10-28';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
@@ -1387,7 +1406,7 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     closeAfterReply: false,
     // 3.1.0: the Case file request window (off: WME's own layout), and after how many quiet days it suggests closing.
     requestCaseFile: true, requestQuietDays: 7,
-    // 4.0.2: with URCE (URComments-Enhanced) installed, replies, reminders and closing are left to it.
+    // 4.0.2: with URC-E (URComments-Enhanced) installed, replies, reminders and closing are left to it.
     urceHandoff: true,
     // 3.0.0: how Review sets the requests you haven't opened apart from the ones you have (picked in a vote).
     taskStyle: 'classic',
@@ -5347,7 +5366,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     if (affects('enabled','compactMode')) for (const state of restrictionPanels.values()) syncRestrictionPanel(state);
     scriptTabPicker.refresh();
     requestMinimizer.refresh();
-    caseFile.refresh(); quickReplies.refresh(); replyTools.refresh(); replyDetails.refresh(); chatPlus.refresh(); zoomLevelShow.refresh(); pieSupport.refresh(); mapButtonTips.refresh();
+    caseFile.refresh(); quickReplies.refresh(); replyTools.refresh(); replyDetails.refresh(); chatPlus.refresh(); zoomLevelShow.refresh(); pieSupport.refresh(); wmephSupport.refresh(); mapButtonTips.refresh(); placeTemplates.refresh();
     panelResizeHints.prune();
     syncCompactGlassAppearance();
     syncBetaNavigationGlassState();
@@ -6455,14 +6474,14 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     return 'updateRequest';
   }
   // Keep named requests available for cycling through the native single-request editor.
-  // URCE (4.0.2; up here since 4.0.3, because the saved requests and follow-ups ask about it while they load). Many editors answer requests with URComments-Enhanced: its comment lists (kept per country by the
+  // URC-E (4.0.2; up here since 4.0.3, because the saved requests and follow-ups ask about it while they load). Many editors answer requests with URComments-Enhanced: its comment lists (kept per country by the
   // community), its reminder and its close days. With it installed, Studio leaves that work to it and only styles the
-  // request window: the Quick replies tab opens URCE's comments, follow-ups aren't kept, and the case strip doesn't
-  // suggest closing after Studio's own quiet days. Settings › Panels turns this off. Nothing of URCE's is changed.
+  // request window: the Quick replies tab opens URC-E's comments, follow-ups aren't kept, and the case strip doesn't
+  // suggest closing after Studio's own quiet days. Settings › Panels turns this off. Nothing of URC-E's is changed.
   let urceSeen = false, urceLooked = 0;
   const URCE_TABS = '#sidebar :is(.userscripts-drawer-tabs,#user-tabs) > .nav-tabs a';
-  // WME names script tabs itself (#userscript-tab-32), and URCE's shows only an icon titled "URC-E", so its tab is the
-  // one whose page holds URCE's panel.
+  // WME names script tabs itself (#userscript-tab-32), and URC-E's shows only an icon titled "URC-E", so its tab is the
+  // one whose page holds URC-E's panel.
   const isUrceTab = a => {
     const href = a.getAttribute('href') || '', named = value => /^\s*URC-?E\s*$/i.test(value || '');
     if (href === '#sidepanel-urc-e' || named(a.textContent) || named(a.title) || named(a.querySelector('[title]')?.getAttribute('title'))) return true;
@@ -6481,7 +6500,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
   }
   function urceLeads() { return !!settings.enabled && settings.urceHandoff !== false && urceInstalled(); }
   globalThis.WMEStudioURCE = Object.freeze({ installed: urceInstalled, leads: urceLeads });   // for Settings, built in a scope of its own
-  // URCE's tab, in WME's Scripts section. A script's tab is only switched while that section is on screen (switched
+  // URC-E's tab, in WME's Scripts section. A script's tab is only switched while that section is on screen (switched
   // from another section, its page showed up inside that one), so the section is opened first.
   function openUrce() {
     try {
@@ -6499,7 +6518,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         const points = item => ['data-for', 'aria-controls', 'data-panel', 'data-target', 'href'].map(name => String(item.getAttribute(name) || '').replace(/^#/, '')).some(id => id && ids.has(id));
         const words = item => [item.getAttribute('data-for'), item.id, item.getAttribute('label'), item.getAttribute('aria-label'), item.getAttribute('title'), item.textContent, item.querySelector?.('[class*="w-icon-"]')?.className].join(' ');
         const scripts = items.find(item => item.getAttribute('data-for') === 'userscript_tab') || items.find(points) || items.find(item => /script/i.test(words(item)));
-        if (!scripts) { console.info('[WME Studio] URCE: no Scripts button found', items.map(item => item.getAttribute('data-for') || item.textContent.trim()), [...ids]); return false; }
+        if (!scripts) { console.info('[WME Studio] URC-E: no Scripts button found', items.map(item => item.getAttribute('data-for') || item.textContent.trim()), [...ids]); return false; }
         // The button inside it is what WME listens to; a click on the item itself does nothing.
         (scripts.shadowRoot?.querySelector('button.navigation-button, button') || scripts).click();
       }
@@ -6507,7 +6526,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const shown = () => !!document.getElementById('sidepanel-urc-e')?.getClientRects().length;
       // Clicked again if something else took the section's place (up to three times).
       const press = () => { tab.click(); if (++clicks < 3) setTimeout(() => { if (!shown()) press(); }, 350); };
-      const go = () => { if (onScreen()) { press(); return; } if (++tries < 30) setTimeout(go, 50); else { console.info('[WME Studio] URCE: the Scripts section did not open'); press(); } };
+      const go = () => { if (onScreen()) { press(); return; } if (++tries < 30) setTimeout(go, 50); else { console.info('[WME Studio] URC-E: the Scripts section did not open'); press(); } };
       requestAnimationFrame(go);
       return true;
     } catch (studioError) { reportStudioError('openUrce', studioError); return false; }
@@ -7744,7 +7763,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const followDayStart = time => { const date = new Date(time); date.setHours(0, 0, 0, 0); return date.getTime(); };
     const followLeft = item => quietDays() - Math.round((followDayStart(Date.now()) - followDayStart(item.sentAt)) / 86400000);
     function dueFollowUps() { return urceLeads() ? [] : [...followUps.values()].filter(item => followLeft(item) <= 0); }
-    // URCE keeps its own reminders (4.0.2): while it leads, follow-ups aren't kept or shown (the ones kept before wait).
+    // URC-E keeps its own reminders (4.0.2): while it leads, follow-ups aren't kept or shown (the ones kept before wait).
     function followCount() { return urceLeads() ? 0 : followUps.size; }
     function storedFollowUp(raw) {
       if (!raw || typeof raw !== 'object' || raw.id == null || !Number.isFinite(Number(raw.sentAt))) return null;
@@ -7953,6 +7972,28 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       hi: { spot: "रिपोर्ट के लिए धन्यवाद! क्या आप बता सकते हैं कि यह ठीक कहाँ हुआ? सड़क का नाम या चौराहा हमें जगह ढूँढने में मदद करता है।", fixed: "धन्यवाद! हमने यहाँ नक्शा ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।", remind: "फिर से नमस्ते! इसे ठीक करने के लिए हमें थोड़ी और जानकारी चाहिए। क्या आप बता सकते हैं कि समस्या ठीक कहाँ थी? अगर हमें जवाब नहीं मिला, तो हम कुछ दिनों में यह रिपोर्ट बंद कर देंगे।", close: "हमें कोई जवाब नहीं मिला, इसलिए हम फ़िलहाल यह रिपोर्ट बंद कर रहे हैं। अगर ऐसा फिर हो, तो कृपया उसी जगह से नई रिपोर्ट भेजें। धन्यवाद!" },
       ca: { spot: "Gràcies per l’avís! Ens pots dir on va passar exactament? El nom del carrer o la cruïlla ens ajuda a trobar-ho.", fixed: "Gràcies! Hem corregit el mapa aquí. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.", remind: "Hola de nou! Encara necessitem una mica més de detall per corregir-ho. Ens pots dir on era exactament el problema? Si no tenim resposta, tancarem aquest avís d’aquí a uns dies.", close: "No hem tingut resposta, així que de moment tanquem aquest avís. Si torna a passar, envia un avís nou des del mateix lloc. Gràcies!" }
     };
+    // Ready replies for each kind of request and for Map Mate reports (4.1.0), in the same languages. A language
+    // without one of them uses the English one, so every key is always there.
+    const MORE_REPLIES = /*@@MORE_REPLIES@@*/{"en":{"t-turn-ask":"Thanks for the report! Which turn was it: from which street onto which, and in which direction were you driving?","t-turn-done":"Thank you! We've fixed that turn on the map. The app shows the change after the next map update, usually within a few days.","t-address-ask":"Thanks for the report! What is the correct address or street name, and which place were you trying to reach?","t-address-done":"Thank you! We've corrected the address on the map. The app shows the change after the next map update, usually within a few days.","t-route-ask":"Thanks for the report! Where did you start, where were you going, and which way did you expect the app to take you?","t-route-done":"Thanks for the report! We checked the map here and it's right. The app picks the route from live traffic, so it can differ from day to day.","t-roundabout-ask":"Thanks for the report! Which junction should be a roundabout? The streets that meet there help us find it.","t-roundabout-done":"Thank you! We've added the roundabout to the map. The app shows it after the next map update, usually within a few days.","t-general-ask":"Thanks for the report! Could you tell us a bit more about what was wrong, and where exactly?","t-junction-ask":"Thanks for the report! Which junction, exit or bridge was it, and in which direction were you driving?","t-junction-done":"Thank you! We've fixed the junction on the map. The app shows the change after the next map update, usually within a few days.","t-direction-ask":"Thanks for the report! Which street was it, and in which direction is it really open to traffic?","t-direction-done":"Thank you! We've corrected the driving direction on the map. The app shows the change after the next map update, usually within a few days.","t-road-ask":"Thanks for the report! What is the road called, where does it start and end, and is it open to everyone?","t-road-done":"Thank you! We've added the road to the map. The app shows it after the next map update, usually within a few days.","t-landmark-ask":"Thanks for the report! What is the place called, and where exactly is it?","t-landmark-done":"Thank you! We've added the place to the map. It shows in the app after the next map update, usually within a few days.","t-blocked-ask":"Thanks for the report! Is the road closed for good or for a while? If you know until when, that helps a lot.","t-blocked-done":"Thank you! We've added the closure to the map, so the app routes around it.","t-speed-ask":"Thanks for the report! What speed limit is posted there, and for which direction?","t-speed-done":"Thank you! We've updated the speed limit on the map. The app shows it after the next map update, usually within a few days.","nothing":"Thanks for the report! We checked the map here and couldn't find anything wrong, so we left it as it is. If it happens again, please send a new report from the spot.","mm-ask":"Thanks for your report! Could you tell us a little more: exactly where it is, and in which direction you were driving?","mm-bump-done":"Thank you! We've added the speed bump to the map, so the app warns drivers about it.","mm-bump-none":"Thanks for the report! We checked and couldn't see a speed bump here, so we left the map as it is.","mm-light-done":"Thank you! We've added the traffic lights to the map.","mm-light-none":"Thanks for the report! We checked and couldn't see traffic lights here, so we left the map as it is.","mm-curve-done":"Thank you! We've marked the dangerous curve on the map, so the app warns drivers about it.","mm-curve-none":"Thanks for the report! We checked this curve and didn't find a reason to change the map, so we left it as it is.","mm-rail-done":"Thank you! We've added the railroad crossing to the map, so the app warns drivers about it.","mm-rail-none":"Thanks for the report! We checked and couldn't see a railroad crossing here, so we left the map as it is.","mm-camera-done":"Thank you! We've added the speed camera to the map.","mm-camera-none":"Thanks for the report! We checked and couldn't confirm a speed camera here, so we left the map as it is.","mm-done":"Thank you! We've updated the map here. The app shows the change after the next map update, usually within a few days.","mm-none":"Thanks for the report! We checked the map here and didn't find anything to change, so we left it as it is."},"el":{"t-turn-ask":"Ευχαριστούμε για την αναφορά! Ποια στροφή ήταν: από ποιον δρόμο προς ποιον, και προς ποια κατεύθυνση οδηγούσατε;","t-turn-done":"Ευχαριστούμε! Διορθώσαμε τη στροφή στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-address-ask":"Ευχαριστούμε για την αναφορά! Ποια είναι η σωστή διεύθυνση ή το σωστό όνομα του δρόμου, και πού προσπαθούσατε να πάτε;","t-address-done":"Ευχαριστούμε! Διορθώσαμε τη διεύθυνση στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-route-ask":"Ευχαριστούμε για την αναφορά! Από πού ξεκινήσατε, πού πηγαίνατε και από ποιον δρόμο περιμένατε να σας πάει η εφαρμογή;","t-route-done":"Ευχαριστούμε για την αναφορά! Ελέγξαμε τον χάρτη σε αυτό το σημείο και είναι σωστός. Η εφαρμογή επιλέγει τη διαδρομή με βάση την κίνηση σε πραγματικό χρόνο, οπότε μπορεί να διαφέρει από μέρα σε μέρα.","t-roundabout-ask":"Ευχαριστούμε για την αναφορά! Ποια διασταύρωση θα έπρεπε να είναι κυκλικός κόμβος; Τα ονόματα των δρόμων που συναντιούνται εκεί μάς βοηθούν να τη βρούμε.","t-roundabout-done":"Ευχαριστούμε! Προσθέσαμε τον κυκλικό κόμβο στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-general-ask":"Ευχαριστούμε για την αναφορά! Μπορείτε να μας πείτε λίγα περισσότερα για το τι ήταν λάθος και πού ακριβώς;","t-junction-ask":"Ευχαριστούμε για την αναφορά! Ποιος κόμβος, ποια έξοδος ή ποια γέφυρα ήταν, και προς ποια κατεύθυνση οδηγούσατε;","t-junction-done":"Ευχαριστούμε! Διορθώσαμε τον κόμβο στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-direction-ask":"Ευχαριστούμε για την αναφορά! Ποιος δρόμος ήταν, και προς ποια κατεύθυνση επιτρέπεται πραγματικά η κυκλοφορία;","t-direction-done":"Ευχαριστούμε! Διορθώσαμε την κατεύθυνση κυκλοφορίας στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-road-ask":"Ευχαριστούμε για την αναφορά! Πώς λέγεται ο δρόμος, πού αρχίζει και πού τελειώνει, και είναι ανοιχτός για όλους;","t-road-done":"Ευχαριστούμε! Προσθέσαμε τον δρόμο στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-landmark-ask":"Ευχαριστούμε για την αναφορά! Πώς λέγεται το μέρος και πού ακριβώς βρίσκεται;","t-landmark-done":"Ευχαριστούμε! Προσθέσαμε το μέρος στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-blocked-ask":"Ευχαριστούμε για την αναφορά! Ο δρόμος είναι κλειστός μόνιμα ή προσωρινά; Αν ξέρετε μέχρι πότε, μας βοηθά πολύ.","t-blocked-done":"Ευχαριστούμε! Προσθέσαμε το κλείσιμο του δρόμου στον χάρτη, οπότε η εφαρμογή θα το παρακάμπτει.","t-speed-ask":"Ευχαριστούμε για την αναφορά! Ποιο όριο ταχύτητας δείχνει η πινακίδα εκεί, και για ποια κατεύθυνση;","t-speed-done":"Ευχαριστούμε! Ενημερώσαμε το όριο ταχύτητας στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","nothing":"Ευχαριστούμε για την αναφορά! Ελέγξαμε τον χάρτη σε αυτό το σημείο και δεν βρήκαμε κάποιο λάθος, οπότε τον αφήσαμε ως έχει. Αν συμβεί ξανά, στείλτε νέα αναφορά από το σημείο.","mm-ask":"Ευχαριστούμε για την αναφορά! Μπορείτε να μας πείτε λίγα περισσότερα: πού ακριβώς βρίσκεται και προς ποια κατεύθυνση οδηγούσατε;","mm-bump-done":"Ευχαριστούμε! Προσθέσαμε το σαμαράκι στον χάρτη, ώστε η εφαρμογή να ειδοποιεί τους οδηγούς.","mm-bump-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε και δεν εντοπίσαμε σαμαράκι σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-light-done":"Ευχαριστούμε! Προσθέσαμε τα φανάρια στον χάρτη.","mm-light-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε και δεν εντοπίσαμε φανάρια σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-curve-done":"Ευχαριστούμε! Σημειώσαμε την επικίνδυνη στροφή στον χάρτη, ώστε η εφαρμογή να ειδοποιεί τους οδηγούς.","mm-curve-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε αυτή τη στροφή και δεν βρήκαμε λόγο να αλλάξουμε τον χάρτη, οπότε τον αφήσαμε ως έχει.","mm-rail-done":"Ευχαριστούμε! Προσθέσαμε την ισόπεδη σιδηροδρομική διάβαση στον χάρτη, ώστε η εφαρμογή να ειδοποιεί τους οδηγούς.","mm-rail-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε και δεν εντοπίσαμε ισόπεδη σιδηροδρομική διάβαση σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-camera-done":"Ευχαριστούμε! Προσθέσαμε την κάμερα ελέγχου ταχύτητας στον χάρτη.","mm-camera-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε, αλλά δεν μπορέσαμε να επιβεβαιώσουμε κάμερα ελέγχου ταχύτητας σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-done":"Ευχαριστούμε! Ενημερώσαμε τον χάρτη σε αυτό το σημείο. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","mm-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε τον χάρτη σε αυτό το σημείο και δεν βρήκαμε κάτι να αλλάξουμε, οπότε τον αφήσαμε ως έχει."},"de":{"t-turn-ask":"Danke für die Meldung! Um welche Abbiegung ging es: von welcher Straße in welche, und in welche Richtung bist du gefahren?","t-turn-done":"Danke! Wir haben die Abbiegung auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-address-ask":"Danke für die Meldung! Wie lautet die richtige Adresse oder der richtige Straßenname, und wohin wolltest du?","t-address-done":"Danke! Wir haben die Adresse auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-route-ask":"Danke für die Meldung! Wo bist du losgefahren, wohin wolltest du, und welchen Weg hättest du von der App erwartet?","t-route-done":"Danke für die Meldung! Wir haben die Karte hier geprüft, und sie stimmt. Die App wählt die Route anhand des aktuellen Verkehrs, deshalb kann sie von Tag zu Tag unterschiedlich sein.","t-roundabout-ask":"Danke für die Meldung! Welche Kreuzung sollte ein Kreisverkehr sein? Die Straßen, die dort aufeinandertreffen, helfen uns, sie zu finden.","t-roundabout-done":"Danke! Wir haben den Kreisverkehr auf der Karte ergänzt. Die App zeigt ihn nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-general-ask":"Danke für die Meldung! Kannst du uns etwas mehr dazu sagen, was falsch war und wo genau?","t-junction-ask":"Danke für die Meldung! Um welche Kreuzung, Ausfahrt oder Brücke ging es, und in welche Richtung bist du gefahren?","t-junction-done":"Danke! Wir haben die Kreuzung auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-direction-ask":"Danke für die Meldung! Um welche Straße ging es, und in welche Richtung darf man sie tatsächlich befahren?","t-direction-done":"Danke! Wir haben die Fahrtrichtung auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-road-ask":"Danke für die Meldung! Wie heißt die Straße, wo beginnt und endet sie, und darf sie jeder befahren?","t-road-done":"Danke! Wir haben die Straße auf der Karte ergänzt. Die App zeigt sie nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-landmark-ask":"Danke für die Meldung! Wie heißt der Ort, und wo genau liegt er?","t-landmark-done":"Danke! Wir haben den Ort auf der Karte ergänzt. Er erscheint in der App nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-blocked-ask":"Danke für die Meldung! Ist die Straße dauerhaft oder nur vorübergehend gesperrt? Wenn du weißt, bis wann, hilft uns das sehr.","t-blocked-done":"Danke! Wir haben die Sperrung auf der Karte eingetragen, damit die App sie umfährt.","t-speed-ask":"Danke für die Meldung! Welches Tempolimit ist dort ausgeschildert, und für welche Richtung?","t-speed-done":"Danke! Wir haben das Tempolimit auf der Karte aktualisiert. Die App zeigt es nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","nothing":"Danke für die Meldung! Wir haben die Karte hier geprüft und keinen Fehler gefunden, deshalb haben wir sie so gelassen. Falls es wieder passiert, sende bitte eine neue Meldung von der Stelle aus.","mm-ask":"Danke für die Meldung! Kannst du uns etwas mehr sagen: Wo genau ist es, und in welche Richtung bist du gefahren?","mm-bump-done":"Danke! Wir haben die Bodenschwelle auf der Karte eingetragen, damit die App Fahrer davor warnt.","mm-bump-none":"Danke für die Meldung! Wir haben nachgesehen und hier keine Bodenschwelle gefunden, deshalb haben wir die Karte so gelassen.","mm-light-done":"Danke! Wir haben die Ampel auf der Karte eingetragen.","mm-light-none":"Danke für die Meldung! Wir haben nachgesehen und hier keine Ampel gefunden, deshalb haben wir die Karte so gelassen.","mm-curve-done":"Danke! Wir haben die gefährliche Kurve auf der Karte markiert, damit die App Fahrer davor warnt.","mm-curve-none":"Danke für die Meldung! Wir haben uns die Kurve angesehen und keinen Grund gefunden, die Karte zu ändern, deshalb haben wir sie so gelassen.","mm-rail-done":"Danke! Wir haben den Bahnübergang auf der Karte eingetragen, damit die App Fahrer davor warnt.","mm-rail-none":"Danke für die Meldung! Wir haben nachgesehen und hier keinen Bahnübergang gefunden, deshalb haben wir die Karte so gelassen.","mm-camera-done":"Danke! Wir haben den Blitzer auf der Karte eingetragen.","mm-camera-none":"Danke für die Meldung! Wir haben nachgesehen, konnten hier aber keinen Blitzer bestätigen, deshalb haben wir die Karte so gelassen.","mm-done":"Danke! Wir haben die Karte hier aktualisiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","mm-none":"Danke für die Meldung! Wir haben die Karte hier geprüft und nichts gefunden, was geändert werden müsste, deshalb haben wir sie so gelassen."},"ru":{"t-turn-ask":"Спасибо за сообщение! О каком повороте речь: с какой улицы на какую и в каком направлении вы ехали?","t-turn-done":"Спасибо! Мы исправили этот поворот на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-address-ask":"Спасибо за сообщение! Подскажите правильный адрес или название улицы и куда вы хотели попасть?","t-address-done":"Спасибо! Мы исправили адрес на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-route-ask":"Спасибо за сообщение! Откуда вы выехали, куда направлялись и каким путём, по-вашему, должно было повести приложение?","t-route-done":"Спасибо за сообщение! Мы проверили карту в этом месте, всё верно. Приложение выбирает маршрут с учётом текущей дорожной ситуации, поэтому он может меняться день ото дня.","t-roundabout-ask":"Спасибо за сообщение! Какой перекрёсток должен быть с круговым движением? Названия улиц, которые там сходятся, помогут нам его найти.","t-roundabout-done":"Спасибо! Мы добавили круговое движение на карту. Приложение покажет его после следующего обновления карты, обычно в течение нескольких дней.","t-general-ask":"Спасибо за сообщение! Расскажите, пожалуйста, чуть подробнее: что было не так и где именно?","t-junction-ask":"Спасибо за сообщение! О какой развязке, съезде или мосте речь и в каком направлении вы ехали?","t-junction-done":"Спасибо! Мы исправили развязку на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-direction-ask":"Спасибо за сообщение! О какой улице речь и в каком направлении по ней на самом деле разрешено движение?","t-direction-done":"Спасибо! Мы исправили направление движения на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-road-ask":"Спасибо за сообщение! Как называется дорога, где она начинается и заканчивается и открыта ли она для всех?","t-road-done":"Спасибо! Мы добавили дорогу на карту. Приложение покажет её после следующего обновления карты, обычно в течение нескольких дней.","t-landmark-ask":"Спасибо за сообщение! Как называется это место и где именно оно находится?","t-landmark-done":"Спасибо! Мы добавили это место на карту. Оно появится в приложении после следующего обновления карты, обычно в течение нескольких дней.","t-blocked-ask":"Спасибо за сообщение! Дорога закрыта насовсем или временно? Если знаете, до какого времени, это очень поможет.","t-blocked-done":"Спасибо! Мы отметили перекрытие на карте, так что приложение будет прокладывать маршрут в объезд.","t-speed-ask":"Спасибо за сообщение! Какое ограничение скорости указано там на знаке и для какого направления?","t-speed-done":"Спасибо! Мы обновили ограничение скорости на карте. Приложение покажет его после следующего обновления карты, обычно в течение нескольких дней.","nothing":"Спасибо за сообщение! Мы проверили карту в этом месте и не нашли ошибок, поэтому оставили всё как есть. Если это повторится, отправьте новое сообщение прямо с места.","mm-ask":"Спасибо за сообщение! Подскажите чуть подробнее: где именно это и в каком направлении вы ехали?","mm-bump-done":"Спасибо! Мы добавили лежачего полицейского на карту, и приложение будет предупреждать о нём водителей.","mm-bump-none":"Спасибо за сообщение! Мы проверили и не нашли здесь лежачего полицейского, поэтому оставили карту без изменений.","mm-light-done":"Спасибо! Мы добавили светофор на карту.","mm-light-none":"Спасибо за сообщение! Мы проверили и не нашли здесь светофора, поэтому оставили карту без изменений.","mm-curve-done":"Спасибо! Мы отметили опасный поворот на карте, и приложение будет предупреждать о нём водителей.","mm-curve-none":"Спасибо за сообщение! Мы проверили этот поворот и не нашли причин менять карту, поэтому оставили всё как есть.","mm-rail-done":"Спасибо! Мы добавили железнодорожный переезд на карту, и приложение будет предупреждать о нём водителей.","mm-rail-none":"Спасибо за сообщение! Мы проверили и не нашли здесь железнодорожного переезда, поэтому оставили карту без изменений.","mm-camera-done":"Спасибо! Мы добавили камеру контроля скорости на карту.","mm-camera-none":"Спасибо за сообщение! Мы проверили, но не смогли подтвердить, что здесь есть камера контроля скорости, поэтому оставили карту без изменений.","mm-done":"Спасибо! Мы обновили карту в этом месте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","mm-none":"Спасибо за сообщение! Мы проверили карту в этом месте и не нашли ничего, что нужно менять, поэтому оставили всё как есть."},"cs":{"t-turn-ask":"Díky za hlášení! O které odbočení šlo: z které ulice do které a jakým směrem jste jeli?","t-turn-done":"Děkujeme! Odbočení jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-address-ask":"Díky za hlášení! Jaká je správná adresa nebo název ulice a kam jste se snažili dostat?","t-address-done":"Děkujeme! Adresu jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-route-ask":"Díky za hlášení! Odkud jste vyjížděli, kam jste jeli a kudy jste čekali, že vás aplikace povede?","t-route-done":"Díky za hlášení! Mapu jsme na tomto místě zkontrolovali a je v pořádku. Aplikace vybírá trasu podle aktuální dopravy, takže se může den ode dne lišit.","t-roundabout-ask":"Díky za hlášení! Která křižovatka by měla být kruhový objezd? Názvy ulic, které se tam potkávají, nám pomůžou ji najít.","t-roundabout-done":"Děkujeme! Kruhový objezd jsme přidali do mapy. Aplikace ho ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-general-ask":"Díky za hlášení! Můžete nám říct trochu víc o tom, co bylo špatně a kde přesně?","t-junction-ask":"Díky za hlášení! O kterou křižovatku, sjezd nebo most šlo a jakým směrem jste jeli?","t-junction-done":"Děkujeme! Křižovatku jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-direction-ask":"Díky za hlášení! O kterou ulici šlo a jakým směrem je v ní provoz skutečně povolen?","t-direction-done":"Děkujeme! Směr jízdy jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-road-ask":"Díky za hlášení! Jak se silnice jmenuje, kde začíná a končí a může po ní jezdit každý?","t-road-done":"Děkujeme! Silnici jsme přidali do mapy. Aplikace ji ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-landmark-ask":"Díky za hlášení! Jak se to místo jmenuje a kde přesně je?","t-landmark-done":"Děkujeme! Místo jsme přidali do mapy. V aplikaci se objeví po příští aktualizaci mapy, obvykle během několika dní.","t-blocked-ask":"Díky za hlášení! Je silnice uzavřená natrvalo, nebo jen dočasně? Pokud víte, do kdy, hodně nám to pomůže.","t-blocked-done":"Děkujeme! Uzavírku jsme přidali do mapy, takže ji aplikace bude objíždět.","t-speed-ask":"Díky za hlášení! Jaká rychlost je tam povolená podle značky a pro který směr?","t-speed-done":"Děkujeme! Rychlostní limit jsme na mapě aktualizovali. Aplikace ho ukáže po příští aktualizaci mapy, obvykle během několika dní.","nothing":"Díky za hlášení! Mapu jsme na tomto místě zkontrolovali a žádnou chybu jsme nenašli, takže jsme ji nechali beze změny. Pokud se to stane znovu, pošlete prosím nové hlášení přímo z místa.","mm-ask":"Díky za hlášení! Můžete nám říct trochu víc: kde přesně to je a jakým směrem jste jeli?","mm-bump-done":"Děkujeme! Zpomalovací práh jsme přidali do mapy, takže na něj aplikace řidiče upozorní.","mm-bump-none":"Díky za hlášení! Podívali jsme se a zpomalovací práh jsme tu nenašli, takže jsme mapu nechali beze změny.","mm-light-done":"Děkujeme! Semafor jsme přidali do mapy.","mm-light-none":"Díky za hlášení! Podívali jsme se a semafor jsme tu nenašli, takže jsme mapu nechali beze změny.","mm-curve-done":"Děkujeme! Nebezpečnou zatáčku jsme na mapě označili, takže na ni aplikace řidiče upozorní.","mm-curve-none":"Díky za hlášení! Tuto zatáčku jsme zkontrolovali a nenašli jsme důvod mapu měnit, takže jsme ji nechali beze změny.","mm-rail-done":"Děkujeme! Železniční přejezd jsme přidali do mapy, takže na něj aplikace řidiče upozorní.","mm-rail-none":"Díky za hlášení! Podívali jsme se a železniční přejezd jsme tu nenašli, takže jsme mapu nechali beze změny.","mm-camera-done":"Děkujeme! Rychlostní radar jsme přidali do mapy.","mm-camera-none":"Díky za hlášení! Podívali jsme se, ale rychlostní radar jsme tu nedokázali potvrdit, takže jsme mapu nechali beze změny.","mm-done":"Děkujeme! Mapu jsme na tomto místě upravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","mm-none":"Díky za hlášení! Mapu jsme na tomto místě zkontrolovali a nenašli jsme nic, co by bylo potřeba změnit, takže jsme ji nechali beze změny."},"bg":{"t-turn-ask":"Благодарим за сигнала! За кой завой става дума: от коя улица в коя и в каква посока карахте?","t-turn-done":"Благодарим! Поправихме завоя на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-address-ask":"Благодарим за сигнала! Кой е правилният адрес или името на улицата и до кое място се опитвахте да стигнете?","t-address-done":"Благодарим! Поправихме адреса на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-route-ask":"Благодарим за сигнала! Откъде тръгнахте, накъде отивахте и по кой път очаквахте приложението да ви води?","t-route-done":"Благодарим за сигнала! Проверихме картата тук и тя е вярна. Приложението избира маршрута според трафика в реално време, затова той може да е различен в различните дни.","t-roundabout-ask":"Благодарим за сигнала! Кое кръстовище трябва да е кръгово движение? Улиците, които се събират там, ще ни помогнат да го открием.","t-roundabout-done":"Благодарим! Добавихме кръговото движение на картата. Приложението ще го покаже след следващото обновяване на картата, обикновено до няколко дни.","t-general-ask":"Благодарим за сигнала! Можете ли да ни разкажете малко повече какво не беше наред и къде точно?","t-junction-ask":"Благодарим за сигнала! За кой пътен възел, изход или мост става дума и в каква посока карахте?","t-junction-done":"Благодарим! Поправихме пътния възел на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-direction-ask":"Благодарим за сигнала! За коя улица става дума и в каква посока всъщност е разрешено движението по нея?","t-direction-done":"Благодарим! Поправихме посоката на движение на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-road-ask":"Благодарим за сигнала! Как се казва пътят, откъде започва и докъде стига и отворен ли е за всички?","t-road-done":"Благодарим! Добавихме пътя на картата. Приложението ще го покаже след следващото обновяване на картата, обикновено до няколко дни.","t-landmark-ask":"Благодарим за сигнала! Как се казва мястото и къде точно се намира?","t-landmark-done":"Благодарим! Добавихме мястото на картата. То ще се появи в приложението след следващото обновяване на картата, обикновено до няколко дни.","t-blocked-ask":"Благодарим за сигнала! Пътят затворен ли е завинаги или временно? Ако знаете до кога, това много ще ни помогне.","t-blocked-done":"Благодарим! Добавихме затварянето на картата, така че приложението ще го заобикаля.","t-speed-ask":"Благодарим за сигнала! Какво ограничение на скоростта показва знакът там и за коя посока?","t-speed-done":"Благодарим! Обновихме ограничението на скоростта на картата. Приложението ще го покаже след следващото обновяване на картата, обикновено до няколко дни.","nothing":"Благодарим за сигнала! Проверихме картата тук и не открихме нищо грешно, затова я оставихме както е. Ако се случи отново, моля, изпратете нов сигнал от самото място.","mm-ask":"Благодарим за сигнала! Можете ли да ни кажете малко повече: къде точно е и в каква посока карахте?","mm-bump-done":"Благодарим! Добавихме легналия полицай на картата, така че приложението ще предупреждава шофьорите за него.","mm-bump-none":"Благодарим за сигнала! Проверихме и не видяхме легнал полицай тук, затова оставихме картата както е.","mm-light-done":"Благодарим! Добавихме светофара на картата.","mm-light-none":"Благодарим за сигнала! Проверихме и не видяхме светофар тук, затова оставихме картата както е.","mm-curve-done":"Благодарим! Отбелязахме опасния завой на картата, така че приложението ще предупреждава шофьорите за него.","mm-curve-none":"Благодарим за сигнала! Проверихме този завой и не открихме причина да променяме картата, затова я оставихме както е.","mm-rail-done":"Благодарим! Добавихме железопътния прелез на картата, така че приложението ще предупреждава шофьорите за него.","mm-rail-none":"Благодарим за сигнала! Проверихме и не видяхме железопътен прелез тук, затова оставихме картата както е.","mm-camera-done":"Благодарим! Добавихме камерата за скорост на картата.","mm-camera-none":"Благодарим за сигнала! Проверихме, но не успяхме да потвърдим камера за скорост тук, затова оставихме картата както е.","mm-done":"Благодарим! Обновихме картата тук. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","mm-none":"Благодарим за сигнала! Проверихме картата тук и не открихме нищо за промяна, затова я оставихме както е."},"ar":{"t-turn-ask":"شكرًا على البلاغ! أي انعطاف تقصد: من أي شارع إلى أي شارع، وفي أي اتجاه كنت تقود؟","t-turn-done":"شكرًا لك! لقد صحّحنا هذا الانعطاف على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-address-ask":"شكرًا على البلاغ! ما العنوان أو اسم الشارع الصحيح، وإلى أي مكان كنت تحاول الوصول؟","t-address-done":"شكرًا لك! لقد صحّحنا العنوان على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-route-ask":"شكرًا على البلاغ! من أين انطلقت، وإلى أين كنت متجهًا، وأي طريق كنت تتوقع أن يأخذك فيه التطبيق؟","t-route-done":"شكرًا على البلاغ! لقد راجعنا الخريطة هنا وهي صحيحة. يختار التطبيق المسار بناءً على حركة المرور المباشرة، لذا قد يختلف من يوم لآخر.","t-roundabout-ask":"شكرًا على البلاغ! أي تقاطع يجب أن يكون دوّارًا؟ أسماء الشوارع التي تلتقي هناك تساعدنا على العثور عليه.","t-roundabout-done":"شكرًا لك! لقد أضفنا الدوّار إلى الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-general-ask":"شكرًا على البلاغ! هل يمكنك أن تخبرنا بمزيد من التفاصيل عن الخطأ، وأين بالضبط؟","t-junction-ask":"شكرًا على البلاغ! أي تقاطع أو مخرج أو جسر تقصد، وفي أي اتجاه كنت تقود؟","t-junction-done":"شكرًا لك! لقد صحّحنا التقاطع على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-direction-ask":"شكرًا على البلاغ! أي شارع تقصد، وفي أي اتجاه يُسمح بالسير فيه فعلًا؟","t-direction-done":"شكرًا لك! لقد صحّحنا اتجاه السير على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-road-ask":"شكرًا على البلاغ! ما اسم الطريق، وأين يبدأ وأين ينتهي، وهل هو مفتوح للجميع؟","t-road-done":"شكرًا لك! لقد أضفنا الطريق إلى الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-landmark-ask":"شكرًا على البلاغ! ما اسم المكان، وأين يقع بالضبط؟","t-landmark-done":"شكرًا لك! لقد أضفنا المكان إلى الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-blocked-ask":"شكرًا على البلاغ! هل الطريق مغلق نهائيًا أم مؤقتًا؟ إذا كنت تعرف حتى متى، فهذا يساعدنا كثيرًا.","t-blocked-done":"شكرًا لك! لقد أضفنا الإغلاق إلى الخريطة، لذا سيقترح التطبيق طريقًا بديلًا لتجنّبه.","t-speed-ask":"شكرًا على البلاغ! ما حد السرعة المكتوب على اللافتة هناك، ولأي اتجاه؟","t-speed-done":"شكرًا لك! لقد حدّثنا حد السرعة على الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","nothing":"شكرًا على البلاغ! لقد راجعنا الخريطة هنا ولم نجد أي خطأ، لذا تركناها كما هي. إذا تكرر الأمر، يُرجى إرسال بلاغ جديد من المكان نفسه.","mm-ask":"شكرًا على البلاغ! هل يمكنك أن تخبرنا بالمزيد: أين يقع بالضبط، وفي أي اتجاه كنت تقود؟","mm-bump-done":"شكرًا لك! لقد أضفنا المطب إلى الخريطة، لذا سينبّه التطبيق السائقين إليه.","mm-bump-none":"شكرًا على البلاغ! لقد تحققنا ولم نجد مطبًا هنا، لذا تركنا الخريطة كما هي.","mm-light-done":"شكرًا لك! لقد أضفنا إشارة المرور إلى الخريطة.","mm-light-none":"شكرًا على البلاغ! لقد تحققنا ولم نجد إشارة مرور هنا، لذا تركنا الخريطة كما هي.","mm-curve-done":"شكرًا لك! لقد حدّدنا المنعطف الخطير على الخريطة، لذا سينبّه التطبيق السائقين إليه.","mm-curve-none":"شكرًا على البلاغ! لقد تحققنا من هذا المنعطف ولم نجد سببًا لتغيير الخريطة، لذا تركناها كما هي.","mm-rail-done":"شكرًا لك! لقد أضفنا معبر السكة الحديدية إلى الخريطة، لذا سينبّه التطبيق السائقين إليه.","mm-rail-none":"شكرًا على البلاغ! لقد تحققنا ولم نجد معبر سكة حديدية هنا، لذا تركنا الخريطة كما هي.","mm-camera-done":"شكرًا لك! لقد أضفنا كاميرا مراقبة السرعة إلى الخريطة.","mm-camera-none":"شكرًا على البلاغ! لقد تحققنا لكن لم نتمكن من تأكيد وجود كاميرا مراقبة سرعة هنا، لذا تركنا الخريطة كما هي.","mm-done":"شكرًا لك! لقد حدّثنا الخريطة هنا. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","mm-none":"شكرًا على البلاغ! لقد راجعنا الخريطة هنا ولم نجد ما يستدعي التغيير، لذا تركناها كما هي."},"ja":{"t-turn-ask":"ご報告ありがとうございます！どの右左折でしたか？どの通りからどの通りへ、どちら方面に走行されていたか教えていただけますか？","t-turn-done":"ありがとうございます！地図上のこの右左折を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-address-ask":"ご報告ありがとうございます！正しい住所または通りの名前と、どこへ向かおうとされていたかを教えていただけますか？","t-address-done":"ありがとうございます！地図上の住所を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-route-ask":"ご報告ありがとうございます！出発地と目的地、そしてアプリにどのルートで案内してほしかったかを教えていただけますか？","t-route-done":"ご報告ありがとうございます！この場所の地図を確認したところ、正しく登録されていました。アプリはリアルタイムの交通状況をもとにルートを選ぶため、日によって異なる場合があります。","t-roundabout-ask":"ご報告ありがとうございます！どの交差点がラウンドアバウト（環状交差点）であるべきでしょうか？そこで交わる通りの名前がわかると場所を特定しやすくなります。","t-roundabout-done":"ありがとうございます！地図にラウンドアバウトを追加しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-general-ask":"ご報告ありがとうございます！何が間違っていたのか、具体的にどこだったのか、もう少し詳しく教えていただけますか？","t-junction-ask":"ご報告ありがとうございます！どの分岐点、出口、または橋でしたか？また、どちら方面に走行されていましたか？","t-junction-done":"ありがとうございます！地図上の分岐点を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-direction-ask":"ご報告ありがとうございます！どの通りで、実際にはどちらの方向に通行できますか？","t-direction-done":"ありがとうございます！地図上の通行方向を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-road-ask":"ご報告ありがとうございます！道路の名前、始点と終点、そして誰でも通行できる道路かどうかを教えていただけますか？","t-road-done":"ありがとうございます！地図に道路を追加しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-landmark-ask":"ご報告ありがとうございます！その場所の名前と、具体的な位置を教えていただけますか？","t-landmark-done":"ありがとうございます！地図にその場所を追加しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-blocked-ask":"ご報告ありがとうございます！その道路はずっと通行止めですか、それとも一時的ですか？いつまでかご存じでしたら、とても助かります。","t-blocked-done":"ありがとうございます！地図に通行止めを登録しましたので、アプリはそこを避けてルートを案内します。","t-speed-ask":"ご報告ありがとうございます！そこに表示されている制限速度と、どちらの方向かを教えていただけますか？","t-speed-done":"ありがとうございます！地図上の制限速度を更新しました。次回の地図更新後、通常数日以内にアプリに反映されます。","nothing":"ご報告ありがとうございます！この場所の地図を確認しましたが、問題は見つからなかったため、そのままにしています。また同じことが起きた場合は、その場所から新しく報告してください。","mm-ask":"ご報告ありがとうございます！もう少し詳しく教えていただけますか？具体的な場所と、どちら方面に走行されていたかがわかると助かります。","mm-bump-done":"ありがとうございます！地図に減速帯（ハンプ）を追加しましたので、アプリでドライバーに警告が表示されます。","mm-bump-none":"ご報告ありがとうございます！確認しましたが、この場所に減速帯は見当たらなかったため、地図はそのままにしています。","mm-light-done":"ありがとうございます！地図に信号機を追加しました。","mm-light-none":"ご報告ありがとうございます！確認しましたが、この場所に信号機は見当たらなかったため、地図はそのままにしています。","mm-curve-done":"ありがとうございます！地図に危険なカーブを登録しましたので、アプリでドライバーに警告が表示されます。","mm-curve-none":"ご報告ありがとうございます！このカーブを確認しましたが、地図を変更する理由は見当たらなかったため、そのままにしています。","mm-rail-done":"ありがとうございます！地図に踏切を追加しましたので、アプリでドライバーに警告が表示されます。","mm-rail-none":"ご報告ありがとうございます！確認しましたが、この場所に踏切は見当たらなかったため、地図はそのままにしています。","mm-camera-done":"ありがとうございます！地図にオービスを追加しました。","mm-camera-none":"ご報告ありがとうございます！調べましたが、この場所のオービスは確認できなかったため、地図はそのままにしています。","mm-done":"ありがとうございます！この場所の地図を更新しました。次回の地図更新後、通常数日以内にアプリに反映されます。","mm-none":"ご報告ありがとうございます！この場所の地図を確認しましたが、変更が必要な点は見つからなかったため、そのままにしています。"},"da":{"t-turn-ask":"Tak for rapporten! Hvilket sving var det: fra hvilken vej ind på hvilken, og i hvilken retning kørte du?","t-turn-done":"Tak! Vi har rettet svinget på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-address-ask":"Tak for rapporten! Hvad er den rigtige adresse eller det rigtige vejnavn, og hvilket sted prøvede du at komme til?","t-address-done":"Tak! Vi har rettet adressen på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-route-ask":"Tak for rapporten! Hvor startede du, hvor skulle du hen, og hvilken vej havde du forventet, at appen ville sende dig?","t-route-done":"Tak for rapporten! Vi har tjekket kortet her, og det er korrekt. Appen vælger ruten ud fra den aktuelle trafik, så den kan variere fra dag til dag.","t-roundabout-ask":"Tak for rapporten! Hvilket kryds burde være en rundkørsel? Navnene på de veje, der mødes der, hjælper os med at finde det.","t-roundabout-done":"Tak! Vi har tilføjet rundkørslen på kortet. Den vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-general-ask":"Tak for rapporten! Kan du fortælle os lidt mere om, hvad der var galt, og hvor præcis?","t-junction-ask":"Tak for rapporten! Hvilket kryds, hvilken frakørsel eller bro var det, og i hvilken retning kørte du?","t-junction-done":"Tak! Vi har rettet krydset på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-direction-ask":"Tak for rapporten! Hvilken vej var det, og i hvilken retning må man faktisk køre på den?","t-direction-done":"Tak! Vi har rettet kørselsretningen på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-road-ask":"Tak for rapporten! Hvad hedder vejen, hvor starter og slutter den, og er den åben for alle?","t-road-done":"Tak! Vi har tilføjet vejen på kortet. Den vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-landmark-ask":"Tak for rapporten! Hvad hedder stedet, og hvor præcis ligger det?","t-landmark-done":"Tak! Vi har tilføjet stedet på kortet. Det vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-blocked-ask":"Tak for rapporten! Er vejen lukket permanent eller kun midlertidigt? Hvis du ved, hvor længe, hjælper det os meget.","t-blocked-done":"Tak! Vi har tilføjet spærringen på kortet, så appen sender dig uden om den.","t-speed-ask":"Tak for rapporten! Hvilken hastighedsgrænse er skiltet der, og i hvilken retning?","t-speed-done":"Tak! Vi har opdateret hastighedsgrænsen på kortet. Den vises i appen efter næste kortopdatering, som regel inden for et par dage.","nothing":"Tak for rapporten! Vi har tjekket kortet her og kunne ikke finde noget forkert, så vi har ladet det være, som det er. Hvis det sker igen, så send gerne en ny rapport fra stedet.","mm-ask":"Tak for rapporten! Kan du fortælle os lidt mere: præcis hvor det er, og i hvilken retning du kørte?","mm-bump-done":"Tak! Vi har tilføjet vejbumpet på kortet, så appen advarer bilister om det.","mm-bump-none":"Tak for rapporten! Vi har tjekket og kunne ikke se noget vejbump her, så vi har ladet kortet være, som det er.","mm-light-done":"Tak! Vi har tilføjet lyskrydset på kortet.","mm-light-none":"Tak for rapporten! Vi har tjekket og kunne ikke se noget lyskryds her, så vi har ladet kortet være, som det er.","mm-curve-done":"Tak! Vi har markeret det farlige sving på kortet, så appen advarer bilister om det.","mm-curve-none":"Tak for rapporten! Vi har tjekket svinget og fandt ingen grund til at ændre kortet, så vi har ladet det være, som det er.","mm-rail-done":"Tak! Vi har tilføjet jernbaneoverkørslen på kortet, så appen advarer bilister om den.","mm-rail-none":"Tak for rapporten! Vi har tjekket og kunne ikke se nogen jernbaneoverkørsel her, så vi har ladet kortet være, som det er.","mm-camera-done":"Tak! Vi har tilføjet fartkameraet på kortet.","mm-camera-none":"Tak for rapporten! Vi har tjekket, men kunne ikke bekræfte noget fartkamera her, så vi har ladet kortet være, som det er.","mm-done":"Tak! Vi har opdateret kortet her. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","mm-none":"Tak for rapporten! Vi har tjekket kortet her og fandt ikke noget, der skulle ændres, så vi har ladet det være, som det er."},"et":{"t-turn-ask":"Aitäh teate eest! Millise pöördega oli tegu: milliselt tänavalt millisele ja mis suunas te sõitsite?","t-turn-done":"Aitäh! Parandasime selle pöörde kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-address-ask":"Aitäh teate eest! Milline on õige aadress või tänava nimi ja kuhu te püüdsite jõuda?","t-address-done":"Aitäh! Parandasime aadressi kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-route-ask":"Aitäh teate eest! Kust te alustasite, kuhu sõitsite ja millist teed mööda ootasite, et rakendus teid juhataks?","t-route-done":"Aitäh teate eest! Kontrollisime kaarti selles kohas ja see on õige. Rakendus valib marsruudi reaalajas liiklusolude põhjal, seega võib see päeviti erineda.","t-roundabout-ask":"Aitäh teate eest! Milline ristmik peaks olema ringristmik? Sinna kokku saavate tänavate nimed aitavad meil selle üles leida.","t-roundabout-done":"Aitäh! Lisasime ringristmiku kaardile. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-general-ask":"Aitäh teate eest! Kas saaksite veidi täpsemalt öelda, mis oli valesti ja kus täpselt?","t-junction-ask":"Aitäh teate eest! Millise ristmiku, mahasõidu või sillaga oli tegu ja mis suunas te sõitsite?","t-junction-done":"Aitäh! Parandasime ristmiku kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-direction-ask":"Aitäh teate eest! Millise tänavaga oli tegu ja mis suunas on sellel tegelikult liiklus lubatud?","t-direction-done":"Aitäh! Parandasime sõidusuuna kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-road-ask":"Aitäh teate eest! Mis on tee nimi, kust see algab ja kus lõpeb ning kas see on kõigile avatud?","t-road-done":"Aitäh! Lisasime tee kaardile. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-landmark-ask":"Aitäh teate eest! Mis on koha nimi ja kus see täpselt asub?","t-landmark-done":"Aitäh! Lisasime koha kaardile. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-blocked-ask":"Aitäh teate eest! Kas tee on suletud jäädavalt või ajutiselt? Kui teate, mis ajani, aitab see meid väga.","t-blocked-done":"Aitäh! Lisasime teesulgemise kaardile, nii et rakendus juhatab sellest mööda.","t-speed-ask":"Aitäh teate eest! Milline kiiruspiirang seal märgiga kehtib ja millises suunas?","t-speed-done":"Aitäh! Uuendasime kiiruspiirangut kaardil. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","nothing":"Aitäh teate eest! Kontrollisime kaarti selles kohas ega leidnud midagi valesti, seega jätsime selle nii, nagu see on. Kui see juhtub uuesti, saatke palun uus teade otse sellest kohast.","mm-ask":"Aitäh teate eest! Kas saaksite veidi täpsemalt öelda: kus see täpselt asub ja mis suunas te sõitsite?","mm-bump-done":"Aitäh! Lisasime lamava politseiniku kaardile, nii et rakendus hoiatab juhte selle eest.","mm-bump-none":"Aitäh teate eest! Kontrollisime ega näinud siin lamavat politseinikku, seega jätsime kaardi nii, nagu see on.","mm-light-done":"Aitäh! Lisasime foorid kaardile.","mm-light-none":"Aitäh teate eest! Kontrollisime ega näinud siin foore, seega jätsime kaardi nii, nagu see on.","mm-curve-done":"Aitäh! Märkisime ohtliku kurvi kaardile, nii et rakendus hoiatab juhte selle eest.","mm-curve-none":"Aitäh teate eest! Kontrollisime seda kurvi ega leidnud põhjust kaarti muuta, seega jätsime selle nii, nagu see on.","mm-rail-done":"Aitäh! Lisasime raudteeülesõidu kaardile, nii et rakendus hoiatab juhte selle eest.","mm-rail-none":"Aitäh teate eest! Kontrollisime ega näinud siin raudteeülesõitu, seega jätsime kaardi nii, nagu see on.","mm-camera-done":"Aitäh! Lisasime kiiruskaamera kaardile.","mm-camera-none":"Aitäh teate eest! Kontrollisime, kuid ei suutnud siin kiiruskaamerat kinnitada, seega jätsime kaardi nii, nagu see on.","mm-done":"Aitäh! Uuendasime kaarti selles kohas. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","mm-none":"Aitäh teate eest! Kontrollisime kaarti selles kohas ega leidnud midagi, mida muuta, seega jätsime selle nii, nagu see on."},"vi":{"t-turn-ask":"Cảm ơn bạn đã báo cáo! Đó là chỗ rẽ nào: từ đường nào sang đường nào, và bạn đang đi theo hướng nào?","t-turn-done":"Cảm ơn bạn! Chúng tôi đã sửa chỗ rẽ đó trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-address-ask":"Cảm ơn bạn đã báo cáo! Địa chỉ hoặc tên đường đúng là gì, và bạn đang muốn đến địa điểm nào?","t-address-done":"Cảm ơn bạn! Chúng tôi đã sửa địa chỉ trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-route-ask":"Cảm ơn bạn đã báo cáo! Bạn xuất phát từ đâu, muốn đi đến đâu, và bạn mong ứng dụng dẫn đường theo lối nào?","t-route-done":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra bản đồ tại đây và thấy bản đồ đúng. Ứng dụng chọn tuyến đường dựa trên tình hình giao thông thực tế, nên tuyến đường có thể khác nhau tùy ngày.","t-roundabout-ask":"Cảm ơn bạn đã báo cáo! Giao lộ nào nên là vòng xuyến? Tên các con đường giao nhau ở đó sẽ giúp chúng tôi tìm ra vị trí.","t-roundabout-done":"Cảm ơn bạn! Chúng tôi đã thêm vòng xuyến vào bản đồ. Ứng dụng sẽ hiển thị vòng xuyến sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-general-ask":"Cảm ơn bạn đã báo cáo! Bạn có thể cho chúng tôi biết thêm một chút về lỗi gặp phải, và chính xác là ở đâu không?","t-junction-ask":"Cảm ơn bạn đã báo cáo! Đó là nút giao, lối ra hay cây cầu nào, và bạn đang đi theo hướng nào?","t-junction-done":"Cảm ơn bạn! Chúng tôi đã sửa nút giao trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-direction-ask":"Cảm ơn bạn đã báo cáo! Đó là đường nào, và thực tế xe được phép đi theo chiều nào?","t-direction-done":"Cảm ơn bạn! Chúng tôi đã sửa chiều lưu thông trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-road-ask":"Cảm ơn bạn đã báo cáo! Con đường tên là gì, bắt đầu và kết thúc ở đâu, và có mở cho mọi người đi không?","t-road-done":"Cảm ơn bạn! Chúng tôi đã thêm con đường vào bản đồ. Ứng dụng sẽ hiển thị con đường sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-landmark-ask":"Cảm ơn bạn đã báo cáo! Địa điểm đó tên là gì, và chính xác nằm ở đâu?","t-landmark-done":"Cảm ơn bạn! Chúng tôi đã thêm địa điểm vào bản đồ. Ứng dụng sẽ hiển thị địa điểm sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-blocked-ask":"Cảm ơn bạn đã báo cáo! Đường bị đóng vĩnh viễn hay chỉ tạm thời? Nếu bạn biết đóng đến khi nào thì sẽ giúp chúng tôi rất nhiều.","t-blocked-done":"Cảm ơn bạn! Chúng tôi đã thêm đoạn đường bị đóng vào bản đồ, nên ứng dụng sẽ chỉ đường tránh qua đó.","t-speed-ask":"Cảm ơn bạn đã báo cáo! Biển báo ở đó ghi giới hạn tốc độ bao nhiêu, và áp dụng cho hướng nào?","t-speed-done":"Cảm ơn bạn! Chúng tôi đã cập nhật giới hạn tốc độ trên bản đồ. Ứng dụng sẽ hiển thị giới hạn mới sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","nothing":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra bản đồ tại đây và không thấy có gì sai, nên vẫn giữ nguyên. Nếu việc này xảy ra lại, vui lòng gửi báo cáo mới ngay tại vị trí đó.","mm-ask":"Cảm ơn bạn đã báo cáo! Bạn có thể cho chúng tôi biết thêm một chút không: chính xác là ở đâu, và bạn đang đi theo hướng nào?","mm-bump-done":"Cảm ơn bạn! Chúng tôi đã thêm gờ giảm tốc vào bản đồ, nên ứng dụng sẽ cảnh báo tài xế.","mm-bump-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra và không thấy gờ giảm tốc ở đây, nên vẫn giữ nguyên bản đồ.","mm-light-done":"Cảm ơn bạn! Chúng tôi đã thêm đèn giao thông vào bản đồ.","mm-light-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra và không thấy đèn giao thông ở đây, nên vẫn giữ nguyên bản đồ.","mm-curve-done":"Cảm ơn bạn! Chúng tôi đã đánh dấu khúc cua nguy hiểm trên bản đồ, nên ứng dụng sẽ cảnh báo tài xế.","mm-curve-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra khúc cua này và không thấy lý do để thay đổi bản đồ, nên vẫn giữ nguyên.","mm-rail-done":"Cảm ơn bạn! Chúng tôi đã thêm điểm giao cắt đường sắt vào bản đồ, nên ứng dụng sẽ cảnh báo tài xế.","mm-rail-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra và không thấy điểm giao cắt đường sắt ở đây, nên vẫn giữ nguyên bản đồ.","mm-camera-done":"Cảm ơn bạn! Chúng tôi đã thêm camera bắn tốc độ vào bản đồ.","mm-camera-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra nhưng chưa xác nhận được có camera bắn tốc độ ở đây, nên vẫn giữ nguyên bản đồ.","mm-done":"Cảm ơn bạn! Chúng tôi đã cập nhật bản đồ tại đây. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","mm-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra bản đồ tại đây và không thấy cần thay đổi gì, nên vẫn giữ nguyên."},"es":{"t-turn-ask":"¡Gracias por el aviso! ¿Qué giro era: de qué calle a qué calle, y en qué sentido circulabas?","t-turn-done":"¡Gracias! Hemos corregido ese giro en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-address-ask":"¡Gracias por el aviso! ¿Cuál es la dirección o el nombre de calle correcto, y a qué lugar intentabas llegar?","t-address-done":"¡Gracias! Hemos corregido la dirección en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-route-ask":"¡Gracias por el aviso! ¿Desde dónde salías, adónde ibas y por dónde esperabas que te llevara la app?","t-route-done":"¡Gracias por el aviso! Hemos revisado el mapa aquí y está bien. La app elige la ruta según el tráfico en tiempo real, así que puede variar de un día a otro.","t-roundabout-ask":"¡Gracias por el aviso! ¿Qué cruce debería ser una rotonda? Las calles que se juntan ahí nos ayudan a encontrarlo.","t-roundabout-done":"¡Gracias! Hemos añadido la rotonda al mapa. La app la mostrará tras la próxima actualización del mapa, normalmente en pocos días.","t-general-ask":"¡Gracias por el aviso! ¿Puedes contarnos un poco más sobre qué estaba mal y dónde exactamente?","t-junction-ask":"¡Gracias por el aviso! ¿Qué cruce, salida o puente era, y en qué sentido circulabas?","t-junction-done":"¡Gracias! Hemos corregido el cruce en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-direction-ask":"¡Gracias por el aviso! ¿Qué calle era, y en qué sentido está abierta realmente al tráfico?","t-direction-done":"¡Gracias! Hemos corregido el sentido de circulación en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-road-ask":"¡Gracias por el aviso! ¿Cómo se llama la vía, dónde empieza y dónde termina, y está abierta a todo el mundo?","t-road-done":"¡Gracias! Hemos añadido la vía al mapa. La app la mostrará tras la próxima actualización del mapa, normalmente en pocos días.","t-landmark-ask":"¡Gracias por el aviso! ¿Cómo se llama el lugar y dónde está exactamente?","t-landmark-done":"¡Gracias! Hemos añadido el lugar al mapa. Aparecerá en la app tras la próxima actualización del mapa, normalmente en pocos días.","t-blocked-ask":"¡Gracias por el aviso! ¿La vía está cortada de forma definitiva o temporal? Si sabes hasta cuándo, nos ayuda mucho.","t-blocked-done":"¡Gracias! Hemos añadido el corte al mapa, así que la app lo evitará al calcular la ruta.","t-speed-ask":"¡Gracias por el aviso! ¿Qué límite de velocidad indica la señal ahí, y para qué sentido?","t-speed-done":"¡Gracias! Hemos actualizado el límite de velocidad en el mapa. La app lo mostrará tras la próxima actualización del mapa, normalmente en pocos días.","nothing":"¡Gracias por el aviso! Hemos revisado el mapa aquí y no hemos encontrado nada incorrecto, así que lo dejamos como está. Si vuelve a pasar, envía un aviso nuevo desde el lugar.","mm-ask":"¡Gracias por el aviso! ¿Puedes contarnos un poco más: dónde está exactamente y en qué sentido circulabas?","mm-bump-done":"¡Gracias! Hemos añadido el badén al mapa, así que la app avisará a los conductores.","mm-bump-none":"¡Gracias por el aviso! Lo hemos revisado y no vemos ningún badén aquí, así que dejamos el mapa como está.","mm-light-done":"¡Gracias! Hemos añadido el semáforo al mapa.","mm-light-none":"¡Gracias por el aviso! Lo hemos revisado y no vemos ningún semáforo aquí, así que dejamos el mapa como está.","mm-curve-done":"¡Gracias! Hemos marcado la curva peligrosa en el mapa, así que la app avisará a los conductores.","mm-curve-none":"¡Gracias por el aviso! Hemos revisado esta curva y no vemos motivo para cambiar el mapa, así que lo dejamos como está.","mm-rail-done":"¡Gracias! Hemos añadido el paso a nivel al mapa, así que la app avisará a los conductores.","mm-rail-none":"¡Gracias por el aviso! Lo hemos revisado y no vemos ningún paso a nivel aquí, así que dejamos el mapa como está.","mm-camera-done":"¡Gracias! Hemos añadido el radar al mapa.","mm-camera-none":"¡Gracias por el aviso! Lo hemos revisado y no podemos confirmar que haya un radar aquí, así que dejamos el mapa como está.","mm-done":"¡Gracias! Hemos actualizado el mapa aquí. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","mm-none":"¡Gracias por el aviso! Hemos revisado el mapa aquí y no hemos encontrado nada que cambiar, así que lo dejamos como está."},"it":{"t-turn-ask":"Grazie per la segnalazione! Di quale svolta si tratta: da quale via verso quale, e in che direzione stavi guidando?","t-turn-done":"Grazie! Abbiamo corretto quella svolta sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-address-ask":"Grazie per la segnalazione! Qual è l’indirizzo o il nome della via corretto, e quale luogo stavi cercando di raggiungere?","t-address-done":"Grazie! Abbiamo corretto l’indirizzo sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-route-ask":"Grazie per la segnalazione! Qual era il punto di partenza, dove stavi andando e da che parte ti aspettavi che ti portasse l’app?","t-route-done":"Grazie per la segnalazione! Abbiamo controllato la mappa in questo punto ed è corretta. L’app sceglie il percorso in base al traffico in tempo reale, quindi può cambiare da un giorno all’altro.","t-roundabout-ask":"Grazie per la segnalazione! Quale incrocio dovrebbe essere una rotatoria? Le vie che si incontrano lì ci aiutano a trovarlo.","t-roundabout-done":"Grazie! Abbiamo aggiunto la rotatoria alla mappa. L’app la mostrerà dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-general-ask":"Grazie per la segnalazione! Puoi dirci qualcosa in più su cosa non andava e dove esattamente?","t-junction-ask":"Grazie per la segnalazione! Di quale incrocio, uscita o ponte si tratta, e in che direzione stavi guidando?","t-junction-done":"Grazie! Abbiamo corretto l’incrocio sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-direction-ask":"Grazie per la segnalazione! Di quale via si tratta, e in quale senso è davvero aperta al traffico?","t-direction-done":"Grazie! Abbiamo corretto il senso di marcia sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-road-ask":"Grazie per la segnalazione! Come si chiama la strada, dove inizia e dove finisce, ed è aperta a tutti?","t-road-done":"Grazie! Abbiamo aggiunto la strada alla mappa. L’app la mostrerà dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-landmark-ask":"Grazie per la segnalazione! Come si chiama il luogo e dove si trova esattamente?","t-landmark-done":"Grazie! Abbiamo aggiunto il luogo alla mappa. Comparirà nell’app dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-blocked-ask":"Grazie per la segnalazione! La strada è chiusa definitivamente o solo per un periodo? Se sai fino a quando, ci aiuta molto.","t-blocked-done":"Grazie! Abbiamo aggiunto la chiusura alla mappa, così l’app la eviterà nel calcolo del percorso.","t-speed-ask":"Grazie per la segnalazione! Quale limite di velocità è indicato lì, e per quale direzione?","t-speed-done":"Grazie! Abbiamo aggiornato il limite di velocità sulla mappa. L’app lo mostrerà dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","nothing":"Grazie per la segnalazione! Abbiamo controllato la mappa in questo punto e non abbiamo trovato nulla di sbagliato, quindi l’abbiamo lasciata com’è. Se succede di nuovo, invia una nuova segnalazione dal punto.","mm-ask":"Grazie per la segnalazione! Puoi dirci qualcosa in più: dove si trova esattamente e in che direzione stavi guidando?","mm-bump-done":"Grazie! Abbiamo aggiunto il dosso alla mappa, così l’app avviserà i conducenti.","mm-bump-none":"Grazie per la segnalazione! Abbiamo controllato e non vediamo nessun dosso qui, quindi abbiamo lasciato la mappa com’è.","mm-light-done":"Grazie! Abbiamo aggiunto il semaforo alla mappa.","mm-light-none":"Grazie per la segnalazione! Abbiamo controllato e non vediamo nessun semaforo qui, quindi abbiamo lasciato la mappa com’è.","mm-curve-done":"Grazie! Abbiamo segnato la curva pericolosa sulla mappa, così l’app avviserà i conducenti.","mm-curve-none":"Grazie per la segnalazione! Abbiamo controllato questa curva e non abbiamo trovato motivi per modificare la mappa, quindi l’abbiamo lasciata com’è.","mm-rail-done":"Grazie! Abbiamo aggiunto il passaggio a livello alla mappa, così l’app avviserà i conducenti.","mm-rail-none":"Grazie per la segnalazione! Abbiamo controllato e non vediamo nessun passaggio a livello qui, quindi abbiamo lasciato la mappa com’è.","mm-camera-done":"Grazie! Abbiamo aggiunto l’autovelox alla mappa.","mm-camera-none":"Grazie per la segnalazione! Abbiamo controllato e non possiamo confermare la presenza di un autovelox qui, quindi abbiamo lasciato la mappa com’è.","mm-done":"Grazie! Abbiamo aggiornato la mappa in questo punto. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","mm-none":"Grazie per la segnalazione! Abbiamo controllato la mappa in questo punto e non abbiamo trovato nulla da modificare, quindi l’abbiamo lasciata com’è."},"tr":{"t-turn-ask":"Bildirim için teşekkürler! Hangi dönüştü: hangi sokaktan hangi sokağa dönüyordunuz ve hangi yönde gidiyordunuz?","t-turn-done":"Teşekkürler! O dönüşü haritada düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-address-ask":"Bildirim için teşekkürler! Doğru adres ya da sokak adı nedir ve hangi yere ulaşmaya çalışıyordunuz?","t-address-done":"Teşekkürler! Adresi haritada düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-route-ask":"Bildirim için teşekkürler! Nereden yola çıktınız, nereye gidiyordunuz ve uygulamanın sizi hangi yoldan götürmesini bekliyordunuz?","t-route-done":"Bildirim için teşekkürler! Buradaki haritayı kontrol ettik, doğru görünüyor. Uygulama rotayı anlık trafiğe göre seçtiği için rota günden güne değişebilir.","t-roundabout-ask":"Bildirim için teşekkürler! Hangi kavşak döner kavşak olmalı? Orada birleşen sokakların adları yeri bulmamıza yardımcı olur.","t-roundabout-done":"Teşekkürler! Döner kavşağı haritaya ekledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-general-ask":"Bildirim için teşekkürler! Neyin yanlış olduğunu ve tam olarak nerede olduğunu biraz daha anlatabilir misiniz?","t-junction-ask":"Bildirim için teşekkürler! Hangi kavşak, çıkış ya da köprüydü ve hangi yönde gidiyordunuz?","t-junction-done":"Teşekkürler! Kavşağı haritada düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-direction-ask":"Bildirim için teşekkürler! Hangi sokaktı ve gerçekte hangi yönde trafiğe açık?","t-direction-done":"Teşekkürler! Haritadaki trafik yönünü düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-road-ask":"Bildirim için teşekkürler! Yolun adı ne, nerede başlayıp nerede bitiyor ve herkesin kullanımına açık mı?","t-road-done":"Teşekkürler! Yolu haritaya ekledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-landmark-ask":"Bildirim için teşekkürler! Yerin adı ne ve tam olarak nerede?","t-landmark-done":"Teşekkürler! Yeri haritaya ekledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-blocked-ask":"Bildirim için teşekkürler! Yol kalıcı olarak mı yoksa geçici olarak mı kapalı? Ne zamana kadar kapalı olduğunu biliyorsanız bu çok yardımcı olur.","t-blocked-done":"Teşekkürler! Yol kapanışını haritaya ekledik, böylece uygulama rotayı bu yolu kullanmadan oluşturur.","t-speed-ask":"Bildirim için teşekkürler! Oradaki tabelada hangi hız sınırı yazıyor ve hangi yön için geçerli?","t-speed-done":"Teşekkürler! Haritadaki hız sınırını güncelledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","nothing":"Bildirim için teşekkürler! Buradaki haritayı kontrol ettik ve bir sorun bulamadık, bu yüzden olduğu gibi bıraktık. Tekrar olursa lütfen o noktadan yeni bir bildirim gönderin.","mm-ask":"Bildirim için teşekkürler! Biraz daha bilgi verebilir misiniz: tam olarak nerede ve hangi yönde gidiyordunuz?","mm-bump-done":"Teşekkürler! Hız kesiciyi haritaya ekledik, böylece uygulama sürücüleri uyaracak.","mm-bump-none":"Bildirim için teşekkürler! Kontrol ettik ama burada bir hız kesici göremedik, bu yüzden haritayı olduğu gibi bıraktık.","mm-light-done":"Teşekkürler! Trafik ışıklarını haritaya ekledik.","mm-light-none":"Bildirim için teşekkürler! Kontrol ettik ama burada trafik ışığı göremedik, bu yüzden haritayı olduğu gibi bıraktık.","mm-curve-done":"Teşekkürler! Tehlikeli virajı haritada işaretledik, böylece uygulama sürücüleri uyaracak.","mm-curve-none":"Bildirim için teşekkürler! Bu virajı kontrol ettik ve haritayı değiştirmek için bir neden bulamadık, bu yüzden olduğu gibi bıraktık.","mm-rail-done":"Teşekkürler! Hemzemin geçidi haritaya ekledik, böylece uygulama sürücüleri uyaracak.","mm-rail-none":"Bildirim için teşekkürler! Kontrol ettik ama burada bir hemzemin geçit göremedik, bu yüzden haritayı olduğu gibi bıraktık.","mm-camera-done":"Teşekkürler! Hız kamerasını haritaya ekledik.","mm-camera-none":"Bildirim için teşekkürler! Kontrol ettik ama burada bir hız kamerası olduğunu doğrulayamadık, bu yüzden haritayı olduğu gibi bıraktık.","mm-done":"Teşekkürler! Haritayı burada güncelledik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","mm-none":"Bildirim için teşekkürler! Buradaki haritayı kontrol ettik ve değiştirilecek bir şey bulamadık, bu yüzden olduğu gibi bıraktık."},"sk":{"t-turn-ask":"Ďakujeme za hlásenie! O ktoré odbočenie išlo: z ktorej ulice na ktorú a ktorým smerom ste išli?","t-turn-done":"Ďakujeme! Odbočenie sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-address-ask":"Ďakujeme za hlásenie! Aká je správna adresa alebo názov ulice a na aké miesto ste sa chceli dostať?","t-address-done":"Ďakujeme! Adresu sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-route-ask":"Ďakujeme za hlásenie! Odkiaľ ste vyrážali, kam ste išli a ktorou cestou ste čakali, že vás aplikácia povedie?","t-route-done":"Ďakujeme za hlásenie! Mapu na tomto mieste sme skontrolovali a je v poriadku. Aplikácia vyberá trasu podľa aktuálnej dopravy, takže sa môže zo dňa na deň líšiť.","t-roundabout-ask":"Ďakujeme za hlásenie! Ktorá križovatka by mala byť kruhový objazd? Názvy ulíc, ktoré sa tam stretávajú, nám pomôžu ju nájsť.","t-roundabout-done":"Ďakujeme! Kruhový objazd sme pridali do mapy. Aplikácia ho ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-general-ask":"Ďakujeme za hlásenie! Môžete nám povedať trochu viac o tom, čo bolo zle a kde presne?","t-junction-ask":"Ďakujeme za hlásenie! O ktorú križovatku, výjazd alebo most išlo a ktorým smerom ste išli?","t-junction-done":"Ďakujeme! Križovatku sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-direction-ask":"Ďakujeme za hlásenie! O ktorú ulicu išlo a ktorým smerom je v skutočnosti prejazdná?","t-direction-done":"Ďakujeme! Smer jazdy sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-road-ask":"Ďakujeme za hlásenie! Ako sa cesta volá, kde začína a kde končí a je prístupná pre všetkých?","t-road-done":"Ďakujeme! Cestu sme pridali do mapy. Aplikácia ju ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-landmark-ask":"Ďakujeme za hlásenie! Ako sa to miesto volá a kde presne sa nachádza?","t-landmark-done":"Ďakujeme! Miesto sme pridali do mapy. V aplikácii sa zobrazí po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-blocked-ask":"Ďakujeme za hlásenie! Je cesta uzavretá natrvalo, alebo len dočasne? Ak viete, dokedy, veľmi nám to pomôže.","t-blocked-done":"Ďakujeme! Uzávierku sme pridali do mapy, takže ju aplikácia bude obchádzať.","t-speed-ask":"Ďakujeme za hlásenie! Aká najvyššia povolená rýchlosť je tam vyznačená a pre ktorý smer?","t-speed-done":"Ďakujeme! Rýchlostný limit sme na mape aktualizovali. Aplikácia ho ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","nothing":"Ďakujeme za hlásenie! Mapu na tomto mieste sme skontrolovali a nenašli sme na nej chybu, preto sme ju nechali tak. Ak sa to stane znova, pošlite prosím nové hlásenie priamo z miesta.","mm-ask":"Ďakujeme za hlásenie! Môžete nám povedať trochu viac: kde presne to je a ktorým smerom ste išli?","mm-bump-done":"Ďakujeme! Spomaľovací prah sme pridali do mapy, takže aplikácia naň vodičov upozorní.","mm-bump-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale spomaľovací prah sme tu nenašli, preto sme mapu nechali tak.","mm-light-done":"Ďakujeme! Semafor sme pridali do mapy.","mm-light-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale semafor sme tu nenašli, preto sme mapu nechali tak.","mm-curve-done":"Ďakujeme! Nebezpečnú zákrutu sme označili na mape, takže aplikácia na ňu vodičov upozorní.","mm-curve-none":"Ďakujeme za hlásenie! Túto zákrutu sme skontrolovali a nenašli sme dôvod mapu meniť, preto sme ju nechali tak.","mm-rail-done":"Ďakujeme! Železničné priecestie sme pridali do mapy, takže aplikácia naň vodičov upozorní.","mm-rail-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale železničné priecestie sme tu nenašli, preto sme mapu nechali tak.","mm-camera-done":"Ďakujeme! Rýchlostný radar sme pridali do mapy.","mm-camera-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale rýchlostný radar sa nám tu nepodarilo potvrdiť, preto sme mapu nechali tak.","mm-done":"Ďakujeme! Mapu sme na tomto mieste aktualizovali. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","mm-none":"Ďakujeme za hlásenie! Mapu na tomto mieste sme skontrolovali a nenašli sme nič, čo by bolo treba zmeniť, preto sme ju nechali tak."},"sr":{"t-turn-ask":"Hvala na prijavi! O kom skretanju je reč: iz koje ulice u koju, i u kom smeru ste vozili?","t-turn-done":"Hvala! Ispravili smo to skretanje na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-address-ask":"Hvala na prijavi! Koja je tačna adresa ili naziv ulice, i do kog mesta ste pokušavali da stignete?","t-address-done":"Hvala! Ispravili smo adresu na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-route-ask":"Hvala na prijavi! Odakle ste krenuli, kuda ste išli i kojim putem ste očekivali da vas aplikacija vodi?","t-route-done":"Hvala na prijavi! Proverili smo mapu na ovom mestu i ispravna je. Aplikacija bira rutu prema saobraćaju u realnom vremenu, pa se ruta može razlikovati iz dana u dan.","t-roundabout-ask":"Hvala na prijavi! Koja raskrsnica treba da bude kružni tok? Nazivi ulica koje se tu spajaju pomoći će nam da je pronađemo.","t-roundabout-done":"Hvala! Dodali smo kružni tok na mapu. Aplikacija će ga prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-general-ask":"Hvala na prijavi! Možete li nam reći nešto više o tome šta nije bilo u redu i gde tačno?","t-junction-ask":"Hvala na prijavi! O kojoj raskrsnici, izlazu ili mostu je reč, i u kom smeru ste vozili?","t-junction-done":"Hvala! Ispravili smo raskrsnicu na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-direction-ask":"Hvala na prijavi! O kojoj ulici je reč, i u kom smeru je zaista otvorena za saobraćaj?","t-direction-done":"Hvala! Ispravili smo smer kretanja na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-road-ask":"Hvala na prijavi! Kako se put zove, gde počinje i gde se završava, i da li je otvoren za sve?","t-road-done":"Hvala! Dodali smo put na mapu. Aplikacija će ga prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-landmark-ask":"Hvala na prijavi! Kako se to mesto zove i gde se tačno nalazi?","t-landmark-done":"Hvala! Dodali smo mesto na mapu. U aplikaciji će se prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-blocked-ask":"Hvala na prijavi! Da li je put zatvoren trajno ili privremeno? Ako znate do kada, to nam mnogo pomaže.","t-blocked-done":"Hvala! Dodali smo zatvaranje puta na mapu, pa će ga aplikacija zaobilaziti.","t-speed-ask":"Hvala na prijavi! Koje je ograničenje brzine istaknuto na tom mestu, i za koji smer?","t-speed-done":"Hvala! Ažurirali smo ograničenje brzine na mapi. Aplikacija će ga prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","nothing":"Hvala na prijavi! Proverili smo mapu na ovom mestu i nismo pronašli grešku, pa smo je ostavili kakva jeste. Ako se ponovi, pošaljite novu prijavu sa tog mesta.","mm-ask":"Hvala na prijavi! Možete li nam reći malo više: gde se tačno nalazi i u kom smeru ste vozili?","mm-bump-done":"Hvala! Dodali smo ležećeg policajca na mapu, pa će aplikacija upozoravati vozače na njega.","mm-bump-none":"Hvala na prijavi! Proverili smo i ovde nismo videli ležećeg policajca, pa smo mapu ostavili kakva jeste.","mm-light-done":"Hvala! Dodali smo semafor na mapu.","mm-light-none":"Hvala na prijavi! Proverili smo i ovde nismo videli semafor, pa smo mapu ostavili kakva jeste.","mm-curve-done":"Hvala! Označili smo opasnu krivinu na mapi, pa će aplikacija upozoravati vozače na nju.","mm-curve-none":"Hvala na prijavi! Proverili smo ovu krivinu i nismo našli razlog da menjamo mapu, pa smo je ostavili kakva jeste.","mm-rail-done":"Hvala! Dodali smo pružni prelaz na mapu, pa će aplikacija upozoravati vozače na njega.","mm-rail-none":"Hvala na prijavi! Proverili smo i ovde nismo videli pružni prelaz, pa smo mapu ostavili kakva jeste.","mm-camera-done":"Hvala! Dodali smo radar na mapu.","mm-camera-none":"Hvala na prijavi! Proverili smo i nismo mogli da potvrdimo da ovde postoji radar, pa smo mapu ostavili kakva jeste.","mm-done":"Hvala! Ažurirali smo mapu na ovom mestu. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","mm-none":"Hvala na prijavi! Proverili smo mapu na ovom mestu i nismo pronašli ništa što treba menjati, pa smo je ostavili kakva jeste."},"he":{"t-turn-ask":"תודה על הדיווח! על איזו פנייה מדובר: מאיזה רחוב לאיזה רחוב, ובאיזה כיוון נסעתם?","t-turn-done":"תודה! תיקנו את הפנייה במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-address-ask":"תודה על הדיווח! מה הכתובת או שם הרחוב הנכונים, ולאיזה מקום ניסיתם להגיע?","t-address-done":"תודה! תיקנו את הכתובת במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-route-ask":"תודה על הדיווח! מאיפה יצאתם, לאן נסעתם, ובאיזו דרך ציפיתם שהאפליקציה תוביל אתכם?","t-route-done":"תודה על הדיווח! בדקנו את המפה כאן והיא תקינה. האפליקציה בוחרת את המסלול לפי התנועה בזמן אמת, ולכן הוא יכול להשתנות מיום ליום.","t-roundabout-ask":"תודה על הדיווח! איזה צומת אמור להיות כיכר? שמות הרחובות שנפגשים שם יעזרו לנו למצוא אותו.","t-roundabout-done":"תודה! הוספנו את הכיכר למפה. היא תופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-general-ask":"תודה על הדיווח! תוכלו לספר לנו עוד קצת מה לא היה תקין, ואיפה בדיוק?","t-junction-ask":"תודה על הדיווח! על איזה צומת, יציאה או גשר מדובר, ובאיזה כיוון נסעתם?","t-junction-done":"תודה! תיקנו את הצומת במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-direction-ask":"תודה על הדיווח! על איזה רחוב מדובר, ובאיזה כיוון התנועה בו מותרת בפועל?","t-direction-done":"תודה! תיקנו את כיוון הנסיעה במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-road-ask":"תודה על הדיווח! איך קוראים לכביש, איפה הוא מתחיל ואיפה נגמר, והאם הוא פתוח לכולם?","t-road-done":"תודה! הוספנו את הכביש למפה. הוא יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-landmark-ask":"תודה על הדיווח! איך קוראים למקום, ואיפה בדיוק הוא נמצא?","t-landmark-done":"תודה! הוספנו את המקום למפה. הוא יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-blocked-ask":"תודה על הדיווח! הכביש סגור לצמיתות או לזמן מה? אם אתם יודעים עד מתי, זה יעזור לנו מאוד.","t-blocked-done":"תודה! הוספנו את החסימה למפה, כך שהאפליקציה תנווט מסביב לה.","t-speed-ask":"תודה על הדיווח! איזו מהירות מותרת מופיעה בשלט שם, ובאיזה כיוון?","t-speed-done":"תודה! עדכנו את המהירות המותרת במפה. היא תופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","nothing":"תודה על הדיווח! בדקנו את המפה כאן ולא מצאנו שום בעיה, ולכן השארנו אותה כמו שהיא. אם זה יקרה שוב, נא לשלוח דיווח חדש מהמקום עצמו.","mm-ask":"תודה על הדיווח! תוכלו לספר לנו עוד קצת: איפה בדיוק זה, ובאיזה כיוון נסעתם?","mm-bump-done":"תודה! הוספנו את פס ההאטה למפה, כך שהאפליקציה תתריע עליו לנהגים.","mm-bump-none":"תודה על הדיווח! בדקנו ולא ראינו כאן פס האטה, ולכן השארנו את המפה כמו שהיא.","mm-light-done":"תודה! הוספנו את הרמזור למפה.","mm-light-none":"תודה על הדיווח! בדקנו ולא ראינו כאן רמזור, ולכן השארנו את המפה כמו שהיא.","mm-curve-done":"תודה! סימנו את העיקול המסוכן במפה, כך שהאפליקציה תתריע עליו לנהגים.","mm-curve-none":"תודה על הדיווח! בדקנו את העיקול הזה ולא מצאנו סיבה לשנות את המפה, ולכן השארנו אותה כמו שהיא.","mm-rail-done":"תודה! הוספנו את מפגש מסילת הברזל למפה, כך שהאפליקציה תתריע עליו לנהגים.","mm-rail-none":"תודה על הדיווח! בדקנו ולא ראינו כאן מפגש מסילת ברזל, ולכן השארנו את המפה כמו שהיא.","mm-camera-done":"תודה! הוספנו את מצלמת המהירות למפה.","mm-camera-none":"תודה על הדיווח! בדקנו ולא הצלחנו לאשר שיש כאן מצלמת מהירות, ולכן השארנו את המפה כמו שהיא.","mm-done":"תודה! עדכנו את המפה כאן. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","mm-none":"תודה על הדיווח! בדקנו את המפה כאן ולא מצאנו מה לשנות, ולכן השארנו אותה כמו שהיא."},"ko":{"t-turn-ask":"신고해 주셔서 감사합니다! 어느 도로에서 어느 도로로 회전하는 구간이었는지, 그리고 어느 방향으로 주행 중이셨는지 알려주실 수 있나요?","t-turn-done":"감사합니다! 해당 회전 구간을 지도에서 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-address-ask":"신고해 주셔서 감사합니다! 올바른 주소나 도로명은 무엇이며, 어느 장소로 가려고 하셨나요?","t-address-done":"감사합니다! 지도에서 주소를 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-route-ask":"신고해 주셔서 감사합니다! 어디에서 출발해 어디로 가셨는지, 그리고 앱이 어느 길로 안내하길 기대하셨는지 알려주실 수 있나요?","t-route-done":"신고해 주셔서 감사합니다! 이곳의 지도를 확인해 보니 정확했습니다. 앱은 실시간 교통 상황에 따라 경로를 정하기 때문에 날마다 경로가 달라질 수 있습니다.","t-roundabout-ask":"신고해 주셔서 감사합니다! 어느 교차로가 회전교차로여야 하나요? 그곳에서 만나는 도로 이름을 알려주시면 위치를 찾는 데 도움이 됩니다.","t-roundabout-done":"감사합니다! 지도에 회전교차로를 추가했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-general-ask":"신고해 주셔서 감사합니다! 무엇이 잘못되었는지, 정확히 어디였는지 조금 더 알려주실 수 있나요?","t-junction-ask":"신고해 주셔서 감사합니다! 어느 교차로, 출구 또는 다리였는지, 그리고 어느 방향으로 주행 중이셨는지 알려주실 수 있나요?","t-junction-done":"감사합니다! 지도에서 해당 교차로를 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-direction-ask":"신고해 주셔서 감사합니다! 어느 도로였는지, 그리고 실제로 어느 방향으로 통행이 가능한지 알려주실 수 있나요?","t-direction-done":"감사합니다! 지도에서 통행 방향을 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-road-ask":"신고해 주셔서 감사합니다! 도로 이름이 무엇인지, 어디에서 시작해 어디에서 끝나는지, 그리고 누구나 통행할 수 있는 도로인지 알려주실 수 있나요?","t-road-done":"감사합니다! 지도에 도로를 추가했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-landmark-ask":"신고해 주셔서 감사합니다! 장소 이름이 무엇이고, 정확히 어디에 있나요?","t-landmark-done":"감사합니다! 지도에 장소를 추가했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-blocked-ask":"신고해 주셔서 감사합니다! 도로가 영구적으로 폐쇄된 건가요, 아니면 일시적인가요? 언제까지인지 아시면 큰 도움이 됩니다.","t-blocked-done":"감사합니다! 지도에 도로 통제를 추가해, 앱이 그 구간을 피해서 안내합니다.","t-speed-ask":"신고해 주셔서 감사합니다! 그곳에 표시된 제한속도는 얼마이고, 어느 방향 기준인가요?","t-speed-done":"감사합니다! 지도에서 제한속도를 업데이트했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","nothing":"신고해 주셔서 감사합니다! 이곳의 지도를 확인했지만 잘못된 점을 찾지 못해 그대로 두었습니다. 같은 일이 다시 생기면 해당 장소에서 새로 신고해 주세요.","mm-ask":"신고해 주셔서 감사합니다! 정확히 어디인지, 그리고 어느 방향으로 주행 중이셨는지 조금 더 알려주실 수 있나요?","mm-bump-done":"감사합니다! 지도에 과속방지턱을 추가해, 앱이 운전자에게 미리 알려줍니다.","mm-bump-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에서 과속방지턱을 찾지 못해 지도를 그대로 두었습니다.","mm-light-done":"감사합니다! 지도에 신호등을 추가했습니다.","mm-light-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에서 신호등을 찾지 못해 지도를 그대로 두었습니다.","mm-curve-done":"감사합니다! 지도에 위험한 커브를 표시해, 앱이 운전자에게 미리 알려줍니다.","mm-curve-none":"신고해 주셔서 감사합니다! 이 커브를 확인했지만 지도를 변경할 이유를 찾지 못해 그대로 두었습니다.","mm-rail-done":"감사합니다! 지도에 철도 건널목을 추가해, 앱이 운전자에게 미리 알려줍니다.","mm-rail-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에서 철도 건널목을 찾지 못해 지도를 그대로 두었습니다.","mm-camera-done":"감사합니다! 지도에 과속 단속 카메라를 추가했습니다.","mm-camera-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에 과속 단속 카메라가 있는지 확인할 수 없어 지도를 그대로 두었습니다.","mm-done":"감사합니다! 이곳의 지도를 업데이트했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","mm-none":"신고해 주셔서 감사합니다! 이곳의 지도를 확인했지만 변경할 부분을 찾지 못해 그대로 두었습니다."},"fi":{"t-turn-ask":"Kiitos ilmoituksesta! Mistä käännöksestä oli kyse: miltä kadulta mille, ja mihin suuntaan ajoit?","t-turn-done":"Kiitos! Korjasimme käännöksen kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-address-ask":"Kiitos ilmoituksesta! Mikä on oikea osoite tai kadunnimi, ja mihin paikkaan olit menossa?","t-address-done":"Kiitos! Korjasimme osoitteen kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-route-ask":"Kiitos ilmoituksesta! Mistä lähdit, minne olit menossa ja mitä reittiä odotit sovelluksen ehdottavan?","t-route-done":"Kiitos ilmoituksesta! Tarkistimme kartan tässä kohdassa, ja se on kunnossa. Sovellus valitsee reitin reaaliaikaisen liikennetilanteen mukaan, joten se voi vaihdella päivästä toiseen.","t-roundabout-ask":"Kiitos ilmoituksesta! Minkä risteyksen pitäisi olla kiertoliittymä? Siinä kohtaavien katujen nimet auttavat meitä löytämään sen.","t-roundabout-done":"Kiitos! Lisäsimme kiertoliittymän kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-general-ask":"Kiitos ilmoituksesta! Voisitko kertoa hieman tarkemmin, mikä oli vialla ja missä tarkalleen?","t-junction-ask":"Kiitos ilmoituksesta! Mistä risteyksestä, liittymästä tai sillasta oli kyse, ja mihin suuntaan ajoit?","t-junction-done":"Kiitos! Korjasimme risteyksen kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-direction-ask":"Kiitos ilmoituksesta! Mistä kadusta oli kyse, ja mihin suuntaan sillä oikeasti saa ajaa?","t-direction-done":"Kiitos! Korjasimme ajosuunnan kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-road-ask":"Kiitos ilmoituksesta! Mikä tien nimi on, mistä se alkaa ja mihin se päättyy, ja onko se kaikkien käytössä?","t-road-done":"Kiitos! Lisäsimme tien kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-landmark-ask":"Kiitos ilmoituksesta! Mikä paikan nimi on, ja missä se tarkalleen sijaitsee?","t-landmark-done":"Kiitos! Lisäsimme paikan kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-blocked-ask":"Kiitos ilmoituksesta! Onko tie suljettu pysyvästi vai väliaikaisesti? Jos tiedät, mihin asti, se auttaa paljon.","t-blocked-done":"Kiitos! Lisäsimme tiesulun kartalle, joten sovellus ohjaa sen ohi.","t-speed-ask":"Kiitos ilmoituksesta! Mikä nopeusrajoitus siellä on merkitty, ja kumpaan suuntaan?","t-speed-done":"Kiitos! Päivitimme nopeusrajoituksen kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","nothing":"Kiitos ilmoituksesta! Tarkistimme kartan tässä kohdassa emmekä löytäneet virhettä, joten jätimme sen ennalleen. Jos sama toistuu, lähetä uusi ilmoitus paikan päältä.","mm-ask":"Kiitos ilmoituksesta! Voisitko kertoa hieman tarkemmin: missä tarkalleen se on ja mihin suuntaan ajoit?","mm-bump-done":"Kiitos! Lisäsimme hidastetöyssyn kartalle, joten sovellus varoittaa siitä kuljettajia.","mm-bump-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme nähneet tässä hidastetöyssyä, joten jätimme kartan ennalleen.","mm-light-done":"Kiitos! Lisäsimme liikennevalot kartalle.","mm-light-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme nähneet tässä liikennevaloja, joten jätimme kartan ennalleen.","mm-curve-done":"Kiitos! Merkitsimme vaarallisen mutkan kartalle, joten sovellus varoittaa siitä kuljettajia.","mm-curve-none":"Kiitos ilmoituksesta! Tarkistimme tämän mutkan emmekä löytäneet syytä muuttaa karttaa, joten jätimme sen ennalleen.","mm-rail-done":"Kiitos! Lisäsimme tasoristeyksen kartalle, joten sovellus varoittaa siitä kuljettajia.","mm-rail-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme nähneet tässä tasoristeystä, joten jätimme kartan ennalleen.","mm-camera-done":"Kiitos! Lisäsimme nopeusvalvontakameran kartalle.","mm-camera-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme voineet varmistaa, että tässä on nopeusvalvontakamera, joten jätimme kartan ennalleen.","mm-done":"Kiitos! Päivitimme kartan tässä kohdassa. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","mm-none":"Kiitos ilmoituksesta! Tarkistimme kartan tässä kohdassa emmekä löytäneet muutettavaa, joten jätimme sen ennalleen."},"id":{"t-turn-ask":"Terima kasih atas laporannya! Belokan yang mana: dari jalan apa ke jalan apa, dan ke arah mana Anda berkendara?","t-turn-done":"Terima kasih! Kami sudah memperbaiki belokan itu di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-address-ask":"Terima kasih atas laporannya! Apa alamat atau nama jalan yang benar, dan tempat mana yang ingin Anda tuju?","t-address-done":"Terima kasih! Kami sudah memperbaiki alamatnya di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-route-ask":"Terima kasih atas laporannya! Dari mana Anda berangkat, ke mana tujuan Anda, dan lewat jalan mana Anda harapkan aplikasi mengarahkan Anda?","t-route-done":"Terima kasih atas laporannya! Kami sudah memeriksa peta di sini dan sudah benar. Aplikasi memilih rute berdasarkan kondisi lalu lintas terkini, jadi rutenya bisa berbeda dari hari ke hari.","t-roundabout-ask":"Terima kasih atas laporannya! Persimpangan mana yang seharusnya menjadi bundaran? Nama jalan-jalan yang bertemu di sana membantu kami menemukannya.","t-roundabout-done":"Terima kasih! Kami sudah menambahkan bundaran ke peta. Bundaran ini akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-general-ask":"Terima kasih atas laporannya! Bisakah Anda ceritakan sedikit lebih banyak tentang apa yang salah, dan di mana tepatnya?","t-junction-ask":"Terima kasih atas laporannya! Persimpangan, jalan keluar, atau jembatan mana itu, dan ke arah mana Anda berkendara?","t-junction-done":"Terima kasih! Kami sudah memperbaiki persimpangan itu di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-direction-ask":"Terima kasih atas laporannya! Jalan mana itu, dan ke arah mana sebenarnya jalan itu boleh dilalui?","t-direction-done":"Terima kasih! Kami sudah memperbaiki arah lalu lintas di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-road-ask":"Terima kasih atas laporannya! Apa nama jalannya, dari mana sampai mana, dan apakah jalan itu terbuka untuk umum?","t-road-done":"Terima kasih! Kami sudah menambahkan jalan itu ke peta. Jalan ini akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-landmark-ask":"Terima kasih atas laporannya! Apa nama tempatnya, dan di mana tepatnya lokasinya?","t-landmark-done":"Terima kasih! Kami sudah menambahkan tempat itu ke peta. Tempat ini akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-blocked-ask":"Terima kasih atas laporannya! Apakah jalannya ditutup permanen atau sementara? Jika Anda tahu sampai kapan, itu sangat membantu.","t-blocked-done":"Terima kasih! Kami sudah menambahkan penutupan jalan ke peta, jadi aplikasi akan mengarahkan pengemudi lewat jalan lain.","t-speed-ask":"Terima kasih atas laporannya! Berapa batas kecepatan yang tertera di sana, dan untuk arah mana?","t-speed-done":"Terima kasih! Kami sudah memperbarui batas kecepatan di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","nothing":"Terima kasih atas laporannya! Kami sudah memeriksa peta di sini dan tidak menemukan kesalahan, jadi petanya kami biarkan seperti semula. Jika terjadi lagi, silakan kirim laporan baru dari lokasi tersebut.","mm-ask":"Terima kasih atas laporannya! Bisakah Anda memberi tahu kami sedikit lebih banyak: di mana tepatnya lokasinya, dan ke arah mana Anda berkendara?","mm-bump-done":"Terima kasih! Kami sudah menambahkan polisi tidur ke peta, jadi aplikasi akan memperingatkan pengemudi.","mm-bump-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak melihat polisi tidur di sini, jadi petanya kami biarkan seperti semula.","mm-light-done":"Terima kasih! Kami sudah menambahkan lampu lalu lintas ke peta.","mm-light-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak melihat lampu lalu lintas di sini, jadi petanya kami biarkan seperti semula.","mm-curve-done":"Terima kasih! Kami sudah menandai tikungan berbahaya di peta, jadi aplikasi akan memperingatkan pengemudi.","mm-curve-none":"Terima kasih atas laporannya! Kami sudah memeriksa tikungan ini dan tidak menemukan alasan untuk mengubah peta, jadi petanya kami biarkan seperti semula.","mm-rail-done":"Terima kasih! Kami sudah menambahkan perlintasan kereta api ke peta, jadi aplikasi akan memperingatkan pengemudi.","mm-rail-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak melihat perlintasan kereta api di sini, jadi petanya kami biarkan seperti semula.","mm-camera-done":"Terima kasih! Kami sudah menambahkan kamera kecepatan ke peta.","mm-camera-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak dapat memastikan adanya kamera kecepatan di sini, jadi petanya kami biarkan seperti semula.","mm-done":"Terima kasih! Kami sudah memperbarui peta di sini. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","mm-none":"Terima kasih atas laporannya! Kami sudah memeriksa peta di sini dan tidak menemukan apa pun yang perlu diubah, jadi petanya kami biarkan seperti semula."},"hi":{"t-turn-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सा मोड़ था: किस सड़क से किस सड़क पर, और आप किस दिशा में जा रहे थे?","t-turn-done":"धन्यवाद! हमने नक्शे पर वह मोड़ ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-address-ask":"रिपोर्ट के लिए धन्यवाद! सही पता या सड़क का नाम क्या है, और आप किस जगह पहुँचना चाहते थे?","t-address-done":"धन्यवाद! हमने नक्शे पर पता ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-route-ask":"रिपोर्ट के लिए धन्यवाद! आप कहाँ से चले थे, कहाँ जा रहे थे, और आपको ऐप से किस रास्ते की उम्मीद थी?","t-route-done":"रिपोर्ट के लिए धन्यवाद! हमने यहाँ नक्शा जाँचा और वह सही है। ऐप लाइव ट्रैफ़िक के हिसाब से रास्ता चुनता है, इसलिए यह हर दिन अलग हो सकता है।","t-roundabout-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सा चौराहा गोल चक्कर होना चाहिए? वहाँ मिलने वाली सड़कों के नाम हमें उसे ढूँढने में मदद करते हैं।","t-roundabout-done":"धन्यवाद! हमने नक्शे पर गोल चक्कर जोड़ दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगा।","t-general-ask":"रिपोर्ट के लिए धन्यवाद! क्या आप थोड़ा और बता सकते हैं कि क्या गलत था, और ठीक कहाँ?","t-junction-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सा जंक्शन, एग्ज़िट या पुल था, और आप किस दिशा में जा रहे थे?","t-junction-done":"धन्यवाद! हमने नक्शे पर जंक्शन ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-direction-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सी सड़क थी, और असल में उस पर किस दिशा में ट्रैफ़िक चल सकता है?","t-direction-done":"धन्यवाद! हमने नक्शे पर ट्रैफ़िक की दिशा ठीक कर दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-road-ask":"रिपोर्ट के लिए धन्यवाद! सड़क का नाम क्या है, वह कहाँ से शुरू होकर कहाँ खत्म होती है, और क्या वह सबके लिए खुली है?","t-road-done":"धन्यवाद! हमने नक्शे पर सड़क जोड़ दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगी।","t-landmark-ask":"रिपोर्ट के लिए धन्यवाद! उस जगह का नाम क्या है, और वह ठीक कहाँ है?","t-landmark-done":"धन्यवाद! हमने नक्शे पर वह जगह जोड़ दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगी।","t-blocked-ask":"रिपोर्ट के लिए धन्यवाद! क्या सड़क हमेशा के लिए बंद है या कुछ समय के लिए? अगर आपको पता है कि कब तक, तो इससे बहुत मदद मिलेगी।","t-blocked-done":"धन्यवाद! हमने नक्शे पर सड़क बंद होने की जानकारी जोड़ दी है, इसलिए ऐप अब दूसरे रास्ते से ले जाएगा।","t-speed-ask":"रिपोर्ट के लिए धन्यवाद! वहाँ बोर्ड पर कितनी स्पीड लिमिट लिखी है, और किस दिशा के लिए?","t-speed-done":"धन्यवाद! हमने नक्शे पर स्पीड लिमिट अपडेट कर दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगी।","nothing":"रिपोर्ट के लिए धन्यवाद! हमने यहाँ नक्शा जाँचा, लेकिन कोई गलती नहीं मिली, इसलिए हमने उसे वैसे ही छोड़ दिया है। अगर ऐसा फिर हो, तो कृपया उसी जगह से नई रिपोर्ट भेजें।","mm-ask":"रिपोर्ट के लिए धन्यवाद! क्या आप थोड़ा और बता सकते हैं: यह ठीक कहाँ है, और आप किस दिशा में जा रहे थे?","mm-bump-done":"धन्यवाद! हमने नक्शे पर स्पीड ब्रेकर जोड़ दिया है, इसलिए ऐप ड्राइवरों को इसके बारे में चेतावनी देगा।","mm-bump-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ कोई स्पीड ब्रेकर नहीं दिखा, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-light-done":"धन्यवाद! हमने नक्शे पर ट्रैफ़िक लाइट जोड़ दी है।","mm-light-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ कोई ट्रैफ़िक लाइट नहीं दिखी, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-curve-done":"धन्यवाद! हमने नक्शे पर खतरनाक मोड़ चिह्नित कर दिया है, इसलिए ऐप ड्राइवरों को इसके बारे में चेतावनी देगा।","mm-curve-none":"रिपोर्ट के लिए धन्यवाद! हमने इस मोड़ को जाँचा, लेकिन नक्शा बदलने की कोई वजह नहीं मिली, इसलिए हमने उसे वैसे ही छोड़ दिया है।","mm-rail-done":"धन्यवाद! हमने नक्शे पर रेलवे फाटक जोड़ दिया है, इसलिए ऐप ड्राइवरों को इसके बारे में चेतावनी देगा।","mm-rail-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ कोई रेलवे फाटक नहीं दिखा, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-camera-done":"धन्यवाद! हमने नक्शे पर स्पीड कैमरा जोड़ दिया है।","mm-camera-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ स्पीड कैमरा होने की पुष्टि नहीं कर पाए, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-done":"धन्यवाद! हमने यहाँ नक्शा अपडेट कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","mm-none":"रिपोर्ट के लिए धन्यवाद! हमने यहाँ नक्शा जाँचा, लेकिन बदलने लायक कुछ नहीं मिला, इसलिए हमने उसे वैसे ही छोड़ दिया है।"},"pt":{"t-turn-ask":"Obrigado pelo aviso! Que viragem era: de que rua para que rua, e em que sentido seguia?","t-turn-done":"Obrigado! Corrigimos essa viragem no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-address-ask":"Obrigado pelo aviso! Qual é a morada ou o nome da rua correto, e a que local queria chegar?","t-address-done":"Obrigado! Corrigimos a morada no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-route-ask":"Obrigado pelo aviso! De onde partiu, para onde ia e por onde esperava que a app o levasse?","t-route-done":"Obrigado pelo aviso! Verificámos o mapa aqui e está correto. A app escolhe o percurso com base no trânsito em tempo real, por isso pode variar de dia para dia.","t-roundabout-ask":"Obrigado pelo aviso! Que cruzamento deveria ser uma rotunda? Os nomes das ruas que lá se cruzam ajudam-nos a encontrá-lo.","t-roundabout-done":"Obrigado! Acrescentámos a rotunda ao mapa. A app mostra-a depois da próxima atualização do mapa, normalmente em poucos dias.","t-general-ask":"Obrigado pelo aviso! Pode dizer-nos um pouco mais sobre o que estava errado, e onde exatamente?","t-junction-ask":"Obrigado pelo aviso! Que cruzamento, saída ou ponte era, e em que sentido seguia?","t-junction-done":"Obrigado! Corrigimos o cruzamento no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-direction-ask":"Obrigado pelo aviso! Que rua era, e em que sentido está realmente aberta ao trânsito?","t-direction-done":"Obrigado! Corrigimos o sentido de circulação no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-road-ask":"Obrigado pelo aviso! Como se chama a estrada, onde começa e acaba, e está aberta a todos?","t-road-done":"Obrigado! Acrescentámos a estrada ao mapa. A app mostra-a depois da próxima atualização do mapa, normalmente em poucos dias.","t-landmark-ask":"Obrigado pelo aviso! Como se chama o local, e onde fica exatamente?","t-landmark-done":"Obrigado! Acrescentámos o local ao mapa. Aparece na app depois da próxima atualização do mapa, normalmente em poucos dias.","t-blocked-ask":"Obrigado pelo aviso! A estrada está cortada de vez ou só durante algum tempo? Se souber até quando, ajuda muito.","t-blocked-done":"Obrigado! Acrescentámos o corte de estrada ao mapa, por isso a app passa a contorná-lo.","t-speed-ask":"Obrigado pelo aviso! Qual é o limite de velocidade sinalizado no local, e para que sentido?","t-speed-done":"Obrigado! Atualizámos o limite de velocidade no mapa. A app mostra-o depois da próxima atualização do mapa, normalmente em poucos dias.","nothing":"Obrigado pelo aviso! Verificámos o mapa aqui e não encontrámos nada de errado, por isso deixámo-lo como está. Se voltar a acontecer, envie um novo aviso a partir do local.","mm-ask":"Obrigado pelo aviso! Pode dizer-nos um pouco mais: onde fica exatamente e em que sentido seguia?","mm-bump-done":"Obrigado! Acrescentámos a lomba ao mapa, por isso a app avisa os condutores.","mm-bump-none":"Obrigado pelo aviso! Verificámos e não encontrámos nenhuma lomba aqui, por isso deixámos o mapa como está.","mm-light-done":"Obrigado! Acrescentámos os semáforos ao mapa.","mm-light-none":"Obrigado pelo aviso! Verificámos e não encontrámos semáforos aqui, por isso deixámos o mapa como está.","mm-curve-done":"Obrigado! Assinalámos a curva perigosa no mapa, por isso a app avisa os condutores.","mm-curve-none":"Obrigado pelo aviso! Verificámos esta curva e não encontrámos motivo para alterar o mapa, por isso deixámo-lo como está.","mm-rail-done":"Obrigado! Acrescentámos a passagem de nível ao mapa, por isso a app avisa os condutores.","mm-rail-none":"Obrigado pelo aviso! Verificámos e não encontrámos nenhuma passagem de nível aqui, por isso deixámos o mapa como está.","mm-camera-done":"Obrigado! Acrescentámos o radar de velocidade ao mapa.","mm-camera-none":"Obrigado pelo aviso! Verificámos e não conseguimos confirmar um radar de velocidade aqui, por isso deixámos o mapa como está.","mm-done":"Obrigado! Atualizámos o mapa aqui. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","mm-none":"Obrigado pelo aviso! Verificámos o mapa aqui e não encontrámos nada para alterar, por isso deixámo-lo como está."},"nl":{"t-turn-ask":"Bedankt voor de melding! Om welke afslag ging het: van welke straat naar welke, en in welke richting reed je?","t-turn-done":"Bedankt! We hebben die afslag op de kaart aangepast. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-address-ask":"Bedankt voor de melding! Wat is het juiste adres of de juiste straatnaam, en naar welke plek wilde je?","t-address-done":"Bedankt! We hebben het adres op de kaart gecorrigeerd. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-route-ask":"Bedankt voor de melding! Waar vertrok je, waar ging je naartoe en welke route had je van de app verwacht?","t-route-done":"Bedankt voor de melding! We hebben de kaart hier gecontroleerd en die klopt. De app kiest de route op basis van het actuele verkeer, dus die kan per dag verschillen.","t-roundabout-ask":"Bedankt voor de melding! Welk kruispunt zou een rotonde moeten zijn? De straten die daar samenkomen helpen ons het te vinden.","t-roundabout-done":"Bedankt! We hebben de rotonde aan de kaart toegevoegd. De app toont die na de volgende kaartupdate, meestal binnen een paar dagen.","t-general-ask":"Bedankt voor de melding! Kun je ons iets meer vertellen over wat er niet klopte, en waar precies?","t-junction-ask":"Bedankt voor de melding! Om welk kruispunt, welke afrit of welke brug ging het, en in welke richting reed je?","t-junction-done":"Bedankt! We hebben het kruispunt op de kaart aangepast. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-direction-ask":"Bedankt voor de melding! Om welke straat ging het, en in welke richting is die echt open voor verkeer?","t-direction-done":"Bedankt! We hebben de rijrichting op de kaart gecorrigeerd. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-road-ask":"Bedankt voor de melding! Hoe heet de weg, waar begint en eindigt hij, en is hij voor iedereen toegankelijk?","t-road-done":"Bedankt! We hebben de weg aan de kaart toegevoegd. De app toont hem na de volgende kaartupdate, meestal binnen een paar dagen.","t-landmark-ask":"Bedankt voor de melding! Hoe heet de plek, en waar ligt die precies?","t-landmark-done":"Bedankt! We hebben de plek aan de kaart toegevoegd. Die verschijnt in de app na de volgende kaartupdate, meestal binnen een paar dagen.","t-blocked-ask":"Bedankt voor de melding! Is de weg voorgoed afgesloten of tijdelijk? Als je weet tot wanneer, helpt dat enorm.","t-blocked-done":"Bedankt! We hebben de afsluiting op de kaart gezet, dus de app leidt je er nu omheen.","t-speed-ask":"Bedankt voor de melding! Welke maximumsnelheid staat daar aangegeven, en voor welke richting?","t-speed-done":"Bedankt! We hebben de maximumsnelheid op de kaart bijgewerkt. De app toont die na de volgende kaartupdate, meestal binnen een paar dagen.","nothing":"Bedankt voor de melding! We hebben de kaart hier gecontroleerd en niets verkeerds gevonden, dus we laten hem zoals hij is. Gebeurt het opnieuw, stuur dan een nieuwe melding vanaf de plek.","mm-ask":"Bedankt voor de melding! Kun je ons iets meer vertellen: waar het precies is, en in welke richting je reed?","mm-bump-done":"Bedankt! We hebben de verkeersdrempel aan de kaart toegevoegd, dus de app waarschuwt bestuurders ervoor.","mm-bump-none":"Bedankt voor de melding! We hebben gekeken, maar zagen hier geen verkeersdrempel, dus we laten de kaart zoals hij is.","mm-light-done":"Bedankt! We hebben de verkeerslichten aan de kaart toegevoegd.","mm-light-none":"Bedankt voor de melding! We hebben gekeken, maar zagen hier geen verkeerslichten, dus we laten de kaart zoals hij is.","mm-curve-done":"Bedankt! We hebben de gevaarlijke bocht op de kaart gemarkeerd, dus de app waarschuwt bestuurders ervoor.","mm-curve-none":"Bedankt voor de melding! We hebben deze bocht bekeken en geen reden gevonden om de kaart aan te passen, dus we laten hem zoals hij is.","mm-rail-done":"Bedankt! We hebben de spoorwegovergang aan de kaart toegevoegd, dus de app waarschuwt bestuurders ervoor.","mm-rail-none":"Bedankt voor de melding! We hebben gekeken, maar zagen hier geen spoorwegovergang, dus we laten de kaart zoals hij is.","mm-camera-done":"Bedankt! We hebben de flitspaal aan de kaart toegevoegd.","mm-camera-none":"Bedankt voor de melding! We hebben gekeken, maar konden hier geen flitspaal bevestigen, dus we laten de kaart zoals hij is.","mm-done":"Bedankt! We hebben de kaart hier bijgewerkt. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","mm-none":"Bedankt voor de melding! We hebben de kaart hier gecontroleerd en niets gevonden om aan te passen, dus we laten hem zoals hij is."},"ka":{"t-turn-ask":"გმადლობთ შეტყობინებისთვის! რომელი მოხვევა იყო: რომელი ქუჩიდან რომელზე და რა მიმართულებით მოძრაობდით?","t-turn-done":"გმადლობთ! ეს მოხვევა რუკაზე გავასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-address-ask":"გმადლობთ შეტყობინებისთვის! რა არის სწორი მისამართი ან ქუჩის სახელი და რომელ ადგილას მისვლას ცდილობდით?","t-address-done":"გმადლობთ! მისამართი რუკაზე შევასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-route-ask":"გმადლობთ შეტყობინებისთვის! საიდან დაიძარით, სად მიდიოდით და რომელი გზით ელოდით, რომ აპი წაგიყვანდათ?","t-route-done":"გმადლობთ შეტყობინებისთვის! რუკა ამ ადგილას შევამოწმეთ და ყველაფერი სწორადაა. აპი მარშრუტს მიმდინარე მოძრაობის მიხედვით ირჩევს, ამიტომ ის შეიძლება დღიდან დღემდე განსხვავდებოდეს.","t-roundabout-ask":"გმადლობთ შეტყობინებისთვის! რომელი გზაჯვარედინი უნდა იყოს წრიული მოძრაობით? იქ შემხვედრი ქუჩების სახელები დაგვეხმარება მის პოვნაში.","t-roundabout-done":"გმადლობთ! წრიული მოძრაობის გზაჯვარედინი რუკაზე დავამატეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-general-ask":"გმადლობთ შეტყობინებისთვის! შეგიძლიათ ცოტა მეტი გვითხრათ, რა იყო არასწორად და ზუსტად სად?","t-junction-ask":"გმადლობთ შეტყობინებისთვის! რომელი გზაჯვარედინი, გასასვლელი ან ხიდი იყო და რა მიმართულებით მოძრაობდით?","t-junction-done":"გმადლობთ! გზაჯვარედინი რუკაზე გავასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-direction-ask":"გმადლობთ შეტყობინებისთვის! რომელი ქუჩა იყო და სინამდვილეში რომელი მიმართულებით არის ღია მოძრაობისთვის?","t-direction-done":"გმადლობთ! მოძრაობის მიმართულება რუკაზე შევასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-road-ask":"გმადლობთ შეტყობინებისთვის! რა ჰქვია გზას, სად იწყება და სად მთავრდება, და ღიაა თუ არა ყველასთვის?","t-road-done":"გმადლობთ! გზა რუკაზე დავამატეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-landmark-ask":"გმადლობთ შეტყობინებისთვის! რა ჰქვია ამ ადგილს და ზუსტად სად მდებარეობს?","t-landmark-done":"გმადლობთ! ადგილი რუკაზე დავამატეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-blocked-ask":"გმადლობთ შეტყობინებისთვის! გზა სამუდამოდაა ჩაკეტილი თუ დროებით? თუ იცით, როდემდე, ეს ძალიან დაგვეხმარება.","t-blocked-done":"გმადლობთ! გზის ჩაკეტვა რუკაზე დავამატეთ, ასე რომ, აპი მარშრუტს მისი გვერდის ავლით გაიყვანს.","t-speed-ask":"გმადლობთ შეტყობინებისთვის! სიჩქარის რა ზღვარია იქ ნიშნით მითითებული და რომელი მიმართულებისთვის?","t-speed-done":"გმადლობთ! სიჩქარის ზღვარი რუკაზე განვაახლეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","nothing":"გმადლობთ შეტყობინებისთვის! რუკა ამ ადგილას შევამოწმეთ და შეცდომა ვერ ვიპოვეთ, ამიტომ ისე დავტოვეთ, როგორც იყო. თუ ისევ მოხდება, გთხოვთ, იმ ადგილიდან ახალი შეტყობინება გამოგვიგზავნოთ.","mm-ask":"გმადლობთ შეტყობინებისთვის! შეგიძლიათ ცოტა მეტი გვითხრათ: ზუსტად სად არის და რა მიმართულებით მოძრაობდით?","mm-bump-done":"გმადლობთ! ხელოვნური უსწორმასწორობა რუკაზე დავამატეთ, ასე რომ, აპი მძღოლებს ამის შესახებ გააფრთხილებს.","mm-bump-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ ხელოვნური უსწორმასწორობა ვერ დავინახეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-light-done":"გმადლობთ! შუქნიშანი რუკაზე დავამატეთ.","mm-light-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ შუქნიშანი ვერ დავინახეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-curve-done":"გმადლობთ! სახიფათო მოსახვევი რუკაზე მოვნიშნეთ, ასე რომ, აპი მძღოლებს ამის შესახებ გააფრთხილებს.","mm-curve-none":"გმადლობთ შეტყობინებისთვის! ეს მოსახვევი შევამოწმეთ და რუკის შეცვლის მიზეზი ვერ ვნახეთ, ამიტომ ისე დავტოვეთ, როგორც იყო.","mm-rail-done":"გმადლობთ! სარკინიგზო გადასასვლელი რუკაზე დავამატეთ, ასე რომ, აპი მძღოლებს ამის შესახებ გააფრთხილებს.","mm-rail-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ სარკინიგზო გადასასვლელი ვერ დავინახეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-camera-done":"გმადლობთ! სიჩქარის კამერა რუკაზე დავამატეთ.","mm-camera-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ სიჩქარის კამერის არსებობა ვერ დავადასტურეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-done":"გმადლობთ! რუკა ამ ადგილას განვაახლეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","mm-none":"გმადლობთ შეტყობინებისთვის! რუკა ამ ადგილას შევამოწმეთ და შესაცვლელი ვერაფერი ვიპოვეთ, ამიტომ ისე დავტოვეთ, როგორც იყო."},"hu":{"t-turn-ask":"Köszönjük a bejelentést! Melyik kanyarodásról van szó: melyik utcából melyikbe, és milyen irányban haladtál?","t-turn-done":"Köszönjük! Kijavítottuk ezt a kanyarodást a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-address-ask":"Köszönjük a bejelentést! Mi a helyes cím vagy utcanév, és hova szerettél volna eljutni?","t-address-done":"Köszönjük! Kijavítottuk a címet a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-route-ask":"Köszönjük a bejelentést! Honnan indultál, hova tartottál, és merre számítottál, hogy az alkalmazás visz?","t-route-done":"Köszönjük a bejelentést! Megnéztük itt a térképet, és rendben van. Az alkalmazás az aktuális forgalom alapján választja az útvonalat, így az napról napra eltérhet.","t-roundabout-ask":"Köszönjük a bejelentést! Melyik kereszteződésnek kellene körforgalomnak lennie? Az ott találkozó utcák segítenek megtalálni.","t-roundabout-done":"Köszönjük! Felvettük a körforgalmat a térképre. Az alkalmazás a következő térképfrissítés után mutatja, általában néhány napon belül.","t-general-ask":"Köszönjük a bejelentést! Megírnád egy kicsit részletesebben, mi volt a hiba, és pontosan hol?","t-junction-ask":"Köszönjük a bejelentést! Melyik kereszteződésről, lehajtóról vagy hídról van szó, és milyen irányban haladtál?","t-junction-done":"Köszönjük! Kijavítottuk a kereszteződést a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-direction-ask":"Köszönjük a bejelentést! Melyik utcáról van szó, és valójában melyik irányban járható?","t-direction-done":"Köszönjük! Kijavítottuk a menetirányt a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-road-ask":"Köszönjük a bejelentést! Mi az út neve, hol kezdődik és hol ér véget, és mindenki számára nyitott?","t-road-done":"Köszönjük! Felvettük az utat a térképre. Az alkalmazás a következő térképfrissítés után mutatja, általában néhány napon belül.","t-landmark-ask":"Köszönjük a bejelentést! Mi a hely neve, és pontosan hol található?","t-landmark-done":"Köszönjük! Felvettük a helyet a térképre. A következő térképfrissítés után jelenik meg az alkalmazásban, általában néhány napon belül.","t-blocked-ask":"Köszönjük a bejelentést! Az út véglegesen vagy csak egy ideig van lezárva? Ha tudod, meddig, az sokat segít.","t-blocked-done":"Köszönjük! Felvettük a lezárást a térképre, így az alkalmazás elkerüli.","t-speed-ask":"Köszönjük a bejelentést! Milyen sebességkorlátozás van ott kitáblázva, és melyik irányban?","t-speed-done":"Köszönjük! Frissítettük a sebességkorlátozást a térképen. Az alkalmazás a következő térképfrissítés után mutatja, általában néhány napon belül.","nothing":"Köszönjük a bejelentést! Megnéztük itt a térképet, de nem találtunk hibát, ezért úgy hagytuk, ahogy van. Ha újra előfordul, kérjük, küldj új bejelentést a helyszínről.","mm-ask":"Köszönjük a bejelentést! Megírnád egy kicsit részletesebben, pontosan hol van, és milyen irányban haladtál?","mm-bump-done":"Köszönjük! Felvettük a fekvőrendőrt a térképre, így az alkalmazás figyelmezteti rá a sofőröket.","mm-bump-none":"Köszönjük a bejelentést! Megnéztük, de nem láttunk itt fekvőrendőrt, ezért a térképet úgy hagytuk, ahogy van.","mm-light-done":"Köszönjük! Felvettük a jelzőlámpát a térképre.","mm-light-none":"Köszönjük a bejelentést! Megnéztük, de nem láttunk itt jelzőlámpát, ezért a térképet úgy hagytuk, ahogy van.","mm-curve-done":"Köszönjük! Megjelöltük a veszélyes kanyart a térképen, így az alkalmazás figyelmezteti rá a sofőröket.","mm-curve-none":"Köszönjük a bejelentést! Megnéztük ezt a kanyart, de nem találtunk okot a térkép módosítására, ezért úgy hagytuk, ahogy van.","mm-rail-done":"Köszönjük! Felvettük a vasúti átjárót a térképre, így az alkalmazás figyelmezteti rá a sofőröket.","mm-rail-none":"Köszönjük a bejelentést! Megnéztük, de nem láttunk itt vasúti átjárót, ezért a térképet úgy hagytuk, ahogy van.","mm-camera-done":"Köszönjük! Felvettük a traffipaxot a térképre.","mm-camera-none":"Köszönjük a bejelentést! Megnéztük, de nem tudtuk megerősíteni, hogy itt traffipax van, ezért a térképet úgy hagytuk, ahogy van.","mm-done":"Köszönjük! Frissítettük itt a térképet. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","mm-none":"Köszönjük a bejelentést! Megnéztük itt a térképet, de nem találtunk semmi módosítanivalót, ezért úgy hagytuk, ahogy van."},"hr":{"t-turn-ask":"Hvala na prijavi! O kojem je skretanju riječ: iz koje ulice u koju i u kojem ste smjeru vozili?","t-turn-done":"Hvala! Ispravili smo to skretanje na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-address-ask":"Hvala na prijavi! Koja je točna adresa ili naziv ulice i do kojeg ste mjesta htjeli stići?","t-address-done":"Hvala! Ispravili smo adresu na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-route-ask":"Hvala na prijavi! Odakle ste krenuli, kamo ste išli i kojim ste putem očekivali da će vas aplikacija voditi?","t-route-done":"Hvala na prijavi! Provjerili smo kartu na ovom mjestu i ispravna je. Aplikacija odabire rutu prema prometu u stvarnom vremenu, pa se ona može razlikovati iz dana u dan.","t-roundabout-ask":"Hvala na prijavi! Koje bi raskrižje trebalo biti kružni tok? Nazivi ulica koje se ondje susreću pomoći će nam da ga pronađemo.","t-roundabout-done":"Hvala! Dodali smo kružni tok na kartu. Aplikacija će ga prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-general-ask":"Hvala na prijavi! Možete li nam reći nešto više o tome što nije bilo u redu i gdje točno?","t-junction-ask":"Hvala na prijavi! O kojem je raskrižju, izlazu ili mostu riječ i u kojem ste smjeru vozili?","t-junction-done":"Hvala! Ispravili smo raskrižje na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-direction-ask":"Hvala na prijavi! O kojoj je ulici riječ i u kojem je smjeru zaista otvorena za promet?","t-direction-done":"Hvala! Ispravili smo smjer vožnje na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-road-ask":"Hvala na prijavi! Kako se cesta zove, gdje počinje i gdje završava te je li otvorena za sve?","t-road-done":"Hvala! Dodali smo cestu na kartu. Aplikacija će je prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-landmark-ask":"Hvala na prijavi! Kako se mjesto zove i gdje se točno nalazi?","t-landmark-done":"Hvala! Dodali smo mjesto na kartu. U aplikaciji će se prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-blocked-ask":"Hvala na prijavi! Je li cesta zatvorena trajno ili privremeno? Ako znate do kada, to nam puno pomaže.","t-blocked-done":"Hvala! Dodali smo zatvaranje ceste na kartu, pa će aplikacija voditi vozače zaobilaznim putem.","t-speed-ask":"Hvala na prijavi! Koje je ograničenje brzine ondje označeno i za koji smjer?","t-speed-done":"Hvala! Ažurirali smo ograničenje brzine na karti. Aplikacija će ga prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","nothing":"Hvala na prijavi! Provjerili smo kartu na ovom mjestu i nismo pronašli ništa pogrešno pa smo je ostavili kakva jest. Ako se ponovi, pošaljite novu prijavu s tog mjesta.","mm-ask":"Hvala na prijavi! Možete li nam reći nešto više: gdje se točno nalazi i u kojem ste smjeru vozili?","mm-bump-done":"Hvala! Dodali smo ležećeg policajca na kartu, pa će aplikacija upozoravati vozače na njega.","mm-bump-none":"Hvala na prijavi! Provjerili smo i ovdje nismo vidjeli ležećeg policajca pa smo kartu ostavili kakva jest.","mm-light-done":"Hvala! Dodali smo semafor na kartu.","mm-light-none":"Hvala na prijavi! Provjerili smo i ovdje nismo vidjeli semafor pa smo kartu ostavili kakva jest.","mm-curve-done":"Hvala! Označili smo opasan zavoj na karti, pa će aplikacija upozoravati vozače na njega.","mm-curve-none":"Hvala na prijavi! Provjerili smo ovaj zavoj i nismo pronašli razlog za promjenu karte pa smo je ostavili kakva jest.","mm-rail-done":"Hvala! Dodali smo željeznički prijelaz na kartu, pa će aplikacija upozoravati vozače na njega.","mm-rail-none":"Hvala na prijavi! Provjerili smo i ovdje nismo vidjeli željeznički prijelaz pa smo kartu ostavili kakva jest.","mm-camera-done":"Hvala! Dodali smo kameru za nadzor brzine na kartu.","mm-camera-none":"Hvala na prijavi! Provjerili smo i nismo mogli potvrditi da ovdje postoji kamera za nadzor brzine pa smo kartu ostavili kakva jest.","mm-done":"Hvala! Ažurirali smo kartu na ovom mjestu. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","mm-none":"Hvala na prijavi! Provjerili smo kartu na ovom mjestu i nismo pronašli ništa što treba promijeniti pa smo je ostavili kakva jest."},"fa":{"t-turn-ask":"از گزارش شما سپاسگزاریم! کدام گردش بود: از کدام خیابان به کدام خیابان، و در چه جهتی رانندگی می‌کردید؟","t-turn-done":"سپاسگزاریم! آن گردش را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-address-ask":"از گزارش شما سپاسگزاریم! نشانی یا نام درست خیابان چیست و می‌خواستید به کدام مکان بروید؟","t-address-done":"سپاسگزاریم! نشانی را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-route-ask":"از گزارش شما سپاسگزاریم! از کجا راه افتادید، به کجا می‌رفتید و انتظار داشتید برنامه شما را از کدام مسیر ببرد؟","t-route-done":"از گزارش شما سپاسگزاریم! نقشه را در این محل بررسی کردیم و درست است. برنامه مسیر را بر اساس ترافیک لحظه‌ای انتخاب می‌کند، بنابراین ممکن است از روزی به روز دیگر فرق کند.","t-roundabout-ask":"از گزارش شما سپاسگزاریم! کدام تقاطع باید میدان باشد؟ نام خیابان‌هایی که آنجا به هم می‌رسند به ما کمک می‌کند آن را پیدا کنیم.","t-roundabout-done":"سپاسگزاریم! میدان را به نقشه اضافه کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-general-ask":"از گزارش شما سپاسگزاریم! ممکن است کمی بیشتر توضیح دهید که چه چیزی اشتباه بود و دقیقاً کجا؟","t-junction-ask":"از گزارش شما سپاسگزاریم! کدام تقاطع، خروجی یا پل بود و در چه جهتی رانندگی می‌کردید؟","t-junction-done":"سپاسگزاریم! تقاطع را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-direction-ask":"از گزارش شما سپاسگزاریم! کدام خیابان بود و در واقع در چه جهتی برای تردد باز است؟","t-direction-done":"سپاسگزاریم! جهت حرکت را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-road-ask":"از گزارش شما سپاسگزاریم! نام این راه چیست، از کجا شروع و به کجا ختم می‌شود، و آیا برای همه باز است؟","t-road-done":"سپاسگزاریم! این راه را به نقشه اضافه کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-landmark-ask":"از گزارش شما سپاسگزاریم! نام این مکان چیست و دقیقاً کجاست؟","t-landmark-done":"سپاسگزاریم! این مکان را به نقشه اضافه کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-blocked-ask":"از گزارش شما سپاسگزاریم! آیا راه برای همیشه بسته است یا موقتاً؟ اگر می‌دانید تا کی، خیلی کمک می‌کند.","t-blocked-done":"سپاسگزاریم! بسته بودن راه را به نقشه اضافه کردیم، بنابراین برنامه رانندگان را از مسیر دیگری می‌برد.","t-speed-ask":"از گزارش شما سپاسگزاریم! محدودیت سرعتی که آنجا با تابلو اعلام شده چقدر است و برای کدام جهت؟","t-speed-done":"سپاسگزاریم! محدودیت سرعت را روی نقشه به‌روز کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","nothing":"از گزارش شما سپاسگزاریم! نقشه را در این محل بررسی کردیم و مشکلی پیدا نکردیم، بنابراین آن را همان‌طور که بود گذاشتیم. اگر دوباره پیش آمد، لطفاً از همان محل گزارش جدیدی بفرستید.","mm-ask":"از گزارش شما سپاسگزاریم! ممکن است کمی بیشتر بگویید: دقیقاً کجاست و در چه جهتی رانندگی می‌کردید؟","mm-bump-done":"سپاسگزاریم! سرعت‌گیر را به نقشه اضافه کردیم، بنابراین برنامه به رانندگان درباره آن هشدار می‌دهد.","mm-bump-none":"از گزارش شما سپاسگزاریم! بررسی کردیم و اینجا سرعت‌گیری ندیدیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-light-done":"سپاسگزاریم! چراغ راهنمایی را به نقشه اضافه کردیم.","mm-light-none":"از گزارش شما سپاسگزاریم! بررسی کردیم و اینجا چراغ راهنمایی ندیدیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-curve-done":"سپاسگزاریم! پیچ خطرناک را روی نقشه مشخص کردیم، بنابراین برنامه به رانندگان درباره آن هشدار می‌دهد.","mm-curve-none":"از گزارش شما سپاسگزاریم! این پیچ را بررسی کردیم و دلیلی برای تغییر نقشه پیدا نکردیم، بنابراین آن را همان‌طور که بود گذاشتیم.","mm-rail-done":"سپاسگزاریم! گذرگاه راه‌آهن را به نقشه اضافه کردیم، بنابراین برنامه به رانندگان درباره آن هشدار می‌دهد.","mm-rail-none":"از گزارش شما سپاسگزاریم! بررسی کردیم و اینجا گذرگاه راه‌آهنی ندیدیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-camera-done":"سپاسگزاریم! دوربین کنترل سرعت را به نقشه اضافه کردیم.","mm-camera-none":"از گزارش شما سپاسگزاریم! بررسی کردیم اما نتوانستیم وجود دوربین کنترل سرعت را در اینجا تأیید کنیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-done":"سپاسگزاریم! نقشه را در این محل به‌روز کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","mm-none":"از گزارش شما سپاسگزاریم! نقشه را در این محل بررسی کردیم و چیزی برای تغییر پیدا نکردیم، بنابراین آن را همان‌طور که بود گذاشتیم."},"sv":{"t-turn-ask":"Tack för rapporten! Vilken sväng gällde det: från vilken gata in på vilken, och åt vilket håll körde du?","t-turn-done":"Tack! Vi har rättat svängen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-address-ask":"Tack för rapporten! Vilken är rätt adress eller gatunamn, och vilken plats försökte du ta dig till?","t-address-done":"Tack! Vi har rättat adressen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-route-ask":"Tack för rapporten! Var startade du, vart var du på väg och vilken väg hade du väntat dig att appen skulle ta?","t-route-done":"Tack för rapporten! Vi har kollat kartan här och den stämmer. Appen väljer rutt utifrån trafiken i realtid, så den kan skilja sig från dag till dag.","t-roundabout-ask":"Tack för rapporten! Vilken korsning borde vara en rondell? Gatorna som möts där hjälper oss att hitta den.","t-roundabout-done":"Tack! Vi har lagt till rondellen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-general-ask":"Tack för rapporten! Kan du berätta lite mer om vad som var fel, och exakt var?","t-junction-ask":"Tack för rapporten! Vilken korsning, avfart eller bro gällde det, och åt vilket håll körde du?","t-junction-done":"Tack! Vi har rättat korsningen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-direction-ask":"Tack för rapporten! Vilken gata gällde det, och åt vilket håll är den egentligen öppen för trafik?","t-direction-done":"Tack! Vi har rättat körriktningen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-road-ask":"Tack för rapporten! Vad heter vägen, var börjar och slutar den, och är den öppen för alla?","t-road-done":"Tack! Vi har lagt till vägen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-landmark-ask":"Tack för rapporten! Vad heter platsen, och var ligger den exakt?","t-landmark-done":"Tack! Vi har lagt till platsen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-blocked-ask":"Tack för rapporten! Är vägen avstängd för gott eller bara ett tag? Om du vet hur länge hjälper det mycket.","t-blocked-done":"Tack! Vi har lagt in avstängningen på kartan, så appen leder trafiken runt den.","t-speed-ask":"Tack för rapporten! Vilken hastighetsgräns är skyltad där, och åt vilket håll?","t-speed-done":"Tack! Vi har uppdaterat hastighetsgränsen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","nothing":"Tack för rapporten! Vi har kollat kartan här men inte hittat något fel, så vi låter den vara som den är. Om det händer igen får du gärna skicka en ny rapport från platsen.","mm-ask":"Tack för rapporten! Kan du berätta lite mer: exakt var det är, och åt vilket håll du körde?","mm-bump-done":"Tack! Vi har lagt till farthindret på kartan, så appen varnar förare för det.","mm-bump-none":"Tack för rapporten! Vi har kollat men kunde inte se något farthinder här, så vi låter kartan vara som den är.","mm-light-done":"Tack! Vi har lagt till trafikljusen på kartan.","mm-light-none":"Tack för rapporten! Vi har kollat men kunde inte se några trafikljus här, så vi låter kartan vara som den är.","mm-curve-done":"Tack! Vi har markerat den farliga kurvan på kartan, så appen varnar förare för den.","mm-curve-none":"Tack för rapporten! Vi har kollat kurvan men inte hittat någon anledning att ändra kartan, så vi låter den vara som den är.","mm-rail-done":"Tack! Vi har lagt till järnvägsövergången på kartan, så appen varnar förare för den.","mm-rail-none":"Tack för rapporten! Vi har kollat men kunde inte se någon järnvägsövergång här, så vi låter kartan vara som den är.","mm-camera-done":"Tack! Vi har lagt till fartkameran på kartan.","mm-camera-none":"Tack för rapporten! Vi har kollat men kunde inte bekräfta någon fartkamera här, så vi låter kartan vara som den är.","mm-done":"Tack! Vi har uppdaterat kartan här. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","mm-none":"Tack för rapporten! Vi har kollat kartan här men inte hittat något att ändra, så vi låter den vara som den är."},"lt":{"t-turn-ask":"Ačiū už pranešimą! Apie kurį posūkį kalbate: iš kurios gatvės į kurią ir kuria kryptimi važiavote?","t-turn-done":"Ačiū! Pataisėme šį posūkį žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-address-ask":"Ačiū už pranešimą! Koks yra teisingas adresas ar gatvės pavadinimas ir į kurią vietą norėjote nuvykti?","t-address-done":"Ačiū! Pataisėme adresą žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-route-ask":"Ačiū už pranešimą! Iš kur išvykote, kur važiavote ir kokiu keliu tikėjotės, kad programėlė jus nuves?","t-route-done":"Ačiū už pranešimą! Patikrinome žemėlapį šioje vietoje ir jis teisingas. Programėlė maršrutą parenka pagal eismą realiuoju laiku, todėl jis kiekvieną dieną gali skirtis.","t-roundabout-ask":"Ačiū už pranešimą! Kuri sankryža turėtų būti žiedinė? Ten susikertančių gatvių pavadinimai padės mums ją rasti.","t-roundabout-done":"Ačiū! Pažymėjome žiedinę sankryžą žemėlapyje. Programėlėje ji bus matoma po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-general-ask":"Ačiū už pranešimą! Ar galite papasakoti šiek tiek daugiau, kas buvo negerai ir kur tiksliai?","t-junction-ask":"Ačiū už pranešimą! Kuri tai buvo sankryža, nuovaža ar tiltas ir kuria kryptimi važiavote?","t-junction-done":"Ačiū! Pataisėme sankryžą žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-direction-ask":"Ačiū už pranešimą! Kuri tai gatvė ir kuria kryptimi joje iš tikrųjų leidžiamas eismas?","t-direction-done":"Ačiū! Pataisėme eismo kryptį žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-road-ask":"Ačiū už pranešimą! Kaip vadinasi kelias, kur jis prasideda ir baigiasi, ir ar juo gali važiuoti visi?","t-road-done":"Ačiū! Įtraukėme kelią į žemėlapį. Programėlėje jis bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-landmark-ask":"Ačiū už pranešimą! Kaip vadinasi ta vieta ir kur tiksliai ji yra?","t-landmark-done":"Ačiū! Įtraukėme vietą į žemėlapį. Programėlėje ji bus matoma po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-blocked-ask":"Ačiū už pranešimą! Ar kelias uždarytas visam laikui, ar laikinai? Jei žinote, iki kada, tai labai padėtų.","t-blocked-done":"Ačiū! Pažymėjome uždarymą žemėlapyje, todėl programėlė parinks maršrutą jį aplenkdama.","t-speed-ask":"Ačiū už pranešimą! Koks greičio apribojimas ten nurodytas ženklu ir kuria kryptimi?","t-speed-done":"Ačiū! Atnaujinome greičio apribojimą žemėlapyje. Programėlėje jis bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","nothing":"Ačiū už pranešimą! Patikrinome žemėlapį šioje vietoje ir klaidų neradome, todėl palikome jį tokį, koks yra. Jei tai pasikartos, atsiųskite naują pranešimą iš tos vietos.","mm-ask":"Ačiū už pranešimą! Ar galite papasakoti šiek tiek daugiau: kur tiksliai tai yra ir kuria kryptimi važiavote?","mm-bump-done":"Ačiū! Pažymėjome greičio mažinimo kalnelį žemėlapyje, todėl programėlė apie jį įspės vairuotojus.","mm-bump-none":"Ačiū už pranešimą! Patikrinome, bet greičio mažinimo kalnelio čia nepastebėjome, todėl žemėlapį palikome tokį, koks yra.","mm-light-done":"Ačiū! Pažymėjome šviesoforą žemėlapyje.","mm-light-none":"Ačiū už pranešimą! Patikrinome, bet šviesoforo čia nepastebėjome, todėl žemėlapį palikome tokį, koks yra.","mm-curve-done":"Ačiū! Pažymėjome pavojingą posūkį žemėlapyje, todėl programėlė apie jį įspės vairuotojus.","mm-curve-none":"Ačiū už pranešimą! Patikrinome šį posūkį ir neradome priežasties keisti žemėlapį, todėl palikome jį tokį, koks yra.","mm-rail-done":"Ačiū! Pažymėjome geležinkelio pervažą žemėlapyje, todėl programėlė apie ją įspės vairuotojus.","mm-rail-none":"Ačiū už pranešimą! Patikrinome, bet geležinkelio pervažos čia nepastebėjome, todėl žemėlapį palikome tokį, koks yra.","mm-camera-done":"Ačiū! Pažymėjome greičio matuoklį žemėlapyje.","mm-camera-none":"Ačiū už pranešimą! Patikrinome, bet negalėjome patvirtinti, kad čia yra greičio matuoklis, todėl žemėlapį palikome tokį, koks yra.","mm-done":"Ačiū! Atnaujinome žemėlapį šioje vietoje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","mm-none":"Ačiū už pranešimą! Patikrinome žemėlapį šioje vietoje ir neradome nieko, ką reikėtų keisti, todėl palikome jį tokį, koks yra."},"ms":{"t-turn-ask":"Terima kasih atas laporan anda! Belokan yang mana satu: dari jalan mana ke jalan mana, dan ke arah mana anda memandu?","t-turn-done":"Terima kasih! Kami telah membetulkan belokan itu di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-address-ask":"Terima kasih atas laporan anda! Apakah alamat atau nama jalan yang betul, dan ke tempat mana anda hendak pergi?","t-address-done":"Terima kasih! Kami telah membetulkan alamat itu di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-route-ask":"Terima kasih atas laporan anda! Dari mana anda bermula, ke mana anda hendak pergi, dan ikut jalan mana yang anda jangka aplikasi akan bawa anda?","t-route-done":"Terima kasih atas laporan anda! Kami telah menyemak peta di sini dan ia betul. Aplikasi memilih laluan berdasarkan trafik semasa, jadi laluannya mungkin berbeza dari hari ke hari.","t-roundabout-ask":"Terima kasih atas laporan anda! Persimpangan mana yang sepatutnya menjadi bulatan? Nama jalan yang bertemu di situ membantu kami mencarinya.","t-roundabout-done":"Terima kasih! Kami telah menambah bulatan itu ke peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-general-ask":"Terima kasih atas laporan anda! Boleh beritahu kami sedikit lagi tentang apa yang salah, dan di mana tepatnya?","t-junction-ask":"Terima kasih atas laporan anda! Persimpangan, susur keluar atau jambatan yang mana, dan ke arah mana anda memandu?","t-junction-done":"Terima kasih! Kami telah membetulkan persimpangan itu di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-direction-ask":"Terima kasih atas laporan anda! Jalan yang mana, dan ke arah mana sebenarnya ia dibuka kepada lalu lintas?","t-direction-done":"Terima kasih! Kami telah membetulkan arah pemanduan di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-road-ask":"Terima kasih atas laporan anda! Apakah nama jalan itu, di mana ia bermula dan berakhir, dan adakah ia dibuka kepada semua?","t-road-done":"Terima kasih! Kami telah menambah jalan itu ke peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-landmark-ask":"Terima kasih atas laporan anda! Apakah nama tempat itu, dan di mana tepatnya ia terletak?","t-landmark-done":"Terima kasih! Kami telah menambah tempat itu ke peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-blocked-ask":"Terima kasih atas laporan anda! Adakah jalan itu ditutup terus atau buat sementara? Jika anda tahu sehingga bila, itu sangat membantu.","t-blocked-done":"Terima kasih! Kami telah menambah penutupan jalan itu ke peta, jadi aplikasi akan memilih laluan lain.","t-speed-ask":"Terima kasih atas laporan anda! Berapakah had laju yang dipaparkan pada papan tanda di situ, dan untuk arah mana?","t-speed-done":"Terima kasih! Kami telah mengemas kini had laju di peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","nothing":"Terima kasih atas laporan anda! Kami telah menyemak peta di sini dan tidak menemui sebarang kesilapan, jadi kami membiarkannya seperti sedia ada. Jika ia berlaku lagi, sila hantar laporan baharu dari lokasi itu.","mm-ask":"Terima kasih atas laporan anda! Boleh beritahu kami sedikit lagi: di mana tepatnya, dan ke arah mana anda memandu?","mm-bump-done":"Terima kasih! Kami telah menambah bonggol jalan itu ke peta, jadi aplikasi akan memberi amaran kepada pemandu.","mm-bump-none":"Terima kasih atas laporan anda! Kami telah menyemak dan tidak nampak sebarang bonggol jalan di sini, jadi kami membiarkan peta seperti sedia ada.","mm-light-done":"Terima kasih! Kami telah menambah lampu isyarat itu ke peta.","mm-light-none":"Terima kasih atas laporan anda! Kami telah menyemak dan tidak nampak sebarang lampu isyarat di sini, jadi kami membiarkan peta seperti sedia ada.","mm-curve-done":"Terima kasih! Kami telah menandakan selekoh berbahaya itu di peta, jadi aplikasi akan memberi amaran kepada pemandu.","mm-curve-none":"Terima kasih atas laporan anda! Kami telah menyemak selekoh ini dan tidak menemui sebab untuk mengubah peta, jadi kami membiarkannya seperti sedia ada.","mm-rail-done":"Terima kasih! Kami telah menambah lintasan kereta api itu ke peta, jadi aplikasi akan memberi amaran kepada pemandu.","mm-rail-none":"Terima kasih atas laporan anda! Kami telah menyemak dan tidak nampak sebarang lintasan kereta api di sini, jadi kami membiarkan peta seperti sedia ada.","mm-camera-done":"Terima kasih! Kami telah menambah kamera had laju itu ke peta.","mm-camera-none":"Terima kasih atas laporan anda! Kami telah menyemak tetapi tidak dapat mengesahkan adanya kamera had laju di sini, jadi kami membiarkan peta seperti sedia ada.","mm-done":"Terima kasih! Kami telah mengemas kini peta di sini. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","mm-none":"Terima kasih atas laporan anda! Kami telah menyemak peta di sini dan tidak menemui apa-apa yang perlu diubah, jadi kami membiarkannya seperti sedia ada."},"ca":{"t-turn-ask":"Gràcies per l’avís! Quin gir era: de quin carrer a quin, i en quin sentit circulaves?","t-turn-done":"Gràcies! Hem corregit aquest gir al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-address-ask":"Gràcies per l’avís! Quina és l’adreça o el nom del carrer correcte, i a quin lloc volies arribar?","t-address-done":"Gràcies! Hem corregit l’adreça al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-route-ask":"Gràcies per l’avís! D’on sorties, on anaves i per on esperaves que et portés l’app?","t-route-done":"Gràcies per l’avís! Hem revisat el mapa aquí i és correcte. L’app tria la ruta segons el trànsit en temps real, així que pot variar d’un dia a l’altre.","t-roundabout-ask":"Gràcies per l’avís! Quina cruïlla hauria de ser una rotonda? Els carrers que s’hi troben ens ajuden a localitzar-la.","t-roundabout-done":"Gràcies! Hem afegit la rotonda al mapa. L’app la mostrarà després de la propera actualització del mapa, normalment en pocs dies.","t-general-ask":"Gràcies per l’avís! Ens pots explicar una mica més què no anava bé, i on exactament?","t-junction-ask":"Gràcies per l’avís! Quina cruïlla, sortida o pont era, i en quin sentit circulaves?","t-junction-done":"Gràcies! Hem corregit la cruïlla al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-direction-ask":"Gràcies per l’avís! Quin carrer era, i en quin sentit està obert realment al trànsit?","t-direction-done":"Gràcies! Hem corregit el sentit de circulació al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-road-ask":"Gràcies per l’avís! Com es diu la via, on comença i on acaba, i és oberta a tothom?","t-road-done":"Gràcies! Hem afegit la via al mapa. L’app la mostrarà després de la propera actualització del mapa, normalment en pocs dies.","t-landmark-ask":"Gràcies per l’avís! Com es diu el lloc, i on és exactament?","t-landmark-done":"Gràcies! Hem afegit el lloc al mapa. Apareixerà a l’app després de la propera actualització del mapa, normalment en pocs dies.","t-blocked-ask":"Gràcies per l’avís! La via està tallada definitivament o només durant un temps? Si saps fins quan, ens ajuda molt.","t-blocked-done":"Gràcies! Hem afegit el tall al mapa, així que l’app proposarà rutes que l’evitin.","t-speed-ask":"Gràcies per l’avís! Quin límit de velocitat hi ha senyalitzat, i per a quin sentit?","t-speed-done":"Gràcies! Hem actualitzat el límit de velocitat al mapa. L’app el mostrarà després de la propera actualització del mapa, normalment en pocs dies.","nothing":"Gràcies per l’avís! Hem revisat el mapa aquí i no hi hem trobat res malament, així que l’hem deixat tal com estava. Si torna a passar, envia un avís nou des del mateix lloc.","mm-ask":"Gràcies per l’avís! Ens pots explicar una mica més: on és exactament i en quin sentit circulaves?","mm-bump-done":"Gràcies! Hem afegit el ressalt al mapa, així que l’app n’avisarà els conductors.","mm-bump-none":"Gràcies per l’avís! Ho hem revisat i no hi hem vist cap ressalt, així que hem deixat el mapa tal com estava.","mm-light-done":"Gràcies! Hem afegit el semàfor al mapa.","mm-light-none":"Gràcies per l’avís! Ho hem revisat i no hi hem vist cap semàfor, així que hem deixat el mapa tal com estava.","mm-curve-done":"Gràcies! Hem marcat el revolt perillós al mapa, així que l’app n’avisarà els conductors.","mm-curve-none":"Gràcies per l’avís! Hem revisat aquest revolt i no hem trobat cap motiu per canviar el mapa, així que l’hem deixat tal com estava.","mm-rail-done":"Gràcies! Hem afegit el pas a nivell al mapa, així que l’app n’avisarà els conductors.","mm-rail-none":"Gràcies per l’avís! Ho hem revisat i no hi hem vist cap pas a nivell, així que hem deixat el mapa tal com estava.","mm-camera-done":"Gràcies! Hem afegit el radar al mapa.","mm-camera-none":"Gràcies per l’avís! Ho hem revisat i no hem pogut confirmar que hi hagi un radar, així que hem deixat el mapa tal com estava.","mm-done":"Gràcies! Hem actualitzat el mapa aquí. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","mm-none":"Gràcies per l’avís! Hem revisat el mapa aquí i no hi hem trobat res a canviar, així que l’hem deixat tal com estava."},"fr":{"t-turn-ask":"Merci pour le signalement ! Où fallait-il tourner : de quelle rue vers quelle rue, et dans quel sens rouliez-vous ?","t-turn-done":"Merci ! Nous avons corrigé ce changement de direction sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-address-ask":"Merci pour le signalement ! Quelle est la bonne adresse ou le bon nom de rue, et quel lieu cherchiez-vous à rejoindre ?","t-address-done":"Merci ! Nous avons corrigé l’adresse sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-route-ask":"Merci pour le signalement ! D’où êtes-vous parti, où alliez-vous, et par où pensiez-vous que l’appli vous ferait passer ?","t-route-done":"Merci pour le signalement ! Nous avons vérifié la carte ici et elle est correcte. L’appli choisit l’itinéraire en fonction du trafic en temps réel, il peut donc varier d’un jour à l’autre.","t-roundabout-ask":"Merci pour le signalement ! Quel carrefour devrait être un rond-point ? Le nom des rues qui s’y croisent nous aide à le trouver.","t-roundabout-done":"Merci ! Nous avons ajouté le rond-point sur la carte. L’appli l’affichera après la prochaine mise à jour de la carte, en général sous quelques jours.","t-general-ask":"Merci pour le signalement ! Pouvez-vous nous en dire un peu plus sur le problème, et où exactement ?","t-junction-ask":"Merci pour le signalement ! De quel carrefour, sortie ou pont s’agit-il, et dans quel sens rouliez-vous ?","t-junction-done":"Merci ! Nous avons corrigé le carrefour sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-direction-ask":"Merci pour le signalement ! De quelle rue s’agit-il, et dans quel sens la circulation y est-elle réellement autorisée ?","t-direction-done":"Merci ! Nous avons corrigé le sens de circulation sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-road-ask":"Merci pour le signalement ! Comment s’appelle la route, où commence-t-elle et où finit-elle, et est-elle ouverte à tous ?","t-road-done":"Merci ! Nous avons ajouté la route sur la carte. L’appli l’affichera après la prochaine mise à jour de la carte, en général sous quelques jours.","t-landmark-ask":"Merci pour le signalement ! Comment s’appelle ce lieu, et où se trouve-t-il exactement ?","t-landmark-done":"Merci ! Nous avons ajouté le lieu sur la carte. Il apparaîtra dans l’appli après la prochaine mise à jour de la carte, en général sous quelques jours.","t-blocked-ask":"Merci pour le signalement ! La route est-elle fermée définitivement ou temporairement ? Si vous savez jusqu’à quand, cela nous aide beaucoup.","t-blocked-done":"Merci ! Nous avons ajouté la fermeture sur la carte, l’appli la contourne donc désormais.","t-speed-ask":"Merci pour le signalement ! Quelle limitation de vitesse est indiquée à cet endroit, et dans quel sens ?","t-speed-done":"Merci ! Nous avons mis à jour la limitation de vitesse sur la carte. L’appli l’affichera après la prochaine mise à jour de la carte, en général sous quelques jours.","nothing":"Merci pour le signalement ! Nous avons vérifié la carte ici sans rien trouver d’anormal, nous l’avons donc laissée telle quelle. Si cela se reproduit, envoyez un nouveau signalement depuis l’endroit.","mm-ask":"Merci pour le signalement ! Pouvez-vous nous en dire un peu plus : où exactement, et dans quel sens rouliez-vous ?","mm-bump-done":"Merci ! Nous avons ajouté le ralentisseur sur la carte, l’appli avertira donc les conducteurs.","mm-bump-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas vu de ralentisseur ici, nous avons donc laissé la carte telle quelle.","mm-light-done":"Merci ! Nous avons ajouté les feux tricolores sur la carte.","mm-light-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas vu de feux tricolores ici, nous avons donc laissé la carte telle quelle.","mm-curve-done":"Merci ! Nous avons signalé le virage dangereux sur la carte, l’appli avertira donc les conducteurs.","mm-curve-none":"Merci pour le signalement ! Nous avons vérifié ce virage et n’avons trouvé aucune raison de modifier la carte, nous l’avons donc laissée telle quelle.","mm-rail-done":"Merci ! Nous avons ajouté le passage à niveau sur la carte, l’appli avertira donc les conducteurs.","mm-rail-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas vu de passage à niveau ici, nous avons donc laissé la carte telle quelle.","mm-camera-done":"Merci ! Nous avons ajouté le radar sur la carte.","mm-camera-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas pu confirmer la présence d’un radar ici, nous avons donc laissé la carte telle quelle.","mm-done":"Merci ! Nous avons corrigé la carte à cet endroit. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","mm-none":"Merci pour le signalement ! Nous avons vérifié la carte ici et n’avons rien trouvé à modifier, nous l’avons donc laissée telle quelle."},"pl":{"t-turn-ask":"Dziękujemy za zgłoszenie! O który skręt chodzi: z jakiej ulicy w jaką i w którym kierunku jazdy?","t-turn-done":"Dziękujemy! Poprawiliśmy ten skręt na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-address-ask":"Dziękujemy za zgłoszenie! Jaki jest prawidłowy adres lub nazwa ulicy i o jakie miejsce chodzi?","t-address-done":"Dziękujemy! Poprawiliśmy adres na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-route-ask":"Dziękujemy za zgłoszenie! Skąd i dokąd była trasa i którędy, twoim zdaniem, aplikacja powinna cię poprowadzić?","t-route-done":"Dziękujemy za zgłoszenie! Sprawdziliśmy mapę w tym miejscu i wszystko się zgadza. Aplikacja wybiera trasę na podstawie bieżącego ruchu, więc może się ona różnić z dnia na dzień.","t-roundabout-ask":"Dziękujemy za zgłoszenie! Które skrzyżowanie powinno być rondem? Nazwy ulic, które się tam spotykają, pomogą nam je znaleźć.","t-roundabout-done":"Dziękujemy! Dodaliśmy rondo do mapy. Aplikacja pokaże je po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-general-ask":"Dziękujemy za zgłoszenie! Czy możesz napisać trochę więcej o tym, co było nie tak i gdzie dokładnie?","t-junction-ask":"Dziękujemy za zgłoszenie! O które skrzyżowanie, zjazd lub most chodzi i w którym kierunku jazdy?","t-junction-done":"Dziękujemy! Poprawiliśmy skrzyżowanie na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-direction-ask":"Dziękujemy za zgłoszenie! O którą ulicę chodzi i w którym kierunku ruch jest na niej faktycznie dozwolony?","t-direction-done":"Dziękujemy! Poprawiliśmy kierunek ruchu na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-road-ask":"Dziękujemy za zgłoszenie! Jak nazywa się ta droga, gdzie się zaczyna i kończy i czy jest dostępna dla wszystkich?","t-road-done":"Dziękujemy! Dodaliśmy drogę do mapy. Aplikacja pokaże ją po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-landmark-ask":"Dziękujemy za zgłoszenie! Jak nazywa się to miejsce i gdzie dokładnie się znajduje?","t-landmark-done":"Dziękujemy! Dodaliśmy to miejsce do mapy. Pojawi się w aplikacji po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-blocked-ask":"Dziękujemy za zgłoszenie! Czy droga jest zamknięta na stałe, czy tymczasowo? Jeśli wiesz, do kiedy, bardzo nam to pomoże.","t-blocked-done":"Dziękujemy! Dodaliśmy zamknięcie do mapy, więc aplikacja będzie je omijać.","t-speed-ask":"Dziękujemy za zgłoszenie! Jakie ograniczenie prędkości jest tam na znaku i dla którego kierunku?","t-speed-done":"Dziękujemy! Zaktualizowaliśmy ograniczenie prędkości na mapie. Aplikacja pokaże je po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","nothing":"Dziękujemy za zgłoszenie! Sprawdziliśmy mapę w tym miejscu i nie znaleźliśmy błędu, więc zostawiliśmy ją bez zmian. Jeśli to się powtórzy, wyślij nowe zgłoszenie z tego miejsca.","mm-ask":"Dziękujemy za zgłoszenie! Czy możesz napisać trochę więcej: gdzie dokładnie to jest i w którym kierunku jazdy?","mm-bump-done":"Dziękujemy! Dodaliśmy próg zwalniający do mapy, więc aplikacja ostrzeże przed nim kierowców.","mm-bump-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie widzimy tu progu zwalniającego, więc zostawiliśmy mapę bez zmian.","mm-light-done":"Dziękujemy! Dodaliśmy sygnalizację świetlną do mapy.","mm-light-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie widzimy tu sygnalizacji świetlnej, więc zostawiliśmy mapę bez zmian.","mm-curve-done":"Dziękujemy! Oznaczyliśmy na mapie niebezpieczny zakręt, więc aplikacja ostrzeże przed nim kierowców.","mm-curve-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy ten zakręt i nie znaleźliśmy powodu, by zmieniać mapę, więc zostawiliśmy ją bez zmian.","mm-rail-done":"Dziękujemy! Dodaliśmy przejazd kolejowy do mapy, więc aplikacja ostrzeże przed nim kierowców.","mm-rail-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie widzimy tu przejazdu kolejowego, więc zostawiliśmy mapę bez zmian.","mm-camera-done":"Dziękujemy! Dodaliśmy fotoradar do mapy.","mm-camera-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie udało nam się potwierdzić, że jest tu fotoradar, więc zostawiliśmy mapę bez zmian.","mm-done":"Dziękujemy! Zaktualizowaliśmy mapę w tym miejscu. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","mm-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy mapę w tym miejscu i nie znaleźliśmy nic do zmiany, więc zostawiliśmy ją bez zmian."},"uk":{"t-turn-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, про який поворот ідеться: з якої вулиці на яку і в якому напрямку ви їхали?","t-turn-done":"Дякуємо! Ми виправили цей поворот на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-address-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, яка правильна адреса чи назва вулиці і куди саме ви хотіли потрапити?","t-address-done":"Дякуємо! Ми виправили адресу на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-route-ask":"Дякуємо за повідомлення! Звідки й куди ви їхали і яким шляхом, на вашу думку, мав вести застосунок?","t-route-done":"Дякуємо за повідомлення! Ми перевірили карту в цьому місці, і з нею все гаразд. Застосунок обирає маршрут з урахуванням поточного трафіку, тому він може відрізнятися з дня на день.","t-roundabout-ask":"Дякуємо за повідомлення! Яке перехрестя має бути з круговим рухом? Назви вулиць, що там сходяться, допоможуть нам його знайти.","t-roundabout-done":"Дякуємо! Ми позначили на карті перехрестя з круговим рухом. Воно з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-general-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, трохи докладніше, що саме було не так і де саме?","t-junction-ask":"Дякуємо за повідомлення! Про яке перехрестя, з’їзд чи міст ідеться і в якому напрямку ви їхали?","t-junction-done":"Дякуємо! Ми виправили перехрестя на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-direction-ask":"Дякуємо за повідомлення! Про яку вулицю йдеться і в якому напрямку рух нею насправді дозволений?","t-direction-done":"Дякуємо! Ми виправили напрямок руху на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-road-ask":"Дякуємо за повідомлення! Як називається дорога, де вона починається й закінчується і чи відкрита вона для всіх?","t-road-done":"Дякуємо! Ми додали дорогу на карту. Вона з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-landmark-ask":"Дякуємо за повідомлення! Як називається це місце і де саме воно розташоване?","t-landmark-done":"Дякуємо! Ми додали це місце на карту. Воно з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-blocked-ask":"Дякуємо за повідомлення! Дорогу закрито назовсім чи тимчасово? Якщо знаєте, до якого часу, це дуже допоможе.","t-blocked-done":"Дякуємо! Ми додали перекриття на карту, тож застосунок прокладатиме маршрут в об’їзд.","t-speed-ask":"Дякуємо за повідомлення! Яке обмеження швидкості вказано на знаку і для якого напрямку?","t-speed-done":"Дякуємо! Ми оновили обмеження швидкості на карті. Воно з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","nothing":"Дякуємо за повідомлення! Ми перевірили карту в цьому місці й не знайшли помилок, тому залишили все як є. Якщо це повториться, надішліть, будь ласка, нове повідомлення з того місця.","mm-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, трохи більше: де саме це місце і в якому напрямку ви їхали?","mm-bump-done":"Дякуємо! Ми додали «лежачого поліцейського» на карту, тож застосунок попереджатиме про нього водіїв.","mm-bump-none":"Дякуємо за повідомлення! Ми перевірили й не побачили тут «лежачого поліцейського», тому залишили карту без змін.","mm-light-done":"Дякуємо! Ми додали світлофор на карту.","mm-light-none":"Дякуємо за повідомлення! Ми перевірили й не побачили тут світлофора, тому залишили карту без змін.","mm-curve-done":"Дякуємо! Ми позначили на карті небезпечний поворот, тож застосунок попереджатиме про нього водіїв.","mm-curve-none":"Дякуємо за повідомлення! Ми перевірили цей поворот і не знайшли причин змінювати карту, тому залишили все як є.","mm-rail-done":"Дякуємо! Ми додали залізничний переїзд на карту, тож застосунок попереджатиме про нього водіїв.","mm-rail-none":"Дякуємо за повідомлення! Ми перевірили й не побачили тут залізничного переїзду, тому залишили карту без змін.","mm-camera-done":"Дякуємо! Ми додали камеру контролю швидкості на карту.","mm-camera-none":"Дякуємо за повідомлення! Ми перевірили й не змогли підтвердити, що тут є камера контролю швидкості, тому залишили карту без змін.","mm-done":"Дякуємо! Ми оновили карту в цьому місці. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","mm-none":"Дякуємо за повідомлення! Ми перевірили карту в цьому місці й не знайшли, що змінювати, тому залишили все як є."},"ro":{"t-turn-ask":"Mulțumim pentru raportare! Despre ce viraj e vorba: de pe ce stradă pe ce stradă și în ce direcție mergeai?","t-turn-done":"Mulțumim! Am corectat virajul pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-address-ask":"Mulțumim pentru raportare! Care este adresa sau numele corect al străzii și unde voiai să ajungi?","t-address-done":"Mulțumim! Am corectat adresa pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-route-ask":"Mulțumim pentru raportare! De unde ai plecat, unde mergeai și pe ce traseu te așteptai să te ducă aplicația?","t-route-done":"Mulțumim pentru raportare! Am verificat harta aici și este corectă. Aplicația alege traseul în funcție de traficul în timp real, așa că poate diferi de la o zi la alta.","t-roundabout-ask":"Mulțumim pentru raportare! Ce intersecție ar trebui să fie sens giratoriu? Numele străzilor care se întâlnesc acolo ne ajută să o găsim.","t-roundabout-done":"Mulțumim! Am adăugat sensul giratoriu pe hartă. Aplicația îl va arăta după următoarea actualizare a hărții, de obicei în câteva zile.","t-general-ask":"Mulțumim pentru raportare! Ne poți spune puțin mai multe despre ce nu era în regulă și unde exact?","t-junction-ask":"Mulțumim pentru raportare! Despre ce intersecție, ieșire sau pod e vorba și în ce direcție mergeai?","t-junction-done":"Mulțumim! Am corectat intersecția pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-direction-ask":"Mulțumim pentru raportare! Despre ce stradă e vorba și în ce sens se circulă de fapt pe ea?","t-direction-done":"Mulțumim! Am corectat sensul de circulație pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-road-ask":"Mulțumim pentru raportare! Cum se numește drumul, unde începe și unde se termină și este deschis tuturor?","t-road-done":"Mulțumim! Am adăugat drumul pe hartă. Aplicația îl va arăta după următoarea actualizare a hărții, de obicei în câteva zile.","t-landmark-ask":"Mulțumim pentru raportare! Cum se numește locul și unde exact se află?","t-landmark-done":"Mulțumim! Am adăugat locul pe hartă. Va apărea în aplicație după următoarea actualizare a hărții, de obicei în câteva zile.","t-blocked-ask":"Mulțumim pentru raportare! Drumul este închis definitiv sau temporar? Dacă știi până când, ne ajută mult.","t-blocked-done":"Mulțumim! Am adăugat închiderea pe hartă, așa că aplicația o va ocoli.","t-speed-ask":"Mulțumim pentru raportare! Ce limită de viteză este afișată acolo și pentru ce sens?","t-speed-done":"Mulțumim! Am actualizat limita de viteză pe hartă. Aplicația o va arăta după următoarea actualizare a hărții, de obicei în câteva zile.","nothing":"Mulțumim pentru raportare! Am verificat harta aici și nu am găsit nicio problemă, așa că am lăsat-o așa cum este. Dacă se întâmplă din nou, te rugăm să trimiți un raport nou chiar din locul respectiv.","mm-ask":"Mulțumim pentru raportare! Ne poți spune puțin mai multe: unde exact este și în ce direcție mergeai?","mm-bump-done":"Mulțumim! Am adăugat limitatorul de viteză pe hartă, așa că aplicația îi va avertiza pe șoferi.","mm-bump-none":"Mulțumim pentru raportare! Am verificat și nu am văzut niciun limitator de viteză aici, așa că am lăsat harta așa cum este.","mm-light-done":"Mulțumim! Am adăugat semaforul pe hartă.","mm-light-none":"Mulțumim pentru raportare! Am verificat și nu am văzut niciun semafor aici, așa că am lăsat harta așa cum este.","mm-curve-done":"Mulțumim! Am marcat curba periculoasă pe hartă, așa că aplicația îi va avertiza pe șoferi.","mm-curve-none":"Mulțumim pentru raportare! Am verificat această curbă și nu am găsit niciun motiv să modificăm harta, așa că am lăsat-o așa cum este.","mm-rail-done":"Mulțumim! Am adăugat trecerea la nivel cu calea ferată pe hartă, așa că aplicația îi va avertiza pe șoferi.","mm-rail-none":"Mulțumim pentru raportare! Am verificat și nu am văzut nicio trecere la nivel cu calea ferată aici, așa că am lăsat harta așa cum este.","mm-camera-done":"Mulțumim! Am adăugat radarul pe hartă.","mm-camera-none":"Mulțumim pentru raportare! Am verificat și nu am putut confirma un radar aici, așa că am lăsat harta așa cum este.","mm-done":"Mulțumim! Am actualizat harta aici. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","mm-none":"Mulțumim pentru raportare! Am verificat harta aici și nu am găsit nimic de schimbat, așa că am lăsat-o așa cum este."},"sl":{"t-turn-ask":"Hvala za prijavo! Za kateri zavoj gre: s katere ulice na katero in v katero smer ste vozili?","t-turn-done":"Hvala! Ta zavoj smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-address-ask":"Hvala za prijavo! Kateri je pravilni naslov ali ime ulice in kam ste želeli priti?","t-address-done":"Hvala! Naslov smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-route-ask":"Hvala za prijavo! Od kod ste šli, kam ste bili namenjeni in po kateri poti ste pričakovali, da vas bo vodila aplikacija?","t-route-done":"Hvala za prijavo! Zemljevid smo na tem mestu preverili in je pravilen. Aplikacija izbira pot glede na promet v živo, zato se lahko iz dneva v dan razlikuje.","t-roundabout-ask":"Hvala za prijavo! Katero križišče bi moralo biti krožišče? Imena ulic, ki se tam stikajo, nam pomagajo najti mesto.","t-roundabout-done":"Hvala! Krožišče smo dodali na zemljevid. Aplikacija ga bo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-general-ask":"Hvala za prijavo! Nam lahko poveste malo več o tem, kaj je bilo narobe in kje točno?","t-junction-ask":"Hvala za prijavo! Za katero križišče, izvoz ali most gre in v katero smer ste vozili?","t-junction-done":"Hvala! Križišče smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-direction-ask":"Hvala za prijavo! Za katero ulico gre in v katero smer je promet po njej v resnici dovoljen?","t-direction-done":"Hvala! Smer vožnje smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-road-ask":"Hvala za prijavo! Kako se cesta imenuje, kje se začne in konča ter ali je odprta za vse?","t-road-done":"Hvala! Cesto smo dodali na zemljevid. Aplikacija jo bo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-landmark-ask":"Hvala za prijavo! Kako se imenuje ta lokacija in kje točno se nahaja?","t-landmark-done":"Hvala! Lokacijo smo dodali na zemljevid. V aplikaciji bo vidna po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-blocked-ask":"Hvala za prijavo! Je cesta zaprta za stalno ali začasno? Če veste, do kdaj, nam to zelo pomaga.","t-blocked-done":"Hvala! Zaporo smo dodali na zemljevid, zato jo aplikacija zdaj obide.","t-speed-ask":"Hvala za prijavo! Kakšna omejitev hitrosti je tam označena in za katero smer?","t-speed-done":"Hvala! Omejitev hitrosti smo na zemljevidu posodobili. Aplikacija jo bo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","nothing":"Hvala za prijavo! Zemljevid smo na tem mestu preverili in nismo našli napake, zato smo ga pustili, kot je. Če se ponovi, pošljite novo prijavo kar s tistega mesta.","mm-ask":"Hvala za prijavo! Nam lahko poveste malo več: kje točno je to in v katero smer ste vozili?","mm-bump-done":"Hvala! Hitrostno oviro smo dodali na zemljevid, zato bo aplikacija nanjo opozorila voznike.","mm-bump-none":"Hvala za prijavo! Preverili smo in tu nismo videli hitrostne ovire, zato smo zemljevid pustili, kot je.","mm-light-done":"Hvala! Semafor smo dodali na zemljevid.","mm-light-none":"Hvala za prijavo! Preverili smo in tu nismo videli semaforja, zato smo zemljevid pustili, kot je.","mm-curve-done":"Hvala! Nevaren ovinek smo označili na zemljevidu, zato bo aplikacija nanj opozorila voznike.","mm-curve-none":"Hvala za prijavo! Ta ovinek smo preverili in nismo našli razloga za spremembo zemljevida, zato smo ga pustili, kot je.","mm-rail-done":"Hvala! Železniški prehod smo dodali na zemljevid, zato bo aplikacija nanj opozorila voznike.","mm-rail-none":"Hvala za prijavo! Preverili smo in tu nismo videli železniškega prehoda, zato smo zemljevid pustili, kot je.","mm-camera-done":"Hvala! Radar smo dodali na zemljevid.","mm-camera-none":"Hvala za prijavo! Preverili smo, a radarja tu nismo mogli potrditi, zato smo zemljevid pustili, kot je.","mm-done":"Hvala! Zemljevid smo na tem mestu posodobili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","mm-none":"Hvala za prijavo! Zemljevid smo na tem mestu preverili in nismo našli ničesar za spremembo, zato smo ga pustili, kot je."},"zh":{"t-turn-ask":"感谢您的报告！是哪个转弯：从哪条街转到哪条街，您当时往哪个方向行驶？","t-turn-done":"谢谢！我们已在地图上修正了这个转弯。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-address-ask":"感谢您的报告！正确的地址或街道名称是什么？您当时想去哪个地方？","t-address-done":"谢谢！我们已在地图上修正了地址。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-route-ask":"感谢您的报告！您从哪里出发、要去哪里，原本希望应用带您走哪条路线？","t-route-done":"感谢您的报告！我们检查了这里的地图，没有问题。应用会根据实时路况选择路线，所以每天的路线可能不同。","t-roundabout-ask":"感谢您的报告！哪个路口应该是环岛？在那里交汇的街道名称能帮助我们找到位置。","t-roundabout-done":"谢谢！我们已在地图上添加了环岛。下次地图更新后，应用中就会显示，通常在几天内。","t-general-ask":"感谢您的报告！能否再详细说说是哪里有问题、具体在什么位置？","t-junction-ask":"感谢您的报告！是哪个路口、出口或桥梁？您当时往哪个方向行驶？","t-junction-done":"谢谢！我们已在地图上修正了这个路口。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-direction-ask":"感谢您的报告！是哪条街道？它实际允许往哪个方向通行？","t-direction-done":"谢谢！我们已在地图上修正了行驶方向。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-road-ask":"感谢您的报告！这条道路叫什么名字，起点和终点在哪里，是否对所有人开放？","t-road-done":"谢谢！我们已在地图上添加了这条道路。下次地图更新后，应用中就会显示，通常在几天内。","t-landmark-ask":"感谢您的报告！这个地点叫什么名字，具体在哪里？","t-landmark-done":"谢谢！我们已在地图上添加了这个地点。下次地图更新后，应用中就会显示，通常在几天内。","t-blocked-ask":"感谢您的报告！这条路是永久封闭还是临时封闭？如果您知道封到什么时候，会对我们很有帮助。","t-blocked-done":"谢谢！我们已在地图上添加了封路信息，应用会绕开这里规划路线。","t-speed-ask":"感谢您的报告！那里标示的限速是多少，适用于哪个方向？","t-speed-done":"谢谢！我们已在地图上更新了限速。下次地图更新后，应用中就会显示，通常在几天内。","nothing":"感谢您的报告！我们检查了这里的地图，没有发现问题，所以保持原样。如果再次发生，请在现场重新提交报告。","mm-ask":"感谢您的报告！能否再告诉我们一些细节：具体位置在哪里，您当时往哪个方向行驶？","mm-bump-done":"谢谢！我们已在地图上添加了减速带，应用会提醒驾驶员注意。","mm-bump-none":"感谢您的报告！我们检查后没有发现这里有减速带，所以地图保持原样。","mm-light-done":"谢谢！我们已在地图上添加了红绿灯。","mm-light-none":"感谢您的报告！我们检查后没有发现这里有红绿灯，所以地图保持原样。","mm-curve-done":"谢谢！我们已在地图上标出了这个危险弯道，应用会提醒驾驶员注意。","mm-curve-none":"感谢您的报告！我们检查了这个弯道，没有发现需要修改地图的理由，所以保持原样。","mm-rail-done":"谢谢！我们已在地图上添加了铁路道口，应用会提醒驾驶员注意。","mm-rail-none":"感谢您的报告！我们检查后没有发现这里有铁路道口，所以地图保持原样。","mm-camera-done":"谢谢！我们已在地图上添加了测速摄像头。","mm-camera-none":"感谢您的报告！我们检查后无法确认这里有测速摄像头，所以地图保持原样。","mm-done":"谢谢！我们已在此处修正了地图。下次地图更新后，应用中就会显示这项更改，通常在几天内。","mm-none":"感谢您的报告！我们检查了这里的地图，没有发现需要修改的地方，所以保持原样。"},"no":{"t-turn-ask":"Takk for rapporten! Hvilken sving gjelder det: fra hvilken gate inn på hvilken, og hvilken retning kjørte du?","t-turn-done":"Takk! Vi har rettet svingen på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-address-ask":"Takk for rapporten! Hva er riktig adresse eller gatenavn, og hvilket sted prøvde du å komme til?","t-address-done":"Takk! Vi har rettet adressen på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-route-ask":"Takk for rapporten! Hvor startet du, hvor skulle du, og hvilken vei forventet du at appen skulle sende deg?","t-route-done":"Takk for rapporten! Vi har sjekket kartet her, og det stemmer. Appen velger rute ut fra trafikken i sanntid, så den kan variere fra dag til dag.","t-roundabout-ask":"Takk for rapporten! Hvilket kryss skal være en rundkjøring? Navnene på gatene som møtes der, hjelper oss å finne det.","t-roundabout-done":"Takk! Vi har lagt rundkjøringen inn på kartet. Den vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-general-ask":"Takk for rapporten! Kan du fortelle oss litt mer om hva som var feil, og nøyaktig hvor?","t-junction-ask":"Takk for rapporten! Hvilket kryss, hvilken avkjørsel eller bro gjelder det, og hvilken retning kjørte du?","t-junction-done":"Takk! Vi har rettet krysset på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-direction-ask":"Takk for rapporten! Hvilken gate gjelder det, og i hvilken retning er den egentlig åpen for trafikk?","t-direction-done":"Takk! Vi har rettet kjøreretningen på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-road-ask":"Takk for rapporten! Hva heter veien, hvor starter og slutter den, og er den åpen for alle?","t-road-done":"Takk! Vi har lagt veien inn på kartet. Den vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-landmark-ask":"Takk for rapporten! Hva heter stedet, og nøyaktig hvor ligger det?","t-landmark-done":"Takk! Vi har lagt stedet inn på kartet. Det vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-blocked-ask":"Takk for rapporten! Er veien stengt for godt eller bare en periode? Hvis du vet til når, hjelper det mye.","t-blocked-done":"Takk! Vi har lagt stengingen inn på kartet, så appen leder trafikken utenom.","t-speed-ask":"Takk for rapporten! Hvilken fartsgrense er skiltet der, og for hvilken retning?","t-speed-done":"Takk! Vi har oppdatert fartsgrensen på kartet. Den vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","nothing":"Takk for rapporten! Vi har sjekket kartet her og fant ingen feil, så vi lot det være som det er. Hvis det skjer igjen, send gjerne en ny rapport fra stedet.","mm-ask":"Takk for rapporten! Kan du fortelle oss litt mer: nøyaktig hvor det er, og hvilken retning du kjørte?","mm-bump-done":"Takk! Vi har lagt fartsdumpen inn på kartet, så appen varsler sjåførene om den.","mm-bump-none":"Takk for rapporten! Vi har sjekket og fant ingen fartsdump her, så vi lot kartet være som det er.","mm-light-done":"Takk! Vi har lagt trafikklysene inn på kartet.","mm-light-none":"Takk for rapporten! Vi har sjekket og fant ingen trafikklys her, så vi lot kartet være som det er.","mm-curve-done":"Takk! Vi har markert den farlige svingen på kartet, så appen varsler sjåførene om den.","mm-curve-none":"Takk for rapporten! Vi har sjekket denne svingen og fant ingen grunn til å endre kartet, så vi lot det være som det er.","mm-rail-done":"Takk! Vi har lagt planovergangen inn på kartet, så appen varsler sjåførene om den.","mm-rail-none":"Takk for rapporten! Vi har sjekket og fant ingen planovergang her, så vi lot kartet være som det er.","mm-camera-done":"Takk! Vi har lagt fotoboksen inn på kartet.","mm-camera-none":"Takk for rapporten! Vi har sjekket, men kunne ikke bekrefte noen fotoboks her, så vi lot kartet være som det er.","mm-done":"Takk! Vi har oppdatert kartet her. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","mm-none":"Takk for rapporten! Vi har sjekket kartet her og fant ingenting å endre, så vi lot det være som det er."},"lv":{"t-turn-ask":"Paldies par ziņojumu! Par kuru pagriezienu ir runa: no kuras ielas uz kuru, un kurā virzienā braucāt?","t-turn-done":"Paldies! Mēs izlabojām šo pagriezienu kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-address-ask":"Paldies par ziņojumu! Kāda ir pareizā adrese vai ielas nosaukums, un uz kuru vietu vēlējāties nokļūt?","t-address-done":"Paldies! Mēs izlabojām adresi kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-route-ask":"Paldies par ziņojumu! No kurienes braucāt, uz kurieni devāties un pa kuru ceļu gaidījāt, ka lietotne jūs vedīs?","t-route-done":"Paldies par ziņojumu! Mēs pārbaudījām karti šajā vietā, un tā ir pareiza. Lietotne izvēlas maršrutu pēc satiksmes reāllaikā, tāpēc tas var atšķirties no dienas uz dienu.","t-roundabout-ask":"Paldies par ziņojumu! Kuram krustojumam vajadzētu būt aplim? Ielu nosaukumi, kas tur krustojas, palīdzēs mums to atrast.","t-roundabout-done":"Paldies! Mēs pievienojām kartei apli. Lietotnē tas būs redzams pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-general-ask":"Paldies par ziņojumu! Vai varat pastāstīt mazliet vairāk par to, kas bija nepareizi, un kur tieši?","t-junction-ask":"Paldies par ziņojumu! Par kuru krustojumu, nobrauktuvi vai tiltu ir runa, un kurā virzienā braucāt?","t-junction-done":"Paldies! Mēs izlabojām krustojumu kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-direction-ask":"Paldies par ziņojumu! Par kuru ielu ir runa, un kurā virzienā pa to patiesībā drīkst braukt?","t-direction-done":"Paldies! Mēs izlabojām braukšanas virzienu kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-road-ask":"Paldies par ziņojumu! Kā sauc šo ceļu, kur tas sākas un beidzas, un vai tas ir atvērts visiem?","t-road-done":"Paldies! Mēs pievienojām kartei šo ceļu. Lietotnē tas būs redzams pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-landmark-ask":"Paldies par ziņojumu! Kā sauc šo vietu, un kur tieši tā atrodas?","t-landmark-done":"Paldies! Mēs pievienojām kartei šo vietu. Lietotnē tā būs redzama pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-blocked-ask":"Paldies par ziņojumu! Vai ceļš ir slēgts pavisam vai uz laiku? Ja zināt, līdz kuram laikam, tas ļoti palīdzēs.","t-blocked-done":"Paldies! Mēs atzīmējām slēgto ceļu kartē, tāpēc lietotne maršrutu veidos tam apkārt.","t-speed-ask":"Paldies par ziņojumu! Kāds ātruma ierobežojums tur norādīts, un kuram braukšanas virzienam?","t-speed-done":"Paldies! Mēs atjauninājām ātruma ierobežojumu kartē. Lietotnē tas būs redzams pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","nothing":"Paldies par ziņojumu! Mēs pārbaudījām karti šajā vietā un neatradām nekādu kļūdu, tāpēc atstājām to kā ir. Ja tas atkārtosies, lūdzu, nosūtiet jaunu ziņojumu no tās vietas.","mm-ask":"Paldies par ziņojumu! Vai varat pastāstīt mazliet vairāk: kur tieši tas ir un kurā virzienā braucāt?","mm-bump-done":"Paldies! Mēs pievienojām kartei ātrumvalni, tāpēc lietotne par to brīdinās vadītājus.","mm-bump-none":"Paldies par ziņojumu! Mēs pārbaudījām un šeit ātrumvalni neredzējām, tāpēc atstājām karti kā ir.","mm-light-done":"Paldies! Mēs pievienojām kartei luksoforu.","mm-light-none":"Paldies par ziņojumu! Mēs pārbaudījām un šeit luksoforu neredzējām, tāpēc atstājām karti kā ir.","mm-curve-done":"Paldies! Mēs atzīmējām kartē bīstamo līkumu, tāpēc lietotne par to brīdinās vadītājus.","mm-curve-none":"Paldies par ziņojumu! Mēs pārbaudījām šo līkumu un neatradām iemeslu mainīt karti, tāpēc atstājām to kā ir.","mm-rail-done":"Paldies! Mēs pievienojām kartei dzelzceļa pārbrauktuvi, tāpēc lietotne par to brīdinās vadītājus.","mm-rail-none":"Paldies par ziņojumu! Mēs pārbaudījām un šeit dzelzceļa pārbrauktuvi neredzējām, tāpēc atstājām karti kā ir.","mm-camera-done":"Paldies! Mēs pievienojām kartei fotoradaru.","mm-camera-none":"Paldies par ziņojumu! Mēs pārbaudījām, bet nevarējām apstiprināt, ka šeit ir fotoradars, tāpēc atstājām karti kā ir.","mm-done":"Paldies! Mēs atjauninājām karti šajā vietā. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","mm-none":"Paldies par ziņojumu! Mēs pārbaudījām karti šajā vietā un neatradām neko, ko mainīt, tāpēc atstājām to kā ir."},"th":{"t-turn-ask":"ขอบคุณสำหรับการรายงาน! ช่วยบอกเราได้ไหมว่าเป็นการเลี้ยวจากถนนไหนเข้าถนนไหน และคุณขับมาทางทิศไหน?","t-turn-done":"ขอบคุณ! เราแก้ไขจุดเลี้ยวนี้บนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-address-ask":"ขอบคุณสำหรับการรายงาน! ที่อยู่หรือชื่อถนนที่ถูกต้องคืออะไร และคุณกำลังจะไปที่ไหน?","t-address-done":"ขอบคุณ! เราแก้ไขที่อยู่บนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-route-ask":"ขอบคุณสำหรับการรายงาน! คุณเริ่มต้นจากที่ไหน กำลังจะไปที่ไหน และคิดว่าแอปควรพาไปทางไหน?","t-route-done":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแผนที่ตรงนี้แล้วและถูกต้อง แอปเลือกเส้นทางตามสภาพการจราจรแบบเรียลไทม์ จึงอาจต่างกันไปในแต่ละวัน","t-roundabout-ask":"ขอบคุณสำหรับการรายงาน! ทางแยกไหนที่ควรเป็นวงเวียน? ชื่อถนนที่มาบรรจบกันตรงนั้นจะช่วยให้เราหาตำแหน่งได้","t-roundabout-done":"ขอบคุณ! เราเพิ่มวงเวียนลงในแผนที่แล้ว แอปจะแสดงวงเวียนนี้หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-general-ask":"ขอบคุณสำหรับการรายงาน! ช่วยเล่าเพิ่มเติมอีกนิดได้ไหมว่ามีอะไรผิดพลาด และอยู่ตรงไหนกันแน่?","t-junction-ask":"ขอบคุณสำหรับการรายงาน! เป็นทางแยก ทางออก หรือสะพานไหน และคุณขับมาทางทิศไหน?","t-junction-done":"ขอบคุณ! เราแก้ไขทางแยกนี้บนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-direction-ask":"ขอบคุณสำหรับการรายงาน! เป็นถนนเส้นไหน และจริง ๆ แล้วเปิดให้รถวิ่งไปทิศทางไหน?","t-direction-done":"ขอบคุณ! เราแก้ไขทิศทางการเดินรถบนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-road-ask":"ขอบคุณสำหรับการรายงาน! ถนนเส้นนี้ชื่ออะไร เริ่มต้นและสิ้นสุดที่ไหน และเปิดให้ทุกคนใช้ได้หรือไม่?","t-road-done":"ขอบคุณ! เราเพิ่มถนนเส้นนี้ลงในแผนที่แล้ว แอปจะแสดงถนนเส้นนี้หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-landmark-ask":"ขอบคุณสำหรับการรายงาน! สถานที่นี้ชื่ออะไร และอยู่ตรงไหนกันแน่?","t-landmark-done":"ขอบคุณ! เราเพิ่มสถานที่นี้ลงในแผนที่แล้ว แอปจะแสดงสถานที่นี้หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-blocked-ask":"ขอบคุณสำหรับการรายงาน! ถนนปิดถาวรหรือปิดชั่วคราว? ถ้าคุณรู้ว่าจะปิดถึงเมื่อไร จะช่วยเราได้มาก","t-blocked-done":"ขอบคุณ! เราเพิ่มการปิดถนนลงในแผนที่แล้ว แอปจึงจะพาเลี่ยงจุดนี้","t-speed-ask":"ขอบคุณสำหรับการรายงาน! ป้ายจำกัดความเร็วตรงนั้นระบุไว้เท่าไร และสำหรับทิศทางไหน?","t-speed-done":"ขอบคุณ! เราอัปเดตความเร็วจำกัดบนแผนที่แล้ว แอปจะแสดงความเร็วจำกัดใหม่หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","nothing":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแผนที่ตรงนี้แล้วไม่พบสิ่งผิดปกติ จึงคงไว้ตามเดิม หากเกิดขึ้นอีก กรุณาส่งรายงานใหม่จากจุดนั้น","mm-ask":"ขอบคุณสำหรับการรายงาน! ช่วยบอกรายละเอียดเพิ่มอีกนิดได้ไหมว่าอยู่ตรงไหนกันแน่ และคุณขับมาทางทิศไหน?","mm-bump-done":"ขอบคุณ! เราเพิ่มลูกระนาดลงในแผนที่แล้ว แอปจะได้แจ้งเตือนผู้ขับขี่","mm-bump-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วไม่พบลูกระนาดตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-light-done":"ขอบคุณ! เราเพิ่มสัญญาณไฟจราจรลงในแผนที่แล้ว","mm-light-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วไม่พบสัญญาณไฟจราจรตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-curve-done":"ขอบคุณ! เราทำเครื่องหมายโค้งอันตรายบนแผนที่แล้ว แอปจะได้แจ้งเตือนผู้ขับขี่","mm-curve-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบโค้งนี้แล้วไม่พบเหตุผลที่ต้องแก้ไขแผนที่ จึงคงไว้ตามเดิม","mm-rail-done":"ขอบคุณ! เราเพิ่มจุดตัดทางรถไฟลงในแผนที่แล้ว แอปจะได้แจ้งเตือนผู้ขับขี่","mm-rail-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วไม่พบจุดตัดทางรถไฟตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-camera-done":"ขอบคุณ! เราเพิ่มกล้องตรวจจับความเร็วลงในแผนที่แล้ว","mm-camera-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วแต่ยืนยันไม่ได้ว่ามีกล้องตรวจจับความเร็วตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-done":"ขอบคุณ! เราอัปเดตแผนที่ตรงนี้แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","mm-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแผนที่ตรงนี้แล้วไม่พบสิ่งที่ต้องแก้ไข จึงคงไว้ตามเดิม"}}/*@@END@@*/;
+    for (const [lang, set] of Object.entries(MORE_REPLIES)) if (REPLIES[lang]) Object.assign(REPLIES[lang], set);
+    for (const set of Object.values(REPLIES)) for (const [key, text] of Object.entries(MORE_REPLIES.en || {})) if (!set[key]) set[key] = text;
+    // WME's request types, grouped by the reply they need (its own type numbers).
+    const TYPE_GROUPS = { 6: 'turn', 11: 'turn', 7: 'address', 21: 'address', 22: 'address', 8: 'route', 9: 'roundabout', 10: 'general',
+      12: 'junction', 13: 'junction', 15: 'junction', 14: 'direction', 16: 'road', 18: 'landmark', 19: 'blocked', 23: 'speed' };
+    // A report sent with Map Mate, and what it is about, read from its words (several languages: the description is
+    // the driver's). The kinds are the permanent hazards an editor adds: speed bumps, railroad crossings and so on.
+    const MAP_MATE_KINDS = [
+      ['rail', /rail|level crossing|grade crossing|passage à niveau|bahnübergang|passaggio a livello|paso a nivel|passagem de nível|overweg|przejazd kolejow|переезд|hemzemin|ισόπεδ|გადასასვლ/i],
+      ['bump', /speed ?(?:bump|hump|breaker)|\bbump|ralentisseur|dos d.âne|schwelle|dosso|rallentator|tope|reductor de velocidad|lombada|quebra-?molas|drempel|próg|лежач|искусственн|hız kesici|κασίδ|σαμαράκ|ბორცვ/i],
+      ['camera', /camera|radar|blitzer|autovelox|cámara|câmara|flitspaal|fotoradar|камер|kamera|κάμερ|კამერ/i],
+      ['light', /traffic ?lights?|traffic signal|feux?\b|ampel|semafor|semáforo|stoplicht|verkeerslicht|sygnaliz|светофор|trafik ışı|φανάρ|შუქნიშ/i],
+      ['curve', /curve|bend|virage|kurve|curva|bocht|zakręt|поворот|viraj|στροφ|მოსახვ/i]];
+    function mapMateOf(data, description, reporter) {
+      const words = `${data.title || ''} ${reporter || ''} ${description || ''}`;
+      if (!/map\s*-?\s*mate/i.test(words)) return null;
+      return { kind: MAP_MATE_KINDS.find(([, pattern]) => pattern.test(description || data.title || ''))?.[0] || '' };
+    }
+
     const ISO3 = { eng: 'en', ell: 'el', gre: 'el', spa: 'es', por: 'pt', fra: 'fr', fre: 'fr', deu: 'de', ger: 'de', ita: 'it', nld: 'nl', dut: 'nl', pol: 'pl', rus: 'ru', tur: 'tr', kat: 'ka', geo: 'ka',
       ukr: 'uk', ces: 'cs', cze: 'cs', slk: 'sk', slo: 'sk', hun: 'hu', ron: 'ro', rum: 'ro', bul: 'bg', srp: 'sr', hrv: 'hr', slv: 'sl', ara: 'ar', heb: 'he', fas: 'fa', per: 'fa',
       zho: 'zh', chi: 'zh', jpn: 'ja', kor: 'ko', swe: 'sv', nor: 'no', nob: 'no', dan: 'da', fin: 'fi', lit: 'lt', lav: 'lv', est: 'et', ind: 'id', msa: 'ms', may: 'ms', tha: 'th', vie: 'vi', hin: 'hi', cat: 'ca' };
@@ -8159,7 +8200,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const status = document.createElement('div'); status.className = 'ws-case-status'; status.setAttribute('data-tone', stand.tone); status.setAttribute('role', 'status');
       if (stand.tone === 'done' && data.resolution) status.setAttribute('data-resolution', data.resolution);
       status.title = (late ? tr('No answer since {0} ({1}). Requests are usually closed after {2} quiet days.', shortDate(stand.since), daysText(stand.days), stand.quiet) + '\n' : '') + steps.map((name, index) => (index + 1 === stand.step ? `› ${name}` : name)).join(' · ')
-        + (stand.step < 4 && urceLeads() ? '\n' + tr('Reminders and closing: URCE (URComments-Enhanced).') : '');
+        + (stand.step < 4 && urceLeads() ? '\n' + tr('Reminders and closing: URC-E (URComments-Enhanced).') : '');
       status.innerHTML = '<div class="ws-case-line"><span class="ws-case-dot"></span><b></b><em></em></div><div class="ws-case-bars" aria-hidden="true"></div>';
       status.querySelector('b').textContent = label;
       status.querySelector('em').textContent = value;
@@ -8181,14 +8222,31 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     // The reporter's description is never cut down to a few lines with a scrollbar of its own (4.0.2): WME gives its
     // box a fixed height, so a long one scrolled inside it however tall the window was made. It now takes the room it
     // needs and the window grows (or the request scrolls as a whole, with the description's text easy to reach).
+    // A description I minimised with WME's own arrow stays minimised (4.1.0): it isn't let out again.
     GM_addStyle(`html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data,
-html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data > .section[class*="description"],
-html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data > .section[class*="description"] > :is(.content,.collapsible,div) {
+html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data > .section[class*="description"]:not([class*="collapsed"]),
+html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data > .section[class*="description"]:not([class*="collapsed"]) > :is(.content,.collapsible,div):not([class*="collapsed"]) {
   max-height: none !important; overflow: visible !important; }
 html[data-wme-studio="on"] [data-ws-desc-free] { max-height: none !important; height: auto !important; overflow: visible !important; }
 html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] { --ws-case-tone: #30a46c !important; }
 html[data-wme-studio="on"][data-wme-studio-theme="light"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] { --ws-case-tone: #1f8a55 !important; }
 html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] .ws-case-bars span { background-color: var(--ws-case-tone) !important; }`);
+    // 4.1.0: the reply buttons above the box, and the note on a suggested first reply. Text centred in each.
+    GM_addStyle(`html[data-wme-studio="on"] .ws-reply-buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px var(--ws-pad, 12px) 4px; }
+html[data-wme-studio="on"] .ws-reply-buttons .ws-rb { display: inline-flex; align-items: center; gap: 6px; max-width: 190px; height: 28px; margin: 0; padding: 0 11px 0 9px; border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--c) 15%, transparent); color: var(--wme-studio-text, inherit); font: 600 12px/1 var(--ws-font, inherit); cursor: pointer; }
+html[data-wme-studio="on"] .ws-reply-buttons .ws-rb:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
+html[data-wme-studio="on"] .ws-reply-buttons .ws-rb:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 2px; }
+html[data-wme-studio="on"] .ws-reply-buttons .ws-rb svg { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--c); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+html[data-wme-studio="on"] .ws-reply-buttons .ws-rb span { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+html[data-wme-studio="on"] .ws-suggested { display: flex; align-items: center; gap: 8px; min-height: 26px; margin: 4px var(--ws-pad, 12px) 0; padding: 0 4px 0 10px; border-radius: 8px; background: color-mix(in srgb, #f5b94c 16%, transparent); color: var(--wme-studio-text, inherit); font: 600 12px/1.2 var(--ws-font, inherit); }
+html[data-wme-studio="on"] .ws-suggested span { flex: 1; min-width: 0; }
+html[data-wme-studio="on"] .ws-suggested button { display: inline-flex; align-items: center; height: 22px; margin: 0; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--wme-studio-accent, #0099ff); font: 600 12px/1 var(--ws-font, inherit); cursor: pointer; }`);
+    GM_addStyle(`html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"][data-ws-tr]:not([data-ws-orig]) > [data-ws-tr-src] { display: none !important; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"][data-ws-orig] .ws-case-tr-text { display: none !important; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] > .ws-case-tr { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding-right: 30px; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] .ws-case-tr-text { color: var(--wme-studio-text); font: 13px/18px var(--ws-font); white-space: pre-line; overflow-wrap: anywhere; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] .ws-case-tr-switch { display: inline-flex; align-items: center; height: 16px; margin: 2px 0 0; padding: 0; border: 0; background: none !important; color: var(--wme-studio-accent, #0099ff); font: 600 11px/16px var(--ws-font); cursor: pointer; }
+html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] .ws-case-tr-switch:hover { text-decoration: underline; }`);
     // A request closed as solved is green; closed as not identified stays grey (4.0.2).
     // The description folds to one line (4.0.2), with the arrow at its top right, so a small screen has room for the
     // discussion. One choice for every request, remembered.
@@ -8235,6 +8293,12 @@ html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .ws-desc-fold svg 
     function freeDescription(panel) {
       const description = panel.querySelector('.problem-data > .section[class*="description"]') || panel.querySelector('.section[class*="description"]');
       if (!description) return;
+      // Minimised with WME's arrow (or on its way there): what I let out goes back, and nothing more is let out. Before
+      // 4.1.0 the next look (a scroll was enough) found the shut box "too small" and opened it again.
+      const box = description.querySelector(':scope > .collapsible, :scope > .content');
+      const shut = description.matches('[class*="collapsed"]') || !!description.querySelector(':scope > [class*="collapsed"], :scope > [aria-expanded="false"], :scope > * > [aria-expanded="false"]')
+        || (box && (box.style.display === 'none' || /^0(px)?$/.test(box.style.height) || box.style.maxHeight === '0px'));
+      if (shut) { for (const node of [description, ...description.querySelectorAll('[data-ws-desc-free]')]) node.removeAttribute('data-ws-desc-free'); return; }
       for (const node of [description.parentElement, description, ...description.querySelectorAll('*')]) {
         if (!node || node.hasAttribute('data-ws-desc-free') || node.matches('.problem-edit, .body, [data-wme-studio-reply-scroller]')) continue;
         const style = getComputedStyle(node);
@@ -8382,6 +8446,16 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     const pageApi = name => { try { return pageWindow[name] || globalThis[name] || null; } catch (_) { return null; } };
     const commentItems = panel => [...panel.querySelectorAll('.conversation-view .comment-list > :is(.comment, wz-list-item)')];
     const messageText = item => (item.querySelector(':scope > .text')?.innerText || item.querySelector('.text')?.textContent || '').trim();
+    // The reporter's own description, above the discussion (4.0.4): translated with the messages, first.
+    function descriptionPart(panel) {
+      const section = panel.querySelector('.problem-data > .section[class*="description"]');
+      if (!section) return null;
+      const box = section.querySelector(':scope > .content') || [...section.children].reverse().find(node => !node.matches('.title, .ws-desc-fold, .ws-case-tr') && node.textContent.trim());
+      const text = (box?.innerText || box?.textContent || '').trim();
+      return box && text ? { item: section, box, text } : null;
+    }
+    // What the Translate tab works on: the description, then every message.
+    const translateParts = panel => [descriptionPart(panel), ...commentItems(panel).map(item => ({ item, box: item.querySelector(':scope > .text'), text: messageText(item) }))].filter(part => part && part.text);
     const TRANSLATE_ICON = '<path d="M4 5h9M8.5 3v2M6 5c.7 3.3 2.8 6 6 7.5M11 5c-.8 3.6-3.4 6.6-7 8"/><path d="m12.5 21 4-10 4 10M14 17.5h5"/>';
     function labelTab(state) {
       const tab = state.tab; if (!tab) return;
@@ -8408,7 +8482,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       // Outside the window, on its right, above the Quick replies tab (in the same column, which Quick replies keeps).
       const list = state.panel.querySelector('.conversation-view > .comment-list');
       const host = state.panel.closest('#ISSUE_WINDOW_UPDATE_REQUEST')?.querySelector(':scope > .ws-quick-replies');
-      if (!list || !host || !commentItems(state.panel).length) { if (state.tab) { state.tab.remove(); state.tab = null; } return; }
+      if (!host || (!list && !descriptionPart(state.panel)) || !translateParts(state.panel).length) { if (state.tab) { state.tab.remove(); state.tab = null; } return; }
       if (!state.tab?.isConnected || state.tab.parentElement !== host) {
         state.tab?.remove();
         const tab = document.createElement('button'); tab.type = 'button'; tab.className = 'ws-case-translate'; tab.slot = 'extra'; tab.setAttribute('data-ws-keep', '');
@@ -8421,7 +8495,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     }
     function untranslate(state) {
       for (const box of state.panel.querySelectorAll('.ws-case-tr')) box.remove();
-      for (const item of state.panel.querySelectorAll('[data-ws-tr],[data-ws-orig],[data-ws-tr-same]')) for (const name of ['data-ws-tr', 'data-ws-orig', 'data-ws-tr-same']) item.removeAttribute(name);
+      for (const item of state.panel.querySelectorAll('[data-ws-tr],[data-ws-orig],[data-ws-tr-same],[data-ws-tr-src]')) for (const name of ['data-ws-tr', 'data-ws-orig', 'data-ws-tr-same', 'data-ws-tr-src']) item.removeAttribute(name);
     }
     async function toggleTranslate(state) {
       // A click while it works stops it (a first download can take a while).
@@ -8501,10 +8575,9 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       state.translating = (async () => {
         const T = pageApi('Translator'), target = shortLang(uiLocale()), fallback = shortLang(read(state.panel).language);
         let translated = 0, missing = 0;
-        for (const item of commentItems(state.panel)) {
+        for (const { item, box, text } of translateParts(state.panel)) {
           if (state.translate === 'off') return 'done';   // stopped with a click
           if (item.hasAttribute('data-ws-tr') || item.hasAttribute('data-ws-tr-same')) continue;
-          const text = messageText(item); if (!text) continue;
           const source = await detect(text) || fallback;
           if (!source || source === target) { item.setAttribute('data-ws-tr-same', ''); continue; }
           const translator = await translatorFor(T, source, target);
@@ -8513,7 +8586,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
           let out = '';
           try { out = await patient(Promise.resolve(translator.translate(text)), 30000); } catch (_) { missing++; continue; }
           if (state.translate === 'off' || !item.isConnected) return 'done';
-          addTranslation(item, out, source); translated++;
+          addTranslation(item, out, source, box); translated++;
         }
         const shown = !!state.panel.querySelector('[data-ws-tr]');
         return translated || shown ? 'done' : missing ? 'none' : 'same';
@@ -8521,8 +8594,8 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         .finally(() => { state.translating = null; });
       return state.translating;
     }
-    function addTranslation(item, text, source) {
-      const original = item.querySelector(':scope > .text');
+    function addTranslation(item, text, source, original = item.querySelector(':scope > .text')) {
+      original?.setAttribute('data-ws-tr-src', '');
       const box = document.createElement('div'); box.className = 'ws-case-tr'; box.setAttribute('data-ws-keep', '');
       if (original?.slot) box.slot = original.slot;
       const body = document.createElement('div'); body.className = 'ws-case-tr-text'; body.textContent = text;
@@ -8538,7 +8611,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       item.setAttribute('data-ws-tr', '');
     }
     function openGoogle(panel) {
-      const text = commentItems(panel).map(messageText).filter(Boolean).join('\n\n').slice(0, 1800);
+      const text = translateParts(panel).map(part => part.text).join('\n\n').slice(0, 1800);
       const url = `https://translate.google.com/?sl=auto&tl=${encodeURIComponent(shortLang(uiLocale()) || 'en')}&op=translate&text=${encodeURIComponent(text)}`;
       try { pageWindow.open(url, '_blank', 'noopener'); } catch (_) { window.open(url, '_blank', 'noopener'); }
     }
@@ -8612,7 +8685,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         state = { panel, head: null, status: null, card: null, driveTitle: null, driveSize: null, tab: null, translate: 'off', translating: null };
         state.observer = new MutationObserver(records => {
           // Only WME's own changes (a new message, the request swapped): what Studio adds is left out.
-          if (records.every(record => [record.target, ...record.addedNodes, ...record.removedNodes].every(node => node.nodeType !== 1 ? node.parentElement?.closest?.('.ws-case-head,.ws-case-status,.ws-case-next,.ws-case-translate,.ws-case-tr,.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-desc-fold') : node.closest?.('.ws-case-head,.ws-case-status,.ws-case-next,.ws-case-translate,.ws-case-tr,.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-desc-fold')))) return;
+          if (records.every(record => [record.target, ...record.addedNodes, ...record.removedNodes].every(node => node.nodeType !== 1 ? node.parentElement?.closest?.('.ws-case-head,.ws-case-status,.ws-case-next,.ws-case-translate,.ws-case-tr,.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-desc-fold,.ws-reply-buttons,.ws-suggested') : node.closest?.('.ws-case-head,.ws-case-status,.ws-case-next,.ws-case-translate,.ws-case-tr,.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-desc-fold,.ws-reply-buttons,.ws-suggested')))) return;
           queue();
         });
         state.observer.observe(panel, { childList: true, subtree: true, characterData: true });
@@ -8695,7 +8768,10 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
           // When I'd close it without an answer: my quiet days after my last message (from today when it's my turn).
           quietDays: Math.max(1, Number(settings.requestQuietDays) || 7), closed: data.closed,
           // The reporter's Waze username, from the Username line of the request's details (4.0.1); '' when WME hides it.
-          reporter: reporterName(panel) };
+          reporter: reporterName(panel),
+          // 4.1.0: WME's type number, the reply group it belongs to, and whether it came from Map Mate (and about what).
+          type: data.type, group: TYPE_GROUPS[data.type] || '',
+          mapMate: mapMateOf(data, String(attrs.description || descriptionPart(panel)?.text || ''), reporterName(panel)) };
       },
       // The street, the nearest junction and the municipality at the request's spot, from the roads on the map
       // (3.1.0). Kept for a minute per request: it looks through every road that is loaded.
@@ -8716,6 +8792,39 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
   // (after anything already typed there); nothing is sent.
   const quickReplies = (() => {
     const KEY = 'wmeStudio.quickReplies.v1', MAX = 200, WINDOW = '#ISSUE_WINDOW_UPDATE_REQUEST';
+    // Studio's ready replies: [key, name, group]. 'misc' ones show for every request (under Studio's replies); a
+    // request type's own ones (4.1.0) come first on requests of that type, and Map Mate's on Map Mate reports.
+    const TYPE_BUILT = {
+      turn: [['t-turn-ask', 'Ask about the turn'], ['t-turn-done', 'Turn fixed']],
+      address: [['t-address-ask', 'Ask for the address'], ['t-address-done', 'Address fixed']],
+      route: [['t-route-ask', 'Ask about the route'], ['t-route-done', 'Route depends on traffic']],
+      roundabout: [['t-roundabout-ask', 'Ask about the roundabout'], ['t-roundabout-done', 'Roundabout added']],
+      general: [['t-general-ask', 'Ask what was wrong']],
+      junction: [['t-junction-ask', 'Ask about the junction'], ['t-junction-done', 'Junction fixed']],
+      direction: [['t-direction-ask', 'Ask about the direction'], ['t-direction-done', 'Direction fixed']],
+      road: [['t-road-ask', 'Ask about the road'], ['t-road-done', 'Road added']],
+      landmark: [['t-landmark-ask', 'Ask about the place'], ['t-landmark-done', 'Place added']],
+      blocked: [['t-blocked-ask', 'Ask how long it’s closed'], ['t-blocked-done', 'Closure added']],
+      speed: [['t-speed-ask', 'Ask for the speed limit'], ['t-speed-done', 'Speed limit updated']] };
+    const MAP_MATE_BUILT = {
+      bump: [['mm-bump-done', 'Speed bump added'], ['mm-bump-none', 'No speed bump found']],
+      light: [['mm-light-done', 'Traffic lights added'], ['mm-light-none', 'No traffic lights found']],
+      curve: [['mm-curve-done', 'Curve marked'], ['mm-curve-none', 'Curve left as it is']],
+      rail: [['mm-rail-done', 'Railroad crossing added'], ['mm-rail-none', 'No railroad crossing found']],
+      camera: [['mm-camera-done', 'Speed camera added'], ['mm-camera-none', 'No speed camera found']],
+      '': [['mm-done', 'Map updated'], ['mm-none', 'No change needed']] };
+    const MAP_MATE_KIND_NAMES = { bump: 'Speed bump', light: 'Traffic lights', curve: 'Dangerous curve', rail: 'Railroad crossing', camera: 'Speed camera' };
+    const BUILT_IN = [['spot', 'Ask for the spot', 'misc'], ['fixed', 'Fixed, thanks', 'misc'], ['remind', 'Remind once', 'misc'], ['close', 'Close with a note', 'misc'],
+      ['nothing', 'Map checked, nothing found', 'misc'],
+      ...Object.entries(TYPE_BUILT).flatMap(([group, list]) => list.map(([key, title]) => [key, title, `type:${group}`])),
+      ['mm-ask', 'Ask for more details', 'mapmate'],
+      ...Object.entries(MAP_MATE_BUILT).flatMap(([kind, list]) => list.map(([key, title]) => [key, title, `mapmate:${kind}`]))];
+    const BUILT_KEYS = new Set(BUILT_IN.map(([key]) => key));
+    // What a reply does after it goes in the box (4.1.0): nothing, or tick Solved or Not identified in the request
+    // window (WME still saves it with the rest; nothing is sent). Studio's replies come with the usual choice.
+    const ACTIONS = ['', 'solved', 'not-identified'];
+    const builtDefaultAction = key => (key === 'fixed' || /-done$/.test(key) && key !== 't-route-done' ? 'solved' : ['nothing', 'close', 't-route-done'].includes(key) || /-none$/.test(key) ? 'not-identified' : '');
+    const BUTTONS_MAX = 8;
     const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return text; } };
     const states = new Map();
     let custom = [], loaded = null, frame = 0;
@@ -8725,7 +8834,9 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       pinned: item.pinned === true, uses: Math.max(0, Math.floor(Number(item.uses) || 0)), lastUsed: Math.max(0, Number(item.lastUsed) || 0),
       countries: cleanCountries(item.countries),
       // 4.0.0: a reply can stay in the management page but out of the list in WME, and knows when it was written.
-      hidden: item.hidden === true, created: Math.max(0, Number(item.created) || 0) })).filter(item => item.title && item.text.trim());
+      hidden: item.hidden === true, created: Math.max(0, Number(item.created) || 0),
+      // 4.1.0: what it does after it goes in, and whether it has a button on the request window.
+      action: ACTIONS.includes(item.action) ? item.action : '', button: item.button === true })).filter(item => item.title && item.text.trim());
     // Countries a reply or a folder is for (4.0.0): two capital letters each; none means everywhere.
     function cleanCountries(list) { return [...new Set((Array.isArray(list) ? list : []).map(code => String(code || '').trim().toUpperCase()).filter(code => /^[A-Z]{2}$/.test(code)))].slice(0, 30); }
     // Folders (3.1.0): the groups, in my order, empty ones kept too.
@@ -8767,10 +8878,17 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     // How the panel shows them (3.1.0): Studio's replies first, last or hidden, the folders I folded, and which of
     // Studio's replies I pinned.
     const VIEW_KEY = 'wmeStudio.quickRepliesView.v1';
-    let view = { studio: 'first', folded: [], builtPins: [], tour: { more: 0, manage: 0 } };
+    let view = { studio: 'first', folded: [], builtPins: [], tour: { more: 0, manage: 0 }, builtActions: {}, builtButtons: [], suggest: false, translate: true };
     const cleanView = value => ({ studio: ['first', 'last', 'hidden'].includes(value?.studio) ? value.studio : 'first',
       folded: [...new Set((Array.isArray(value?.folded) ? value.folded : []).map(key => String(key).slice(0, 50)))].slice(0, 80),
-      builtPins: [...new Set((Array.isArray(value?.builtPins) ? value.builtPins : []).filter(key => ['spot', 'fixed', 'remind', 'close'].includes(key)))],
+      builtPins: [...new Set((Array.isArray(value?.builtPins) ? value.builtPins : []).filter(key => BUILT_KEYS.has(key)))],
+      // 4.1.0: what Studio's replies do (when I changed it), which of them have a button on the window, and whether a
+      // first reply is suggested in the box of a request nobody answered yet.
+      builtActions: Object.fromEntries(Object.entries(value?.builtActions && typeof value.builtActions === 'object' ? value.builtActions : {}).filter(([key, action]) => BUILT_KEYS.has(key) && ACTIONS.includes(action))),
+      builtButtons: [...new Set((Array.isArray(value?.builtButtons) ? value.builtButtons : []).filter(key => BUILT_KEYS.has(key)))].slice(0, BUTTONS_MAX),
+      suggest: value?.suggest === true,
+      // 4.1.0: my own replies go in already translated into the reporter's language (on unless I turn it off).
+      translate: value?.translate !== false,
       tour: { more: value?.tour?.more === 1 ? 1 : 0, manage: value?.tour?.manage === 1 ? 1 : 0 } });
     const saveView = () => { try { Promise.resolve(studioKeep.set(VIEW_KEY, view)).catch(error => reportStudioError('quick replies save', error)); } catch (error) { reportStudioError('quick replies save', error); } };
     // The management page's Start (4.0.0): what helps me get into the habit. When I last saved a backup and whether I
@@ -8814,7 +8932,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       for (const [lang, set] of Object.entries(value && typeof value === 'object' ? value : {})) {
         if (!/^[a-z]{2}$/.test(lang) || !set || typeof set !== 'object') continue;
         for (const [key, edit] of Object.entries(set)) {
-          if (!['spot', 'fixed', 'remind', 'close'].includes(key) || !edit || typeof edit !== 'object') continue;
+          if (!BUILT_KEYS.has(key) || !edit || typeof edit !== 'object') continue;
           const one = { title: String(edit.title || '').trim().slice(0, 60), text: String(edit.text || '').slice(0, 2000), hidden: edit.hidden === true };
           if (one.title || one.text.trim() || one.hidden) (out[lang] ||= {})[key] = one;
         }
@@ -8826,9 +8944,9 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     // A ready reply as I see it: mine where I changed it, else Studio's.
     function builtReply(lang, key, set) {
       const edit = builtEdits[lang]?.[key], title = BUILT_IN.find(([one]) => one === key)?.[1] || key;
-      return { key, lang, builtIn: true, title: edit?.title || tr(title), text: edit?.text?.trim() ? edit.text : set[key], edited: !!(edit?.title || edit?.text?.trim()), hidden: !!edit?.hidden, original: set[key], originalTitle: tr(title) };
+      return { key, lang, builtIn: true, title: edit?.title || tr(title), text: edit?.text?.trim() ? edit.text : set[key], edited: !!(edit?.title || edit?.text?.trim()), hidden: !!edit?.hidden, original: set[key], originalTitle: tr(title),
+        action: Object.hasOwn(view.builtActions || {}, key) ? view.builtActions[key] : builtDefaultAction(key), button: (view.builtButtons || []).includes(key) };
     }
-    const BUILT_IN = [['spot', 'Ask for the spot'], ['fixed', 'Fixed, thanks'], ['remind', 'Remind once'], ['close', 'Close with a note']];
     const ICONS = {
       tab: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
       edit: '<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/>',
@@ -8886,6 +9004,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       ['weekday', 'The day of the week it was reported', 'request'], ['timeofday', 'The time of day it was reported', 'request'],
       ['daysago', 'Days since the report', 'request'], ['reportago', 'How long ago it was reported', 'request'],
       ['description', 'What the reporter wrote', 'request'], ['link', 'A link to this request in WME', 'request'],
+      ['selected', 'The streets of the segments you selected', 'request'],
       ['lat', 'Latitude', 'request'], ['lon', 'Longitude', 'request'],
       ['reporter', 'The reporter’s username (Wazer when WME hides it)', 'drive'], ['device', 'The reporter’s device', 'drive'], ['vehicle', 'The reporter’s vehicle', 'drive'],
       ['avoids', 'What the reporter’s app avoids', 'drive'], ['language', 'The reporter’s language', 'drive'],
@@ -8971,10 +9090,26 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       Object.defineProperties(known, {
         street: { enumerable: true, get: () => placed().street },
         junction: { enumerable: true, get: () => (placed().junction.length ? list(placed().junction) : '') },
-        area: { enumerable: true, get: () => placed().area || facts.city || '' }
+        area: { enumerable: true, get: () => placed().area || facts.city || '' },
+        // The streets of the road segments selected on the map right now (4.1.0), each name once.
+        selected: { enumerable: true, get: () => list(selectedStreets()) }
       });
       for (const item of mineVars) if (!Object.hasOwn(known, item.name)) known[item.name] = item.value;
       return known;
+    }
+    function selectedStreets() {
+      try {
+        const sdk = studioSDK.get(), selection = sdk?.Editing?.getSelection?.();
+        if (!selection || selection.objectType !== 'segment' || !Array.isArray(selection.ids)) return [];
+        const names = [];
+        for (const id of selection.ids.slice(0, 50)) {
+          const segment = sdk.DataModel.Segments.getById({ segmentId: Number(id) });
+          const street = segment?.primaryStreetId != null ? sdk.DataModel.Streets.getById({ streetId: segment.primaryStreetId }) : null;
+          const name = String(street?.name || '').trim();
+          if (name && !names.includes(name)) names.push(name);
+        }
+        return names;
+      } catch (_) { return []; }
     }
     // Unknown names stay as they are, so a brace in a normal sentence is left alone.
     const fillVariables = (text, panel) => { const known = values(panel); return text.replace(/\{([a-z]+)\}/gi, (whole, name) => (Object.hasOwn(known, name.toLowerCase()) ? known[name.toLowerCase()] : whole)); };
@@ -8986,11 +9121,29 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     function insert(state, text, item = null) {
       const panel = state.win.querySelector('.problem-edit'); if (!panel) return;
-      const now = replyText(panel).trimEnd(), filled = fillVariables(text, panel);
+      let now = replyText(panel).trimEnd(); const filled = fillVariables(text, panel);
+      // A suggested first reply still as it was is replaced by the one picked, not added to.
+      if (state.suggestedText && now.trim() === state.suggestedText.trim()) { now = ''; panel.querySelector('.ws-suggested')?.remove(); }
+      state.suggestedText = '';
       const lang = (() => { try { return caseFile.facts(panel).language || ''; } catch (_) { return ''; } })();
-      if (item?.id) noteUse(item.id, filled.length, lang); else logUse(item?.builtIn && item.key ? 'b:' + item.key : '', filled.length, lang);
+      if (item?.id && !item.builtIn) noteUse(item.id, filled.length, lang); else logUse(item?.builtIn && item.key ? 'b:' + item.key : '', filled.length, lang);
       caseFile.fill(panel, now ? `${now}\n\n${filled}` : filled);
+      applyAction(panel, item?.action);
+      paintButtons(state);
       close(state);
+      // 4.1.0: my own replies are written in my language, so they go in translated, as the Translate button would do
+      // it (Undo translation brings back what I wrote). Studio's replies only when none are written in the reporter's
+      // language and I didn't pick one for this request.
+      if (!view.translate || !item) return;
+      let ownLanguage = true;
+      if (item.builtIn) { try { const languages = caseFile.replyLanguages(panel); ownLanguage = !languages.chosen && !languages.list.some(one => one.code === languages.language); } catch (_) { ownLanguage = false; } }
+      if (ownLanguage) replyTools.autoTranslate(panel, now, filled);
+    }
+    // Ticks Solved or Not identified in the request window, as a click there would (WME saves it with the rest).
+    function applyAction(panel, action) {
+      if (!action) return;
+      const radio = panel.querySelector(`.actions input[type="radio"][value="${action}"]`);
+      if (radio && !radio.checked && !radio.disabled) { try { radio.click(); } catch (error) { reportStudioError('quick replies action', error); } }
     }
     // The tab sits on the right of the window, near its bottom next to the reply box, and the list opens upwards from it.
     // Only a window right at the edge of the screen has it on its left.
@@ -9041,7 +9194,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     async function open(state) {
       await load();
       state.panel.hidden = false; state.tab.setAttribute('aria-expanded', 'true');
-      renderList(state); place(state);
+      state.filter = 'all'; place(state); renderList(state); place(state);
       // The panel takes the keys (numbers, arrows, typing to search) but not the search field itself: on an iPad that
       // would open the keyboard every time (4.0.0). The first letter typed moves into the search.
       state.panel.focus({ preventScroll: true });
@@ -9055,7 +9208,11 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     function head(state, title, extra = null) {
       const box = el('div', 'head'); box.append(el('strong', '', title));
       if (extra) box.append(extra);
-      box.append(iconButton('close', tr('Close'), () => close(state, true)));
+      // Closed with a click, the focus stays put instead of moving to the tab in the request window (4.1.0): a request
+      // drawn again for it looked like one opened anew, and URC-E closed and reopened it.
+      const shut = iconButton('close', tr('Close'), () => close(state, shut.wsKeyboard === true));
+      shut.addEventListener('pointerdown', () => { shut.wsKeyboard = false; }); shut.addEventListener('keydown', () => { shut.wsKeyboard = true; });
+      box.append(shut);
       return box;
     }
     // The request's type, as WME names it ("Missing roundabout"), so a reply can be tied to it.
@@ -9074,9 +9231,11 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (item.pinned) { const star = el('span', 'star'); star.innerHTML = svg(ICONS.pin); words.append(star); }
       // Under Pinned each reply says where it lives: its folder, or Studio.
       if (tagged && (item.builtIn || item.group)) { const tag = el('span', 'qtag', item.builtIn ? 'Studio' : item.group); if (!item.builtIn) tag.style.setProperty('--c', folderColor(item.group)); words.append(tag); }
+      // What it does after it goes in (4.1.0), as a small tag.
+      if (item.action) { const tag = el('span', `qtag act ${item.action}`, item.action === 'solved' ? tr('Solved') : tr('Not identified')); words.append(tag); }
       const preview = el('span', 'x', item.text.replace(/\s+/g, ' ').trim()); preview.dir = 'auto'; words.append(preview);
       button.append(el('kbd', 'num'), words);
-      button.addEventListener('click', () => insert(state, item.text, isCustom ? item : null));
+      button.addEventListener('click', () => insert(state, item.text, item));
       box.append(button);
       // Over the end of the line, while I point at it: the star pins it to the top (Studio's too), the pencil edits it.
       const acts = el('div', 'acts');
@@ -9095,8 +9254,13 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     // for this request's type, then each folder (folded or not, as I left it) and Studio's ready replies in the
     // reporter's language, first or last as I chose in the ⋯ menu. The search field looks through what's shown;
     // 1–9 put the numbered ones in the reply box.
+    // Out of the list (the form, variables…) the panel grows with what it shows, but not smaller than the list was.
+    function freeHeight(state) {
+      if (state.panel.style.height) { state.panel.style.minHeight = state.panel.style.height; state.panel.style.height = ''; }
+      state.heightFor = '';
+    }
     function renderList(state) {
-      state.view = 'list'; state.menuOpen = false; state.panel.style.minHeight = '';
+      state.view = 'list'; state.menuOpen = false; state.panel.style.minHeight = ''; state.panel.style.height = ''; state.heightFor = '';
       const search = el('div', 'search');
       const input = el('input'); input.type = 'search'; input.className = 'find'; input.placeholder = tr('Search replies'); input.value = state.query || '';
       input.setAttribute('aria-label', tr('Search replies')); input.spellcheck = false;
@@ -9187,7 +9351,14 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         ...(languages && view.studio !== 'hidden' ? [languageItem()] : []),
         el('div', 'sep'), el('div', 'mh', tr('Folders')),
         item('chev', tr('Unfold all'), false, () => { view.folded = []; saveView(); }),
-        item('chevRight', tr('Fold all'), false, () => { view.folded = keys; saveView(); }));
+        item('chevRight', tr('Fold all'), false, () => { view.folded = keys; saveView(); }),
+        // 4.1.0: a first reply ready in the box of a request nobody answered yet, and files other tools read.
+        el('div', 'sep'), el('div', 'mh', tr('Replies')),
+        item('studio', tr('Suggest a first reply'), !!view.suggest, () => { view = cleanView({ ...view, suggest: !view.suggest }); saveView(); suggestFirst(state); }, true),
+        item('lang', tr('Translate my replies for the reporter'), !!view.translate, () => { view = cleanView({ ...view, translate: !view.translate }); saveView(); }, true),
+        item('down', tr('Export as CSV'), false, () => exportFile('csv')),
+        item('down', tr('Export as XML'), false, () => exportFile('xml')),
+        item('up', tr('Import a CSV, XML or JSON file'), false, () => importFile(state)));
       state.panel.append(menu);
       menu.querySelector('[aria-checked="true"], .mo')?.focus({ preventScroll: true });
     }
@@ -9223,7 +9394,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         if (folder != null) chip.append(folderMark(folder));
         else if (color) { const dot = el('span', 'dot'); dot.style.setProperty('--c', color); chip.append(dot); }
         else if (icon) { const mark = el('span', `mark ${icon}`); mark.innerHTML = svg(ICONS[icon]); chip.append(mark); }
-        chip.append(el('span', 'label', label), el('b', '', String(count)));
+        chip.append(el('span', 'label', label), el('b', '', String(count))); chip.title = label;
         chip.addEventListener('click', () => pickChip(state, key));
         return chip;
       }));
@@ -9231,8 +9402,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       strip.wsStrip?.edges();
     }
     function pickChip(state, key, focus = false) {
-      // The panel keeps the height it had, so it doesn't jump while I go through the folders.
-      if (!state.panel.style.minHeight) state.panel.style.minHeight = `${state.panel.offsetHeight}px`;
       state.filter = key;
       paintRows(state);
       const chip = [...state.panel.querySelectorAll('.chip')].find(one => one.dataset.key === key);
@@ -9256,17 +9425,28 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       try { noteSeen(caseFile.facts(panel).id, language); } catch (_) { /* counted next time */ }
       // A folder's tags find its replies too.
       const hit = item => !query || fold(`${item.title} ${item.group || ''} ${item.group ? folderTags(item.group) : ''} ${item.text}`).includes(query);
-      const builtIns = BUILT_IN.filter(([key]) => set[key]).map(([key]) => ({ ...builtReply(language, key, set), pinned: view.builtPins.includes(key) }));
+      const builtIns = BUILT_IN.filter(([key, , group]) => group === 'misc' && set[key]).map(([key]) => ({ ...builtReply(language, key, set), pinned: view.builtPins.includes(key) }));
       const shownBuilt = builtIns.filter(item => !item.hidden);
       const names = folderNames();
-      const pinned = [...mine.filter(item => item.pinned), ...shownBuilt.filter(item => item.pinned)];
-      const forType = type ? mine.filter(item => !item.pinned && sameType(item.type, type)) : [];
+      // This request's own ready replies (4.1.0): the ones for its type, or Map Mate's for what the report is about.
+      let facts = {}; try { facts = caseFile.facts(panel) || {}; } catch (_) { facts = {}; }
+      const mm = facts.mapMate || null;
+      const typeLabel = mm ? (mm.kind ? `Map Mate · ${tr(MAP_MATE_KIND_NAMES[mm.kind])}` : 'Map Mate') : type;
+      const typeKeys = mm ? [['mm-ask'], ...(MAP_MATE_BUILT[mm.kind] || MAP_MATE_BUILT[''])] : (TYPE_BUILT[facts.group] || []);
+      const typeBuilt = typeKeys.filter(([key]) => set[key]).map(([key]) => ({ ...builtReply(language, key, set), pinned: view.builtPins.includes(key) })).filter(item => !item.hidden);
+      const pinned = [...mine.filter(item => item.pinned), ...shownBuilt.filter(item => item.pinned), ...typeBuilt.filter(item => item.pinned)];
+      const forMe = item => sameType(item.type, type) || (!!mm && /map\s*-?\s*mate/i.test(item.type || ''));
+      const forType = typeLabel ? [...typeBuilt.filter(item => !item.pinned), ...mine.filter(item => !item.pinned && forMe(item))] : [];
+      // Opened on this request's replies the first time it shows (a click on another chip stays until the next request).
+      const requestKey = `${facts.id}|${mm ? 'mm' : facts.group}`;
+      // Each request opens on All (its own type's replies come first there); a chip I picked stays until the next one.
+      if (state.autoFor !== requestKey) { state.autoFor = requestKey; if (!query) state.filter = 'all'; }
       const rest = mine.filter(item => !item.pinned && !forType.includes(item));
       const studioShown = view.studio !== 'hidden' && shownBuilt.length;
       // The chips: All, Pinned, this type, Studio's replies, then each folder with replies in it.
       const chips = [{ key: 'all', label: tr('All'), count: mine.length + (studioShown ? shownBuilt.length : pinned.filter(item => item.builtIn).length) }];
       if (pinned.length) chips.push({ key: 'pinned', label: tr('Pinned'), count: pinned.length, icon: 'pin' });
-      if (forType.length) chips.push({ key: 'type', label: type, count: forType.length, icon: 'flag' });
+      if (forType.length) chips.push({ key: 'type', label: typeLabel, count: forType.length, icon: 'flag' });
       if (studioShown) chips.push({ key: 'studio', label: tr('Studio’s replies'), count: shownBuilt.length, icon: 'studio' });
       for (const folder of names) { const count = mine.filter(item => item.group === folder).length; if (count) chips.push({ key: `f:${folder}`, label: folder, count, color: folderColor(folder), folder }); }
       const loose = mine.filter(item => !item.group).length;
@@ -9304,7 +9484,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const studio = () => { if (!studioShown) return; section('studio', tr('Studio’s replies'), shownBuilt.filter(item => !item.pinned), { icon: 'studio', badge: name, badgeFlag: studioFlags.forLanguage(language), foldable: true }); if (!view.folded.includes('studio') || query) hiddenLink(); };
       if (filter === 'all') {
         section('pinned', tr('Pinned'), pinned, { icon: 'pin', tags: true });
-        section('type', tr('For {0}', type), forType, { icon: 'flag' });
+        section('type', tr('For {0}', typeLabel), forType, { icon: 'flag' });
         if (view.studio === 'first') studio();
         for (const folder of names) section(`f:${folder}`, folder, rest.filter(item => item.group === folder), { color: folderColor(folder), folder, foldable: true });
         section('none', names.length ? tr('No folder') : tr('Your replies'), rest.filter(item => !item.group), { icon: 'inbox', foldable: true });
@@ -9325,6 +9505,19 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (!query && !custom.length && filter === 'all') nodes.push(el('p', 'hint', tr('Add your own replies for different occasions, and keep them in groups like Closures or Speed limits.')));
       body.replaceChildren(...nodes);
       [...body.querySelectorAll('.row')].forEach((button, index) => { const num = button.querySelector('.num'); if (num) num.textContent = index < 9 ? String(index + 1) : ''; });
+      // One height for the whole time the list is open (4.1.0), whatever chip I'm on or search for: the height "All"
+      // has when it opens (laid out first when it opens on another chip). What doesn't fit scrolls.
+      const heightKey = `${state.autoFor}|${state.panel.style.getPropertyValue('--ws-qr-max') || state.host.style.getPropertyValue('--ws-qr-max')}`;
+      if (state.heightFor !== heightKey && !state.measuring && !state.panel.hidden) {
+        state.heightFor = heightKey; state.panel.style.height = '';
+        if (state.filter === 'all' && !query) state.panel.style.height = `${state.panel.offsetHeight}px`;
+        else {
+          const chosen = state.filter, searched = state.query;
+          state.measuring = true; state.filter = 'all'; state.query = '';
+          try { paintRows(state); state.panel.style.height = `${state.panel.offsetHeight}px`; } finally { state.measuring = false; state.filter = chosen; state.query = searched; }
+          paintRows(state);
+        }
+      }
     }
     // Keys inside the list: arrows move, Enter picks, 1–9 pick by number, any letter starts a search.
     function listKeys(state, event) {
@@ -9395,8 +9588,52 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       toggle.addEventListener('pointerdown', event => { event.preventDefault(); if (!box.hidden) hide(); else { input.focus({ preventScroll: true }); paint(true); } });
       return wrap;
     }
+    // A "?" that explains a setting (4.1.0): its note shows while it's pointed at or focused, under the setting's row.
+    function tipButton(text) {
+      const tip = el('button', 'tip'); tip.type = 'button'; tip.setAttribute('aria-label', text);
+      // Drawn, not typed: a "?" in the button's font sat low in the circle.
+      tip.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.9 5.6a2.15 2.15 0 1 1 3 2c-.55.25-.9.7-.9 1.3v.4"/><circle cx="8" cy="11.7" r=".9"/></svg>';
+      tip.append(el('span', 'bubble', text));
+      tip.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); tip.focus(); });
+      return tip;
+    }
+    function labelRow(text, tip) { const row = el('div', 'lab-row'); row.append(el('span', 'lab', text), tipButton(tip)); return row; }
+    // A dropdown of Studio's own (4.1.0), in place of the browser's: each choice with its icon and a line on what it
+    // does. Arrows, Enter and Esc work as in any list. Its value reads like a <select>'s.
+    function dropdown(options, value, label) {
+      const wrap = el('div', 'dd'), button = el('button', 'dd-btn'), list = el('div', 'dd-menu');
+      button.type = 'button'; button.setAttribute('aria-haspopup', 'listbox'); button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-label', label);
+      list.setAttribute('role', 'listbox'); list.hidden = true;
+      let current = options.some(([one]) => one === value) ? value : options[0][0], active = 0;
+      const icon = key => `<span class="dd-ic" data-action="${key}">${svg(ACTION_ICONS[key] ?? ACTION_ICONS[''])}</span>`;
+      const paint = () => {
+        const [, text] = options.find(([one]) => one === current);
+        button.innerHTML = `${icon(current)}<span class="dd-text"></span>${svg(ICONS.chev)}`; button.querySelector('.dd-text').textContent = text;
+        list.replaceChildren(...options.map(([key, name, about], index) => {
+          const option = el('button', 'dd-opt'); option.type = 'button'; option.tabIndex = -1; option.setAttribute('role', 'option'); option.setAttribute('aria-selected', String(key === current));
+          option.innerHTML = icon(key); const words = el('span', 'dd-words'); words.append(el('b', '', name), el('small', '', about)); option.append(words);
+          option.addEventListener('pointerdown', event => event.preventDefault());
+          option.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); current = key; close(); paint(); button.focus({ preventScroll: true }); });
+          option.addEventListener('pointerenter', () => { active = index; mark(); });
+          return option;
+        }));
+      };
+      const mark = () => [...list.children].forEach((node, index) => node.classList.toggle('active', index === active));
+      const open = () => { active = Math.max(0, options.findIndex(([one]) => one === current)); list.hidden = false; button.setAttribute('aria-expanded', 'true'); mark(); };
+      const close = () => { list.hidden = true; button.setAttribute('aria-expanded', 'false'); };
+      button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); if (list.hidden) open(); else close(); });
+      button.addEventListener('blur', () => setTimeout(() => { if (!wrap.contains(wrap.getRootNode().activeElement)) close(); }, 0));
+      button.addEventListener('keydown', event => {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); event.stopPropagation(); if (list.hidden) { open(); return; } active = (active + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length; mark(); }
+        else if ((event.key === 'Enter' || event.key === ' ') && !list.hidden) { event.preventDefault(); event.stopPropagation(); current = options[active][0]; close(); paint(); }
+        else if (event.key === 'Escape' && !list.hidden) { event.preventDefault(); event.stopPropagation(); close(); }
+      });
+      Object.defineProperty(wrap, 'value', { get: () => current, set: next => { if (options.some(([one]) => one === next)) { current = next; paint(); } } });
+      paint(); wrap.append(button, list);
+      return wrap;
+    }
     function renderForm(state, item) {
-      state.view = 'form';
+      state.view = 'form'; freeHeight(state);
       state.editing = item?.id || 'new';
       const form = el('form'); form.noValidate = true;
       const field = (labelText, node) => { const label = el('label', '', labelText); label.append(node); return label; };
@@ -9432,11 +9669,26 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         vars.append(chip);
       }
       const builtIn = !!item?.builtIn;
+      // 4.1.0: what it does after it goes in the box, and a button for it on the request window.
+      const action = dropdown([
+        ['', tr('Leave the request as it is'), tr('Only puts the reply in the box.')],
+        ['solved', tr('Tick Solved'), tr('Also ticks Solved in the request window.')],
+        ['not-identified', tr('Tick Not identified'), tr('Also ticks Not identified in the request window.')]], item?.action || '', tr('After it goes in'));
+      const actionLabel = el('div', 'fld');
+      actionLabel.append(labelRow(tr('After it goes in'), tr('What happens after the reply goes in the box. Nothing is sent: WME saves the request’s state with your other changes when you save.')), action);
+      const buttonBox = el('input'); buttonBox.type = 'checkbox'; buttonBox.checked = !!item?.button;
+      const buttonCount = custom.filter(one => one.button && one.id !== item?.id).length + (view.builtButtons || []).filter(key => key !== item?.key).length;
+      if (!buttonBox.checked && buttonCount >= BUTTONS_MAX) buttonBox.disabled = true;
+      buttonBox.setAttribute('role', 'switch');
+      const buttonLabel = el('div', 'fld toggle-row');
+      const toggle = el('label', 'toggle'); toggle.append(buttonBox, el('span', 'track'), el('span', 'tl', tr('A button for it above the reply box')));
+      buttonLabel.append(toggle, tipButton(buttonBox.disabled ? tr('Up to {0} replies can have a button.', BUTTONS_MAX)
+        : tr('Adds a button above the reply box of every request. One click puts this reply in, and ticks Solved or Not identified if you chose that. Up to {0} replies can have one.', BUTTONS_MAX)));
       if (builtIn) {
         title.placeholder = item.originalTitle; text.placeholder = item.original;
         const languageName = (() => { try { const name = new Intl.DisplayNames([globalThis.WMEStudioI18n?.current?.() || 'en'], { type: 'language' }).of(item.lang); return name ? name[0].toLocaleUpperCase() + name.slice(1) : item.lang; } catch (_) { return item.lang; } })();
-        form.append(el('p', 'hint', tr('One of Studio’s ready replies in {0}. Your wording is used instead of it, here and in the case file’s buttons.', languageName)), field(tr('Name'), title), field(tr('Reply'), text), vars, error);
-      } else form.append(field(tr('Name'), title), field(tr('Group (optional)'), suggest(group, () => folderNames())), typeLabel, field(tr('Reply'), text), vars, error);
+        form.append(el('p', 'hint', tr('One of Studio’s ready replies in {0}. Your wording is used instead of it, here and in the case file’s buttons.', languageName)), field(tr('Name'), title), field(tr('Reply'), text), actionLabel, buttonLabel, vars, error);
+      } else form.append(field(tr('Name'), title), field(tr('Group (optional)'), suggest(group, () => folderNames())), typeLabel, field(tr('Reply'), text), actionLabel, buttonLabel, vars, error);
       const body = el('div', 'body'); body.append(form);
       const foot = el('div', 'foot');
       const cancel = el('button', 'btn', tr('Cancel')); cancel.type = 'button'; cancel.addEventListener('click', () => renderList(state));
@@ -9465,11 +9717,14 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         if (builtIn) {
           const edits = (builtEdits[item.lang] ||= {}), nextTitle = title.value.trim() === item.originalTitle ? '' : title.value.trim(), nextText = text.value.trim() === item.original.trim() ? '' : text.value.trim();
           if (nextTitle || nextText) edits[item.key] = { title: nextTitle, text: nextText, hidden: false }; else delete edits[item.key];
-          saveBuilt(); renderList(state); return;
+          const actions = { ...(view.builtActions || {}) };
+          if (action.value === builtDefaultAction(item.key)) delete actions[item.key]; else actions[item.key] = action.value;
+          view = cleanView({ ...view, builtActions: actions, builtButtons: buttonBox.checked ? [...new Set([...(view.builtButtons || []), item.key])] : (view.builtButtons || []).filter(key => key !== item.key) });
+          saveView(); saveBuilt(); paintButtons(state); renderList(state); return;
         }
-        const next = { id: item?.id || Math.random().toString(36).slice(2, 10), title: title.value.trim(), group: group.value.trim(), type: type.value.trim(), text: text.value.trim() };
+        const next = { id: item?.id || Math.random().toString(36).slice(2, 10), title: title.value.trim(), group: group.value.trim(), type: type.value.trim(), text: text.value.trim(), action: action.value, button: buttonBox.checked };
         custom = item ? custom.map(one => one.id === item.id ? { ...one, ...next } : one) : [...custom, next].slice(0, MAX);
-        save(); notifyManagers(); renderList(state);
+        save(); notifyManagers(); paintButtons(state); renderList(state);
       };
       form.addEventListener('submit', submit); saveButton.addEventListener('click', submit);
       state.panel.replaceChildren(head(state, item ? tr('Edit reply') : tr('New reply')), body, foot);
@@ -9478,7 +9733,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     // Your variables (3.1.0): your own words to drop into replies, like a sign-off. {name} in a reply, or the + in
     // the reply box, puts the text in.
     function renderVars(state, back = () => renderList(state)) {
-      state.view = 'vars';
+      state.view = 'vars'; freeHeight(state);
       const form = el('form'); form.noValidate = true;
       const rows = el('div'); rows.style.cssText = 'display:flex;flex-direction:column;gap:6px';
       const error = el('p', 'err');
@@ -9532,7 +9787,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       } catch (_) { return null; }
     }
     function renderShare(state) {
-      state.view = 'share';
+      state.view = 'share'; freeHeight(state);
       const groups = [...new Set(custom.map(item => item.group || ''))];
       const which = el('select');
       const add = (value, label) => { const option = el('option', '', label); option.value = value; which.append(option); };
@@ -9566,7 +9821,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       code.focus({ preventScroll: true }); code.select();
     }
     function renderImport(state) {
-      state.view = 'import';
+      state.view = 'import'; freeHeight(state);
       const code = el('textarea'); code.className = 'code'; code.placeholder = tr('Paste a code here, or open a file'); code.setAttribute('aria-label', tr('Code to import'));
       const picker = el('input'); picker.type = 'file'; picker.accept = '.json,.txt,application/json,text/plain'; picker.hidden = true;
       const found = el('p', 'hint'), error = el('p', 'err');
@@ -9600,13 +9855,168 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       state.panel.replaceChildren(head(state, tr('Import replies')), body, foot);
       code.focus({ preventScroll: true });
     }
+    // ---- 4.1.0: buttons on the window, a suggested first reply, CSV and XML -------------------------------------
+    // Up to 8 replies get a button above the reply box: one click puts the reply in (and ticks Solved or Not identified
+    // when the reply says so), without opening Quick replies.
+    // In the list and the form (4.1.0): the action tag on a reply, the action menu and the button checkbox.
+    const QR_EXTRA = `.qtag.act{max-width:none}.qtag.act.solved{--c:#30a46c}.qtag.act.not-identified{--c:#8b95a3}
+      .fld{position:relative;display:flex;flex-direction:column;gap:5px}
+      .lab-row{position:relative;display:flex;align-items:center;gap:6px;min-height:18px}.lab{color:var(--wme-studio-text-muted,#9aa3ad);font-size:12px;font-weight:600;line-height:16px}
+      .tip{display:inline-grid;place-items:center;flex:none;width:16px;height:16px;margin:0;padding:0;border:1px solid var(--wme-studio-border,#3d444b);border-radius:50%;background:transparent;color:var(--wme-studio-text-muted,#9aa3ad);line-height:0;cursor:help}.tip>svg{display:block;width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.tip>svg circle{fill:currentColor;stroke:none}
+      .tip:hover,.tip:focus-visible{border-color:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-accent,#0099ff);outline:none}
+      .tip .bubble{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:6;display:none;padding:9px 11px;border:1px solid var(--wme-studio-border,#3d444b);border-radius:10px;background:var(--ws-window-paint,var(--wme-studio-surface,#292d31));-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 10px 28px rgba(0,0,0,.35);color:var(--wme-studio-text,#edf1f4);font-size:12px;font-weight:500;line-height:1.45;text-align:left;cursor:default;pointer-events:none}
+      .tip:hover .bubble,.tip:focus .bubble{display:block}
+      .chip .label{max-width:120px;padding:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:16px}.chip[data-key="type"] .label{max-width:96px}
+      .dd{position:relative}
+      .dd-btn{display:flex;align-items:center;gap:8px;box-sizing:border-box;width:100%;height:36px;margin:0;padding:0 10px;border:1px solid var(--wme-studio-border,#3d444b);border-radius:10px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff);font:inherit;font-size:12.5px;font-weight:600;line-height:1;text-align:left;cursor:pointer}
+      .dd-btn:hover{border-color:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 45%,var(--wme-studio-border,#3d444b))}
+      .dd-btn:focus-visible,.dd-btn[aria-expanded="true"]{border-color:var(--wme-studio-accent,#0099ff);outline:none}
+      .dd-btn .dd-text{flex:1;min-width:0;padding:1px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:18px}
+      .dd-btn>svg{flex:none;width:14px;height:14px;fill:none;stroke:var(--wme-studio-text-muted,#9aa3ad);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s ease}
+      .dd-btn[aria-expanded="true"]>svg{transform:rotate(180deg)}
+      .dd-ic{display:grid;place-items:center;flex:none;width:22px;height:22px;border-radius:7px;background:color-mix(in srgb,var(--c,var(--wme-studio-accent,#0099ff)) 16%,transparent);--c:var(--wme-studio-accent,#0099ff)}
+      .dd-ic[data-action="solved"]{--c:#30a46c}.dd-ic[data-action="not-identified"]{--c:#8b95a3}
+      .dd-ic svg{width:13px;height:13px;fill:none;stroke:var(--c);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+      .dd-menu{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:7;display:flex;flex-direction:column;gap:2px;padding:4px;border:1px solid var(--wme-studio-border,#3d444b);border-radius:12px;background:var(--ws-window-paint,var(--wme-studio-surface,#292d31));-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 14px 34px rgba(0,0,0,.4)}
+      .dd-menu[hidden]{display:none}
+      .dd-opt{display:flex;align-items:center;gap:10px;width:100%;margin:0;padding:7px 8px;border:0;border-radius:9px;background:transparent;color:var(--wme-studio-text,#edf1f4);font:inherit;text-align:left;cursor:pointer}
+      .dd-opt.active{background:var(--wme-studio-hover,rgba(255,255,255,.07))}
+      .dd-opt[aria-selected="true"]{background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 16%,transparent)}
+      .dd-words{display:flex;flex-direction:column;gap:3px;min-width:0}.dd-words b{font-size:12.5px;line-height:1.2}.dd-words small{color:var(--wme-studio-text-muted,#9aa3ad);font-size:11.5px;line-height:1.3}
+      .toggle-row{flex-direction:row;align-items:center;gap:8px}
+      .toggle{display:flex;flex-direction:row;align-items:center;gap:10px;flex:1;min-height:28px;color:var(--wme-studio-text,#edf1f4);font-size:12.5px;font-weight:600;line-height:16px;cursor:pointer}
+      .toggle input{position:absolute;width:1px;height:1px;margin:0;padding:0;opacity:0;pointer-events:none}
+      .toggle .track{position:relative;flex:none;width:34px;height:20px;border-radius:999px;background:var(--wme-studio-border,#3d444b);transition:background .15s ease}
+      .toggle .track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s ease}
+      .toggle input:checked+.track{background:var(--wme-studio-accent,#0099ff)}.toggle input:checked+.track::after{transform:translateX(14px)}
+      .toggle input:focus-visible+.track{outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:2px}
+      .toggle input:disabled+.track,.toggle input:disabled~.tl{opacity:.5}.toggle:has(input:disabled){cursor:default}
+      @media (prefers-reduced-motion:reduce){.toggle .track,.toggle .track::after,.dd-btn>svg{transition:none}}`;
+    const ACTION_ICONS = { solved: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'not-identified': '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 8.5l7 7"/>', '': ICONS.tab };
+    const ACTION_COLORS = { solved: '#30a46c', 'not-identified': '#8b95a3' };
+    function paintButtons(state) {
+      const panel = state?.win?.querySelector('.problem-edit'); if (!panel) return;
+      const form = panel.querySelector('.new-comment-form');
+      let bar = panel.querySelector('.ws-reply-buttons');
+      if (!settings.enabled || urceLeads() || !form || !loaded) { bar?.remove(); return; }
+      let set = null, language = 'en'; try { ({ set, language } = caseFile.replies(panel)); } catch (_) { set = null; }
+      const items = [...custom.filter(item => item.button && !item.hidden), ...(set ? (view.builtButtons || []).filter(key => set[key]).map(key => builtReply(language, key, set)) : [])].slice(0, BUTTONS_MAX);
+      if (!items.length || panel.querySelector('.actions .close-details, .close-details')) { bar?.remove(); return; }
+      const key = `${language}|${activeTheme()}|` + items.map(item => `${item.id || item.key}:${item.title}:${item.action}:${item.group || ''}`).join('~');
+      if (bar && bar.dataset.key === key && bar.nextElementSibling === form) return;
+      if (!bar) { bar = el('div', 'ws-reply-buttons'); bar.setAttribute('data-ws-keep', ''); bar.setAttribute('role', 'group'); }
+      bar.setAttribute('aria-label', tr('Reply buttons'));
+      bar.dataset.key = key;
+      bar.replaceChildren(...items.map(item => {
+        const button = el('button', 'ws-rb'); button.type = 'button'; button.title = item.text;
+        const folderIcon = !item.builtIn && item.group ? FOLDER_LOOK.icons[folderMeta[item.group]?.icon] : '';
+        const color = item.action ? ACTION_COLORS[item.action] : !item.builtIn && item.group ? folderColor(item.group) : 'var(--wme-studio-accent, #0099ff)';
+        button.style.setProperty('--c', color);
+        button.innerHTML = svg(item.action ? ACTION_ICONS[item.action] : folderIcon || ACTION_ICONS['']);
+        button.append(el('span', '', item.title));
+        button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); insert(state, item.text, item); });
+        return button;
+      }));
+      if (bar.nextElementSibling !== form) form.before(bar);
+    }
+    // A first reply for a request nobody answered yet, put in the box once (4.1.0, off unless I turn it on): the one
+    // that asks what this type of request needs. Marked to be read before sending; nothing is sent.
+    function suggestFirst(state) {
+      const panel = state?.win?.querySelector('.problem-edit'); if (!panel) return;
+      let facts = null; try { facts = caseFile.facts(panel); } catch (_) { facts = null; }
+      const note = panel.querySelector('.ws-suggested');
+      if (!view.suggest || urceLeads() || !facts || !Number.isFinite(facts.id) || facts.closed || facts.messages.length) { note?.remove(); return; }
+      if (state.suggestedFor === facts.id) return;
+      state.suggestedFor = facts.id;
+      if (replyText(panel).trim()) return;
+      const { set, language } = caseFile.replies(panel);
+      const key = facts.mapMate ? 'mm-ask' : TYPE_BUILT[facts.group]?.[0]?.[0] || 'spot';
+      if (!set?.[key]) return;
+      const text = fillVariables(builtReply(language, key, set).text, panel);
+      caseFile.fill(panel, text); state.suggestedText = text;
+      const form = panel.querySelector('.new-comment-form'); if (!form) return;
+      const mark = el('div', 'ws-suggested'); mark.setAttribute('data-ws-keep', ''); mark.setAttribute('role', 'status');
+      mark.append(el('span', '', tr('Suggested reply: read it before sending.')));
+      const clear = el('button', '', tr('Clear')); clear.type = 'button';
+      clear.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); caseFile.fill(panel, ''); mark.remove(); });
+      mark.append(clear);
+      form.before(mark);
+      // Gone once the reply is changed or sent.
+      const watch = setInterval(() => { if (!mark.isConnected || replyText(panel).trim() !== text.trim()) { clearInterval(watch); mark.remove(); } }, 1500);
+    }
+    function download(name, text, type) {
+      const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([text], { type })); link.download = name;
+      document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+    }
+    const CSV_COLUMNS = ['title', 'group', 'type', 'text', 'action', 'button'];
+    function exportFile(kind) {
+      load().then(() => {
+        const rows = custom.map(item => ({ title: item.title, group: item.group, type: item.type || '', text: item.text, action: item.action || '', button: item.button ? 'yes' : '' }));
+        if (kind === 'csv') {
+          const cell = value => (/[",\n\r;]/.test(String(value)) ? `"${String(value).replace(/"/g, '""')}"` : String(value));
+          download('quick-replies.csv', '\ufeff' + [CSV_COLUMNS.join(','), ...rows.map(one => CSV_COLUMNS.map(name => cell(one[name])).join(','))].join('\r\n'), 'text/csv;charset=utf-8');
+        } else {
+          const doc = document.implementation.createDocument(null, 'replies', null);
+          for (const one of rows) {
+            const node = doc.createElement('reply');
+            for (const name of ['title', 'group', 'type', 'action']) if (one[name]) node.setAttribute(name, one[name]);
+            if (one.button) node.setAttribute('button', 'yes');
+            node.textContent = one.text; doc.documentElement.append(node);
+          }
+          download('quick-replies.xml', '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(doc), 'application/xml');
+        }
+      });
+    }
+    // CSV (with a header row: title, text and the others in any order, comma or semicolon), XML (<reply> elements)
+    // or JSON (a backup or a shared file). Replies are added; the same name with the same text isn't added twice.
+    function parseCsv(text) {
+      const rows = [], first = text.split(/\r?\n/, 1)[0] || '', sep = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
+      let row = [], cell = '', quoted = false;
+      for (let index = 0; index < text.length; index++) {
+        const char = text[index];
+        if (quoted) { if (char === '"' && text[index + 1] === '"') { cell += '"'; index++; } else if (char === '"') quoted = false; else cell += char; continue; }
+        if (char === '"') quoted = true; else if (char === sep) { row.push(cell); cell = ''; } else if (char === '\n' || char === '\r') { if (char === '\r' && text[index + 1] === '\n') index++; row.push(cell); rows.push(row); row = []; cell = ''; } else cell += char;
+      }
+      if (cell || row.length) { row.push(cell); rows.push(row); }
+      const head = (rows.shift() || []).map(name => name.trim().toLowerCase().replace(/^\ufeff/, ''));
+      return rows.filter(one => one.some(value => value.trim())).map(one => Object.fromEntries(head.map((name, at) => [name, one[at] ?? ''])));
+    }
+    function readRepliesFile(text) {
+      const trimmed = text.replace(/^\ufeff/, '').trim();
+      let list = [];
+      if (trimmed.startsWith('<')) {
+        const doc = new DOMParser().parseFromString(trimmed, 'application/xml');
+        if (doc.querySelector('parsererror')) return null;
+        list = [...doc.getElementsByTagName('reply')].map(node => ({ title: node.getAttribute('title') || node.getElementsByTagName('title')[0]?.textContent || '', group: node.getAttribute('group') || '', type: node.getAttribute('type') || '', action: node.getAttribute('action') || '', button: /^(yes|true|1)$/i.test(node.getAttribute('button') || ''), text: (node.getElementsByTagName('text')[0]?.textContent ?? node.textContent ?? '').trim() }));
+      } else if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try { const data = JSON.parse(trimmed); list = Array.isArray(data) ? data : Array.isArray(data?.replies) ? data.replies : []; } catch (_) { return null; }
+      } else list = parseCsv(trimmed).map(one => ({ ...one, button: /^(yes|true|1)$/i.test(one.button || '') }));
+      return clean(list.map(item => ({ ...item, id: undefined, pinned: false, uses: 0, lastUsed: 0, created: Date.now() })));
+    }
+    function importFile(state) {
+      const input = document.createElement('input'); input.type = 'file'; input.accept = '.csv,.xml,.json,text/csv,application/xml,text/xml,application/json';
+      input.addEventListener('change', async () => {
+        const file = input.files?.[0]; if (!file) return;
+        const replies = readRepliesFile(await file.text().catch(() => ''));
+        await load();
+        if (!replies?.length) { const note = el('p', 'err', tr('That file has no replies Studio can read.')); state.panel.querySelector('.foot')?.before(note); setTimeout(() => note.remove(), 5000); return; }
+        const known = new Set(custom.map(item => `${item.title}\n${item.text}`));
+        const fresh = replies.filter(item => !known.has(`${item.title}\n${item.text}`));
+        const buttons = custom.filter(item => item.button).length + (view.builtButtons || []).length;
+        let room = Math.max(0, BUTTONS_MAX - buttons);
+        custom = [...custom, ...fresh.map(item => { if (item.button && room > 0) { room--; return item; } return { ...item, button: false }; })].slice(0, MAX);
+        save(); notifyManagers(); paintButtons(state); state.query = ''; renderList(state);
+        const note = el('p', 'hint', fresh.length === 1 ? tr('Added 1 reply') : tr('Added {0} replies', fresh.length)); state.panel.querySelector('.foot')?.before(note); setTimeout(() => note.remove(), 4000);
+      });
+      input.click();
+    }
     function attach(win) {
       let state = states.get(win);
-      if (state?.host.isConnected && state.host.parentElement === win) { urceMode(state); place(state); return; }
+      if (state?.host.isConnected && state.host.parentElement === win) { urceMode(state); place(state); load().then(() => { paintButtons(state); suggestFirst(state); }); return; }
       state?.host.remove(); state?.observer?.disconnect(); state?.size?.disconnect();
       const host = el('div'); host.className = 'ws-quick-replies'; host.setAttribute('data-ws-keep', '');
       const shadow = host.attachShadow({ mode: 'open' });
-      shadow.innerHTML = `<style>${CSS}</style><div class="stack"><slot name="extra"></slot><button class="tab" type="button" aria-expanded="false" aria-haspopup="dialog">${svg(ICONS.tab)}<span></span></button></div><div class="panel" role="dialog" hidden></div>`;
+      shadow.innerHTML = `<style>${CSS}${QR_EXTRA}</style><div class="stack"><slot name="extra"></slot><button class="tab" type="button" aria-expanded="false" aria-haspopup="dialog">${svg(ICONS.tab)}<span></span></button></div><div class="panel" role="dialog" hidden></div>`;
       state = { win, host, shadow, tab: shadow.querySelector('.tab'), panel: shadow.querySelector('.panel'), editing: null, observer: null };
       state.panel.tabIndex = -1;
       state.tab.querySelector('span').textContent = tr('Quick replies');
@@ -9621,7 +10031,9 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         }
         event.stopPropagation();
       });
-      for (const type of ['pointerdown', 'mousedown', 'click', 'wheel', 'dblclick']) host.addEventListener(type, event => event.stopPropagation());
+      // The end of a press and a focus moving in stay here too (4.1.0): WME can take a focus inside its window for a
+      // window to bring forward, and draw the request again.
+      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'wheel', 'dblclick', 'focusin']) host.addEventListener(type, event => event.stopPropagation());
       // A press outside the ⋯ menu closes it.
       state.panel.addEventListener('pointerdown', event => { if (state.menuOpen && !event.composedPath().some(node => node.classList?.contains('menu') || node.classList?.contains('more'))) toggleMenu(state, false); });
       win.append(host);
@@ -9637,17 +10049,18 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       states.set(win, state);
       urceMode(state);
       place(state);
+      load().then(() => { paintButtons(state); suggestFirst(state); });
     }
-    // With URCE leading (4.0.2), the tab opens URCE's comments instead of Studio's replies.
-    // It carries URCE's own name and icon (the one on its Greasy Fork page, when Studio's script bar has it), so it's
+    // With URC-E leading (4.0.2), the tab opens URC-E's comments instead of Studio's replies.
+    // It carries URC-E's own name and icon (the one on its Greasy Fork page, when Studio's script bar has it), so it's
     // plain whose comments these are.
     function urceMode(state) {
       const lead = urceLeads(), icon = lead ? String(globalThis.WMEStudioScriptIcon?.('375430') || '') : '';
       const key = lead ? 'urce:' + icon : '';
       if (state.urce === key) return;
       state.urce = key;
-      state.tab.querySelector('span').textContent = lead ? 'URCE' : tr('Quick replies');
-      state.tab.title = lead ? tr('URCE (URComments-Enhanced) by dBsooner. Opens its comments; replies are left to URCE while it’s installed (Settings › Panels).') : tr('Quick replies');
+      state.tab.querySelector('span').textContent = lead ? 'URC-E' : tr('Quick replies');
+      state.tab.title = lead ? tr('URC-E (URComments-Enhanced) by dBsooner. Opens its comments; replies are left to URC-E while it’s installed (Settings › Panels).') : tr('Quick replies');
       state.tab.toggleAttribute('data-urce', lead);
       const art = state.tab.querySelector('svg, img');
       if (icon) {
@@ -9710,7 +10123,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     // folders, pins, Studio's replies, my variables, sharing and backups. It talks to this tab with messages that
     // carry a one-off key, and each change it sends is checked and saved here like the panel's own.
     const MANAGER_HTML = studioPart('MANAGER_HTML');
-    const MANAGER_STRINGS = ["1 folder", "1 reply", "1 selected", "<1 min", "A backup is one file with all your replies, folders, variables and changes to Studio’s replies.", "A code fits in a Discord message. A file is easier for many replies.", "A deleted reply", "Add", "Add 1 reply", "Add a country", "Add a tag", "Add a variable", "Add replies", "Add replies someone shared", "Add {0}", "Add {0} replies", "Added 1 reply", "Added to your replies", "Added {0} replies", "All my replies", "All replies", "All variables", "All {0} languages", "Answer requests in one click", "Ask for the exact spot", "Automatic", "Back", "Back to Studio’s", "Back to Studio’s wording", "Backup", "Backup saved", "Cancel", "Changed", "Choose what to share", "Clear the selection", "Close", "Code to import", "Code to share", "Color", "Connected to WME", "Conversation", "Copied", "Copy code", "Copy text", "Copy {0}", "Counted from the requests where you opened Quick replies in the last 30 days.", "Countries", "Countries (optional)", "Delete", "Delete folder", "Delete folder and replies", "Delete folder, keep replies", "Delete replies too", "Delete {0} replies", "Delete “{0}”?", "Delete “{0}”? It has 1 reply.", "Delete “{0}”? It has {1} replies.", "Delete “{0}”? Its {1} replies move to No folder.", "Details", "Did you mean {0}?", "Drag and right-click", "Drag replies onto a folder on the left to move them. Right-click a reply or a folder for more.", "Drag to reorder, or onto a folder", "Duplicate", "Edit", "Edit folder", "Edit reply", "Empty means everywhere.", "Everything in one file: your replies and folders, your changes to Studio’s replies and your variables. Keep it safe, or use it to move to another computer.", "Filled from #{0}", "Filled in from the open request, #{0}. Green parts come from variables.", "First in the list", "First in the list for", "Fixed, shows after the update", "Folder", "Folder actions", "Folder name", "Folders", "Folders group replies by subject, like Closures or Speed limits.", "Folders show as chips in WME, so the right reply is one click away.", "From its folder: {0}", "From {0}", "Getting started", "Give each variable a name.", "Give it a name.", "Greets the reporter in their language", "Have a look", "Hidden in WME", "Hide in WME", "Hide it from WME to keep your list short. It stays here.", "Hide this", "Icon", "Import replies", "Import replies a friend shared", "In #{0}", "In a reply, type { to pick a variable. {greeting} and {me} fill themselves in when you use it.", "Insert variable", "It goes in the reply box, filled in. Read it, then send.", "It says good morning or good evening in the reporter’s language, so every reply opens warmly.", "Its replies show only for requests in these countries, unless a reply has its own.", "Keep replies", "Keep their folders", "Last used", "Library", "Long for a phone: {0} characters. Under 320 reads best.", "Missing roundabout", "More", "Most of your reporters write in {0}", "Most used", "Most used: {0}", "Move down", "Move to", "Move to…", "Move up", "Moved out of folders", "Moved to {0}", "My variables they use", "Name", "New", "New folder", "New folder…", "New reply", "New reply here", "Next tip", "No answer, closing", "No backup yet", "No folder", "No greeting yet. {0} says good morning or good evening in the reporter’s language.", "No icon", "No replies of your own yet", "No reply matches “{0}”.", "None", "Not connected", "Not now", "Not used yet", "Nothing chosen yet", "Nothing here yet. New reply adds one, or drag replies onto a folder on the left.", "Nothing to tidy up. Your replies are in good shape.", "Nothing yet. Each reply you use in WME counts here.", "Now", "Off: it stays here but not in WME’s list. Searching there still finds it.", "On an open request in WME, press Q to open Quick replies, then 1 to 9 to put that reply in the box.", "On requests of this type, it comes first.", "One file with all your replies, folders and variables.", "Open", "Open a file", "Open a request in WME", "Open a request in WME, press Q, then the number of the reply.", "Open an update request in WME to see its details filled in.", "Open request", "Or start from one below and change the wording.", "Or start from one of these", "Or write a new one. It’s saved as soon as it has a name and some text.", "Paste a code here, or open a file", "Paste the code another editor shared, or open their file. The replies are added to yours; nothing is replaced.", "Paste their code or open their file. You choose which ones to add before anything changes.", "Pick a reply to edit it", "Pick them", "Pin", "Pin it, and it sits at the top of Quick replies.", "Pin or unpin", "Pin the replies you use most", "Pin the replies you use most: they show first in Quick replies.", "Pin to the top of Quick replies", "Pin your favourites and they sit at the top of Quick replies, so their numbers stay the same.", "Pinned", "Pinned replies come first", "Pinned replies sit at the top of Quick replies in WME, so they get the first numbers.", "Place variables can be empty when there’s no street nearby. Read the reply before you send it.", "Press 1 to use it", "Preview", "Preview for #{0}", "Previews use this request’s details", "Put it in a folder", "Put them in", "Q opens Quick replies", "Quick replies", "Ready replies for drivers, in the reporter’s language. Your wording is used instead of Studio’s, also by the case file’s buttons.", "Recently used", "Remind me after 2 weeks", "Remove", "Remove {0}", "Replace", "Replace everything with this backup: {0} replies, {1} folders, {2} variables?", "Replies to share", "Reply", "Reply check", "Reporter’s language", "Restore", "Restore a backup", "Restored", "Road closed for works", "Route depends on traffic", "Save", "Save a backup", "Save as file", "Saved", "Search", "Search replies", "Sections", "Select all", "Select {0}", "Send it", "Send this code to other editors, for example in Discord. They add it under Share and backup › Import replies.", "Share and backup", "Share replies", "Share with other editors", "Shared replies", "Shared {0}", "Short enough to read on a phone in the car", "Show first for (optional)", "Show in Quick replies", "Show in WME", "Show me", "Show suggestions", "Shown", "Shown in WME", "Shown only for requests in these countries. Leave it empty for everywhere.", "Sort", "Sort them", "Speed limit is already right", "Start", "Start from Studio’s", "Start your replies with {0}", "Studio speaks their language", "Studio’s", "Studio’s replies", "Studio’s replies already speak it. Have a look, and add your own wording if you like.", "Studio’s replies follow the reporter’s language. Change their wording under Studio’s replies.", "Studio’s variables", "Studio’s wording", "Tags", "Temporary closure", "Text", "Text it puts in", "That doesn’t look like shared quick replies.", "That isn’t a Quick replies backup.", "The Quick replies tab sits on the side of the request window.", "The reporter’s drive", "The situations editors answer most. Each one becomes yours to change.", "Their variables you don’t have yet are added too:", "There is already a folder called “{0}”.", "They paste the code in Share and backup › Add replies. Nothing of theirs is replaced.", "This request", "This week", "Tip", "Tip {0} of {1}", "Tip: {0}", "Tips show here as you write.", "Tips, never rules", "Type { for variables", "Unpin", "Use a reply on a request in WME", "Use this", "Used", "Used once", "Used {0} times", "Values from the request open in WME, in the reporter’s language.", "Variable", "Variable name", "Variables", "Variables, filled in when you pick the reply:", "WME is closed or was reloaded, so changes here can’t be saved. Open this page again from Quick replies in WME.", "We didn’t hear back, so I’m closing this report for now. If it happens again, send a new report from the spot. Thanks!", "What it puts in", "What the reporter sees", "Where it shows", "Words Studio fills in when you use a reply. Type { in a reply to pick one, or write your own below.", "Words that find this folder’s replies when you search, like “roadworks” or “closure”.", "Worth a look", "Write a reply first, then share it here.", "Write a reply here", "Write a request type under Where it shows, and the reply comes first on requests of that type.", "Write my first reply", "Write one", "Write the replies you send again and again once, then pick them in WME.", "Write the replies you send again and again once. Studio fills in the street, the date and a greeting in the reporter’s language each time you use one.", "Write the reply.", "Write your first reply", "Write your own wording, or start from Studio’s and change it", "You and now", "You have all the habits", "You have it", "You have this one", "You haven’t saved a backup yet", "You use “{0}” a lot", "You wrote 1 reply since.", "You wrote {0} replies since.", "Your last backup was {0}", "Your order", "Your own words to drop into replies, like a sign-off or a link to your community. Write the name in braces in a Quick reply, or pick it from the + in the reply box.", "Your own words, like a sign-off or a link to your community.", "Your replies", "Your replies are set up the way that saves the most time.", "Your replies at a glance, and a few habits that make answering requests faster.", "Your reply, with its variables filled in, shows here.", "Your reporters write in", "Your variables", "Your wording", "Your wording (empty: Studio’s)", "Yours · empty uses Studio’s", "choose", "insert", "language answered in", "languages answered in", "last {0}", "name", "of typing saved", "or type { anywhere", "replies used", "reply used", "{0} (copy)", "{0} / 2000", "{0} folders", "{0} found", "{0} isn’t a variable, so it stays as written.", "{0} min", "{0} of {1}", "{0} of {1} done", "{0} ready replies in {1} languages, picked by the reporter’s language. Leave them as they are, or write your own wording next to Studio’s. Yours is used in WME and by the case file’s buttons.", "{0} replies", "{0} replies aren’t in a folder", "{0} replies found.", "{0} selected", "{greeting}! Could you tell us exactly where the problem was? The street name or the junction helps us find it.", "{greeting}! Thanks for the report from {reportdate}. The road is closed for works until Friday, so the app avoids it. {me}", "{greeting}, I fixed the map at {junction}. It shows in the app after the next map update, usually within a few days.", "{greeting}, thanks for the report. The speed limit on {street} matches the signs, so I left it as it is.", "{greeting}, thanks! The roadworks on {street} are added as a closure until they end.", "{greeting}, the app picks the route from live traffic, so it can differ from day to day. The map here is right.", "{{0}} is already one of Studio’s variables. Pick another name.", "{{0}} is there twice.", "“{0}” hasn’t been used in 2 months"];
+    const MANAGER_STRINGS = ["1 folder", "1 reply", "1 selected", "<1 min", "A backup is one file with all your replies, folders, variables and changes to Studio’s replies.", "A code fits in a Discord message. A file is easier for many replies.", "A deleted reply", "Add", "Add 1 reply", "Add a country", "Add a tag", "Add a variable", "Add replies", "Add replies someone shared", "Add {0}", "Add {0} replies", "Added 1 reply", "Added to your replies", "Added {0} replies", "All my replies", "All replies", "All variables", "All {0} languages", "Answer requests in one click", "Ask for the exact spot", "Automatic", "Back", "Back to Studio’s", "Back to Studio’s wording", "Backup", "Backup saved", "Cancel", "Changed", "Choose what to share", "Clear the selection", "Close", "Code to import", "Code to share", "Color", "Connected to WME", "Conversation", "Copied", "Copy code", "Copy text", "Copy {0}", "Counted from the requests where you opened Quick replies in the last 30 days.", "Countries", "Countries (optional)", "Delete", "Delete folder", "Delete folder and replies", "Delete folder, keep replies", "Delete replies too", "Delete {0} replies", "Delete “{0}”?", "Delete “{0}”? It has 1 reply.", "Delete “{0}”? It has {1} replies.", "Delete “{0}”? Its {1} replies move to No folder.", "Details", "Did you mean {0}?", "Drag and right-click", "Drag replies onto a folder on the left to move them. Right-click a reply or a folder for more.", "Drag to reorder, or onto a folder", "Duplicate", "Edit", "Edit folder", "Edit reply", "Empty means everywhere.", "Everything in one file: your replies and folders, your changes to Studio’s replies and your variables. Keep it safe, or use it to move to another computer.", "Filled from #{0}", "Filled in from the open request, #{0}. Green parts come from variables.", "First in the list", "First in the list for", "Fixed, shows after the update", "Folder", "Folder actions", "Folder name", "Folders", "Folders group replies by subject, like Closures or Speed limits.", "Folders show as chips in WME, so the right reply is one click away.", "From its folder: {0}", "From {0}", "Getting started", "Give each variable a name.", "Give it a name.", "Greets the reporter in their language", "Have a look", "Hidden in WME", "Hide in WME", "Hide it from WME to keep your list short. It stays here.", "Hide this", "Icon", "Import replies", "Import replies a friend shared", "In #{0}", "In a reply, type { to pick a variable. {greeting} and {me} fill themselves in when you use it.", "Insert variable", "It goes in the reply box, filled in. Read it, then send.", "It says good morning or good evening in the reporter’s language, so every reply opens warmly.", "Its replies show only for requests in these countries, unless a reply has its own.", "Keep replies", "Keep their folders", "Last used", "Library", "Long for a phone: {0} characters. Under 320 reads best.", "Missing roundabout", "More", "Most of your reporters write in {0}", "Most used", "Most used: {0}", "Move down", "Move to", "Move to…", "Move up", "Moved out of folders", "Moved to {0}", "My variables they use", "Name", "New", "New folder", "New folder…", "New reply", "New reply here", "Next tip", "No answer, closing", "No backup yet", "No folder", "No greeting yet. {0} says good morning or good evening in the reporter’s language.", "No icon", "No replies of your own yet", "No reply matches “{0}”.", "None", "Not connected", "Not now", "Not used yet", "Nothing chosen yet", "Nothing here yet. New reply adds one, or drag replies onto a folder on the left.", "Nothing to tidy up. Your replies are in good shape.", "Nothing yet. Each reply you use in WME counts here.", "Now", "Off: it stays here but not in WME’s list. Searching there still finds it.", "On an open request in WME, press Q to open Quick replies, then 1 to 9 to put that reply in the box.", "On requests of this type, it comes first.", "One file with all your replies, folders and variables.", "Open", "Open a file", "Open a request in WME", "Open a request in WME, press Q, then the number of the reply.", "Open an update request in WME to see its details filled in.", "Open request", "Or start from one below and change the wording.", "Or start from one of these", "Or write a new one. It’s saved as soon as it has a name and some text.", "Paste a code here, or open a file", "Paste the code another editor shared, or open their file. The replies are added to yours; nothing is replaced.", "Paste their code or open their file. You choose which ones to add before anything changes.", "Pick a reply to edit it", "Pick them", "Pin", "Pin it, and it sits at the top of Quick replies.", "Pin or unpin", "Pin the replies you use most", "Pin the replies you use most: they show first in Quick replies.", "Pin to the top of Quick replies", "Pin your favourites and they sit at the top of Quick replies, so their numbers stay the same.", "Pinned", "Pinned replies come first", "Pinned replies sit at the top of Quick replies in WME, so they get the first numbers.", "Place variables can be empty when there’s no street nearby. Read the reply before you send it.", "Press 1 to use it", "Preview", "Preview for #{0}", "Previews use this request’s details", "Put it in a folder", "Put them in", "Q opens Quick replies", "Quick replies", "Ready replies for drivers, in the reporter’s language. Your wording is used instead of Studio’s, also by the case file’s buttons.", "Recently used", "Remind me after 2 weeks", "Remove", "Remove {0}", "Replace", "Replace everything with this backup: {0} replies, {1} folders, {2} variables?", "Replies to share", "Reply", "Reply check", "Reporter’s language", "Restore", "Restore a backup", "Restored", "Road closed for works", "Route depends on traffic", "Save", "Save a backup", "Save as file", "Saved", "Search", "Search replies", "Sections", "Select all", "Select {0}", "Send it", "Send this code to other editors, for example in Discord. They add it under Share and backup › Import replies.", "Share and backup", "Share replies", "Share with other editors", "Shared replies", "Shared {0}", "Short enough to read on a phone in the car", "Show first for (optional)", "Show in Quick replies", "Show in WME", "Show me", "Show suggestions", "Shown", "Shown in WME", "Shown only for requests in these countries. Leave it empty for everywhere.", "Sort", "Sort them", "Speed limit is already right", "Start", "Start from Studio’s", "Start your replies with {0}", "Studio speaks their language", "Studio’s", "Studio’s replies", "Studio’s replies already speak it. Have a look, and add your own wording if you like.", "Studio’s replies follow the reporter’s language. Change their wording under Studio’s replies.", "Studio’s variables", "Studio’s wording", "Tags", "Temporary closure", "Text", "Text it puts in", "They show under its name, at the top.", "That doesn’t look like shared quick replies.", "That isn’t a Quick replies backup.", "The Quick replies tab sits on the side of the request window.", "The reporter’s drive", "The situations editors answer most. Each one becomes yours to change.", "Their variables you don’t have yet are added too:", "There is already a folder called “{0}”.", "They paste the code in Share and backup › Add replies. Nothing of theirs is replaced.", "This request", "This week", "Tip", "Tip {0} of {1}", "Tip: {0}", "Tips show here as you write.", "Tips, never rules", "Type { for variables", "Unpin", "Use a reply on a request in WME", "Use this", "Used", "Used once", "Used {0} times", "Values from the request open in WME, in the reporter’s language.", "Variable", "Variable name", "Variables", "Variables, filled in when you pick the reply:", "WME is closed or was reloaded, so changes here can’t be saved. Open this page again from Quick replies in WME.", "We didn’t hear back, so I’m closing this report for now. If it happens again, send a new report from the spot. Thanks!", "What it puts in", "What the reporter sees", "Where it shows", "Words Studio fills in when you use a reply. Type { in a reply to pick one, or write your own below.", "Words that find this folder’s replies when you search, like “roadworks” or “closure”.", "Worth a look", "Write a reply first, then share it here.", "Write a reply here", "Write a request type under Where it shows, and the reply comes first on requests of that type.", "Write my first reply", "Write one", "Write the replies you send again and again once, then pick them in WME.", "Write the replies you send again and again once. Studio fills in the street, the date and a greeting in the reporter’s language each time you use one.", "Write the reply.", "Write your first reply", "Write your own wording, or start from Studio’s and change it", "You and now", "You have all the habits", "You have it", "You have this one", "You haven’t saved a backup yet", "You use “{0}” a lot", "You wrote 1 reply since.", "You wrote {0} replies since.", "Your last backup was {0}", "Your order", "Your own words to drop into replies, like a sign-off or a link to your community. Write the name in braces in a Quick reply, or pick it from the + in the reply box.", "Your own words, like a sign-off or a link to your community.", "Your replies", "Your replies are set up the way that saves the most time.", "Your replies at a glance, and a few habits that make answering requests faster.", "Your reply, with its variables filled in, shows here.", "Your reporters write in", "Your variables", "Your wording", "Your wording (empty: Studio’s)", "Yours · empty uses Studio’s", "choose", "insert", "language answered in", "languages answered in", "last {0}", "name", "of typing saved", "or type { anywhere", "replies used", "reply used", "{0} (copy)", "{0} / 2000", "{0} folders", "{0} found", "{0} isn’t a variable, so it stays as written.", "{0} min", "{0} of {1}", "{0} of {1} done", "{0} ready replies in {1} languages, picked by the reporter’s language. Leave them as they are, or write your own wording next to Studio’s. Yours is used in WME and by the case file’s buttons.", "{0} replies", "{0} replies aren’t in a folder", "{0} replies found.", "{0} selected", "{greeting}! Could you tell us exactly where the problem was? The street name or the junction helps us find it.", "{greeting}! Thanks for the report from {reportdate}. The road is closed for works until Friday, so the app avoids it. {me}", "{greeting}, I fixed the map at {junction}. It shows in the app after the next map update, usually within a few days.", "{greeting}, thanks for the report. The speed limit on {street} matches the signs, so I left it as it is.", "{greeting}, thanks! The roadworks on {street} are added as a closure until they end.", "{greeting}, the app picks the route from live traffic, so it can differ from day to day. The map here is right.", "{{0}} is already one of Studio’s variables. Pick another name.", "{{0}} is there twice.", "“{0}” hasn’t been used in 2 months"];
     const managers = new Map();
     function managerState() {
       const panel = windows().at(-1)?.querySelector('.problem-edit') || null;
@@ -9769,7 +10182,10 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     function applyPatch(patch) {
       if (!patch || typeof patch !== 'object') return;
-      if (Array.isArray(patch.replies)) { custom = clean(patch.replies); save(); }
+      if (Array.isArray(patch.replies)) {
+        const before = new Map(custom.map(item => [item.id, item]));
+        custom = clean(patch.replies.map(item => (item && typeof item === 'object' && before.has(item.id) ? { action: before.get(item.id).action, button: before.get(item.id).button, ...item } : item))); save();
+      }
       if (Array.isArray(patch.folders)) { folders = cleanFolders(patch.folders); saveFolders(); }
       if (patch.builtEdits && typeof patch.builtEdits === 'object') { builtEdits = cleanBuilt(patch.builtEdits); saveBuilt(); }
       if (Array.isArray(patch.variables)) { mineVars = cleanMine(patch.variables); saveMine(); }
@@ -9778,6 +10194,23 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (patch.guide && typeof patch.guide === 'object') { guide = cleanGuide(patch.guide); saveGuide(); }
       for (const state of states.values()) if (!state.panel.hidden && state.view === 'list') paintRows(state);
     }
+    // Cloud Sync (4.1.0) writes replies that came from another device straight into storage: they replace what this
+    // tab holds, the open lists and buttons are drawn again, and an open management page gets them too.
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !loaded) return;
+      const has = key => Object.hasOwn(changes, key), value = key => changes[key].newValue;
+      if (![KEY, FOLDERS_KEY, FOLDER_META_KEY, BUILT_KEY, VIEW_KEY, MINE_KEY].some(has)) return;
+      loaded.then(() => {
+        if (has(KEY)) custom = clean(value(KEY));
+        if (has(FOLDERS_KEY)) folders = cleanFolders(value(FOLDERS_KEY));
+        if (has(FOLDER_META_KEY)) folderMeta = cleanMeta(value(FOLDER_META_KEY));
+        if (has(BUILT_KEY)) builtEdits = cleanBuilt(value(BUILT_KEY));
+        if (has(VIEW_KEY)) view = cleanView(value(VIEW_KEY));
+        if (has(MINE_KEY)) { mineVars = cleanMine(value(MINE_KEY)); mineLoaded = Promise.resolve(); }
+        for (const state of states.values()) { paintButtons(state); if (!state.panel.hidden && state.view === 'list') paintRows(state); }
+        if (managers.size) notifyManagers();
+      });
+    });
     addEventListener('message', event => {
       const message = event.data;
       if (event.origin !== location.origin || !message || typeof message.wsqr !== 'string' || !/^[0-9a-f]{32}$/.test(message.wsqr)) return;
@@ -9905,6 +10338,23 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
       else { state.sameUntil = 0; state.translateButton.title = tr('Chrome can’t translate into this language here.'); }
       paint(state);
     }
+    // A quick reply that just went in (4.1.0): only that part is translated, what I had typed before it stays.
+    async function autoTranslate(panel, before, added) {
+      sync(panel);
+      const state = states.get(panel);
+      if (!state || state.busy || !added.trim() || !state.target?.can) return;
+      const expected = before ? `${before}\n\n${added}` : added;
+      const token = state.token = {}; state.busy = true; paint(state);
+      const ticker = setInterval(() => { if (state.busy) paint(state); }, 400);
+      let result = null;
+      try { result = await caseFile.translateReply(panel, added); } catch (studioError) { reportStudioError('replyTools auto translate', studioError); }
+      clearInterval(ticker);
+      if (state.token !== token) return;
+      state.busy = false;
+      // Only when the box still holds what Quick replies put there: anything I typed meanwhile is left alone.
+      if (result?.text && panel.isConnected && replyValue(panel).trim() === expected.trim()) { state.mine = expected; caseFile.fill(panel, before ? `${before}\n\n${result.text}` : result.text); }
+      paint(state);
+    }
     function send(panel) {
       const control = requestMinimizer.sendButton(panel);
       if (!control || !replyValue(panel).trim()) return false;
@@ -9971,7 +10421,7 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
       if (key === 'q' && quickReplies.toggle(win)) { event.preventDefault(); event.stopImmediatePropagation(); }
       if (key === 't' && target) { caseFile.toggleTranslate(target); event.preventDefault(); event.stopImmediatePropagation(); }
     }, true);
-    return Object.freeze({ inspect: panel => { if (panel?.matches?.('.problem-edit')) queue(); }, refresh: queue });
+    return Object.freeze({ inspect: panel => { if (panel?.matches?.('.problem-edit')) queue(); }, refresh: queue, autoTranslate: (panel, before, added) => autoTranslate(panel, before, added).catch(() => {}) });
   })();
 
   // URC-E (3.1.0): while it gets ready (an update request opened from a link, say) it lays an empty black mask
@@ -10400,7 +10850,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
         state = { panel, inner: null };
         build(state); states.set(panel, state);
         // WME's changes only: the form drawn again after a send, another request in the window.
-        state.observer = new MutationObserver(records => { if (records.some(record => [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1 && !node.closest?.('.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-case-tr')))) queue(); });
+        state.observer = new MutationObserver(records => { if (records.some(record => [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1 && !node.closest?.('.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-case-tr,.ws-reply-buttons,.ws-suggested')))) queue(); });
         state.observer.observe(panel, { childList: true, subtree: true });
         const onScroll = () => queue();
         win.addEventListener('scroll', onScroll, true);
@@ -10665,6 +11115,53 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     const noGlyph = '::before { content: none !important; display: none !important; }';
     GM_addStyle(studioPart('part13789', { COLORED, FLOAT, ISLAND_ALIASES, ON, PIE_ICONS, glyph, noGlyph }));
   }
+  // WME Place Harmonizer (WMEPH, 4.1.0): it has a dark look of its own, written for WME's dark mode
+  // ([wz-theme="dark"]). Studio's dark and black themes don't switch WME's dark mode on, so WMEPH stayed light there
+  // and its service icons were dark on dark. WMEPH's own dark rules are copied here for Studio's dark themes, taken
+  // from its stylesheet as it is, so they follow WMEPH's updates. Only style blocks that are WMEPH's are read.
+  const wmephSupport = (() => {
+    const ID = 'wme-studio-wmeph-dark', THEMES = 'html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"])';
+    let timer = 0, watching = null, shown = '';
+    const live = () => settings.enabled && settings.addons !== false;
+    const theirs = node => node?.localName === 'style' && node.id !== ID && /wz-theme="dark"/.test(node.textContent || '') && /wmeph|serv-airportshuttle/i.test(node.textContent || '');
+    function rewrite(rule, out) {
+      if (rule.cssRules && rule.media) { const inner = []; for (const one of rule.cssRules) rewrite(one, inner); if (inner.length) out.push(`@media ${rule.media.mediaText}{${inner.join('')}}`); return; }
+      const selector = rule.selectorText || '';
+      if (!selector.includes('[wz-theme="dark"]')) return;
+      const parts = selector.split(',').map(part => part.trim()).filter(part => part.includes('[wz-theme="dark"]'));
+      if (!parts.length) return;
+      out.push(`${parts.map(part => part.replace(/\[wz-theme="dark"\]/g, THEMES)).join(',')}{${rule.style.cssText}}`);
+    }
+    function build() {
+      timer = 0;
+      const out = [];
+      if (live()) for (const node of document.querySelectorAll('style')) {
+        if (!theirs(node)) continue;
+        let rules = null; try { rules = node.sheet?.cssRules; } catch (_) { rules = null; }
+        for (const rule of rules || []) rewrite(rule, out);
+      }
+      const css = out.join('\n');
+      if (css === shown) return;
+      shown = css;
+      let sheet = document.getElementById(ID);
+      if (!css) { sheet?.remove(); return; }
+      if (!sheet) { sheet = document.createElement('style'); sheet.id = ID; }
+      sheet.textContent = css;
+      (document.head || document.documentElement).append(sheet);
+    }
+    const soon = () => { if (!timer) timer = setTimeout(build, 600); };
+    function refresh() {
+      if (!watching && document.head) {
+        // A WMEPH style block coming (or changing) is all that wakes this; other nodes in <head> are skipped at once.
+        watching = new MutationObserver(records => { if (records.some(record => [...record.addedNodes].some(node => node.localName === 'style' && node.id !== ID) || (record.target.localName === 'style' && record.target.id !== ID && theirs(record.target)))) soon(); });
+        watching.observe(document.head, { childList: true, subtree: true, characterData: true });
+      }
+      soon();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', refresh, { once: true }); else refresh();
+    return Object.freeze({ refresh });
+  })();
+
   const pieSupport = (() => {
     const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? text; } catch (_) { return text; } };
     const root = document.documentElement;
@@ -10870,6 +11367,220 @@ html[data-wme-studio-motion="reduced"] #ws-map-tip { transition: none; }
     }
     return Object.freeze({ refresh, hide });
   })();
+  // Place templates (4.1.0): the website, phone, services and opening hours of a place, kept under a name and put on
+  // other places in one click, so the same chain or the same kind of shop isn't filled in by hand each time. A bar at
+  // the top of a place's "More info" tab; with several places selected, a template goes on all of them. WME's Undo
+  // takes it back like any edit, and nothing is saved until I save in WME.
+  const placeTemplates = (() => {
+    const KEY = 'wmeStudio.placeTemplates.v1', MAX = 40, FIELDS = ['url', 'phone', 'services', 'openingHours'];
+    const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return text; } };
+    const uiLocale = () => { try { return globalThis.WMEStudioI18n?.current?.() || document.documentElement.lang || 'en'; } catch (_) { return 'en'; } };
+    const svg = path => `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
+    const ICON = { tpl: '<rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/>', chev: '<path d="m6 9 6 6 6-6"/>', save: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>', check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>' };
+    let list = null, frame = 0;
+    const cleanHours = value => (Array.isArray(value) ? value : []).filter(item => item && Array.isArray(item.days) && /^\d{1,2}:\d\d$/.test(item.fromHour) && /^\d{1,2}:\d\d$/.test(item.toHour))
+      .slice(0, 14).map(item => ({ days: [...new Set(item.days.map(Number).filter(day => day >= 0 && day <= 6))].sort(), fromHour: item.fromHour, toHour: item.toHour })).filter(item => item.days.length);
+    const clean = value => (Array.isArray(value) ? value : []).filter(item => item && typeof item === 'object').slice(0, MAX).map(item => {
+      const one = { id: String(item.id || Math.random().toString(36).slice(2, 10)).slice(0, 20), name: String(item.name || '').trim().slice(0, 50) };
+      if (typeof item.url === 'string') one.url = item.url.slice(0, 512);
+      if (typeof item.phone === 'string') one.phone = item.phone.slice(0, 100);
+      if (Array.isArray(item.services)) one.services = [...new Set(item.services.map(String))].slice(0, 40);
+      if (Array.isArray(item.openingHours)) one.openingHours = cleanHours(item.openingHours);
+      return one;
+    }).filter(item => item.name && FIELDS.some(field => field in item));
+    async function load() { if (!list) { try { list = clean(await Promise.resolve(studioKeep.get(KEY, []))); } catch (_) { list = []; } } return list; }
+    const save = () => { try { Promise.resolve(studioKeep.set(KEY, list)).catch(error => reportStudioError('place templates save', error)); } catch (error) { reportStudioError('place templates save', error); } };
+    const sdk = () => studioSDK.get();
+    function selected() {
+      try { const selection = sdk()?.Editing?.getSelection?.(); return selection?.objectType === 'venue' ? (selection.ids || []).map(String) : []; } catch (_) { return []; }
+    }
+    const venue = id => { try { return sdk()?.DataModel?.Venues?.getById?.({ venueId: id }) || null; } catch (_) { return null; } };
+    // A short line for a template: what it sets.
+    function summary(item) {
+      const parts = [];
+      if ('url' in item) parts.push(item.url ? tr('Website') : tr('No website'));
+      if ('phone' in item) parts.push(item.phone ? tr('Phone') : tr('No phone'));
+      if ('services' in item) parts.push(item.services.length === 1 ? tr('1 service') : tr('{0} services', item.services.length));
+      if ('openingHours' in item) parts.push(hoursText(item.openingHours));
+      return parts.join(' · ');
+    }
+    function hoursText(hours) {
+      if (!hours.length) return tr('No open hours');
+      const day = n => { try { return new Intl.DateTimeFormat(uiLocale(), { weekday: 'short' }).format(new Date(2026, 0, 4 + n)); } catch (_) { return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][n]; } };
+      // Days in a row read as one span: Mon–Fri.
+      const first = hours[0], runs = [];
+      for (const n of first.days) { const last = runs.at(-1); if (last && n === last[1] + 1) last[1] = n; else runs.push([n, n]); }
+      const days = runs.map(([from, to]) => (from === to ? day(from) : to === from + 1 ? `${day(from)} ${day(to)}` : `${day(from)}–${day(to)}`)).join(' ');
+      return `${days} ${first.fromHour}–${first.toHour}${hours.length > 1 ? ' +' + (hours.length - 1) : ''}`;
+    }
+    GM_addStyle(`html[data-wme-studio="on"] .ws-ptpl { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; padding: 8px; border: 1px solid var(--wme-studio-border); border-radius: 12px; background: color-mix(in srgb, var(--wme-studio-accent, #0099ff) 7%, transparent); font: 12.5px/1.3 var(--ws-font); color: var(--wme-studio-text); }
+html[data-wme-studio="on"] .ws-ptpl > .ws-ptpl-title { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; font-weight: 700; }
+html[data-wme-studio="on"] .ws-ptpl svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+html[data-wme-studio="on"] .ws-ptpl button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; margin: 0; padding: 0 10px; border: 1px solid var(--wme-studio-border); border-radius: 999px; background: var(--wme-studio-input); color: var(--wme-studio-text); font: 600 12px/1 var(--ws-font); white-space: nowrap; cursor: pointer; }
+html[data-wme-studio="on"] .ws-ptpl button:hover:not(:disabled) { background: var(--wme-studio-hover); }
+html[data-wme-studio="on"] .ws-ptpl button.primary { border-color: transparent; background: var(--wme-studio-accent, #0099ff); color: #fff; }
+html[data-wme-studio="on"] .ws-ptpl button:disabled { opacity: .45; cursor: default; }
+html[data-wme-studio="on"] .ws-ptpl button:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 2px; }
+html[data-wme-studio="on"] .ws-ptpl-note { flex: 1 1 100%; margin: 0; color: var(--wme-studio-text-muted); font-size: 12px; line-height: 16px; }
+html[data-wme-studio="on"] .ws-ptpl-note[data-tone="ok"] { color: #30a46c; } html[data-wme-studio="on"] .ws-ptpl-note[data-tone="err"] { color: var(--ws-change-alert, #e5484d); }
+html[data-wme-studio="on"] .ws-ptpl-menu { position: absolute; left: 6px; right: 6px; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow: auto; padding: 4px; border: 1px solid var(--wme-studio-border); border-radius: 12px; background: var(--ws-window-paint, var(--wme-studio-surface, #292d31)); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); box-shadow: 0 14px 34px rgba(0,0,0,.4); }
+html[data-wme-studio="on"] .ws-ptpl-menu[hidden], html[data-wme-studio="on"] .ws-ptpl-form[hidden] { display: none; }
+html[data-wme-studio="on"] .ws-ptpl-item { display: flex; align-items: center; gap: 4px; border-radius: 9px; }
+html[data-wme-studio="on"] .ws-ptpl-item:hover { background: var(--wme-studio-hover); }
+html[data-wme-studio="on"] .ws-ptpl .ws-ptpl-apply { flex: 1; justify-content: flex-start; min-width: 0; height: auto; min-height: 40px; padding: 5px 8px; border: 0; border-radius: 9px; background: transparent; text-align: left; flex-direction: column; align-items: flex-start; gap: 2px; }
+html[data-wme-studio="on"] .ws-ptpl .ws-ptpl-apply:hover:not(:disabled) { background: transparent; }
+html[data-wme-studio="on"] .ws-ptpl-apply b, html[data-wme-studio="on"] .ws-ptpl-apply small { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
+html[data-wme-studio="on"] .ws-ptpl-apply small { color: var(--wme-studio-text-muted); font-weight: 500; font-size: 11.5px; }
+html[data-wme-studio="on"] .ws-ptpl .ws-ptpl-del { flex: none; width: 28px; padding: 0; border: 0; background: transparent; color: var(--wme-studio-text-muted); }
+html[data-wme-studio="on"] .ws-ptpl .ws-ptpl-del[data-sure] { width: auto; padding: 0 10px; color: #fff; background: var(--ws-change-alert, #e5484d); }
+html[data-wme-studio="on"] .ws-ptpl-empty { margin: 0; padding: 10px; color: var(--wme-studio-text-muted); font-size: 12px; }
+html[data-wme-studio="on"] .ws-ptpl-form { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+html[data-wme-studio="on"] .ws-ptpl-form input[type="text"] { box-sizing: border-box; width: 100%; height: 32px; margin: 0; padding: 0 10px; border: 1px solid var(--wme-studio-border); border-radius: 9px; background: var(--wme-studio-input); color: var(--wme-studio-text); font: 13px/1 var(--ws-font); }
+html[data-wme-studio="on"] .ws-ptpl-form input[type="text"]:focus { outline: none; border-color: var(--wme-studio-accent, #0099ff); }
+html[data-wme-studio="on"] .ws-ptpl-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; }
+html[data-wme-studio="on"] .ws-ptpl-fields label { display: flex; align-items: center; gap: 7px; min-height: 24px; color: var(--wme-studio-text); font-size: 12.5px; line-height: 16px; cursor: pointer; }
+html[data-wme-studio="on"] .ws-ptpl-fields input { width: 15px; height: 15px; margin: 0; flex: none; accent-color: var(--wme-studio-accent, #0099ff); }
+html[data-wme-studio="on"] .ws-ptpl-fields label { min-width: 0; }
+html[data-wme-studio="on"] .ws-ptpl-fields label > span { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+html[data-wme-studio="on"] .ws-ptpl-fields label > span > span { font-weight: 600; }
+html[data-wme-studio="on"] .ws-ptpl-fields label small { display: block; max-width: 100%; color: var(--wme-studio-text-muted); font-size: 11px; line-height: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-end; gap: 6px; }`);
+    const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
+    const button = (text, icon, className = '') => { const node = el('button', className); node.type = 'button'; node.innerHTML = icon ? svg(icon) : ''; node.append(el('span', '', text)); return node; };
+    function note(bar, text, tone = '') {
+      let line = bar.querySelector(':scope > .ws-ptpl-note');
+      if (!text) { line?.remove(); return; }
+      if (!line) { line = el('p', 'ws-ptpl-note'); bar.append(line); }
+      line.textContent = text; line.dataset.tone = tone;
+      clearTimeout(bar.wsNoteTimer); if (tone) bar.wsNoteTimer = setTimeout(() => line.remove(), 5000);
+    }
+    async function apply(bar, item) {
+      const ids = selected(); if (!ids.length) return;
+      const changes = {}; for (const field of FIELDS) if (field in item) changes[field] = field === 'openingHours' ? item.openingHours.map(hour => ({ ...hour, days: [...hour.days] })) : Array.isArray(item[field]) ? [...item[field]] : item[field];
+      let done = 0, failed = 0, why = '';
+      for (const id of ids) {
+        // A place outside my editable area takes the change without a word and keeps what it had: asked first.
+        let allowed = true; try { allowed = sdk().DataModel.Venues.hasPermissions?.({ venueId: id }) !== false; } catch (_) { allowed = true; }
+        if (!allowed) { failed++; why ||= tr('you can’t edit it here'); continue; }
+        try { await sdk().DataModel.Venues.updateVenue({ venueId: id, ...changes }); done++; }
+        catch (error) { failed++; why ||= String(error?.message || error).slice(0, 120); }
+      }
+      note(bar, failed ? (done === 1 ? tr('Put on 1 place. {0} couldn’t be changed: {1}', failed, why) : done ? tr('Put on {0} places. {1} couldn’t be changed: {2}', done, failed, why) : tr('This place couldn’t be changed: {0}', why))
+        : done === 1 ? tr('“{0}” put on this place. Save in WME to keep it.', item.name) : tr('“{0}” put on {1} places. Save in WME to keep it.', item.name, done), failed ? 'err' : 'ok');
+    }
+    function paintMenu(bar, menu) {
+      menu.replaceChildren();
+      if (!list.length) { menu.append(el('p', 'ws-ptpl-empty', tr('No templates yet. Fill in a place, then save it as a template.'))); return; }
+      for (const item of list) {
+        const row = el('div', 'ws-ptpl-item');
+        const use = el('button', 'ws-ptpl-apply'); use.type = 'button'; use.append(el('b', '', item.name), el('small', '', summary(item)));
+        use.title = tr('Put it on the selected places');
+        use.addEventListener('click', () => { menu.hidden = true; apply(bar, item); });
+        const del = el('button', 'ws-ptpl-del'); del.type = 'button'; del.innerHTML = svg(ICON.x); del.title = tr('Delete'); del.setAttribute('aria-label', tr('Delete {0}', item.name));
+        del.addEventListener('click', event => {
+          event.stopPropagation();
+          if (!del.hasAttribute('data-sure')) { del.setAttribute('data-sure', ''); del.textContent = tr('Delete'); setTimeout(() => { if (del.isConnected && del.hasAttribute('data-sure')) { del.removeAttribute('data-sure'); del.innerHTML = svg(ICON.x); } }, 3000); return; }
+          list = list.filter(one => one.id !== item.id); save(); paintMenu(bar, menu);
+        });
+        row.append(use, del); menu.append(row);
+      }
+    }
+    function openForm(bar, form) {
+      const ids = selected(), one = ids.length === 1 ? venue(ids[0]) : null; if (!one) return;
+      form.replaceChildren();
+      const name = el('input'); name.type = 'text'; name.maxLength = 50; name.placeholder = tr('Template name, e.g. {0}', one.name || tr('Coffee shop chain')); name.value = one.name || '';
+      const fields = el('div', 'ws-ptpl-fields'), checks = {};
+      const describe = { url: [tr('Website'), one.url || tr('empty')], phone: [tr('Phone'), one.phone || tr('empty')], services: [tr('Services'), one.services?.length ? String(one.services.length) : tr('none')], openingHours: [tr('Open hours'), one.openingHours?.length ? hoursText(cleanHours(one.openingHours)) : tr('none')] };
+      for (const field of FIELDS) {
+        const label = el('label'), box = el('input'); box.type = 'checkbox';
+        box.checked = field === 'services' || field === 'openingHours' ? !!one[field]?.length : !!one[field];
+        checks[field] = box;
+        const words = el('span'), value = el('small', '', describe[field][1]); value.title = describe[field][1]; words.append(el('span', '', describe[field][0]), value);
+        label.append(box, words); fields.append(label);
+      }
+      const row = el('div', 'ws-ptpl-row');
+      const cancel = button(tr('Cancel')), keep = button(tr('Save template'), ICON.check, 'primary');
+      cancel.addEventListener('click', () => { form.hidden = true; });
+      keep.addEventListener('click', () => {
+        const label = name.value.replace(/\s+/g, ' ').trim();
+        if (!label) { name.focus(); return; }
+        const picked = FIELDS.filter(field => checks[field].checked);
+        if (!picked.length) { note(bar, tr('Tick at least one thing to keep.'), 'err'); return; }
+        const item = { id: Math.random().toString(36).slice(2, 10), name: label };
+        for (const field of picked) item[field] = field === 'openingHours' ? cleanHours(one.openingHours) : field === 'services' ? [...(one.services || [])] : String(one[field] || '');
+        const same = list.findIndex(other => other.name.toLowerCase() === label.toLowerCase());
+        if (same >= 0) list[same] = { ...item, id: list[same].id }; else list = [item, ...list].slice(0, MAX);
+        list = clean(list); save(); form.hidden = true;
+        note(bar, tr('Saved “{0}”. Pick it under Templates on any other place.', label), 'ok');
+      });
+      name.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); keep.click(); } if (event.key === 'Escape') { event.preventDefault(); form.hidden = true; } });
+      row.append(cancel, keep);
+      form.append(name, fields, row); form.hidden = false;
+      name.focus(); name.select();
+    }
+    function build() {
+      const bar = el('div', 'ws-ptpl'); bar.setAttribute('data-ws-keep', '');
+      const title = el('span', 'ws-ptpl-title'); title.innerHTML = svg(ICON.tpl); title.append(el('span', '', tr('Templates')));
+      const pick = button(tr('Use a template'), ICON.chev), keep = button(tr('Save as template'), ICON.save);
+      const menu = el('div', 'ws-ptpl-menu'); menu.hidden = true;
+      const form = el('div', 'ws-ptpl-form'); form.hidden = true;
+      pick.addEventListener('click', event => { event.stopPropagation(); load().then(() => { paintMenu(bar, menu); menu.hidden = !menu.hidden; form.hidden = true; }); });
+      keep.addEventListener('click', () => { menu.hidden = true; load().then(() => openForm(bar, form)); });
+      document.addEventListener('pointerdown', event => { if (!menu.hidden && !event.composedPath().includes(bar)) menu.hidden = true; }, true);
+      for (const type of ['keydown', 'keyup', 'keypress']) bar.addEventListener(type, event => event.stopPropagation());
+      bar.append(title, pick, keep, menu, form);
+      Object.assign(bar, { wsPick: pick, wsKeep: keep, wsTitle: title });
+      return bar;
+    }
+    function sync() {
+      frame = 0;
+      const form = document.querySelector('#venue-edit-more-info form.attributes-form, #venue-edit-more-info form');
+      let bar = document.querySelector('.ws-ptpl');
+      const ids = settings.enabled ? selected() : [];
+      if (!form || !ids.length) { bar?.remove(); return; }
+      if (!bar || bar.parentElement !== form) { bar?.remove(); bar = build(); form.prepend(bar); }
+      // Saving takes one place; putting a template on works for every place selected.
+      bar.wsKeep.disabled = ids.length !== 1;
+      bar.wsKeep.title = ids.length === 1 ? tr('Keep this place’s website, phone, services and open hours as a template') : tr('Select one place to save it as a template');
+      const label = ids.length > 1 ? tr('Templates · {0} places', ids.length) : tr('Templates');
+      const span = bar.wsTitle.querySelector('span'); if (span.textContent !== label) span.textContent = label;
+    }
+    const queue = () => { if (!frame) frame = requestAnimationFrame(sync); };
+    (function hook() {
+      const api = sdk();
+      if (!api) { setTimeout(hook, 1000); return; }
+      try { api.Events?.on?.({ eventName: 'wme-selection-changed', eventHandler: queue }); } catch (studioError) { reportStudioError('place templates', studioError); }
+      const watch = () => { const panel = document.querySelector('#edit-panel'); if (!panel) { setTimeout(watch, 1000); return; } new MutationObserver(records => { if (records.some(record => ![...record.addedNodes, ...record.removedNodes].every(node => node.nodeType === 1 && node.classList?.contains('ws-ptpl')) && !(record.target.closest?.('.ws-ptpl')))) queue(); }).observe(panel, { childList: true, subtree: true }); queue(); };
+      watch();
+    })();
+    return Object.freeze({ refresh: queue });
+  })();
+  // WME's own menus (wz-menu) open from their button towards the right (4.1.0). In a request window or a panel that
+  // Studio made narrower, the part past its edge was cut off: the reasons under a map suggestion's "?" (Approve,
+  // Reject, Not sure) couldn't all be reached. A menu that would cross the edge is moved back inside, nothing else.
+  (() => {
+    const FRAMES = '[id^="ISSUE_WINDOW"],[data-testid="floating-window"],#sidebar,#panel-container > *';
+    let frame = 0;
+    function fit() {
+      frame = 0;
+      if (!settings.enabled) return;
+      for (const menu of document.querySelectorAll('wz-menu')) {
+        const inner = menu.shadowRoot?.querySelector('.wz-menu'); if (!inner) continue;
+        if (!menu.hasAttribute('expanded')) { if (inner.style.translate) inner.style.translate = ''; continue; }
+        const box = menu.closest(FRAMES); if (!box) continue;
+        inner.style.translate = '';   // measured where WME put it
+        const edge = box.getBoundingClientRect(), own = inner.getBoundingClientRect();
+        let dx = 0;
+        if (own.right > edge.right - 6) dx = Math.max(edge.left + 6 - own.left, edge.right - 6 - own.right);
+        else if (own.left < edge.left + 6) dx = Math.min(edge.right - 6 - own.right, edge.left + 6 - own.left);
+        if (dx) inner.style.translate = `${Math.round(dx)}px 0`;
+      }
+    }
+    const queue = () => { if (!frame) frame = requestAnimationFrame(fit); };
+    // A wz-menu says when it opens with its "expanded" attribute: only that one attribute is watched.
+    new MutationObserver(records => { if (records.some(record => record.target.localName === 'wz-menu')) queue(); })
+      .observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['expanded'] });
+  })();
   // Waze Chat Plus (3.1.0): when that script is installed, Studio plugs into its chat through its Extension API (v1).
   // The chat's "+" menu gets Share this request, Share a saved request and My Quick replies, and the editors in an
   // update request's discussion get a Message button that opens a private chat with them. Without Waze Chat Plus,
@@ -10914,17 +11625,13 @@ html[data-wme-studio-motion="reduced"] #ws-map-tip { transition: none; }
 .wss-search input::-webkit-search-cancel-button{filter:grayscale(1)}`;
 
     // The Message button beside an editor's name in a request's discussion.
-    GM_addStyle(`html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm { display: inline-flex !important; align-items: center !important; justify-content: center !important; flex: none !important; width: 20px !important; height: 16px !important; min-width: 0 !important; margin: 0 0 0 2px !important; padding: 0 !important; border: 0 !important; border-radius: 5px !important; background: transparent !important; color: var(--wme-studio-text-muted) !important; box-shadow: none !important; cursor: pointer; opacity: 0; vertical-align: middle; transition: opacity .12s ease, color .12s ease, background-color .12s ease; }
-html[data-wme-studio="on"] .problem-edit .conversation-view :is(.comment, wz-list-item):hover .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm,
-html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm:focus-visible,
-html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm[data-busy] { opacity: 1; }
+    GM_addStyle(`html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm { display: inline-flex !important; align-items: center !important; justify-content: center !important; flex: none !important; width: 20px !important; height: 16px !important; min-width: 0 !important; margin: 0 0 0 2px !important; padding: 0 !important; border: 0 !important; border-radius: 5px !important; background: transparent !important; color: var(--wme-studio-text-muted) !important; box-shadow: none !important; cursor: pointer; vertical-align: middle; transition: opacity .12s ease, color .12s ease, background-color .12s ease; }
 html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm:hover { background: var(--wme-studio-hover) !important; color: var(--wme-studio-accent, #0099ff) !important; }
 html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 1px; }
 html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm[data-busy] { color: var(--wme-studio-accent, #0099ff) !important; animation: ws-dm-busy .8s ease-in-out infinite alternate; }
 html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm svg { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws-dm-note.ws-dm-note.ws-dm-note.ws-dm-note { display: block !important; flex: 1 1 100% !important; order: 9; height: auto !important; margin: 2px 0 0 !important; color: var(--ws-change-alert, #e5484d) !important; font: 600 12px/16px var(--ws-font) !important; white-space: normal !important; }
-@keyframes ws-dm-busy { to { opacity: .35; } }
-@media (hover: none) { html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm { opacity: .75; } }`);
+@keyframes ws-dm-busy { to { opacity: .35; } }`);
 
     // Studio registers once Waze Chat Plus is there; the two scripts may start in either order.
     const find = () => { try { return pageWindow.WazeChatPlus || null; } catch (_) { return null; } };
@@ -11092,7 +11799,7 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
     function watch(panel) {
       if (panels.has(panel)) return;
       // WME's changes only (a new message, another request in the window), not the buttons themselves.
-      const own = node => (node.nodeType === 1 ? node : node.parentElement)?.closest?.(`${OWN}, .ws-reply-tools, .ws-case-tr, .ws-case-head, .ws-case-status`);
+      const own = node => (node.nodeType === 1 ? node : node.parentElement)?.closest?.(`${OWN}, .ws-reply-tools, .ws-case-tr, .ws-case-head, .ws-case-status, .ws-reply-buttons, .ws-suggested`);
       const observer = new MutationObserver(records => {
         if (records.every(record => [...record.addedNodes, ...record.removedNodes].every(own))) return;
         queue();
@@ -13263,9 +13970,32 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     syncHeaderAddonPlacement();
   }
+  // The editor's location line, as words and tags (4.1.0). Other scripts add their own tags to it (one shows the
+  // editable area: "permanent access (managed area) · driven 70 d ago"); read as plain text they ran into the place
+  // name. A part with a background of its own is a tag and stays one in the pill, in its own colours.
+  function headerLocationParts() {
+    const box = floatingHeader.locationSource?.querySelector('.location-info');
+    const words = [], tags = [];
+    const flat = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const painted = color => !!color && color !== 'transparent' && !/^rgba\([^)]*,\s*0(?:\.0+)?\)$/.test(color);
+    (function walk(node, depth) {
+      for (const child of node?.childNodes || []) {
+        if (child.nodeType === 3) { const text = flat(child.textContent); if (text) words.push(text); continue; }
+        if (child.nodeType !== 1) continue;
+        const text = flat(child.textContent); if (!text) continue;
+        let style = null; try { style = getComputedStyle(child); } catch (_) { style = null; }
+        if (style?.display === 'none') continue;
+        if (painted(style?.backgroundColor)) tags.push({ text, background: style.backgroundColor, color: style.color });
+        else if (depth < 3 && child.children.length) walk(child, depth + 1);
+        else words.push(text);
+      }
+    })(box, 0);
+    return { text: words.join(' ').replace(/\s+([,.;:!?)])/g, '$1').replace(/([(])\s+/g, '$1'), tags };
+  }
   function updateHeaderLocation() {
-    const text = (floatingHeader.locationSource?.querySelector('.location-info')?.textContent || '')
-      .replace(/\s+/g, ' ').trim();
+    const parts = headerLocationParts(), tags = parts.tags;
+    const text = parts.text || tags.map(tag => tag.text).join(' · ');
+    if (!parts.text) tags.length = 0;
     if (!compactHeaderActive() || !text) {
       floatingHeader.locationLabel?.remove();
       floatingHeader.locationLabel = null;
@@ -13292,12 +14022,17 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const hasBookmarkPin = !!document.getElementById('addNodeButton');
     if (hasBookmarkPin) label.removeAttribute('aria-hidden');
     else if (label.getAttribute('aria-hidden') !== 'true') label.setAttribute('aria-hidden', 'true');
-    const signature = `${text}\u0001${managers.text}\u0001${managers.names}\u0001${hasBookmarkPin ? 1 : 0}`;
+    const signature = `${text}\u0001${tags.map(tag => `${tag.text}\u0002${tag.background}\u0002${tag.color}`).join('\u0003')}\u0001${managers.text}\u0001${managers.names}\u0001${hasBookmarkPin ? 1 : 0}`;
     const locationChanged = label.dataset.wsLocation !== signature;
     if (locationChanged) {
       label.dataset.wsLocation = signature;
       const place = document.createElement('span'); place.className = 'ws-loc-place'; place.textContent = text;
       const parts = hasBookmarkPin ? [headerBookmarkPin(), place] : [place];
+      for (const tag of tags) {
+        const chip = document.createElement('span'); chip.className = 'ws-loc-tag'; chip.textContent = tag.text;
+        chip.style.setProperty('--ws-loc-tag-bg', tag.background); chip.style.setProperty('--ws-loc-tag-ink', tag.color);
+        parts.push(chip);
+      }
       if (managers.text) {
         const bar = document.createElement('span'); bar.className = 'ws-loc-sep'; bar.textContent = '|';
         const ams = document.createElement('span'); ams.className = 'ws-loc-ams'; ams.textContent = managers.text;
@@ -19874,7 +20609,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const explicit=block[1].match(/^\s*\/\/\s*@iconURL\s+([^\r\n]+)$/im), alias=block[1].match(/^\s*\/\/\s*@icon\s+([^\r\n]+)$/im);
       return {iconURL:safeIconURL((explicit || alias)?.[1] || '',source)};
     }
-    // The icon of a script by its Greasy Fork id, for the URCE tab on request windows (4.0.2).
+    // The icon of a script by its Greasy Fork id, for the URC-E tab on request windows (4.0.2).
     globalThis.WMEStudioScriptIcon=id=>iconCache.get(metadataSource(String(id)))?.iconURL || '';
     const iconCacheRead=Promise.resolve(studioKeep.get(ICON_CACHE_KEY,{})).then(saved=>{
       const now=Date.now();
@@ -20153,7 +20888,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     // themselves, the earliest pinned script that is there gets opened; a pin that comes earlier in the bar and
     // arrives later takes over. After half a minute the choice is left alone.
     let userChoseScript=false, autoOpenedRank=Infinity, autoOpenSince=0;
-    // A script opened for the user from elsewhere (URCE from a request window, 4.0.2) counts as their choice, so the
+    // A script opened for the user from elsewhere (URC-E from a request window, 4.0.2) counts as their choice, so the
     // first pinned script doesn't take its place a moment later.
     globalThis.WMEStudioScriptChosen=()=>{ userChoseScript=true; };
     document.addEventListener('click',event=>{
@@ -21578,10 +22313,61 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   // ---- Changelog ------------------------------------------------------------------------------------------------
   // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
   // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
-  const STUDIO_BUILD = '4.0.3-2026-10-27z2';
+  const STUDIO_BUILD = '4.1.0-2026-10-28';
   const STUDIO_CHANGELOG = Object.freeze([
     // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
     // quiet (4.0.1): no card of its own; the 4.0 welcome lists it under "Also in this update", and the changelog keeps it.
+    { version: '4.1.0', groups: [
+      { title: 'Update requests', items: [
+        "Quick replies come with ready replies for each type of request, and the ones for the request in front of you come first.",
+        "Map Mate reports are recognized, with replies for what they’re about: speed bumps, traffic lights, curves, railroad crossings and speed cameras.",
+        "A reply can also tick Solved or Not identified when it goes in.",
+        "Up to 8 replies can have their own button above the reply box.",
+        "New variable {selected}: the streets of the segments you selected.",
+        "Quick replies can suggest a first reply for requests nobody answered yet, to read before sending.",
+        "Export your replies as CSV or XML, and import CSV, XML or JSON files.",
+        "Your own replies go in already in the reporter’s language, translated like the Translate button does. Undo translation brings back what you wrote.",
+        "Quick replies management: Where it shows sits under the reply with its fields side by side, and Reply check sits beside the preview.",
+        "In Quick replies management, a reply’s countries sit under its name at the top."
+      ] },
+      { title: 'Cloud Sync', items: [
+        "Cloud Sync keeps your Quick replies the same on every device: your replies, folders and variables, and your wording of Studio’s replies."
+      ] },
+      { title: 'Add-ons', items: [
+        "WMEPH looks right in Studio’s dark and black themes, its icons too.",
+        "With Waze Chat Plus, the Message button beside editors in a request’s discussion is always there, not only when you hover."
+      ] },
+      { title: 'Places', items: [
+        "Place templates: keep a place’s website, phone, services and open hours under a name, and put them on other places in one click, several at once too. In a place’s More info tab."
+      ] },
+      { title: 'Report a bug', items: [
+        "Reports and ideas you send have a title, the name they go by in My reports.",
+        "An idea you sent is in the works or added, where a bug report is under construction or fixed.",
+        "Answers in My reports can carry pictures and an MP4 video, like a report."
+      ] },
+      { title: 'Discord', items: [
+        "Verify on Discord in one click: the link the bot gives you opens the editor, and Studio asks you once.",
+        "Your Discord roles stay up to date: a new rank, a new WME name or becoming a manager reach the server by themselves.",
+        "New roles on the Discord: the country you edit in, and Area Manager or Country Manager.",
+        "Pressing Verify when you’re already verified offers Add missing details, which puts back or updates your roles and nickname, and Unverify."
+      ] },
+      { title: 'Fixes', items: [
+        "Cloud Sync works on an iPad with the Userscripts app. Its page said it wasn’t loaded.",
+        "Closing Quick replies with × no longer closes and reopens the update request.",
+        "A request’s description you minimised with WME’s arrow stays minimised when you scroll.",
+        "WME’s menus in request windows and panels stay inside them: the reasons under a map suggestion’s ? can all be picked.",
+        "In Floating mode, tags other scripts add to the location (like your editable area) stay apart from the place name.",
+        "Quick replies keeps the same height while you go through its chips or search."
+      ] },
+    ] },
+    { version: '4.0.4', quiet: true, groups: [
+      { title: 'Update requests', items: [
+        "Translate in a request translates the reporter's description too, not only the messages."
+      ] },
+      { title: 'Fixes', items: [
+        "URC-E is written the way its author writes it."
+      ] },
+    ] },
     { version: '4.0.3', quiet: true, groups: [
       { title: 'Fixes', items: [
         "Your saved requests and follow-ups load again when the editor opens.",
@@ -21603,7 +22389,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         "Other editors' messages in a request have their own color, so you can tell them from yours.",
         "Names in the discussion are in your accent color and easier to read. An editor's name opens their editor profile in a new tab, and the reporter's name opens theirs.",
         "The reporter's description folds to one line with the arrow at its top right, so a small screen has more room for the discussion. Studio remembers your choice.",
-        "With URCE installed, Studio leaves replies, reminders and closing to it and only styles the request window. The Quick replies tab opens URCE's comments instead. You can change this in Settings › Panels. Source: URCE (URComments-Enhanced) by dBsooner, based on rickzabel's URComments."
+        "With URC-E installed, Studio leaves replies, reminders and closing to it and only styles the request window. The Quick replies tab opens URC-E's comments instead. You can change this in Settings › Panels. Source: URC-E (URComments-Enhanced) by dBsooner, based on rickzabel's URComments."
       ] },
       { title: 'Report a bug', items: [
         "My reports shows the screenshots and the video you attached to each report.",
@@ -22118,17 +22904,17 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     // Keep editor-wide wheel shortcuts out of the settings dialog without blocking native scrolling.
     host.addEventListener('wheel', event => event.stopPropagation(), { passive: true });
     queueMicrotask(() => globalThis.WMEStudioI18n?.localize(shadow));
-    // The URCE row (4.0.2) goes in from here, so the Interface library stays as it is.
+    // The URC-E row (4.0.2) goes in from here, so the Interface library stays as it is.
     shadow.innerHTML = studioPart('part26206', { USERSCRIPT_VERSION, layoutThumb, studioButtonMotionCSS, studioControlsCSS, studioIcon, studioRangeCSS, studioStripCSS })
       .replace('<span class="value" data-id="requestQuietDays-value">7</span></div>', '<span class="value" data-id="requestQuietDays-value">7</span></div>'
-        + '<label class="srow togrow" data-row="urceHandoff"><span class="srow-text"><strong>Leave replies and reminders to URCE</strong>'
+        + '<label class="srow togrow" data-row="urceHandoff"><span class="srow-text"><strong>Leave replies and reminders to URC-E</strong>'
         + '<span class="small">When URComments-Enhanced is installed, its comments, reminders and closing do that work, and Studio only styles the request window. Off: Studio\'s quick replies, follow-ups and closing suggestions stay too.</span>'
-        + '<span class="small"><span>Source: URCE (URComments-Enhanced) by dBsooner, based on rickzabel\'s URComments.</span> <a href="https://greasyfork.org/scripts/375430" target="_blank" rel="noopener noreferrer">Greasy Fork</a></span>'
-        + '<span class="small" data-id="urceHandoff-missing" hidden>URCE isn\'t installed in this editor.</span></span>'
+        + '<span class="small"><span>Source: URC-E (URComments-Enhanced) by dBsooner, based on rickzabel\'s URComments.</span> <a href="https://greasyfork.org/scripts/375430" target="_blank" rel="noopener noreferrer">Greasy Fork</a></span>'
+        + '<span class="small" data-id="urceHandoff-missing" hidden>URC-E isn\'t installed in this editor.</span></span>'
         + '<span class="switch"><input data-id="urceHandoff" type="checkbox"><i></i></span></label>')
       // Verify on Discord (4.0.3): the code from #verify, under "Studio on Discord".
       .replace('<div class="srow" data-row="bugFixes" hidden>', '<div class="srow" data-row="discordVerify"><div class="srow-text"><strong>Verify on Discord</strong>'
-        + '<span class="small">Press Verify in #verify on the WME Studio Discord and type the code here. Studio sends your WME name, rank and user id, so the server knows you edit the map.</span>'
+        + '<span class="small">Press Verify in #verify on the WME Studio Discord and open the link it gives you, or type the code here. Studio sends your WME name, rank, country and manager status, and keeps your Discord roles up to date.</span>'
         + '<span class="small ws-verify-say" data-id="verify-status" data-ws-keep hidden></span></div>'
         + '<div class="actions"><input class="ws-verify-code" data-id="verify-code" type="text" maxlength="9" placeholder="Code" aria-label="Code from Discord" autocomplete="off" autocapitalize="characters" spellcheck="false">'
         + '<button class="reset primary" data-id="verify-send" type="button">Verify</button></div></div>'
@@ -23180,19 +23966,24 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           if (data?.code === 'taken') { tell(vt('{0} is already linked to another Discord account. Ask a moderator if that isn’t you.', who.name), 'error'); return; }
           tell(PROBLEMS[data?.code] ? vt(PROBLEMS[data.code]) : vt(status ? 'The server answered' : 'Could not reach the server') + (status ? ` ${status}` : ''), 'error');
         };
-        try {
-          GM_xmlhttpRequest({ method: 'POST', url: `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/verify`, anonymous: true, timeout: 20000,
-            headers: { 'Content-Type': 'application/json' }, data: JSON.stringify({ code, wme_id: who.id, wme_name: who.name, rank: who.rank }),
-            onload: response => done(response.status, response.responseText || ''), onerror: () => done(0, ''), ontimeout: () => done(0, '') });
-        } catch (_) { done(0, ''); }
+        studioDiscord.verify(code).then(answer => done(answer.status, answer.text || JSON.stringify(answer.data || {})), () => done(0, ''));
       };
       send?.addEventListener('click', verify);
       field?.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); verify(); } });
       field?.addEventListener('input', () => { if (status.dataset.tone === 'error') tell(''); });
     }
     // ---- Report a bug: the dialog ------------------------------------------------------------------------------
+    // The Title field (4.1.0) comes with the Interface library. With an older copy of it (the userscript manager updates
+    // libraries on its own time), Studio adds the field itself, so the dialog still opens.
+    function bugTitleField() {
+      const what = q('[data-id="bug-what"]')?.closest('label'); if (!what) return document.createElement('input');
+      const label = document.createElement('label'); label.className = 'bug-field';
+      label.innerHTML = '<span><span data-id="bug-name-label">Title</span> <em>*</em></span><input data-id="bug-name" type="text" maxlength="120" autocomplete="off">';
+      what.before(label);
+      return label.querySelector('input');
+    }
     const bug = {
-      backdrop: q('[data-id="bug-backdrop"]'), form: q('[data-id="bug-dialog"]'), what: q('[data-id="bug-what"]'), steps: q('[data-id="bug-steps"]'),
+      backdrop: q('[data-id="bug-backdrop"]'), form: q('[data-id="bug-dialog"]'), what: q('[data-id="bug-what"]'), steps: q('[data-id="bug-steps"]'), name: q('[data-id="bug-name"]') || bugTitleField(),
       category: null, contact: q('[data-id="bug-contact"]'), file: q('[data-id="bug-shot-file"]'), shotName: q('[data-id="bug-shot-name"]'),
       shotClear: q('[data-id="bug-shot-clear"]'), preview: q('[data-id="bug-preview"]'), diag: q('[data-id="bug-diag"]'), error: q('[data-id="bug-error"]'),
       note: q('[data-id="bug-note"]'), send: q('[data-id="bug-send"]'), done: q('[data-id="bug-done"]'), doneText: q('[data-id="bug-done-text"]'),
@@ -23253,15 +24044,17 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     const translate = text => text;
     const CATEGORY_LABELS = { layout: 'Floating mode and islands', arrange: 'Arrange', theme: 'Theme and colors', panels: 'Panels and windows', menu: 'Right-click menu', addons: 'Another script', speed: 'Speed', mobile: 'Mobile', feature: 'Feature request', other: 'Something else' };
     function bugText() {
-      const what = bug.what.value.trim(), steps = bug.steps.value.trim();
+      const what = bug.what.value.trim(), steps = bug.steps.value.trim(), name = bug.name.value.replace(/\s+/g, ' ').trim();
+      // A title of its own (4.1.0): what the report is called in My reports and on the reports site.
+      const title = `**Title:** ${name || '(not filled in)'}\n`;
       if (bug.mode === 'feature') return bugReport()
         .replace('### WME Studio bug report', '### WME Studio feature request')
-        .replace('**What happened:** (describe it here)', `**Idea:** ${what || '(not filled in)'}`)
+        .replace('**What happened:** (describe it here)', `${title}**Idea:** ${what || '(not filled in)'}`)
         .replace('**What you expected:** \n', '')
         .replace('**Steps to reproduce:** ', `**How it would help:** ${steps || '(not filled in)'}`)
         .replace('\n---\n', '\n**Where:** Feature request\n---\n');
       return bugReport()
-        .replace('**What happened:** (describe it here)', `**What happened:** ${what || '(not filled in)'}`)
+        .replace('**What happened:** (describe it here)', `${title}**What happened:** ${what || '(not filled in)'}`)
         .replace('**What you expected:** \n', '')
         .replace('**Steps to reproduce:** ', `**Steps to reproduce:** ${steps || '(not filled in)'}`)
         .replace('\n---\n', `\n**Where:** ${CATEGORY_LABELS[bug.category.value] || '(not chosen)'}\n---\n`);
@@ -23270,18 +24063,19 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     function showBugError(text) { bug.error.textContent = text || ''; bug.error.hidden = !text; }
     // The same dialog takes a bug or an idea (3.0.0): an idea has no "where", and its words change with it.
     const BUG_WORDS = {
-      bug: { title: 'Report a bug', what: 'What happened?', whatHint: 'For example: after I moved the zoom buttons to the left, the + menu opens under the header.', steps: 'Steps to see it again', stepsHint: '1. Open Arrange  2. …', send: 'Send report' },
-      feature: { title: 'Suggest a feature', what: 'What would you like?', whatHint: 'For example: a button that hides every island at once.', steps: 'How would it help?', stepsHint: 'For example: I review requests on a small laptop screen.', send: 'Send idea' }
+      bug: { title: 'Report a bug', nameHint: 'For example: The + menu opens under the header', what: 'What happened?', whatHint: 'For example: after I moved the zoom buttons to the left, the + menu opens under the header.', steps: 'Steps to see it again', stepsHint: '1. Open Arrange  2. …', send: 'Send report' },
+      feature: { title: 'Suggest a feature', nameHint: 'For example: A button that hides every island', what: 'What would you like?', whatHint: 'For example: a button that hides every island at once.', steps: 'How would it help?', stepsHint: 'For example: I review requests on a small laptop screen.', send: 'Send idea' }
     };
     function openBugDialog(mode) {
       bug.mode = mode === 'feature' ? 'feature' : 'bug';
       const words = BUG_WORDS[bug.mode];
       q('#bug-title').textContent = words.title;
+      bug.name.placeholder = words.nameHint;
       q('[data-id="bug-what-label"]').textContent = words.what; bug.what.placeholder = words.whatHint;
       q('[data-id="bug-steps-label"]').textContent = words.steps; bug.steps.placeholder = words.stepsHint;
       q('[data-id="bug-where-field"]').hidden = bug.mode === 'feature';
       bug.opener = shadow.activeElement;
-      bug.done.hidden = true; showBugError(''); bug.what.closest('.bug-field').classList.remove('invalid'); q('[data-id="bug-category-control"]').closest('.bug-field').classList.remove('invalid');
+      bug.done.hidden = true; showBugError(''); bug.name.closest('.bug-field').classList.remove('invalid'); bug.what.closest('.bug-field').classList.remove('invalid'); q('[data-id="bug-category-control"]').closest('.bug-field').classList.remove('invalid');
       bug.note.textContent = translate(endpointReady ? 'Sent. Thanks, I\'ll take a look.' : 'Copied for the feedback page.');
       bug.send.textContent = translate(endpointReady ? words.send : 'Copy & open feedback page');
       const user = wmeUserName();
@@ -23290,7 +24084,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       else bug.asText.textContent = translate('Not signed in, so add a way to reach you below if you would like an answer.');
       refreshBugDiag();
       bug.backdrop.hidden = false;
-      requestAnimationFrame(() => bug.what.focus({ preventScroll: true }));
+      requestAnimationFrame(() => (bug.name.value.trim() ? bug.what : bug.name).focus({ preventScroll: true }));
     }
     function closeBugDialog() {
       if (bug.sending) return;
@@ -23298,7 +24092,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       bug.opener?.focus?.({ preventScroll: true });
     }
     function resetBugDialog() {
-      bug.what.value = ''; bug.steps.value = ''; bug.contact.value = ''; bug.category.value = '';
+      bug.name.value = ''; bug.what.value = ''; bug.steps.value = ''; bug.contact.value = ''; bug.category.value = '';
       clearScreenshot();
     }
     // Attachments (2.0.5): up to BUG_IMAGES_MAX images and one MP4 video. Images are shrunk in the browser (at most
@@ -23413,9 +24207,9 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       });
     }
     // The video goes as raw MP4 bytes to the report it belongs to: POST /api/report/<id>/video.
-    function bugUploadVideo(id, file) {
+    function bugUploadVideo(id, file, path = `/api/report/${encodeURIComponent(id)}/video`, key = '') {
       return new Promise((resolve, reject) => {
-        const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/report/${encodeURIComponent(id)}/video`;
+        const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`;
         const limit = Math.max(60000, Math.min(600000, 30000 + file.size / 50));   // about 50 KB/s at worst, 1 to 10 minutes
         const guard = setTimeout(() => reject(new Error(translate('The server took too long'))), limit + 5000);
         const finish = (status, text) => {
@@ -23425,6 +24219,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           else reject(new Error(data?.error || (status ? `${translate('The server answered')} ${status}` : translate('No answer from the server'))));
         };
         const headers = { 'Content-Type': 'video/mp4', 'X-File-Name': encodeURIComponent(file.name || 'video.mp4') };
+        if (key) headers['X-Reporter-Token'] = key;   // a message's video (4.1.0) goes with the reporter key
         if (typeof GM_xmlhttpRequest === 'function') {
           GM_xmlhttpRequest({ method: 'POST', url, data: file, headers, timeout: limit, anonymous: true,
             onload: response => finish(response.status, response.responseText || ''),
@@ -23437,7 +24232,9 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     async function submitBugReport() {
       if (bug.sending) return;
-      const what = bug.what.value.trim();
+      const what = bug.what.value.trim(), name = bug.name.value.replace(/\s+/g, ' ').trim();
+      if (name.length < 3) { bug.name.closest('.bug-field').classList.add('invalid'); showBugError(translate('Please give it a title first.')); bug.name.focus(); return; }
+      bug.name.closest('.bug-field').classList.remove('invalid');
       if (what.length < 5) { bug.what.closest('.bug-field').classList.add('invalid'); showBugError(translate(bug.mode === 'feature' ? 'Please describe your idea first.' : 'Please say what happened first.')); bug.what.focus(); return; }
       bug.what.closest('.bug-field').classList.remove('invalid');
       if (bug.mode !== 'feature' && !bug.category.value) { q('[data-id="bug-category-control"]').closest('.bug-field').classList.add('invalid'); showBugError(translate('Please choose where it happened.')); bug.category.focus(); return; }
@@ -23452,7 +24249,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       bug.sending = true; bug.send.disabled = true; bug.send.textContent = translate('Sending…');
       try {
         const result = await bugApi('POST', '/api/report', { report: text, version: USERSCRIPT_VERSION, editor: `${location.hostname}${location.pathname}`, browser: navigator.userAgent,
-          summary: what.slice(0, 200), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.mode === 'feature' ? 'feature' : bug.category.value, screenshot: bug.shots[0]?.data || '', screenshots: bug.shots.map(shot => shot.data), token: await studioReporterKey() });
+          summary: name.slice(0, 120), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.mode === 'feature' ? 'feature' : bug.category.value, screenshot: bug.shots[0]?.data || '', screenshots: bug.shots.map(shot => shot.data), token: await studioReporterKey() });
         let doneText = (bug.mode === 'feature' ? (result.id ? translate('Got your idea #{0}. Thanks, I\'ll read it.') : translate('Got your idea. Thanks, I\'ll read it.'))
           : (result.id ? translate('Got your report #{0}. Thanks, I\'ll take a look.') : translate('Got your report. Thanks, I\'ll take a look.'))).replace('{0}', String(result.id || ''));
         if (bug.clip) {
@@ -23512,7 +24309,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const upcoming = items.length > 0 && items.every(item => item.upcoming);
       if (ideas) fix.title.textContent = translate(kinds > 1 ? 'News about your ideas'
         : items.length ? (upcoming ? (items.length > 1 ? 'Your ideas are coming in an update' : 'Your idea is coming in an update') : items.length > 1 ? 'Your ideas are in Studio now' : 'Your idea is in Studio now')
-        : working.length ? (working.length > 1 ? 'Your ideas are under construction' : 'Your idea is under construction')
+        : working.length ? (working.length > 1 ? 'Your ideas are in the works' : 'Your idea is in the works')
         : (rejected.length > 1 ? 'Your ideas will not be added' : 'Your idea will not be added'));
       else fix.title.textContent = translate(kinds > 1 ? 'News about your bug reports'
         : items.length ? (upcoming ? (items.length > 1 ? 'Your bug reports will be fixed' : 'Your bug report will be fixed') : items.length > 1 ? 'Your bug reports were fixed' : 'Your bug report was fixed')
@@ -23545,7 +24342,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       for (const item of working) {
         const row = document.createElement('div'); row.className = 'fix-item';
         const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.id).slice(0, 120);
-        const state = document.createElement('span'); state.className = 'fix-version'; state.textContent = translate('under construction');
+        const state = document.createElement('span'); state.className = 'fix-version'; state.textContent = translate(item.category === 'feature' ? 'in the works' : 'under construction');
         row.append(quote, ' — ', state);
         if (item.note) { const note = document.createElement('span'); note.className = 'fix-note'; note.textContent = item.note.slice(0, 300); row.append(note); }
         fix.list.append(row);
@@ -23554,7 +24351,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         const row = document.createElement('div'); row.className = 'fix-item';
         const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.id).slice(0, 120);
         row.append(quote, ' — ');
-        const version = document.createElement('span'); version.className = 'fix-version'; version.textContent = `${translate(item.upcoming ? (item.category === 'feature' ? 'coming in WME Studio' : 'will be fixed in WME Studio') : 'fixed in WME Studio')} ${item.version || ''}`.trim();
+        const version = document.createElement('span'); version.className = 'fix-version'; version.textContent = `${translate(item.upcoming ? (item.category === 'feature' ? 'coming in WME Studio' : 'will be fixed in WME Studio') : item.category === 'feature' ? 'added in WME Studio' : 'fixed in WME Studio')} ${item.version || ''}`.trim();
         row.append(version);
         if (item.note) { const note = document.createElement('span'); note.className = 'fix-note'; note.textContent = item.note.slice(0, 300); row.append(note); }
         fix.list.append(row);
@@ -23686,7 +24483,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (report.status === 'fixed') return translate(report.fixed_upcoming ? (idea ? 'Coming in {0}' : 'Will be fixed in {0}') : idea ? 'Added in {0}' : 'Fixed in {0}').replace('{0}', report.fixed_version || '?');
       // Removed from my list (3.0.0): still shown here, so nothing a person sent disappears; one that had been fixed says so.
       if (report.status === 'deleted') return report.fixed_before ? `${translate('Removed')} · ${translate(idea ? 'Added in {0}' : 'Fixed in {0}').replace('{0}', report.fixed_before)}` : translate('Removed');
-      return translate({ new: 'Sent', seen: 'Seen', working: 'under construction', rejected: idea ? 'Will not be added' : 'Will not be fixed', closed: 'Closed' }[report.status] || 'Sent');
+      return translate({ new: 'Sent', seen: 'Seen', working: idea ? 'in the works' : 'under construction', rejected: idea ? 'Will not be added' : 'Will not be fixed', closed: 'Closed' }[report.status] || 'Sent');
     }
     const MINE_OPEN = new Set(['new', 'seen', 'working']);
     function loadMyReportsIfOld() { if (!mine.reports || Date.now() - mine.loadedAt > 60000) loadMyReports(); else renderMyReports(); }
@@ -23732,7 +24529,9 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           // What you wrote in full (4.0.2), from a Worker that sends it; the summary stops at 200 characters.
           const summary = document.createElement('div'); summary.className = 'mine-sum'; summary.setAttribute('data-ws-keep', ''); summary.style.whiteSpace = 'pre-line'; summary.style.overflowWrap = 'anywhere';
           summary.textContent = String(report.text || report.summary || `${translate('Report')} #${report.id}`);
-          item.append(top, summary);
+          // Its title (4.1.0), above what you wrote.
+          if (report.title) { const title = document.createElement('div'); title.className = 'mine-sum'; title.setAttribute('data-ws-keep', ''); title.style.fontWeight = '700'; title.style.overflowWrap = 'anywhere'; title.textContent = String(report.title); item.append(top, title, summary); }
+          else item.append(top, summary);
           if (report.more) {
             const more = document.createElement('div'); more.className = 'mine-note'; more.style.fontStyle = 'normal'; more.style.whiteSpace = 'pre-line'; more.style.overflowWrap = 'anywhere';
             const label = document.createElement('b'); label.textContent = translate(report.category === 'feature' ? 'How would it help?' : 'Steps to see it again'); if (String(report.more).includes('\n')) label.style.display = 'block';
@@ -23749,7 +24548,9 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
               const bubble = document.createElement('div'); bubble.className = 'mine-msg'; bubble.dataset.from = message.author === 'you' ? 'you' : 'author';
               const who = document.createElement('small'); who.textContent = `${(message.author === 'you' ? translate('You') : 'WME Studio')} · ${mineDate(message.created_at)}`;
               const text = document.createElement('span'); text.setAttribute('data-ws-keep', ''); text.textContent = String(message.body || '');
-              bubble.append(who, text); thread.append(bubble);
+              bubble.append(who, text);
+              const sent = mineMessageFiles(report, message, user); if (sent) bubble.append(sent);
+              thread.append(bubble);
             }
             item.append(thread);
           }
@@ -23865,7 +24666,40 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       box.append(chip, row);
       return box;
     }
-    // Answering the author (2.2.1): a button that opens a box under the report.
+    // Pictures and a video sent with a message (4.1.0): small pictures right in the bubble, the video behind a button.
+    function mineMessageFiles(report, message, user) {
+      const files = Array.isArray(message.files) ? message.files : [];
+      if (!files.length || !Number.isInteger(message.id)) return null;
+      mineMediaStyle();
+      const row = document.createElement('div'); row.className = 'mine-media-row'; row.style.marginTop = '6px';
+      const base = `/api/mine/${report.id}/messages/${message.id}/files/`, query = `?user=${encodeURIComponent(user || '')}`;
+      for (const file of files) {
+        if (file.kind === 'image') {
+          const shot = document.createElement('button'); shot.type = 'button'; shot.className = 'mine-shot'; shot.textContent = translate('Loading…'); shot.setAttribute('aria-label', translate('Screenshot'));
+          bugBlob(`${base}${file.n}${query}`, true).then(url => {
+            const img = document.createElement('img'); img.src = url; img.alt = ''; shot.replaceChildren(img);
+            shot.addEventListener('click', () => { const big = document.createElement('img'); big.src = url; big.alt = translate('Screenshot'); mineLight(big); });
+          }, () => { shot.textContent = translate('Could not load it'); shot.disabled = true; });
+          row.append(shot);
+        } else if (file.kind === 'video') {
+          const play = document.createElement('button'); play.type = 'button'; play.className = 'mine-shot video'; play.setAttribute('aria-label', translate('Video'));
+          play.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+          play.addEventListener('click', () => {
+            play.disabled = true;
+            bugBlob(`${base}${file.n}${query}`).then(url => { play.disabled = false; const player = document.createElement('video'); player.src = url; player.controls = true; player.autoplay = true; player.playsInline = true; mineLight(player); },
+              () => { play.textContent = translate('Could not load it'); });
+          });
+          row.append(play);
+        }
+      }
+      return row.childElementCount ? row : null;
+    }
+    function mineMediaStyle() {
+      const root = mine.body.getRootNode();
+      if (root && !root.querySelector?.('style[data-mine-media]')) { const style = document.createElement('style'); style.setAttribute('data-mine-media', ''); style.textContent = MINE_MEDIA_CSS; (root.host ? root : document.head).append(style); }
+    }
+    // Answering the author (2.2.1): a button that opens a box under the report. Pictures and an MP4 video can go
+    // with it (4.1.0), like with a report: picked, pasted or dropped.
     function mineReply(report, answered) {
       const box = document.createElement('div');
       const open = document.createElement('button'); open.type = 'button'; open.className = 'reset mine-reply-open'; open.textContent = translate(answered ? 'Answer' : 'Message me');
@@ -23875,16 +24709,55 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const send = document.createElement('button'); send.type = 'button'; send.className = 'reset primary'; send.textContent = translate('Send');
       const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'reset'; cancel.textContent = translate('Cancel');
       const error = document.createElement('span'); error.className = 'mine-reply-error';
-      row.append(send, cancel, error); form.append(field, row); box.append(open, form);
+      const attach = document.createElement('button'); attach.type = 'button'; attach.className = 'reset mine-attach'; attach.textContent = translate('Add images or a video');
+      const picker = document.createElement('input'); picker.type = 'file'; picker.accept = 'image/*,video/mp4,.mp4'; picker.multiple = true; picker.hidden = true;
+      const chosen = document.createElement('div'); chosen.className = 'mine-media-row'; chosen.hidden = true;
+      const files = { images: [], clip: null };
+      const paintChosen = () => {
+        mineMediaStyle();
+        chosen.replaceChildren(...files.images.map((data, index) => {
+          const shot = document.createElement('button'); shot.type = 'button'; shot.className = 'mine-shot'; shot.title = translate('Remove'); shot.setAttribute('aria-label', translate('Remove'));
+          const img = document.createElement('img'); img.src = data; img.alt = ''; shot.append(img);
+          shot.addEventListener('click', () => { files.images.splice(index, 1); paintChosen(); });
+          return shot;
+        }), ...(files.clip ? [(() => { const play = document.createElement('button'); play.type = 'button'; play.className = 'mine-shot video'; play.title = `${files.clip.name} · ${translate('Remove')}`; play.setAttribute('aria-label', translate('Remove'));
+          play.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>'; play.addEventListener('click', () => { files.clip = null; paintChosen(); }); return play; })()] : []));
+        chosen.hidden = !chosen.childElementCount;
+        attach.disabled = files.images.length >= BUG_IMAGES_MAX && !!files.clip;
+      };
+      const take = async list => {
+        error.textContent = '';
+        for (const file of [...(list || [])]) {
+          if (isBugVideo(file)) { if (file.size > BUG_VIDEO_MAX) error.textContent = translate('Videos must be MP4 files of up to 25 MB.'); else files.clip = file; continue; }
+          if (/^video\//.test(file.type)) { error.textContent = translate('Videos must be MP4 files of up to 25 MB.'); continue; }
+          if (!/^image\//.test(file.type) || files.images.length >= BUG_IMAGES_MAX) continue;
+          try { files.images.push(await shrinkImage(file)); } catch (_) { error.textContent = translate('Could not load it'); }
+        }
+        paintChosen();
+      };
+      attach.addEventListener('click', () => picker.click());
+      picker.addEventListener('change', () => { take(picker.files); picker.value = ''; });
+      field.addEventListener('paste', event => { const list = [...(event.clipboardData?.files || [])]; if (list.length) { event.preventDefault(); take(list); } });
+      form.addEventListener('dragover', event => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault(); });
+      form.addEventListener('drop', event => { if (!event.dataTransfer?.files?.length) return; event.preventDefault(); take(event.dataTransfer.files); });
+      row.prepend(attach); row.append(picker);
+      row.append(send, cancel, error); form.append(field, chosen, row); box.append(open, form);
       open.addEventListener('click', () => { open.hidden = true; form.hidden = false; field.focus(); });
-      cancel.addEventListener('click', () => { form.hidden = true; open.hidden = false; error.textContent = ''; });
+      cancel.addEventListener('click', () => { form.hidden = true; open.hidden = false; error.textContent = ''; files.images = []; files.clip = null; paintChosen(); });
       field.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) send.click(); });
       send.addEventListener('click', async () => {
         const text = field.value.trim();
-        if (!text) { field.focus(); return; }
+        if (!text && !files.images.length && !files.clip) { field.focus(); return; }
         send.disabled = true; error.textContent = '';
-        try { await bugApi('POST', `/api/report/${encodeURIComponent(report.id)}/reply`, { body: text }); mine.focus = report.id; loadMyReports(); }
-        catch (problem) { error.textContent = problem?.message || String(problem); send.disabled = false; }
+        try {
+          const result = await bugApi('POST', `/api/report/${encodeURIComponent(report.id)}/reply`, { body: text, images: files.images, video: !!files.clip });
+          if (files.clip && result?.id) {
+            send.textContent = translate('Uploading video…');
+            try { await bugUploadVideo(report.id, files.clip, `/api/report/${encodeURIComponent(report.id)}/reply/${encodeURIComponent(result.id)}/video`, await studioReporterKey()); }
+            catch (problem) { error.textContent = `${translate('The video could not be uploaded')}: ${problem?.message || problem}.`; send.textContent = translate('Send'); send.disabled = false; files.clip = null; paintChosen(); return; }
+          }
+          mine.focus = report.id; loadMyReports();
+        } catch (problem) { error.textContent = problem?.message || String(problem); send.disabled = false; send.textContent = translate('Send'); }
       });
       return box;
     }
@@ -24482,7 +25355,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           setting('Presets','layout','preset-current','starting layout balanced left-handed review desk wide header'),setting('Header width','layout','compactHeaderWidth','floating header extend full page'),setting('HUD size','layout','hudScale','floating scale islands header'),
           setting('Accent colour','look','accent','color highlight custom'),setting('Island color','look','islandFill','islands background colour gradient custom contrast'),setting('Color intensity','look','islandIntensity','island colour gradient strength strong soft muted vivid blend'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','map','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','map','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
           setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Open the + menu on click','map','createMenuClick','plus add create hover click menu roads places'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),setting('Show the zoom level','map','showZoomLevel','zoom level number scale plus minus buttons'),
-          setting('Case file request window','panels','requestCaseFile','ur update request case conversation status waiting reply'),setting('Quiet days before closing','panels','requestQuietDays','ur request quiet days close reminder reporter'),setting('Leave replies and reminders to URCE','panels','urceHandoff','urce urcomments enhanced comments replies reminders close'),setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Enable Screen displays','screens','screenDisplays','touch screen tablet tap select multiple segments places nodes several'),setting('Draw a road','screens','screenDrawButton','touch draw new road segment create add points snap junction finish'),setting('Shape a road','screens','screenShapeButton','touch shape geometry points vertex vertices move add delete junction node drag snap undo redo'),setting('Road between two segments','screens','screenRoadButton','touch select road path street between segments'),setting('Long-press for the right-click menu','screens','screenLongPress','touch hold press context menu right click'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
+          setting('Case file request window','panels','requestCaseFile','ur update request case conversation status waiting reply'),setting('Quiet days before closing','panels','requestQuietDays','ur request quiet days close reminder reporter'),setting('Leave replies and reminders to URC-E','panels','urceHandoff','urce urcomments enhanced comments replies reminders close'),setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Enable Screen displays','screens','screenDisplays','touch screen tablet tap select multiple segments places nodes several'),setting('Draw a road','screens','screenDrawButton','touch draw new road segment create add points snap junction finish'),setting('Shape a road','screens','screenShapeButton','touch shape geometry points vertex vertices move add delete junction node drag snap undo redo'),setting('Road between two segments','screens','screenRoadButton','touch select road path street between segments'),setting('Long-press for the right-click menu','screens','screenLongPress','touch hold press context menu right click'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
           setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script developers','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
           {label:translate('Arrange layout'),category:'Workspace',keywords:'move position panels islands controls hide split custom island buttons',disabled:!prefs.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches,run:async()=>{await cfg.write({compactMode:true});globalThis.WMEStudioCompactLayout.open();}},
           ...[['Standard',false],['Floating',true]].map(([label,value])=>({label:translate(label),category:'Workspace',keywords:'workspace mode layout',disabled:!prefs.enabled,run:()=>cfg.write({compactMode:value})})),
@@ -25537,6 +26410,131 @@ ${studioControlsCSS()}
       return key;
     })();
   }
+  // ---- Discord: verify and stay in sync (4.1.0) -------------------------------------------------------------------
+  // Verifying sends who you are in the editor: WME name, user id, rank, whether you can edit, whether you're an Area
+  // or Country Manager (and the areas' names), and the country the map is in. With it goes this Studio's private
+  // reporter key, so later this same Studio can say again who you are (at most every 6 hours, a few seconds after the
+  // editor opens) and the Discord roles follow a new rank, a new name, a manager role or the country you edit in most.
+  const studioDiscord = (() => {
+    const STORE = 'wmeStudio.discord.v1', EVERY = 6 * 3600000;
+    const vt = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? text; } catch (_) { return text; } };
+    const page = () => (typeof unsafeWindow === 'undefined' ? window : unsafeWindow);
+    function who() {
+      try {
+        const W = page().W, user = W?.loginManager?.user, a = user?.attributes || {};
+        const id = Number(a.id ?? user?.getID?.()), name = String(a.userName ?? user?.getUsername?.() ?? '').trim(), rank = Number(a.rank ?? user?.getRank?.());
+        if (!Number.isSafeInteger(id) || id <= 0 || !name || !Number.isFinite(rank)) return null;
+        let info = null; try { info = studioSDK.get()?.State?.getUserInfo?.() || null; } catch (_) { info = null; }
+        let country = null;
+        try { country = W?.model?.getTopCountry?.()?.attributes || null; } catch (_) { country = null; }
+        if (!country) { try { country = studioSDK.get()?.DataModel?.Countries?.getTopCountry?.() || null; } catch (_) { country = null; } }
+        const managed = (Array.isArray(info?.managedAreas) ? info.managedAreas : []).map(area => String(area?.name || '').trim()).filter(Boolean).slice(0, 12);
+        return {
+          wme_id: id, wme_name: name, rank: rank + 1,   // WME counts ranks from 0
+          editor: a.isEditor !== false && !a.mapEditingBanned,
+          area_manager: info?.isAreaManager === true || a.isAreaManager === true || managed.length > 0,
+          country_manager: info?.isCountryManager === true || a.isCountryManager === true,
+          managed, country: country?.name ? { name: String(country.name), abbr: String(country.abbr || '') } : null
+        };
+      } catch (_) { return null; }
+    }
+    async function post(path, body) {
+      const key = await studioReporterKey().catch(() => '');
+      const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`, headers = { 'Content-Type': 'application/json', ...(key ? { 'X-Reporter-Token': key } : {}) }, data = JSON.stringify(body);
+      return new Promise(resolve => {
+        const done = (status, text) => { let json = null; try { json = JSON.parse(text); } catch (_) { /* not JSON */ } resolve({ status, data: json, text }); };
+        try {
+          if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'POST', url, headers, data, anonymous: true, timeout: 20000, onload: r => done(r.status, r.responseText || ''), onerror: () => done(0, ''), ontimeout: () => done(0, '') });
+          else fetch(url, { method: 'POST', headers, body: data, mode: 'cors' }).then(async r => done(r.status, await r.text())).catch(() => done(0, ''));
+        } catch (_) { done(0, ''); }
+      });
+    }
+    const remember = value => Promise.resolve(studioKeep.set(STORE, value)).catch(() => {});
+    async function verify(code) {
+      const me = who();
+      if (!me) return { status: 0, data: { code: 'no-editor' } };
+      const answer = await post('/api/verify', { code, ...me });
+      if (answer.status >= 200 && answer.status < 300 && answer.data?.ok) await remember({ wme_id: me.wme_id, at: Date.now() });
+      return answer;
+    }
+    async function sync() {
+      if (window.top !== window.self || !uiRouteAllowed()) return;
+      const kept = await Promise.resolve(studioKeep.get(STORE, null)).catch(() => null);
+      const me = who();
+      if (!kept?.wme_id || !me || me.wme_id !== kept.wme_id || Date.now() - (kept.at || 0) < EVERY) return;
+      const answer = await post('/api/verify/sync', me);
+      if (answer.status === 200 && answer.data?.ok) await remember(answer.data.linked === false ? null : { wme_id: me.wme_id, at: Date.now() });
+    }
+    // The little window the link opens: one question, one click. Nothing is sent before the click.
+    function offer(link) {
+      const me = who();
+      if (!me || document.getElementById('wme-studio-verify-offer')) return;
+      const host = document.createElement('div'); host.id = 'wme-studio-verify-offer'; host.setAttribute('data-ws-keep', '');
+      const shadow = host.attachShadow({ mode: 'open' });
+      shadow.innerHTML = `<style>
+:host{position:fixed;left:50%;top:84px;z-index:2147483647;transform:translateX(-50%);font:13px/1.4 var(--ws-font, Inter, system-ui, sans-serif)}
+.card{display:flex;flex-direction:column;gap:10px;width:min(380px,calc(100vw - 32px));box-sizing:border-box;padding:16px 18px;border-radius:16px;border:1px solid var(--wme-studio-border,rgba(255,255,255,.12));background:var(--wme-studio-surface,#1c2026);color:var(--wme-studio-text,#eef1f4);box-shadow:0 18px 50px rgba(0,0,0,.35)}
+.head{display:flex;align-items:center;gap:10px}.head svg{flex:none;width:22px;height:22px;fill:#5865f2}.head b{font-size:14.5px}
+p{margin:0;color:var(--wme-studio-text-muted,#aab3bd)}.who{color:var(--wme-studio-text,#eef1f4);font-weight:600}
+.row{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+button{display:inline-flex;align-items:center;justify-content:center;height:34px;margin:0;padding:0 14px;border-radius:10px;border:1px solid var(--wme-studio-border,rgba(255,255,255,.14));background:transparent;color:inherit;font:600 12.5px/1 inherit;cursor:pointer}
+button.go{border-color:transparent;background:var(--wme-studio-accent,#0099ff);color:#fff}button:disabled{opacity:.6;cursor:default}button[hidden]{display:none}
+button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:2px}
+.say{font-weight:600}.say[data-tone="ok"]{color:#3ddc97}.say[data-tone="error"]{color:#ff7a7a}.say:empty{display:none}
+</style><div class="card" role="dialog" aria-modal="false" aria-labelledby="t">
+<div class="head"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.3a18.3 18.3 0 0 0-5.6 0L8.6 3a19.7 19.7 0 0 0-4.9 1.5C.6 9.1-.3 13.6.1 18.1a19.9 19.9 0 0 0 6 3l1.3-2.1a12.9 12.9 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4c-.6.4-1.3.7-2 1l1.3 2.1a19.8 19.8 0 0 0 6-3c.5-5.2-.9-9.7-3.6-13.7ZM8 15.4c-1.2 0-2.2-1.1-2.2-2.4S6.8 10.6 8 10.6s2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Zm8 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Z"/></svg><b id="t"></b></div>
+<p class="q"></p><p class="fine"></p><p class="say" role="status"></p>
+<div class="row"><button type="button" class="later"></button><button type="button" class="go"></button></div></div>`;
+      const $ = selector => shadow.querySelector(selector);
+      $('#t').textContent = vt('Verify on Discord');
+      // The question with your name in bold, wherever the language puts it.
+      const [before, after = ''] = vt('Link your Discord account to {0}?', '\u0000').split('\u0000');
+      const name = document.createElement('span'); name.className = 'who'; name.textContent = `${me.wme_name} (L${Math.min(6, me.rank)})`;
+      $('.q').append(before, name, after);
+      $('.fine').textContent = vt('Studio sends your WME name, rank, country and manager status, and keeps your Discord roles up to date when they change.');
+      $('.go').textContent = vt('Verify'); $('.later').textContent = vt('Not now');
+      const close = () => { host.remove(); };
+      $('.later').addEventListener('click', () => { link.forget(); close(); });
+      $('.go').addEventListener('click', async () => {
+        const go = $('.go'), say = $('.say');
+        go.disabled = true; say.dataset.tone = ''; say.textContent = vt('Checking…');
+        const answer = await verify(link.code);
+        go.disabled = false;
+        if (answer.status >= 200 && answer.status < 300 && answer.data?.ok) {
+          link.forget();
+          say.dataset.tone = 'ok'; say.textContent = vt('Done! You’re verified on Discord as {0} (L{1}). The roles come in a few seconds.', answer.data.wme_name || me.wme_name, Math.min(6, me.rank));
+          go.hidden = true; $('.later').textContent = vt('Close');
+          setTimeout(close, 8000);
+          return;
+        }
+        if (['unknown-code', 'expired-code', 'bad-code', 'taken'].includes(answer.data?.code)) link.forget();
+        say.dataset.tone = 'error';
+        say.textContent = answer.data?.code === 'taken' ? vt('{0} is already linked to another Discord account. Ask a moderator if that isn’t you.', me.wme_name)
+          : PROBLEM[answer.data?.code] ? vt(PROBLEM[answer.data.code]) : answer.status ? `${vt('The server answered')} ${answer.status}` : vt('Could not reach the server');
+      });
+      (document.body || document.documentElement).append(host);
+      setTimeout(() => $('.go').focus({ preventScroll: true }), 50);
+    }
+    const PROBLEM = {
+      'bad-code': 'That isn’t a code from the Discord. It has 6 letters and numbers.',
+      'unknown-code': 'That code doesn’t exist or was already used. Press Verify in the Discord for a new one.',
+      'expired-code': 'That code ran out. Press Verify in the Discord for a new one.',
+      'slow-down': 'Too many tries. Wait a few minutes and get a new code.',
+      'no-editor': 'Sign in to the editor first, then try again.'
+    };
+    // Once the editor knows who you are: the link's question (if a link opened this tab), then the check-in.
+    (() => {
+      if (window.top !== window.self) return;
+      let tries = 0;
+      const start = () => {
+        if (!who()) { if (++tries < 90) setTimeout(start, 2000); return; }
+        if (STUDIO_VERIFY_LINK && uiRouteAllowed()) setTimeout(() => offer(STUDIO_VERIFY_LINK), 1200);
+        setTimeout(() => sync().catch(() => {}), 15000);
+      };
+      setTimeout(start, 3000);
+    })();
+    return { verify, who };
+  })();
   let bugFixesChecking = false;
   async function fetchBugUpdates(user) {
     const key = await studioReporterKey();
