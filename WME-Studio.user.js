@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.1.1
+// @version      4.2.0
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -75,7 +75,7 @@ function wmeStudioBridgeNote(text, bad) {
   } catch (_) {   }
 }
 
-const WME_STUDIO_WANTED = { resources: '4.1.1-2026-10-28z9', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.1.0-2026-10-28', cloudSync: '4.1.0-2026-10-28' };
+const WME_STUDIO_WANTED = { resources: '4.1.1-2026-10-28z9', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.2.0-2026-10-28z3', cloudSync: '4.1.0-2026-10-28' };
 const WME_STUDIO_LIBRARIES = [
   { key: 'resources', name: 'Resources', code: 'WMEStudioResourcesCode', mark: /\bresources\.build = '([^'\n]{1,60})'/, url: 'https://update.greasyfork.org/scripts/600831/WME%20Studio%20Resources.js' },
   { key: 'screenDisplays', name: 'Screen displays', code: 'WMEStudioScreenDisplaysCode', mark: /\bconst BUILD = '([^'\n]{1,60})'/, url: 'https://update.greasyfork.org/scripts/601144/WME%20Studio%20Screen%20Displays.js' },
@@ -370,7 +370,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.1.1';
+  const USERSCRIPT_VERSION = '4.2.0';
   const STUDIO_VERIFY_LINK = (() => {
     const KEY = 'wmeStudio.verifyLink';
     try {
@@ -1165,6 +1165,15 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
   const pageWindow = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
   const NAMES = [["en", "English"], ["el", "Ελληνικά"], ["es", "Español"], ["pt", "Português"], ["fr", "Français"], ["de", "Deutsch"], ["it", "Italiano"], ["nl", "Nederlands"], ["pl", "Polski"], ["ru", "Русский"], ["tr", "Türkçe"], ["ka", "ქართული"]];
   const { KEYS, PACKS } = globalThis.WMEStudioResources?.languages || { KEYS: [], PACKS: {} };
+  const more = globalThis.WMEStudioInterface?.strings;
+  if (more && KEYS.length) {
+    const have = new Set(KEYS);
+    for (const [key, translations] of Object.entries(more)) {
+      if (have.has(key)) continue;
+      have.add(key); KEYS.push(key);
+      for (const [language, pack] of Object.entries(PACKS)) { pack.length = KEYS.length - 1; pack.push(translations?.[language] || key); }
+    }
+  }
   const index = new Map(KEYS.map((key, position) => [key, position]));
   const patterns = KEYS.filter(key => key.includes('{0}')).map(key => ({
     key, test: new RegExp('^' + key.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\{\d\}/g, '(.+?)') + '$')
@@ -4092,7 +4101,7 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     subscribeMapOrder(); scheduleMapOrder();
     if (!mapOrderInit && typeof pageWindow.getWmeSdk === 'function') {
       mapOrderInit = Promise.resolve(pageWindow.SDK_INITIALIZED).then(() => {
-        mapOrderSDK = pageWindow.getWmeSdk({ scriptId: 'wme-studio', scriptName: 'WME Studio', mode: 'async' });
+        mapOrderSDK = pageWindow.getWmeSdk({ scriptId: 'wme-studio', scriptName: 'WME Studio' });
         return mapOrderSDK.Events.once({ eventName: 'wme-ready' });
       }).then(() => { subscribeMapOrder(); scheduleMapOrder(); }).catch(error => {
         mapOrderSDK = null; mapOrderInit = null;
@@ -7077,7 +7086,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       queueRefresh();
       tellManagers();
     }
-    function requestClosed() { saveCurrent(); active=null; closeName(); queueRefresh(); tellManagers(); }
+    function requestClosed() { try { requestReveal.forget(); } catch (_) {   } saveCurrent(); active=null; closeName(); queueRefresh(); tellManagers(); }
     function tellManagers() { for (const delay of [150, 1200]) setTimeout(() => { try { quickReplies.notifyManagers(); } catch (_) {   } }, delay); }
     function hookPanelsSDK() {
       if (sdkPanelsHooked) return true;
@@ -7173,7 +7182,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         sdkReadyHooked = true;
         Promise.resolve(initialized).then(() => { sdkReady = true; connect(); }).catch((studioError) => { reportStudioError("connect",studioError); });
       }
-      if (!sdk && (!initialized?.then || sdkReady)) try { sdk=pageWindow.getWmeSdk?.({scriptId:'wme-studio',scriptName:'WME Studio',mode:'async'}); } catch (_) { reportStudioError("connect",_);}
+      if (!sdk && (!initialized?.then || sdkReady)) try { sdk=pageWindow.getWmeSdk?.({scriptId:'wme-studio',scriptName:'WME Studio'}); } catch (_) { reportStudioError("connect",_);}
       connectZoom();
       try { trackStreetViewSDK(sdk); } catch (studioError) { reportStudioError("connect",studioError); }
       queueMicrotask(() => { try { requestReveal.connectPlaceUpdates(sdk); requestReveal.hookMoves(); } catch (studioError) { reportStudioError("connect",studioError); } });
@@ -8070,13 +8079,14 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       toggleTranslate: panel => { const state = states.get(panel); if (state?.tab) toggleTranslate(state); },
       translateReply: async (panel, text) => {
         const T = pageApi('Translator'); if (!T || !text.trim()) return null;
-        const target = shortLang(read(panel).language || 'en');
+        const target = shortLang(read(panel).language || 'en'), mine = shortLang(uiLocale());
+        if (mine && mine !== target) translatorFor(T, mine, target);
         startDetector();
-        const source = await detect(text) || shortLang(uiLocale());
+        const source = await detect(text) || mine;
         if (!source || source === target) return { same: true, target };
         const translator = await translatorFor(T, source, target);
-        if (!translator) return null;
-        try { return { text: await patient(Promise.resolve(translator.translate(text)), 30000), source, target }; } catch (_) { return null; }
+        if (!translator) return { failed: true, target };
+        try { return { text: await patient(Promise.resolve(translator.translate(text)), 60000), source, target }; } catch (_) { return { failed: true, target }; }
       },
       replyTarget: panel => { try { const language = shortLang(read(panel).language || 'en'); return { language, name: languageName(language), can: !!pageApi('Translator'), mine: shortLang(uiLocale()) }; } catch (_) { return null; } },
       downloadShare: () => (Date.now() - download.at < 8000 && download.share < 1 ? download.share : 1),
@@ -8184,6 +8194,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     };
     const saveMeta = () => { try { Promise.resolve(studioKeep.set(FOLDER_META_KEY, folderMeta)).catch(error => reportStudioError('quick replies save', error)); } catch (error) { reportStudioError('quick replies save', error); } };
     const VIEW_KEY = 'wmeStudio.quickRepliesView.v1';
+    let lastNumbers = { sig: '', refs: [], id: null, lang: '' };
     let view = { studio: 'first', folded: [], builtPins: [], tour: { more: 0, manage: 0 }, builtActions: {}, builtButtons: [], suggest: false, translate: true };
     const cleanView = value => ({ studio: ['first', 'last', 'hidden'].includes(value?.studio) ? value.studio : 'first',
       folded: [...new Set((Array.isArray(value?.folded) ? value.folded : []).map(key => String(key).slice(0, 50)))].slice(0, 80),
@@ -8194,6 +8205,8 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       translate: value?.translate !== false,
       openOn: typeof value?.openOn === 'string' && /^(all|type|studio|pinned|none|f:.{1,40})$/.test(value.openOn) ? value.openOn : 'all',
       remember: value?.remember === true,
+      builtHidden: [...new Set((Array.isArray(value?.builtHidden) ? value.builtHidden : []).filter(key => BUILT_KEYS.has(key)))],
+      myLanguages: [...new Set((Array.isArray(value?.myLanguages) ? value.myLanguages : []).filter(code => typeof code === 'string' && /^[a-z]{2}$/.test(code)))].slice(0, 40),
       lastFilter: typeof value?.lastFilter === 'string' && /^(all|type|studio|pinned|none|f:.{1,40})$/.test(value.lastFilter) ? value.lastFilter : 'all',
       tour: { more: value?.tour?.more === 1 ? 1 : 0, manage: value?.tour?.manage === 1 ? 1 : 0 } });
     const saveView = () => { try { Promise.resolve(studioKeep.set(VIEW_KEY, view)).catch(error => reportStudioError('quick replies save', error)); } catch (error) { reportStudioError('quick replies save', error); } };
@@ -8241,9 +8254,14 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     };
     const saveBuilt = () => { try { Promise.resolve(studioKeep.set(BUILT_KEY, builtEdits)).catch(error => reportStudioError('quick replies save', error)); } catch (error) { reportStudioError('quick replies save', error); } };
     Promise.resolve(studioKeep.get(BUILT_KEY, {})).then(value => { builtEdits = cleanBuilt(value); }).catch(() => { builtEdits = {}; });
+    function unhideBuilt(keys, store = true) {
+      view = cleanView({ ...view, builtHidden: (view.builtHidden || []).filter(key => !keys.includes(key)) }); saveView();
+      for (const lang of Object.keys(builtEdits)) for (const key of keys) { const edit = builtEdits[lang][key]; if (!edit?.hidden) continue; edit.hidden = false; if (!edit.title && !edit.text?.trim()) delete builtEdits[lang][key]; }
+      if (store) saveBuilt();
+    }
     function builtReply(lang, key, set) {
       const edit = builtEdits[lang]?.[key], title = BUILT_IN.find(([one]) => one === key)?.[1] || key;
-      return { key, lang, builtIn: true, title: edit?.title || tr(title), text: edit?.text?.trim() ? edit.text : set[key], edited: !!(edit?.title || edit?.text?.trim()), hidden: !!edit?.hidden, original: set[key], originalTitle: tr(title),
+      return { key, lang, builtIn: true, title: edit?.title || tr(title), text: edit?.text?.trim() ? edit.text : set[key], edited: !!(edit?.title || edit?.text?.trim()), hidden: !!edit?.hidden || (view.builtHidden || []).includes(key), original: set[key], originalTitle: tr(title),
         action: Object.hasOwn(view.builtActions || {}, key) ? view.builtActions[key] : builtDefaultAction(key), button: (view.builtButtons || []).includes(key) };
     }
     const ICONS = {
@@ -8489,6 +8507,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const isCustom = !item.builtIn;
       const box = el('div', isCustom ? 'item custom' : 'item');
       const button = el('button', 'row'); button.type = 'button';
+      button.dataset.ref = isCustom ? String(item.id) : `b:${item.key}`;
       const words = el('span', 'words');
       const name = el('b', '', item.title); name.dir = 'auto'; words.append(name);
       if (item.countries?.length) { const flags = el('span', 'flags'); flags.title = item.countries.join(', '); for (const code of item.countries.slice(0, 3)) { const flag = studioFlags.img(code, 'flag'); if (flag) flags.append(flag); } if (flags.childElementCount) words.append(flags); }
@@ -8763,7 +8782,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const hiddenLink = () => {
         if (query || !hiddenCount) return;
         const back = el('button', 'link', hiddenCount === 1 ? tr('Show 1 hidden reply again') : tr('Show {0} hidden replies again', hiddenCount)); back.type = 'button'; back.style.margin = '6px 6px 4px';
-        back.addEventListener('click', () => { for (const item of builtIns) if (item.hidden) { const edit = builtEdits[language]?.[item.key]; if (edit) { edit.hidden = false; if (!edit.title && !edit.text?.trim()) delete builtEdits[language][item.key]; } } saveBuilt(); paintRows(state); });
+        back.addEventListener('click', () => { const keys = builtIns.filter(item => item.hidden).map(item => item.key); unhideBuilt(keys); paintRows(state); });
         nodes.push(back);
       };
       const studio = () => { if (!studioShown) return; section('studio', tr('Studio’s replies'), shownBuilt.filter(item => !item.pinned), { icon: 'logo', badge: name, badgeFlag: studioFlags.forLanguage(language), foldable: true }); if (!view.folded.includes('studio') || query) hiddenLink(); };
@@ -8794,6 +8813,10 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (!query && !custom.length && filter === 'all') nodes.push(el('p', 'hint', tr('Add your own replies for different occasions, and keep them in groups like Closures or Speed limits.')));
       body.replaceChildren(...nodes);
       [...body.querySelectorAll('.row')].forEach((button, index) => { const num = button.querySelector('.num'); if (num) num.textContent = index < 9 ? String(index + 1) : ''; });
+      if (filter === 'all' && !query) {
+        const refs = [...body.querySelectorAll('.row')].slice(0, 9).map(button => button.dataset.ref || ''), sig = refs.join('|') + '#' + facts.id;
+        if (sig !== lastNumbers.sig) { lastNumbers = { sig, refs, id: Number.isFinite(facts.id) ? facts.id : null, lang: language }; if (managers.size) notifyManagers(); }
+      }
       const titleBox = state.panel.querySelector('.qtitle');
       if (titleBox) {
         const picked = chips.find(chip => chip.key === filter), count = query || !picked ? body.querySelectorAll('.row').length : picked.count;
@@ -8982,8 +9005,8 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       foot.append(el('span', 'grow'), cancel, saveButton);
       if (builtIn) {
         const edits = () => (builtEdits[item.lang] ||= {});
-        const hide = el('button', 'btn danger', tr('Hide')); hide.type = 'button'; hide.title = tr('Take it out of the list. You can show it again at the end of the list.');
-        hide.addEventListener('click', () => { edits()[item.key] = { ...(edits()[item.key] || { title: '', text: '' }), hidden: true }; saveBuilt(); renderList(state); });
+        const hide = el('button', 'btn danger', tr('Hide')); hide.type = 'button'; hide.title = tr('Take it out of the list, in every language. You can show it again at the end of the list.');
+        hide.addEventListener('click', () => { view = cleanView({ ...view, builtHidden: [...(view.builtHidden || []), item.key] }); saveView(); renderList(state); });
         foot.prepend(hide);
         if (item.edited) {
           const original = el('button', 'btn ghost', tr('Original')); original.type = 'button'; original.title = tr('Back to Studio’s wording');
@@ -9002,6 +9025,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         if (builtIn) {
           const edits = (builtEdits[item.lang] ||= {}), nextTitle = title.value.trim() === item.originalTitle ? '' : title.value.trim(), nextText = text.value.trim() === item.original.trim() ? '' : text.value.trim();
           if (nextTitle || nextText) edits[item.key] = { title: nextTitle, text: nextText, hidden: false }; else delete edits[item.key];
+          if (item.hidden) unhideBuilt([item.key], false);
           const actions = { ...(view.builtActions || {}) };
           if (action.value === builtDefaultAction(item.key)) delete actions[item.key]; else actions[item.key] = action.value;
           view = cleanView({ ...view, builtActions: actions, builtButtons: buttonBox.checked ? [...new Set([...(view.builtButtons || []), item.key])] : (view.builtButtons || []).filter(key => key !== item.key) });
@@ -9380,20 +9404,24 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     addEventListener('resize', () => { for (const state of states.values()) place(state); }, { passive: true });
     load(); loadMine();
     const MANAGER_HTML = studioPart('MANAGER_HTML');
-    const MANAGER_STRINGS = ["1 folder", "1 reply", "1 selected", "<1 min", "A backup is one file with all your replies, folders, variables and changes to Studio’s replies.", "A code fits in a Discord message. A file is easier for many replies.", "A deleted reply", "Add", "Add 1 reply", "Add a country", "Add a tag", "Add a variable", "Add replies", "Add replies someone shared", "Add {0}", "Add {0} replies", "Added 1 reply", "Added to your replies", "Added {0} replies", "All my replies", "All replies", "All variables", "All {0} languages", "Answer requests in one click", "Ask for the exact spot", "Automatic", "Back", "Back to Studio’s", "Back to Studio’s wording", "Backup", "Backup saved", "Cancel", "Changed", "Choose what to share", "Clear the selection", "Close", "Code to import", "Code to share", "Color", "Connected to WME", "Conversation", "Copied", "Copy code", "Copy text", "Copy {0}", "Counted from the requests where you opened Quick replies in the last 30 days.", "Countries", "Countries (optional)", "Delete", "Delete folder", "Delete folder and replies", "Delete folder, keep replies", "Delete replies too", "Delete {0} replies", "Delete “{0}”?", "Delete “{0}”? It has 1 reply.", "Delete “{0}”? It has {1} replies.", "Delete “{0}”? Its {1} replies move to No folder.", "Details", "Did you mean {0}?", "Drag and right-click", "Drag replies onto a folder on the left to move them. Right-click a reply or a folder for more.", "Drag to reorder, or onto a folder", "Duplicate", "Edit", "Edit folder", "Edit reply", "Empty means everywhere.", "Everything in one file: your replies and folders, your changes to Studio’s replies and your variables. Keep it safe, or use it to move to another computer.", "Filled from #{0}", "Filled in from the open request, #{0}. Green parts come from variables.", "First in the list", "First in the list for", "Fixed, shows after the update", "Folder", "Folder actions", "Folder name", "Folders", "Folders group replies by subject, like Closures or Speed limits.", "Folders show as chips in WME, so the right reply is one click away.", "From its folder: {0}", "From {0}", "Getting started", "Give each variable a name.", "Give it a name.", "Greets the reporter in their language", "Have a look", "Hidden in WME", "Hide in WME", "Hide it from WME to keep your list short. It stays here.", "Hide this", "Icon", "Import replies", "Import replies a friend shared", "In #{0}", "In a reply, type { to pick a variable. {greeting} and {me} fill themselves in when you use it.", "Insert variable", "It goes in the reply box, filled in. Read it, then send.", "It says good morning or good evening in the reporter’s language, so every reply opens warmly.", "Its replies show only for requests in these countries, unless a reply has its own.", "Keep replies", "Keep their folders", "Last used", "Library", "Long for a phone: {0} characters. Under 320 reads best.", "Missing roundabout", "More", "Most of your reporters write in {0}", "Most used", "Most used: {0}", "Move down", "Move to", "Move to…", "Move up", "Moved out of folders", "Moved to {0}", "My variables they use", "Name", "New", "New folder", "New folder…", "New reply", "New reply here", "Next tip", "No answer, closing", "No backup yet", "No folder", "No greeting yet. {0} says good morning or good evening in the reporter’s language.", "No icon", "No replies of your own yet", "No reply matches “{0}”.", "None", "Not connected", "Not now", "Not used yet", "Nothing chosen yet", "Nothing here yet. New reply adds one, or drag replies onto a folder on the left.", "Nothing to tidy up. Your replies are in good shape.", "Nothing yet. Each reply you use in WME counts here.", "Now", "Off: it stays here but not in WME’s list. Searching there still finds it.", "On an open request in WME, press Q to open Quick replies, then 1 to 9 to put that reply in the box.", "On requests of this type, it comes first.", "One file with all your replies, folders and variables.", "Open", "Open a file", "Open a request in WME", "Open a request in WME, press Q, then the number of the reply.", "Open an update request in WME to see its details filled in.", "Open request", "Or start from one below and change the wording.", "Or start from one of these", "Or write a new one. It’s saved as soon as it has a name and some text.", "Paste a code here, or open a file", "Paste the code another editor shared, or open their file. The replies are added to yours; nothing is replaced.", "Paste their code or open their file. You choose which ones to add before anything changes.", "Pick a reply to edit it", "Pick them", "Pin", "Pin it, and it sits at the top of Quick replies.", "Pin or unpin", "Pin the replies you use most", "Pin the replies you use most: they show first in Quick replies.", "Pin to the top of Quick replies", "Pin your favourites and they sit at the top of Quick replies, so their numbers stay the same.", "Pinned", "Pinned replies come first", "Pinned replies sit at the top of Quick replies in WME, so they get the first numbers.", "Place variables can be empty when there’s no street nearby. Read the reply before you send it.", "Press 1 to use it", "Preview", "Preview for #{0}", "Previews use this request’s details", "Put it in a folder", "Put them in", "Q opens Quick replies", "Quick replies", "Ready replies for drivers, in the reporter’s language. Your wording is used instead of Studio’s, also by the case file’s buttons.", "Recently used", "Remind me after 2 weeks", "Remove", "Remove {0}", "Replace", "Replace everything with this backup: {0} replies, {1} folders, {2} variables?", "Replies to share", "Reply", "Reply check", "Reporter’s language", "Restore", "Restore a backup", "Restored", "Road closed for works", "Route depends on traffic", "Save", "Save a backup", "Save as file", "Saved", "Search", "Search replies", "Sections", "Select all", "Select {0}", "Send it", "Send this code to other editors, for example in Discord. They add it under Share and backup › Import replies.", "Share and backup", "Share replies", "Share with other editors", "Shared replies", "Shared {0}", "Short enough to read on a phone in the car", "Show first for (optional)", "Show in Quick replies", "Show in WME", "Show me", "Show suggestions", "Shown", "Shown in WME", "Shown only for requests in these countries. Leave it empty for everywhere.", "Sort", "Sort them", "Speed limit is already right", "Start", "Start from Studio’s", "Start your replies with {0}", "Studio speaks their language", "Studio’s", "Studio’s replies", "Studio’s replies already speak it. Have a look, and add your own wording if you like.", "Studio’s replies follow the reporter’s language. Change their wording under Studio’s replies.", "Studio’s variables", "Studio’s wording", "Tags", "Temporary closure", "Text", "Text it puts in", "They show under its name, at the top.", "That doesn’t look like shared quick replies.", "That isn’t a Quick replies backup.", "The Quick replies tab sits on the side of the request window.", "The reporter’s drive", "The situations editors answer most. Each one becomes yours to change.", "Their variables you don’t have yet are added too:", "There is already a folder called “{0}”.", "They paste the code in Share and backup › Add replies. Nothing of theirs is replaced.", "This request", "This week", "Tip", "Tip {0} of {1}", "Tip: {0}", "Tips show here as you write.", "Tips, never rules", "Type { for variables", "Unpin", "Use a reply on a request in WME", "Use this", "Used", "Used once", "Used {0} times", "Values from the request open in WME, in the reporter’s language.", "Variable", "Variable name", "Variables", "Variables, filled in when you pick the reply:", "WME is closed or was reloaded, so changes here can’t be saved. Open this page again from Quick replies in WME.", "We didn’t hear back, so I’m closing this report for now. If it happens again, send a new report from the spot. Thanks!", "What it puts in", "What the reporter sees", "Where it shows", "Words Studio fills in when you use a reply. Type { in a reply to pick one, or write your own below.", "Words that find this folder’s replies when you search, like “roadworks” or “closure”.", "Worth a look", "Write a reply first, then share it here.", "Write a reply here", "Write a request type under Where it shows, and the reply comes first on requests of that type.", "Write my first reply", "Write one", "Write the replies you send again and again once, then pick them in WME.", "Write the replies you send again and again once. Studio fills in the street, the date and a greeting in the reporter’s language each time you use one.", "Write the reply.", "Write your first reply", "Write your own wording, or start from Studio’s and change it", "You and now", "You have all the habits", "You have it", "You have this one", "You haven’t saved a backup yet", "You use “{0}” a lot", "You wrote 1 reply since.", "You wrote {0} replies since.", "Your last backup was {0}", "Your order", "Your own words to drop into replies, like a sign-off or a link to your community. Write the name in braces in a Quick reply, or pick it from the + in the reply box.", "Your own words, like a sign-off or a link to your community.", "Your replies", "Your replies are set up the way that saves the most time.", "Your replies at a glance, and a few habits that make answering requests faster.", "Your reply, with its variables filled in, shows here.", "Your reporters write in", "Your variables", "Your wording", "Your wording (empty: Studio’s)", "Yours · empty uses Studio’s", "choose", "insert", "language answered in", "languages answered in", "last {0}", "name", "of typing saved", "or type { anywhere", "replies used", "reply used", "{0} (copy)", "{0} / 2000", "{0} folders", "{0} found", "{0} isn’t a variable, so it stays as written.", "{0} min", "{0} of {1}", "{0} of {1} done", "{0} ready replies in {1} languages, picked by the reporter’s language. Leave them as they are, or write your own wording next to Studio’s. Yours is used in WME and by the case file’s buttons.", "{0} replies", "{0} replies aren’t in a folder", "{0} replies found.", "{0} selected", "{greeting}! Could you tell us exactly where the problem was? The street name or the junction helps us find it.", "{greeting}! Thanks for the report from {reportdate}. The road is closed for works until Friday, so the app avoids it. {me}", "{greeting}, I fixed the map at {junction}. It shows in the app after the next map update, usually within a few days.", "{greeting}, thanks for the report. The speed limit on {street} matches the signs, so I left it as it is.", "{greeting}, thanks! The roadworks on {street} are added as a closure until they end.", "{greeting}, the app picks the route from live traffic, so it can differ from day to day. The map here is right.", "{{0}} is already one of Studio’s variables. Pick another name.", "{{0}} is there twice.", "“{0}” hasn’t been used in 2 months"];
+    const MANAGER_STRINGS = ["1 folder", "1 reply", "1 selected", "<1 min", "A backup is one file with all your replies, folders, variables and changes to Studio’s replies.", "A code fits in a Discord message. A file is easier for many replies.", "A deleted reply", "Add", "Add 1 reply", "Add a country", "Add a tag", "Add a variable", "Add replies", "Add replies someone shared", "Add {0}", "Add {0} replies", "Added 1 reply", "Added to your replies", "Added {0} replies", "All my replies", "All replies", "All variables", "All {0} languages", "Answer requests in one click", "Ask for the exact spot", "Automatic", "Back", "Back to Studio’s", "Back to Studio’s wording", "Backup", "Backup saved", "Cancel", "Changed", "Choose what to share", "Clear the selection", "Close", "Code to import", "Code to share", "Color", "Connected to WME", "Conversation", "Copied", "Copy code", "Copy text", "Copy {0}", "Counted from the requests where you opened Quick replies in the last 30 days.", "Countries", "Countries (optional)", "Delete", "Delete folder", "Delete folder and replies", "Delete folder, keep replies", "Delete replies too", "Delete {0} replies", "Delete “{0}”?", "Delete “{0}”? It has 1 reply.", "Delete “{0}”? It has {1} replies.", "Delete “{0}”? Its {1} replies move to No folder.", "Details", "Did you mean {0}?", "Drag and right-click", "Drag replies onto a folder on the left to move them. Right-click a reply or a folder for more.", "Drag to reorder, or onto a folder", "Duplicate", "Edit", "Edit folder", "Edit reply", "Empty means everywhere.", "Everything in one file: your replies and folders, your changes to Studio’s replies and your variables. Keep it safe, or use it to move to another computer.", "Filled from #{0}", "Filled in from the open request, #{0}. Green parts come from variables.", "First in the list", "First in the list for", "Fixed, shows after the update", "Folder", "Folder actions", "Folder name", "Folders", "Folders group replies by subject, like Closures or Speed limits.", "Folders show as chips in WME, so the right reply is one click away.", "From its folder: {0}", "From {0}", "Getting started", "Give each variable a name.", "Give it a name.", "Greets the reporter in their language", "Have a look", "Hidden in WME", "Hide in WME", "Hide it from WME to keep your list short. It stays here.", "Hide this", "Icon", "Import replies", "Import replies a friend shared", "In #{0}", "In a reply, type { to pick a variable. {greeting} and {me} fill themselves in when you use it.", "Insert variable", "It goes in the reply box, filled in. Read it, then send.", "It says good morning or good evening in the reporter’s language, so every reply opens warmly.", "Its replies show only for requests in these countries, unless a reply has its own.", "Keep replies", "Keep their folders", "Last used", "Library", "Long for a phone: {0} characters. Under 320 reads best.", "Missing roundabout", "More", "Most of your reporters write in {0}", "Most used", "Most used: {0}", "Move down", "Move to", "Move to…", "Move up", "Moved out of folders", "Moved to {0}", "My variables they use", "Name", "New", "New folder", "New folder…", "New reply", "New reply here", "Next tip", "No answer, closing", "No backup yet", "No folder", "No greeting yet. {0} says good morning or good evening in the reporter’s language.", "No icon", "No replies of your own yet", "No reply matches “{0}”.", "None", "Not connected", "Not now", "Not used yet", "Nothing chosen yet", "Nothing here yet. New reply adds one, or drag replies onto a folder on the left.", "Nothing to tidy up. Your replies are in good shape.", "Nothing yet. Each reply you use in WME counts here.", "Now", "Off: it stays here but not in WME’s list. Searching there still finds it.", "On an open request in WME, press Q to open Quick replies, then 1 to 9 to put that reply in the box.", "On requests of this type, it comes first.", "One file with all your replies, folders and variables.", "Open", "Open a file", "Open a request in WME", "Open a request in WME, press Q, then the number of the reply.", "Open an update request in WME to see its details filled in.", "Open request", "Or start from one below and change the wording.", "Or start from one of these", "Or write a new one. It’s saved as soon as it has a name and some text.", "Paste a code here, or open a file", "Paste the code another editor shared, or open their file. The replies are added to yours; nothing is replaced.", "Paste their code or open their file. You choose which ones to add before anything changes.", "Pick a reply to edit it", "Pick them", "Pin", "Pin it, and it sits at the top of Quick replies.", "Pin or unpin", "Pin the replies you use most", "Pin the replies you use most: they show first in Quick replies.", "Pin to the top of Quick replies", "Pin your favourites and they sit at the top of Quick replies, so their numbers stay the same.", "Pinned", "Pinned replies come first", "Pinned replies sit at the top of Quick replies in WME, so they get the first numbers.", "Place variables can be empty when there’s no street nearby. Read the reply before you send it.", "Press 1 to use it", "Preview", "Preview for #{0}", "Previews use this request’s details", "Put it in a folder", "Put them in", "Q opens Quick replies", "Quick replies", "Ready replies for drivers, in the reporter’s language. Your wording is used instead of Studio’s, also by the case file’s buttons.", "Recently used", "Remind me after 2 weeks", "Remove", "Remove {0}", "Replace", "Replace everything with this backup: {0} replies, {1} folders, {2} variables?", "Replies to share", "Reply", "Reply check", "Reporter’s language", "Restore", "Restore a backup", "Restored", "Road closed for works", "Route depends on traffic", "Save", "Save a backup", "Save as file", "Saved", "Search", "Search replies", "Sections", "Select all", "Select {0}", "Send it", "Send this code to other editors, for example in Discord. They add it under Share and backup › Import replies.", "Share and backup", "Share replies", "Share with other editors", "Shared replies", "Shared {0}", "Short enough to read on a phone in the car", "Show first for (optional)", "Show in Quick replies", "Show in WME", "Show me", "Show suggestions", "Shown", "Shown in WME", "Shown only for requests in these countries. Leave it empty for everywhere.", "Sort", "Sort them", "Speed limit is already right", "Start", "Start from Studio’s", "Start your replies with {0}", "Studio speaks their language", "Studio’s", "Studio’s replies", "Studio’s replies already speak it. Have a look, and add your own wording if you like.", "Studio’s replies follow the reporter’s language. Change their wording under Studio’s replies.", "Studio’s variables", "Studio’s wording", "Tags", "Temporary closure", "Text", "Text it puts in", "They show under its name, at the top.", "That doesn’t look like shared quick replies.", "That isn’t a Quick replies backup.", "The Quick replies tab sits on the side of the request window.", "The reporter’s drive", "The situations editors answer most. Each one becomes yours to change.", "Their variables you don’t have yet are added too:", "There is already a folder called “{0}”.", "They paste the code in Share and backup › Add replies. Nothing of theirs is replaced.", "This request", "This week", "Tip", "Tip {0} of {1}", "Tip: {0}", "Tips show here as you write.", "Tips, never rules", "Type { for variables", "Unpin", "Use a reply on a request in WME", "Use this", "Used", "Used once", "Used {0} times", "Values from the request open in WME, in the reporter’s language.", "Variable", "Variable name", "Variables", "Variables, filled in when you pick the reply:", "WME is closed or was reloaded, so changes here can’t be saved. Open this page again from Quick replies in WME.", "We didn’t hear back, so I’m closing this report for now. If it happens again, send a new report from the spot. Thanks!", "What it puts in", "What the reporter sees", "Where it shows", "Words Studio fills in when you use a reply. Type { in a reply to pick one, or write your own below.", "Words that find this folder’s replies when you search, like “roadworks” or “closure”.", "Worth a look", "Write a reply first, then share it here.", "Write a reply here", "Write a request type under Where it shows, and the reply comes first on requests of that type.", "Write my first reply", "Write one", "Write the replies you send again and again once, then pick them in WME.", "Write the replies you send again and again once. Studio fills in the street, the date and a greeting in the reporter’s language each time you use one.", "Write the reply.", "Write your first reply", "Write your own wording, or start from Studio’s and change it", "You and now", "You have all the habits", "You have it", "You have this one", "You haven’t saved a backup yet", "You use “{0}” a lot", "You wrote 1 reply since.", "You wrote {0} replies since.", "Your last backup was {0}", "Your order", "Your own words to drop into replies, like a sign-off or a link to your community. Write the name in braces in a Quick reply, or pick it from the + in the reply box.", "Your own words, like a sign-off or a link to your community.", "Your replies", "Your replies are set up the way that saves the most time.", "Your replies at a glance, and a few habits that make answering requests faster.", "Your reply, with its variables filled in, shows here.", "Your reporters write in", "Your variables", "Your wording", "Your wording (empty: Studio’s)", "Yours · empty uses Studio’s", "choose", "insert", "language answered in", "languages answered in", "last {0}", "name", "of typing saved", "or type { anywhere", "replies used", "reply used", "{0} (copy)", "{0} / 2000", "{0} folders", "{0} found", "{0} isn’t a variable, so it stays as written.", "{0} min", "{0} of {1}", "{0} of {1} done", "{0} ready replies in {1} languages, picked by the reporter’s language. Leave them as they are, or write your own wording next to Studio’s. Yours is used in WME and by the case file’s buttons.", "{0} replies", "{0} replies aren’t in a folder", "{0} replies found.", "{0} selected", "{greeting}! Could you tell us exactly where the problem was? The street name or the junction helps us find it.", "{greeting}! Thanks for the report from {reportdate}. The road is closed for works until Friday, so the app avoids it. {me}", "{greeting}, I fixed the map at {junction}. It shows in the app after the next map update, usually within a few days.", "{greeting}, thanks for the report. The speed limit on {street} matches the signs, so I left it as it is.", "{greeting}, thanks! The roadworks on {street} are added as a closure until they end.", "{greeting}, the app picks the route from live traffic, so it can differ from day to day. The map here is right.", "{{0}} is already one of Studio’s variables. Pick another name.", "{{0}} is there twice.", "“{0}” hasn’t been used in 2 months", "Spreadsheet saved", "That isn’t a spreadsheet of Studio’s replies. Export one first: it has the columns Studio reads back.", "1 change taken from the spreadsheet.", "{0} changes taken from the spreadsheet.", "Nothing to change: the spreadsheet has the same wording.", "Your languages", "Add a language", "Only these are shown here. In WME a reporter who writes in another language still gets Studio’s reply in theirs.", "Picked from the languages your reporters write in. Add or remove any: only these are shown here.", "Spreadsheet", "Export your languages", "Export all {0} languages", "Import a spreadsheet…", "Undone", "Undo", "Your wording in {0} of {1}", "Shown in Quick replies, in every language", "What you added before and after Studio’s wording in {0} goes into the same place in your other languages.", "Added to 1 language", "Added to {0} languages", "Add the same to my other languages", "Chrome translates your wording in {0} into your other languages, on this computer. Read them over before you use them.", "Translate into my other languages", "Translating… {0} of {1}", "Chrome couldn’t translate into {0}. Those keep Studio’s wording.", "Translated. Read them over before you use them.", "Change the wording in one language, then bring it to the others.", "Your other languages all have your own wording.", "From {0}. Languages with your own wording are left as they are.", "Yours", "Studio’s {0} ready replies, in {1} languages. WME picks the one in the reporter’s language. Leave them as they are, or change the wording. Your own replies are in All replies.", "Free", "On a request in WME, Q opens Quick replies and a number puts that reply in the box. This is what each number put in last time, on #{0}. Pin a reply to move it up.", "On a request in WME, Q opens Quick replies and a number puts that reply in the box. Open Quick replies on a request, and what each number gives shows here.", "You put in {0} replies and saved about {1} of typing.", "Most went to reporters writing in {0}.", "Still to do", "Q, then a number", "Reporter", "You"];
     const managers = new Map();
     function managerState() {
       const panel = windows().at(-1)?.querySelector('.problem-edit') || null;
       let request = null, rows = null;
       if (panel) {
-        try { const facts = caseFile.facts(panel); if (Number.isFinite(facts.id)) request = { id: facts.id, title: facts.title || '', language: facts.language || 'en', country: caseFile.country(panel) || '' }; } catch (_) { request = null; }
+        try {
+          const facts = caseFile.facts(panel);
+          const said = [...(facts.messages || [])].reverse().find(message => message.side === 'reporter' && message.text) || (facts.description ? { text: facts.description, time: facts.driveTime } : null);
+          if (Number.isFinite(facts.id)) request = { id: facts.id, title: facts.title || '', language: facts.language || 'en', country: caseFile.country(panel) || '', said: said ? { text: String(said.text).slice(0, 400), time: Number(said.time) || 0 } : null };
+        } catch (_) { request = null; }
         if (request) { try { rows = VARIABLES.filter(([, , group]) => group).map(([name]) => ({ name, value: String(values(panel)[name] ?? '') })); } catch (_) { rows = null; } }
       }
       const ui = (() => { try { return globalThis.WMEStudioI18n?.current?.() || 'en'; } catch (_) { return 'en'; } })();
       const allReplies = (() => { try { return caseFile.allReplies(); } catch (_) { return {}; } })();
       const languageName = code => { try { const name = new Intl.DisplayNames([ui], { type: 'language' }).of(code); return name ? name[0].toLocaleUpperCase(ui) + name.slice(1) : code; } catch (_) { return code; } };
       return {
-        replies: custom, folders: folderNames(), builtEdits, variables: mineVars, builtPins: view.builtPins, folderMeta, folderLook: FOLDER_LOOK,
+        replies: custom, folders: folderNames(), builtEdits, variables: mineVars, builtPins: view.builtPins, builtHidden: view.builtHidden || [], myLanguages: view.myLanguages || [], numbers: lastNumbers.refs.length ? { refs: lastNumbers.refs, id: lastNumbers.id, lang: lastNumbers.lang } : null, folderMeta, folderLook: FOLDER_LOOK,
         builtIns: allReplies, builtTitles: BUILT_IN.map(([key, title]) => [key, tr(title)]), languages: Object.keys(allReplies).map(code => [code, languageName(code)]),
         guide: VARIABLES.filter(([, , group]) => group).map(([name, about, group]) => [name, tr(about), group]), reserved: [...BUILT_IN_NAMES],
         values: rows, request, limits: { replies: MAX, variables: MINE_MAX },
@@ -9443,6 +9471,8 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (patch.builtEdits && typeof patch.builtEdits === 'object') { builtEdits = cleanBuilt(patch.builtEdits); saveBuilt(); }
       if (Array.isArray(patch.variables)) { mineVars = cleanMine(patch.variables); saveMine(); }
       if (Array.isArray(patch.builtPins)) { view = cleanView({ ...view, builtPins: patch.builtPins }); saveView(); }
+      if (Array.isArray(patch.builtHidden)) { view = cleanView({ ...view, builtHidden: patch.builtHidden }); saveView(); }
+      if (Array.isArray(patch.myLanguages)) { view = cleanView({ ...view, myLanguages: patch.myLanguages }); saveView(); }
       if (patch.folderMeta && typeof patch.folderMeta === 'object') { folderMeta = cleanMeta(patch.folderMeta); saveMeta(); }
       if (patch.guide && typeof patch.guide === 'object') { guide = cleanGuide(patch.guide); saveGuide(); }
       for (const state of states.values()) if (!state.panel.hidden && state.view === 'list') paintRows(state);
@@ -9551,7 +9581,9 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
         if (state.busy) { const share = caseFile.downloadShare(); setText(state.translateButton, share < 1 ? tr('Downloading {0}%', Math.round(share * 100)) : tr('Translating…')); state.translateButton.title = tr('Click to stop'); }
         else if (state.mine != null) { setText(state.translateButton, tr('Undo translation')); state.translateButton.title = tr('Back to what you wrote'); }
         else if (Date.now() < (state.sameUntil || 0)) { setText(state.translateButton, tr('Already in {0}', target.name)); }
+        else if (state.failed && state.failed === text) { setText(state.translateButton, tr('Open in Google Translate')); state.translateButton.title = tr('Chrome couldn’t translate this here. Open your reply in Google Translate, then copy the translation back.'); }
         else { setText(state.translateButton, tr('To {0}', target.name)); state.translateButton.title = tr('Translate your reply into {0}, the reporter’s language', target.name); }
+        if (state.failed && state.failed !== text) state.failed = null;
         state.translateButton.querySelector('svg').innerHTML = state.mine != null && !state.busy ? ICON.undo : ICON.translate;
         state.translateButton.disabled = !state.busy && state.mine == null && !text;
         state.translateButton.setAttribute('aria-pressed', String(state.mine != null));
@@ -9567,6 +9599,11 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
       if (state.busy) { state.busy = false; state.token = null; paint(state); return; }
       if (state.mine != null) { caseFile.fill(panel, state.mine); state.mine = null; paint(state); return; }
       const text = replyValue(panel); if (!text.trim()) return;
+      if (state.failed === text.trim()) {
+        const url = `https://translate.google.com/?sl=auto&tl=${encodeURIComponent(state.target?.language || 'en')}&op=translate&text=${encodeURIComponent(text.slice(0, 4500))}`;
+        try { (typeof unsafeWindow === 'undefined' ? window : unsafeWindow).open(url, '_blank', 'noopener'); } catch (_) { window.open(url, '_blank', 'noopener'); }
+        state.failed = null; paint(state); return;
+      }
       const token = state.token = {}; state.busy = true; paint(state);
       const ticker = setInterval(() => { if (state.busy) paint(state); }, 400);
       let result = null;
@@ -9576,7 +9613,7 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
       state.busy = false;
       if (result?.same) { state.sameUntil = Date.now() + 2500; setTimeout(() => paint(state), 2600); }
       else if (result?.text) { state.mine = text; caseFile.fill(panel, result.text); }
-      else { state.sameUntil = 0; state.translateButton.title = tr('Chrome can’t translate into this language here.'); }
+      else { state.sameUntil = 0; state.failed = text.trim(); }
       paint(state);
     }
     async function autoTranslate(panel, before, added) {
@@ -10429,15 +10466,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     return Object.freeze({ refresh });
   })();
 
-  GM_addStyle(`
-#ws-map-tip {
-  position: fixed; z-index: 99999; left: 0; top: 0; box-sizing: border-box; max-width: 320px; padding: 6px 10px; border-radius: 4px;
-  background: var(--wme-studio-bg, #202326); color: var(--wme-studio-text, #edf1f4); font: 12px/16px var(--ws-font, Inter, system-ui, sans-serif);
-  white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .1s ease;
-}
-#ws-map-tip[data-show] { opacity: 1; }
-html[data-wme-studio-motion="reduced"] #ws-map-tip { transition: none; }
-`);
   const mapButtonTips = (() => {
     const BUTTONS = [
       ['.layer-switcher-button', 'layer_switcher.title', 'Map Layers'],
@@ -10446,8 +10474,6 @@ html[data-wme-studio-motion="reduced"] #ws-map-tip { transition: none; }
     ];
     const SELECTOR = BUTTONS.map(([sel]) => `.overlay-button${sel}`).join(',');
     const page = () => (typeof unsafeWindow === 'undefined' ? window : unsafeWindow);
-    let tip = null, current = null, timer = 0, hooked = false;
-    const live = () => settings.enabled && !document.documentElement.hasAttribute('data-wme-studio-layout-editing');
     function words(button) {
       const entry = BUTTONS.find(([sel]) => button.matches(sel));
       if (!entry) return '';
@@ -10458,63 +10484,7 @@ html[data-wme-studio-motion="reduced"] #ws-map-tip { transition: none; }
       } catch (_) {   }
       try { return globalThis.WMEStudioI18n?.t?.(entry[2]) || entry[2]; } catch (_) { return entry[2]; }
     }
-    function hide() { clearTimeout(timer); timer = 0; current = null; tip?.removeAttribute('data-show'); }
-    function place(button) {
-      const box = button.getBoundingClientRect();
-      if (!box.width || !box.height) { hide(); return; }
-      const moved = movedControlIsland(button), rail = (button.closest('#overlay-buttons') || button).getBoundingClientRect();
-      const island = moved?.rect ? { left: moved.rect.left, top: moved.rect.top, width: moved.rect.width, height: moved.rect.height } : { left: rail.left, top: rail.top, width: rail.width, height: rail.height };
-      const across = moved ? moved.orient === 'h' : island.width > island.height * 1.3;
-      const size = tip.getBoundingClientRect(), gap = 10, edge = 8;
-      let left, top;
-      if (across) {
-        left = box.left + box.width / 2 - size.width / 2;
-        top = island.top + island.height / 2 <= innerHeight / 2 ? island.top + island.height + gap : island.top - gap - size.height;
-      } else {
-        left = island.left + island.width / 2 > innerWidth / 2 ? island.left - gap - size.width : island.left + island.width + gap;
-        top = box.top + box.height / 2 - size.height / 2;
-      }
-      tip.style.left = `${Math.round(Math.max(edge, Math.min(left, innerWidth - edge - size.width)))}px`;
-      tip.style.top = `${Math.round(Math.max(edge, Math.min(top, innerHeight - edge - size.height)))}px`;
-    }
-    function show(button) {
-      timer = 0;
-      if (!live() || current !== button || !button.isConnected || !button.matches(':hover')) return;
-      const text = words(button);
-      if (!text) return;
-      if (!tip) { tip = document.createElement('div'); tip.id = 'ws-map-tip'; tip.setAttribute('role', 'tooltip'); tip.setAttribute('data-ws-keep', ''); }
-      if (!tip.isConnected) (document.body || document.documentElement).append(tip);
-      tip.textContent = text;
-      if (!button.hasAttribute('aria-label')) button.setAttribute('aria-label', text);
-      place(button);
-      tip.setAttribute('data-show', '');
-    }
-    function over(event) {
-      if (!live() || event.pointerType === 'touch' || event.pointerType === 'pen') return;
-      const button = event.target?.closest?.(SELECTOR);
-      if (!button || button === current) return;
-      if (button.closest('wz-basic-tooltip,wz-rich-tooltip,wz-tooltip-source')) return;
-      hide(); current = button;
-      timer = setTimeout(() => show(button), 120);
-    }
-    function out(event) {
-      if (!current) return;
-      const to = event.relatedTarget;
-      if (to && (to === current || current.contains(to))) return;
-      hide();
-    }
-    function refresh() {
-      if (!hooked) {
-        hooked = true;
-        document.addEventListener('pointerover', over, true);
-        document.addEventListener('pointerout', out, true);
-        for (const type of ['pointerdown', 'wheel', 'keydown']) document.addEventListener(type, hide, { capture: true, passive: true });
-        addEventListener('blur', hide);
-        addEventListener('resize', hide, { passive: true });
-      }
-      if (!live()) { hide(); tip?.remove(); }
-    }
-    return Object.freeze({ refresh, hide });
+    return Object.freeze({ SELECTOR, words, refresh() {}, hide() {} });
   })();
   const placeTemplates = (() => {
     const KEY = 'wmeStudio.placeTemplates.v1', MAX = 40, FIELDS = ['url', 'phone', 'services', 'openingHours'];
@@ -10698,7 +10668,7 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
   })();
   (() => {
     if (window.top !== window.self) return;
-    GM_addStyle(`.ws-tip{position:fixed;z-index:2147483000;display:flex;align-items:center;box-sizing:border-box;max-width:320px;min-height:28px;margin:0;padding:6px 10px;border-radius:var(--wme-studio-panel-radius,10px);background:var(--wme-studio-bg,#202124);color:var(--wme-studio-text,#fff);box-shadow:var(--wme-studio-shadow,0 6px 18px rgba(0,0,0,.28));font-size:12px;font-weight:500;line-height:16px;white-space:pre-line;overflow-wrap:anywhere;pointer-events:none}.ws-tip[hidden]{display:none}html[data-ws-tip-on] wz-tooltip-content:not(:has(button,wz-button,a[href],input)){visibility:hidden!important}`);
+    GM_addStyle(`.ws-tip{--ws-tip-paint:var(--wme-studio-surface-3,#30353a);--ws-tip-ink:var(--wme-studio-text,#edf1f4);--ws-tip-line:var(--wme-studio-border,rgba(255,255,255,.12));position:fixed;left:0;top:0;z-index:2147483000;display:flex;align-items:center;box-sizing:border-box;width:max-content;max-width:min(320px,calc(100vw - 16px));min-height:28px;margin:0;padding:6px 10px;border:1px solid var(--ws-tip-line);border-radius:var(--wme-studio-panel-radius,10px);background:var(--ws-tip-paint);color:var(--ws-tip-ink);box-shadow:var(--wme-studio-shadow,0 6px 18px rgba(0,0,0,.28));font:500 12px/16px var(--ws-font,inherit);white-space:pre-line;overflow-wrap:break-word;pointer-events:none}html[data-wme-studio-compact="on"][data-wme-studio-island-ink] .ws-tip{--ws-tip-paint:var(--ws-island-paint-solid,var(--ws-island-a));--ws-tip-ink:var(--ws-island-ink);--ws-tip-line:color-mix(in srgb,var(--ws-island-ink) 18%,transparent)}.ws-tip[hidden]{display:none}html[data-ws-tip-on] wz-tooltip-content:not(:has(button,wz-button,a[href],input)){visibility:hidden!important}`);
     const INTERACTIVE = 'button,wz-button,a[href],input,select,textarea,[role="button"],[contenteditable="true"]';
     let tip = null, over = null, hiddenWme = null, borrowed = null;
     const clean = text => String(text || '').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
@@ -10714,8 +10684,9 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     function show(target, text, side) {
       document.documentElement.dataset.wsTipOn = '1';
       if (!tip) { tip = document.createElement('div'); tip.className = 'ws-tip'; tip.setAttribute('role', 'tooltip'); document.body.append(tip); }
-      tip.textContent = text; tip.hidden = false;
+      tip.textContent = text; tip.hidden = false; tip.style.left = '0px'; tip.style.top = '0px';
       const at = target.getBoundingClientRect(), box = tip.getBoundingClientRect(), gap = 10;
+      if (side === 'tools') side = at.left + at.width / 2 < innerWidth / 2 ? 'right' : 'left';
       let left, top;
       if (side === 'right' || side === 'left') {
         left = side === 'right' ? at.right + gap : at.left - gap - box.width;
@@ -10732,12 +10703,13 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
       if (document.documentElement.dataset.wmeStudio !== 'on') { if (over) hide(); return; }
       const path = event.composedPath();
       const rail = path.find(node => node?.id === 'drawer'), asked = path.find(node => node?.dataset?.wsTipSide)?.dataset.wsTipSide;
-      const side = asked || (rail ? 'right' : path.some(node => node?.id === 'overlay-buttons') ? 'left' : 'below');
+      const side = asked || (rail ? 'right' : path.some(node => node?.id === 'overlay-buttons') ? 'tools' : 'below');
       let target = null, text = '', wme = null, titled = null;
       for (const node of path) {
         if (!node || node === document.body || node === document) break;
         if (node.nodeType !== 1) continue;
         if (node === over) return;
+        if (node.matches?.(mapButtonTips.SELECTOR) && !node.closest('wz-basic-tooltip,wz-rich-tooltip,wz-tooltip-source')) { text = mapButtonTips.words(node); target = text ? node : null; break; }
         if (node.localName === 'wz-navigation-item' && rail) {
           if (rail.getBoundingClientRect().width <= 120) { text = railLabel(node); target = text ? node : null; }
           break;
@@ -11378,22 +11350,28 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (first.rect.width >= 40 && (!second || area(first) >= 1.3 * area(second))) return { marker: first, why: 'enlarged marker' };
       return { marker: null, why: `no marker stands out: ${describe(sorted)}` };
     }
-    let lastShown = -Infinity, ownPanUntil = 0, requestClick = -Infinity, showTimer = 0, shownModel = null;
+    let lastShown = -Infinity, ownPanUntil = 0, requestClick = -Infinity, showTimer = 0, shownModel = null, userMapAt = -Infinity, firstShown = { id: '', at: 0 };
     window.addEventListener('click', event => {
       if (!event.target?.closest?.(REQUEST_WINDOW_SELECTOR)) return;
       requestClick = performance.now(); hookMoves();
     }, { capture: true, passive: true });
+    const onMap = event => event.composedPath?.().some(node => node?.id === 'WazeMap' || node?.classList?.contains?.('olMapViewport'));
+    const mine = () => { userMapAt = performance.now(); clearTimeout(showTimer); };
+    window.addEventListener('pointerdown', event => { if (onMap(event)) mine(); }, { capture: true, passive: true });
+    document.documentElement.addEventListener('wheel', event => { if (onMap(event)) mine(); }, { capture: true, passive: true });
+    window.addEventListener('keydown', event => { if (/^Arrow/.test(event.key) && !event.target?.closest?.('input,textarea,select,[contenteditable],wz-text-input,wz-textarea')) mine(); }, { capture: true, passive: true });
     const moves = [], seenPanels = new WeakSet();
     let movesSDK = false;
     function mapStopped(lon, lat) {
       if (performance.now() < ownPanUntil) return;
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
       moves.push({ time: performance.now(), lon, lat }); if (moves.length > 8) moves.shift();
-      if (performance.now() - requestClick < 4000) {
+      if (performance.now() - requestClick < 4000 && userMapAt < requestClick) {
         clearTimeout(showTimer);
+        const clicked = requestClick;
         showTimer = setTimeout(() => {
           requestClick = -Infinity;
-          if (pressed || requestHeaderDrag || !shownModel) return;
+          if (pressed || requestHeaderDrag || !shownModel || userMapAt >= clicked) return;
           let result;
           try { result = reveal(shownModel); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
           note('show-on-map', `after the editor moved the map: ${result}`);
@@ -11419,7 +11397,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       let handled = false;
       for (const delay of [900, 1700]) setTimeout(() => {
         if (handled || !panel.isConnected || lastShown >= opened - 2000) return;
-        if (pressed || requestHeaderDrag) return;
+        if (pressed || requestHeaderDrag || userMapAt >= opened) return;
         const move = [...moves].reverse().find(item => item.time >= opened - 1500);
         if (move) {
           const id = `panel:${move.lon.toFixed(1)},${move.lat.toFixed(1)}`;
@@ -11518,10 +11496,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         for (const timer of timers) clearTimeout(timer);
         timers = [];
         if (id && done.id === id && performance.now() - done.time < 30000) { note(id, 'announced again: left alone'); return; }
+        if (id && firstShown.id === id && userMapAt >= firstShown.at) { note(id, 'announced again after I moved the map: left alone'); return; }
+        if (firstShown.id !== id) firstShown = { id, at: performance.now() };
         note(id, 'opened');
+        const asked = performance.now();
         timers = [250, 700, 1300].map(delay => setTimeout(() => {
           if (id && done.id === id && performance.now() - done.time < 30000) return;
           if (pressed || requestHeaderDrag) { note(id, 'waiting: a button is held'); return; }
+          if (userMapAt >= asked) { note(id, 'I moved the map: left alone'); return; }
           let result;
           try { result = isCurrent && !isCurrent() ? 'request closed or changed' : reveal(model); } catch (error) { reportStudioError('requestReveal', error); result = 'failed'; }
           note(id, result);
@@ -11529,7 +11511,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         }, delay));
         timers.kind = id.startsWith('placeUpdateRequest:') ? 'placeUpdateRequest' : 'updateRequest';
     }
-    return Object.freeze({largestFree,reveal,schedule,openPlaceUpdate,closePlaceUpdate,connectPlaceUpdates,openProblem,hookMoves});
+    const forget = () => { firstShown = { id: '', at: 0 }; };
+    return Object.freeze({largestFree,reveal,schedule,openPlaceUpdate,closePlaceUpdate,connectPlaceUpdates,openProblem,hookMoves,forget});
   })();
   function writeFlowPosition(state, left, top) {
     const element = state.element;
@@ -20935,20 +20918,27 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     return '';
   }
-  const STUDIO_BUILD = '4.1.1-2026-10-28z9';
+  const STUDIO_BUILD = '4.2.0-2026-10-28z5';
   const STUDIO_CHANGELOG = Object.freeze([
-    { version: '4.1.1', quiet: true, groups: [
+    { version: '4.2.0', groups: [
       { title: 'Layout', items: [
         "Pointing at a button in the left rail shows its name, like the map tools on the right.",
-        "Tooltips show as soon as you point at something, without the wait.",
+        "Tooltips show as soon as you point at something, without the wait, in Studio’s colors.",
         "Quick replies has its folders down the left side, each one click away, and each reply shows a line of its text under its name.",
-        "Studio’s replies in Quick replies lists all of them, by request type. ⋯ › Opens on picks where the list starts, or remembers the last one you used."
+        "Studio’s replies in Quick replies lists all of them, by request type. ⋯ › Opens on picks where the list starts, or remembers the last one you used.",
+        "The Quick replies management page has a new look. A reply shows as the reporter will read it, under their last message, and Start shows what each number puts in."
+      ] },
+      { title: 'Studio’s replies', items: [
+        "Hiding one of Studio’s replies hides it in every language, and showing it again brings it back in all of them.",
+        "In the management page you pick the languages you work with, and a reply opens in all of them at once. What you add at the start or the end goes into the others with one click, or Chrome translates your wording into them.",
+        "Studio’s replies go out to a spreadsheet, a column per language, and come back in with your changes."
       ] },
       { title: 'Fixes', items: [
         "On iPad and in Safari, pictures and videos in My reports show again.",
         "With Userscripts, Studio gets its current libraries from Greasy Fork when Userscripts kept older copies, so nothing is missing after an update.",
         "Your country on the Discord server now comes from where you save your edits, not from wherever the map happened to be.",
-        "A closure’s ⋮ menu opens beside it again, instead of the closure disappearing and the menu ending up at the bottom of the panel."
+        "A closure’s ⋮ menu opens beside it again, instead of the closure disappearing and the menu ending up at the bottom of the panel.",
+        "In Floating mode, moving the map yourself right after clicking in a request window no longer pulls the map back to that request."
       ] }
     ] },
     { version: '4.1.0', groups: [
@@ -24094,7 +24084,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (!menu) return;
       menu.remove(); menu = null;
       window.removeEventListener('pointerdown', outside, true);
-      window.removeEventListener('wheel', outside, true);
+      document.documentElement.removeEventListener('wheel', outside, true);
       window.removeEventListener('keydown', keys, true);
       window.removeEventListener('resize', close);
       window.removeEventListener('blur', close);
@@ -24280,7 +24270,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       menu.style.setProperty('--origin', `${left < clientX ? 'right' : 'left'} ${top < clientY ? 'bottom' : 'top'}`);
       openedAt = performance.now();
       window.addEventListener('pointerdown', outside, true);
-      window.addEventListener('wheel', outside, { capture: true, passive: true });
+      document.documentElement.addEventListener('wheel', outside, { capture: true, passive: true });
       window.addEventListener('keydown', keys, true);
       window.addEventListener('resize', close);
       window.addEventListener('blur', close);
