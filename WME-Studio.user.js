@@ -50,50 +50,9 @@
 // @updateURL https://update.greasyfork.org/scripts/599569/WME%20Studio.meta.js
 // ==/UserScript==
 
-/*
- * MIT License
- *
- * Copyright (c) 2026 GreekCaptain
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
 
-// ---- Userscripts on iPhone and iPad (2.3.0) -------------------------------------------------------------------------
-// Tampermonkey runs Studio with GM_getValue and the other GM_ functions, and with unsafeWindow to reach the editor.
-// The Userscripts app for Safari only has the newer GM.getValue, GM.setValue… (they answer later, with a promise),
-// and runs a script that uses them walled off from the page, where the editor's own objects (W, the WME SDK) cannot
-// be seen. The editor's Content Security Policy also turns away scripts the page did not mark as its own.
-//
-// So with such a manager Studio does not run where it was started. It reads everything it has stored there, and puts
-// itself (Resources and Screen displays too) into the page as a script carrying the page's own nonce, which the
-// policy lets through. There it gets the GM_ functions it is written for, kept by this part of the script:
-//   GM_getValue, GM_listValues    answered at once from what was read before starting
-//   GM_setValue, GM_deleteValue   answered at once, then saved with GM.setValue / GM.deleteValue
-//   GM_addValueChangeListener     told when another editor tab changes a value
-//   GM_xmlhttpRequest             sent from here (the page's policy does not apply here), with GM.xmlHttpRequest
-//                                 when the site does not answer the page directly
-//   GM_addStyle, GM_info, unsafeWindow
-// With Tampermonkey, Violentmonkey and the like none of this runs.
 const WME_STUDIO_BRIDGE_NEEDED = typeof GM_getValue !== 'function' && typeof GM === 'object' && GM !== null && typeof GM.getValue === 'function';
 
-// A small note at the bottom left while Studio starts this way, so a start that goes wrong can be seen on an iPad
-// (there is no console there). It shows only when something fails, or always with #wmeStudioDebug in the address.
 function wmeStudioBridgeNote(text, bad) {
   try {
     const verbose = globalThis.WME_STUDIO_BRIDGE_VERBOSE === true || /wmeStudioDebug/i.test(location.hash);
@@ -113,7 +72,7 @@ function wmeStudioBridgeNote(text, bad) {
       if (!bad) box.wsTimer = setTimeout(() => box.remove(), 6000);
     };
     if (document.documentElement) show(); else document.addEventListener('DOMContentLoaded', show, { once: true });
-  } catch (_) { /* nothing more can be shown */ }
+  } catch (_) {   }
 }
 
 function wmeStudioStartBridge(main) {
@@ -125,7 +84,6 @@ function wmeStudioStartBridge(main) {
   if (typeof interfaceCode !== 'function') say('the Interface library did not load: Studio starts without its settings window and panel styles');
   const ALLOWED = /^https:\/\/(?:update\.greasyfork\.org|greasyfork\.org|wme-studio-reports\.charalamposavgenikos\.workers\.dev)\//i;
 
-  // Requests from the page copy, answered here.
   const requests = new Map();
   const answer = (id, kind, response) => window.postMessage({ wsBridge: token, from: 'content', op: 'xhr', id, kind, response }, '*');
   async function send(id, details) {
@@ -147,7 +105,6 @@ function wmeStudioStartBridge(main) {
       if (timedOut) answer(id, 'timeout', { status: 0, statusText: '', responseText: '' });
       else if (controller.signal.aborted) answer(id, 'abort', { status: 0, statusText: '', responseText: '' });
       else if (typeof GM.xmlHttpRequest === 'function' && typeof body !== 'object' && (method === 'GET' || method === 'HEAD')) {
-        // The site did not let the page read it (no CORS): the manager asks for it instead.
         GM.xmlHttpRequest({ method, url, headers: details.headers || {}, data: body, timeout: details.timeout || 0, anonymous: !!details.anonymous,
           onload: r => answer(id, 'load', { status: r.status, statusText: r.statusText, responseText: r.responseText, response: r.responseText, responseHeaders: r.responseHeaders || '', finalUrl: r.finalUrl || url, readyState: 4 }),
           onerror: () => answer(id, 'error', { status: 0, statusText: '', responseText: '' }),
@@ -167,7 +124,6 @@ function wmeStudioStartBridge(main) {
     } catch (error) { say('bridge', error); }
   });
 
-  // Everything stored, read once before starting: the page copy answers GM_getValue from it at once.
   const readStore = async () => {
     const values = {};
     try {
@@ -183,10 +139,8 @@ function wmeStudioStartBridge(main) {
       scriptHandler: String(source.scriptHandler || 'Userscripts'), version: String(source.version || '') };
   })();
 
-  // The page marks its own scripts with a nonce: the copy carries the same one.
   const nonceOf = () => { for (const script of document.getElementsByTagName('script')) { const nonce = script.nonce || script.getAttribute('nonce'); if (nonce) return nonce; } return ''; };
   const pageReady = () => new Promise(resolve => {
-    // Declared first: when the page's scripts are already there, done() runs before the watchers are set up.
     let settled = false, observer = null, timer = 0;
     const done = () => { if (settled) return; settled = true; observer?.disconnect(); clearTimeout(timer); resolve(); };
     if (nonceOf() || document.readyState !== 'loading') { done(); return; }
@@ -293,8 +247,6 @@ const wmeStudioMain = () => {
   if (globalThis.__WME_STUDIO_USER_SCRIPT__) return;
   globalThis.__WME_STUDIO_USER_SCRIPT__ = true;
 
-  // Big style sheets and page templates live in the WME Studio Interface library (4.0.0), so this script stays under
-  // Greasy Fork's size limit. studioPart(name, values) gives one of them, built from the values it needs.
   function studioPart(name, values) {
     const BUILD = '4.1.0-2026-10-28', parts = globalThis.WMEStudioInterface, part = parts?.parts?.[name];
     if (part === undefined) {
@@ -305,32 +257,25 @@ const wmeStudioMain = () => {
     return typeof part === 'function' ? part(values || {}) : part;
   }
 
-  // A userscript manager deletes a script's stored values together with the script. Studio therefore also keeps a
-  // copy of its settings in the site's own storage, which stays in the browser. On a fresh install, when the
-  // manager's store holds nothing from Studio, that copy is put back before anything is read. Everything in the
-  // script reads and writes through this object. The icon cache and the list of paused FUME options are not kept.
   const studioKeep = (() => {
     const COPY = 'wmeStudio.keep.v1', MARK = 'wmeStudio.installed.v1', NONE = '\u0000wmeStudio.none';
-    // Cloud Sync's link to the cloud (its key) stays in the manager's store only, out of the site's own storage.
     const SKIP = new Set(['wmeStudio.scriptTabIcons.v1', 'wmeStudio.fumePaused.v1', 'wmeStudio.cloudSync.v1', 'wmeStudio.cloudSyncBase.v1', MARK]);
     const PROBE = ['wmeStudio.setup.v1', 'wmeStudio.update.glassOpacity60', 'wmeStudio.update.sideRailsViewportCenter.v3', 'wmeStudio.theme', 'wmeStudio.compactMode', 'wmeStudio.enabled'];
     const kept = key => typeof key === 'string' && key.startsWith('wmeStudio.') && !SKIP.has(key);
     const thenable = value => !!value && typeof value.then === 'function';
     const readCopy = () => { try { const saved = JSON.parse(localStorage.getItem(COPY) || 'null'); return saved && saved.values && typeof saved.values === 'object' ? saved.values : {}; } catch (_) { return {}; } };
     let dirty = {}, timer = 0, restored = 0;
-    const watchers = new Set();   // Cloud Sync (4.0.0): told the key of every setting saved here
+    const watchers = new Set();
     const flush = () => {
       clearTimeout(timer); timer = 0;
       const keys = Object.keys(dirty); if (!keys.length) return;
       try {
-        const values = readCopy(); let changed = false;   // read again: another editor tab may have written since
+        const values = readCopy(); let changed = false;
         for (const key of keys) { if (JSON.stringify(values[key]) !== JSON.stringify(dirty[key])) { values[key] = dirty[key]; changed = true; } }
         dirty = {};
         if (changed) localStorage.setItem(COPY, JSON.stringify({ v: 1, saved: Date.now(), values }));
-      } catch (_) { dirty = {}; }   // storage full or blocked: the manager's store still has everything
+      } catch (_) { dirty = {}; }
     };
-    // A second's wait (4.0.0): Safari on an iPad holds a tap's click back until short timers set while the finger lifts
-    // have run (up to 400 ms), so this one is longer than that.
     const note = (key, value) => { if (!kept(key) || value === undefined || value === NONE) return; dirty[key] = value; if (!timer) timer = setTimeout(flush, 1000); };
     try {
       const mark = GM_getValue(MARK, false);
@@ -344,7 +289,7 @@ const wmeStudioMain = () => {
         if (restored) console.info(`[WME Studio] put back ${restored} saved settings from this browser`);
       }
     } catch (error) { console.warn('[WME Studio] could not check for kept settings', error); }
-    try { addEventListener('pagehide', flush); } catch (_) { /* no window events: the timer still saves */ }
+    try { addEventListener('pagehide', flush); } catch (_) {   }
     return {
       get(key, fallback) {
         const value = GM_getValue(key, NONE);
@@ -354,7 +299,7 @@ const wmeStudioMain = () => {
       set(key, value) {
         note(key, value);
         const result = GM_setValue(key, value);
-        if (watchers.size) for (const watcher of watchers) { try { watcher(key); } catch (_) { /* a watcher's trouble is its own */ } }
+        if (watchers.size) for (const watcher of watchers) { try { watcher(key); } catch (_) {   } }
         return result;
       },
       onSet(watcher) { if (typeof watcher === 'function') watchers.add(watcher); },
@@ -362,18 +307,8 @@ const wmeStudioMain = () => {
     };
   })();
 
-  // Mutation observer callbacks run as microtasks: the browser finishes all of them before it draws or answers
-  // the mouse. When something else on the page keeps undoing a change Studio makes (another script, or the
-  // editor re-rendering), Studio's observer and the other side can answer each other without end; the tab
-  // stops responding and finally runs out of memory. That is reproducible with a test script that removes the
-  // bar Studio adds next to the sidebar tabs. Every MutationObserver this script creates therefore counts how
-  // often it has been called without the browser getting a turn. Past 200 calls it stops answering at once:
-  // the records are kept and handled a moment later, with the wait doubling from 50 ms to 2 s while the
-  // disagreement lasts (five quiet seconds reset it). Normal use never comes near the limit.
   const NativeMutationObserver = globalThis.MutationObserver;
   let observerTurn = 0, observerTurnTimer = 0, observerLoopWarned = false;
-  // The browser's next turn is told by a message, not a timer (4.0.0): Safari on an iPad holds a tap's click back
-  // until short timers set as the finger lifts have run, and the page changes then (a button lighting up).
   const observerTurnChannel = typeof MessageChannel === 'function' ? new MessageChannel() : null;
   if (observerTurnChannel) observerTurnChannel.port1.onmessage = () => { observerTurnTimer = 0; observerTurn++; };
   const nextObserverTurn = () => { if (observerTurnChannel) { observerTurnChannel.port2.postMessage(0); return 1; } return setTimeout(() => { observerTurnTimer = 0; observerTurn++; }, 0); };
@@ -387,7 +322,7 @@ const wmeStudioMain = () => {
         if (++calls <= 200) { callback(records, observer); return; }
         const now = performance.now();
         trips = now - tripAt > 5000 ? 1 : trips + 1; tripAt = now;
-        if (trips >= 3 && !observerLoopWarned) {   // one long burst is not a loop; three in a row is
+        if (trips >= 3 && !observerLoopWarned) {
           observerLoopWarned = true;
           console.warn('[WME Studio] The page kept changing in answer to Studio\'s own updates (200 rounds without a pause). Studio now waits between rounds so the editor stays responsive. Another script, or the editor itself, is probably undoing one of Studio\'s changes.');
         }
@@ -398,9 +333,6 @@ const wmeStudioMain = () => {
   };
 
   const USERSCRIPT_VERSION = '4.1.0';
-  // Verify on Discord in one click (4.1.0): the bot's link opens the editor with #wmeStudioVerify=CODE. The code is
-  // taken off the address at once (so it isn't shared by a copied link) and kept for this tab for 15 minutes, which
-  // carries it through a sign-in page.
   const STUDIO_VERIFY_LINK = (() => {
     const KEY = 'wmeStudio.verifyLink';
     try {
@@ -411,35 +343,29 @@ const wmeStudioMain = () => {
         sessionStorage.setItem(KEY, JSON.stringify({ code: found[1].toUpperCase().replace(/[\s-]/g, ''), until: Date.now() + 15 * 60000 }));
       }
       const kept = JSON.parse(sessionStorage.getItem(KEY) || 'null');
-      if (kept && kept.until > Date.now() && /^[A-Z0-9]{6}$/.test(kept.code)) return { code: kept.code, forget: () => { try { sessionStorage.removeItem(KEY); } catch (_) { /* gone with the tab */ } } };
+      if (kept && kept.until > Date.now() && /^[A-Z0-9]{6}$/.test(kept.code)) return { code: kept.code, forget: () => { try { sessionStorage.removeItem(KEY); } catch (_) {   } } };
       sessionStorage.removeItem(KEY);
-    } catch (_) { /* no address to read or no storage: the code can still be typed */ }
+    } catch (_) {   }
     return null;
   })();
-  // Where "Report a bug" (in Settings) sends reports: your own WME Studio reports Worker (see the
-  // wme-studio-reports folder). Leave it empty to copy the report and open the Greasy Fork feedback page instead.
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
   const BUG_REPORT_FALLBACK_URL = 'https://greasyfork.org/scripts/599569/feedback';
-  // Every country's flag (4.0.0), from my reports site: beside the languages and countries in Settings and in Quick
-  // replies. Fetched once a week and kept (some 190 KB), and drawn as small pictures. Until they're here (or with the
-  // site out of reach) the lists simply show no flags.
   const studioFlags = (() => {
     const KEY = 'wmeStudioFlags.v1', WEEK = 7 * 86400000, EVENT = 'wme-studio-flags';
-    // The flag a language goes with: the country most people know it from.
     const LANGUAGE_FLAGS = { en: 'GB', el: 'GR', es: 'ES', pt: 'PT', fr: 'FR', de: 'DE', it: 'IT', nl: 'NL', pl: 'PL', ru: 'RU', tr: 'TR', ka: 'GE', uk: 'UA', cs: 'CZ', sk: 'SK',
       hu: 'HU', ro: 'RO', bg: 'BG', sr: 'RS', hr: 'HR', sl: 'SI', ar: 'SA', he: 'IL', fa: 'IR', zh: 'CN', ja: 'JP', ko: 'KR', sv: 'SE', no: 'NO', da: 'DK', fi: 'FI', lt: 'LT', lv: 'LV',
       et: 'EE', id: 'ID', ms: 'MY', th: 'TH', vi: 'VN', hi: 'IN', ca: 'ES-CT' };
     let flags = null, started = false;
     const sources = new Map();
     const valid = value => !!value && typeof value === 'object' && value.flags && typeof value.flags === 'object' && Object.keys(value.flags).length > 100;
-    const use = value => { flags = value.flags; sources.clear(); try { document.dispatchEvent(new CustomEvent(EVENT)); } catch (_) { /* nothing listens yet */ } };
+    const use = value => { flags = value.flags; sources.clear(); try { document.dispatchEvent(new CustomEvent(EVENT)); } catch (_) {   } };
     function fetchNow() {
       const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/flags.json`;
-      const done = text => { let value = null; try { value = JSON.parse(text); } catch (_) { value = null; } if (!valid(value)) return; use(value); try { Promise.resolve(studioKeep.set(KEY, { at: Date.now(), version: String(value.version || ''), flags: value.flags })).catch(() => {}); } catch (_) { /* kept for this visit only */ } };
+      const done = text => { let value = null; try { value = JSON.parse(text); } catch (_) { value = null; } if (!valid(value)) return; use(value); try { Promise.resolve(studioKeep.set(KEY, { at: Date.now(), version: String(value.version || ''), flags: value.flags })).catch(() => {}); } catch (_) {   } };
       try {
         if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, timeout: 20000, anonymous: true, onload: response => { if (response.status === 200) done(response.responseText || ''); } });
         else fetch(url, { mode: 'cors' }).then(response => (response.ok ? response.text() : '')).then(done).catch(() => {});
-      } catch (_) { /* no flags this time */ }
+      } catch (_) {   }
     }
     function start() {
       if (started || !/^https:\/\//.test(BUG_REPORT_ENDPOINT)) return;
@@ -449,7 +375,6 @@ const wmeStudioMain = () => {
         if (!valid(kept) || Date.now() - Number(kept.at || 0) > WEEK) setTimeout(fetchNow, valid(kept) ? 4000 : 0);
       }).catch(fetchNow);
     }
-    // A flag as a picture's address (a data: address, so nothing is loaded from elsewhere), or '' when there is none.
     function src(code) {
       start();
       code = String(code || '').toUpperCase();
@@ -464,8 +389,6 @@ const wmeStudioMain = () => {
     }
     return Object.freeze({ src, img, start, EVENT, forLanguage: language => LANGUAGE_FLAGS[String(language || '').toLowerCase()] || '', languages: () => ({ ...LANGUAGE_FLAGS }), all: () => { start(); return flags; } });
   })();
-  // The WME SDK, for what Studio reads from and does to the editor (2.2.4). Every caller asks it first and keeps
-  // its older way as a backup, so nothing stops working where the SDK is missing, not ready yet or gives no answer.
   const studioSDK = (() => {
     let handle = null, waiting = false, initialized = false;
     const page = () => (typeof unsafeWindow === 'undefined' ? window : unsafeWindow);
@@ -481,19 +404,16 @@ const wmeStudioMain = () => {
       try { handle = win.getWmeSdk({ scriptId: 'wme-studio-core', scriptName: 'WME Studio' }); } catch (_) { handle = null; }
       return handle;
     }
-    // read(api) answers, or the backup does: an error, nothing, or a number that is not a number all count as no answer.
     function value(read, backup) {
       const api = get();
       if (api) {
         try {
           const result = read(api);
           if (result !== undefined && result !== null && !(typeof result === 'number' && !Number.isFinite(result))) return result;
-        } catch (_) { /* the backup below */ }
+        } catch (_) {   }
       }
       return typeof backup === 'function' ? backup() : backup;
     }
-    // A map layer's element, found through the SDK: the layer's z-index, which OpenLayers also writes on the layer's
-    // own element. Only an answer that points at exactly one layer counts.
     function layerElement(layerName) {
       return value(api => {
         const z = api.Map.getLayerZIndex({ layerName });
@@ -562,11 +482,9 @@ const wmeStudioMain = () => {
     }
     return Object.freeze({repair,inspect,prune,onError});
   })();
-  // Temporary diagnostics for this release only. Do not advance this version gate.
   const reportStudioError = (() => {
     const diagnosticVersion = '0.0.4';
     const installedVersion = typeof GM_info === 'object' && GM_info?.script?.version || USERSCRIPT_VERSION;
-    // The last few problems Studio caught, kept in memory only, for the bug report in Settings › Studio.
     const recent = [];
     const remember = (context, error) => {
       try {
@@ -576,7 +494,7 @@ const wmeStudioMain = () => {
         recent.push({ time: new Date().toISOString().slice(11, 19), context: String(context).slice(0, 120), message, count: 1,
           where: String(error?.stack || '').split('\n').slice(1, 3).map(line => line.trim()).join(' / ').slice(0, 300) });
         if (recent.length > 20) recent.shift();
-      } catch { /* never in the way */ }
+      } catch {   }
     };
     if (USERSCRIPT_VERSION !== diagnosticVersion || installedVersion !== diagnosticVersion) return Object.assign((context, error) => remember(context, error), { recent });
     const log = console.error.bind(console), seenErrors = new WeakSet(), seenEvents = new WeakSet();
@@ -591,7 +509,7 @@ const wmeStudioMain = () => {
         log(`[WME Studio ${diagnosticVersion}] ${context}`,error,{
           version:diagnosticVersion,time:new Date().toISOString(),...details
         });
-      } catch { /* Diagnostics must never interrupt the editor or its fallback paths. */ }
+      } catch {   }
     };
     const onError = event => {
       if (seenEvents.has(event)) return;
@@ -612,7 +530,6 @@ const wmeStudioMain = () => {
       seenEvents.add(event);
       report('Unhandled promise rejection',event.reason);
     };
-    // Observe both the userscript sandbox and WME page; leave native error reporting intact.
     for (const target of new Set([window,typeof unsafeWindow === 'undefined' ? window : unsafeWindow])) {
       target.addEventListener('error',onError,true);
       target.addEventListener('unhandledrejection',onRejection);
@@ -620,24 +537,18 @@ const wmeStudioMain = () => {
     console.info(`[WME Studio ${diagnosticVersion}] Temporary error logging enabled for this release only.`);
     return Object.assign(report,{active:true,recent});
   })();
-  // Asset recovery remains available after the temporary diagnostic release.
   document.addEventListener('error',studioResourceRecovery.onError,true);
 
-  // Safari compatibility: keep the native sheet on supported browsers; lower only
-  // unsupported shadow-context selectors to attributes on registered UI hosts.
   globalThis.WMEStudioSafari = (() => {
     let active = false;
     try { active = !CSS.supports('selector(:host-context(html))'); } catch (studioError) { reportStudioError("Studio initialization",studioError); active = true; }
     const desktopViewport = '(min-width: 1180px) and (min-height: 640px)';
     if (!active) return Object.freeze({active:false,viewport:desktopViewport,page:text=>text,css:text=>text,bind:(_host,text)=>text,release:()=>{}});
-    // On a touch screen a phone held sideways is laid out 980 wide and only some 450 high (see Screen displays):
-    // Studio's layout still fits there.
     const touchLayout = navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse)').matches;
     const viewport = touchLayout ? '(min-width: 740px) and (min-height: 400px)' : '(min-width: 768px) and (min-height: 500px)';
     const viewportCSS = text => text.replace(/\(min-width:\s*1180px\)\s+and\s+\(min-height:\s*640px\)/g,viewport);
     const attribute = 'data-wme-studio-safari-context';
     const selectors = new Map(), compiled = new Map(), hosts = new Map(), ancestors = new Map();
-    // Components to check again: each with the contexts to look at, or 'all' (4.0.0).
     const dirty = new Map(), documents = new Map(), attributes = new Set(['class','id','slot']);
     let frame = 0, rebuild = false;
     const parent = node => node.assignedSlot || node.parentElement || node.getRootNode?.().host;
@@ -734,8 +645,6 @@ const wmeStudioMain = () => {
       }
       return results.get(context);
     }
-    // Only some contexts changed (4.0.0): just those are looked at again for this component. Its ancestors are the
-    // ones it had (a change that moves it is always a full check), and its other contexts keep their answers.
     function syncSome(item, contexts, cache) {
       const {host} = item;
       if (!host.isConnected) { release(host); return; }
@@ -754,7 +663,6 @@ const wmeStudioMain = () => {
       for (const [item, which] of pending) { if (which === 'all') sync(item,cache); else syncSome(item,which,cache); }
       refreshObservers();
     }
-    // The components below a node, to check again: for the given contexts, or for all of them.
     function enqueue(node, contexts = null) {
       for (const item of ancestors.get(node) || []) {
         const current = dirty.get(item);
@@ -766,17 +674,8 @@ const wmeStudioMain = () => {
       }
       if (dirty.size && !frame) frame = requestAnimationFrame(flush);
     }
-    // What each watched element matched when last looked at (4.0.0). Before, any change to an element (a class the
-    // editor puts on its whole page when the side panel opens, one of Studio's own page states on <html>) had every
-    // component below it checked again against every context, which on an iPad took longer than the change itself.
-    // Now the element itself is checked: only when one of its answers changed are the components below it checked.
-    // A child added or taken away has the components inside it checked (they moved), and the contexts that look at
-    // neighbours or inside (":has(~ …)") are checked again for that parent and its children. A new slot, or a context
-    // that looks at ancestors, still checks everything below, as before.
     const answers = new WeakMap();
     let kinds = null;
-    // A selector's steps (".layer-switcher .menu > .title" → .layer-switcher, .menu, .title) and whether a step is
-    // joined to the next by + or ~ (a neighbour) rather than by an ancestor.
     function steps(selector) {
       const parts = []; let depth = 0, quote = '', from = 0, neighbour = false;
       for (let i = 0; i < selector.length; i++) {
@@ -802,7 +701,6 @@ const wmeStudioMain = () => {
       for (const [context, { parts }] of split) if (parts.length < 2) watched.set(context.selector, context);
       for (const [context, { parts, neighbour }] of split) {
         if (neighbour) deep = true;
-        // A context about ancestors changes for the elements below only when one of its steps changes for this one.
         if (parts.length < 2) continue;
         for (const part of parts) {
           if (!watched.has(part)) watched.set(part, { selector: part });
@@ -818,8 +716,6 @@ const wmeStudioMain = () => {
         hover: all.some(context => context.selector.includes(':hover'))
       });
     }
-    // Looks at the node again for the given contexts (or steps): null when it was never looked at (everything below
-    // is checked), else the contexts whose answer changed.
     function changedFor(node, list, owners) {
       const before = answers.get(node), now = before ? new Map(before) : new Map(), changed = new Set();
       for (const watched of list) {
@@ -878,7 +774,6 @@ const wmeStudioMain = () => {
       sync(item); refreshObservers(); return result.css;
     }
     document.documentElement.setAttribute('data-wme-studio-safari','on');
-    // Safari itself (every browser on an iPhone or iPad is Safari underneath), not Firefox.
     const webkit = /AppleWebKit\//.test(navigator.userAgent) && !/\b(?:Chrome|Chromium|Edg|OPR|Firefox)\//.test(navigator.userAgent);
     if (webkit) document.documentElement.setAttribute('data-wme-studio-webkit','on');
     const page = text => viewportCSS(text) + `
@@ -1003,12 +898,6 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
     }
   }
 
-  // "A :is(x,y,z)" as the subject of a rule is tested against every element that is styled, map features
-  // included. Written once per member as "A :where(x):is(x,y,z)" the same rule is filed under that member
-  // (its tag, class or attribute) and only tested against elements that have it. ":where()" adds no
-  // specificity and ":is()" keeps the specificity of the whole list, so nothing else changes.
-  // (4.0.0) Safari never files a rule under what is inside :where(), so each member is written plainly instead, made
-  // exactly as heavy as the whole list with ":not(.ws-0)"-style parts that match every element (see studioRuleBuckets).
   function studioKeyedList(list, before = '', after = '') {
     const members = list.split(',').map(member => member.trim());
     const weigh = member => { const bare = member.replace(/"[^"]*"|'[^']*'/g, ''); return [(bare.match(/#/g) || []).length, (bare.match(/[.[]|:(?!:)/g) || []).length, /^[a-z]/i.test(bare) ? 1 : 0]; };
@@ -1079,8 +968,6 @@ ${scope} #online-editors:has(.online-editors-list-wrapper) .online-editors-bubbl
     return studioPart('part1045', { scope });
   }
 
-  // Ask Waze's Messenger fork uses chat-messenger variables (including private
-  // defaults); its df-* and Material children inherit the same palette.
   function studioAIHelperTokensCSS() {
     const tokens = {
       'font-family':'var(--ws-font)', 'font-color':'var(--wme-studio-text)',
@@ -1126,26 +1013,15 @@ ${scope} #online-editors:has(.online-editors-list-wrapper) .online-editors-bubbl
       --md-focus-ring-color:var(--wme-studio-accent) !important;`;
   }
   globalThis.WMEStudioAIHelperComponents = studioPart('part1150', { studioAIHelperTokensCSS });
-  // The page stylesheet lives in the WME Studio Resources library (see @require). Without it Studio has no theme.
   const studioResources = globalThis.WMEStudioResources;
   if (!studioResources?.pageSheet) console.error('[WME Studio] The WME Studio Resources library did not load. Check the @require line in the script header.');
-  // A fix release (2.2.1, say) can come without a new Resources: only a different feature release (2.1 vs 2.2) is a mismatch.
   else if (String(studioResources.version).split('.').slice(0, 2).join('.') !== USERSCRIPT_VERSION.split('.').slice(0, 2).join('.')) console.warn(`[WME Studio] Resources ${studioResources.version} loaded with Studio ${USERSCRIPT_VERSION}; update both scripts together.`);
-  // The build of Resources this Studio was made with (3.0.0). A userscript manager keeps its copy of a library until
-  // the main script's version changes, so a Studio updated by hand can run with older styles: that is noted, so a bug
-  // report shows it instead of a layout that looks broken for no reason.
   const RESOURCES_BUILD = '4.1.0-2026-10-28';
   if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
     const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
     console.warn('[WME Studio] ' + note);
     try { reportStudioError('Resources', new Error(note)); } catch (_) {}
   }
-  // Ancestor groups, split (4.0.0). "html[x] :is(#a, #b) .c" makes the browser test the rule on every element it
-  // restyles, because it can't tell from the selector which container is needed; written as "html[x] #a .c,
-  // html[x] #b .c" it skips the rule at once outside #a and #b. Large parts of the map are restyled whenever the
-  // editor changes a class on them, so this keeps every selection and map move cheaper. Only groups of plain ids,
-  // plain classes or plain tags are split (the same weight each, so no rule wins differently), only when the group is
-  // a whole step of the selector that more selector follows, and never inside :not(), :has() or :where().
   const splitAncestorGroups = (() => {
     const simple = [/^#[A-Za-z_][\w-]*$/, /^\.[A-Za-z_][\w-]*$/, /^[A-Za-z][\w-]*$/];
     const kindOf = token => simple.findIndex(rx => rx.test(token));
@@ -1229,11 +1105,6 @@ ${scope} #online-editors:has(.online-editors-list-wrapper) .online-editors-bubbl
     };
   })();
   globalThis.WMEStudioPageStyle = GM_addStyle(globalThis.WMEStudioSafari.page(studioResources?.pageSheet ? splitAncestorGroups(studioResources.pageSheet({ studioAIHelperTokensCSS, studioButtonMotionCSS, studioGlassFeedbackCSS, studioHeaderAddonCSS, studioKeyedList, studioRangeCSS })) : ''));
-  // Plain form fields in other scripts' panels and dialogs (2.2.0). WME's own stylesheet gives every input, select
-  // and textarea dark grey text (rgb(61, 61, 61)), which nearly disappears on Dark and Full black. Here they take the
-  // theme's text, field and border colours instead, and the browser's own parts (the list of a select, a date
-  // picker) follow the dark theme too. The rules weigh exactly as much as WME's own and come after its stylesheet, so
-  // they win over WME, while a script that colours its own fields (a rule of its own, added later) keeps its colours.
   const STUDIO_FORM_FIELDS = ':is(input:not([type]),input[type="text"],input[type="email"],input[type="number"],input[type="password"],input[type="search"],input[type="url"],input[type="tel"],input[type="date"],input[type="time"],input[type="datetime-local"],select,textarea,.form-control)';
   const STUDIO_DARK = ':where(html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"]))';
   globalThis.WMEStudioFormStyle = GM_addStyle(`
@@ -1244,8 +1115,6 @@ ${STUDIO_DARK} :is(select, datalist) option, ${STUDIO_DARK} select optgroup { ba
 ${STUDIO_DARK} select option:checked { background-color: color-mix(in srgb, var(--wme-studio-accent) 34%, var(--wme-studio-surface)); color: var(--wme-studio-text); }
 ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
 `);
-  // After WME's stylesheet, which the page lists after this script has started.
-  // The islands' field colors (3.0.5) come right after it, so on a colored island they win over the theme's.
   const lastFormStyle = () => { const style = globalThis.WMEStudioFormStyle, island = globalThis.WMEStudioIslandFieldStyle; if (style?.parentNode && document.head && style !== document.head.lastElementChild) document.head.append(style); if (island?.parentNode && document.head) document.head.append(island); };
   document.addEventListener('DOMContentLoaded', lastFormStyle, { once: true });
   window.addEventListener('load', lastFormStyle, { once: true });
@@ -1257,7 +1126,6 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
   if (globalThis.WMEStudioI18n) return;
   const pageWindow = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
   const NAMES = [["en", "English"], ["el", "Ελληνικά"], ["es", "Español"], ["pt", "Português"], ["fr", "Français"], ["de", "Deutsch"], ["it", "Italiano"], ["nl", "Nederlands"], ["pl", "Polski"], ["ru", "Русский"], ["tr", "Türkçe"], ["ka", "ქართული"]];
-  // KEYS and PACKS come from the WME Studio Resources library (see @require). Without it Studio speaks English only.
   const { KEYS, PACKS } = globalThis.WMEStudioResources?.languages || { KEYS: [], PACKS: {} };
   const index = new Map(KEYS.map((key, position) => [key, position]));
   const patterns = KEYS.filter(key => key.includes('{0}')).map(key => ({
@@ -1342,7 +1210,6 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     new MutationObserver(records => {
       if (!used) return;
       for (const record of records) {
-        // Text drawn later inside a box marked data-ws-keep (names and tags people typed) is left as it is.
         const owner = record.target.nodeType === 1 ? record.target : record.target.parentElement;
         if (owner?.closest?.('[data-ws-keep]')) continue;
         if (record.type === 'characterData') localizeText(record.target);
@@ -1390,38 +1257,20 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     compactIslandOpacity: 60, compactSnapEdges: true, compactSnapCenter: true, layerColumns: 'one',
     eyeSaver: 0, satelliteBrightness: 100, viewportBrightness: 100, hudScale: 100, panelScale: 100, fontScale: 100, gpsBelowRoads: true, gpsOpacity: 100,
     discussionVisible: 2, compactRequests: true, language: 'auto', commandShortcut: 'Shift+KeyP',
-    // Time-based switching. 'off' keeps the fixed theme / eye saver; 'sun' follows sunset and sunrise where the map is; 'custom' uses the hours below.
-    // The theme schedule only runs from Light: Light by day, themeNight (Dark or Full black) at night.
     themeSchedule: 'off', themeNight: 'dark', themeDayStart: '07:00', themeNightStart: '20:00',
     eyeSaverSchedule: 'off', eyeSaverStart: '21:00', eyeSaverEnd: '07:00', eyeSaverFade: true,
     customScrollbars: true, contextMenu: true,
-    // 3.1.0: the zoom level between WME's + and −, with a scale beside them while zooming.
     showZoomLevel: true,
-    // 4.0.0: the scale beside + and − stays on screen, faded, and shows fully when pointed at or while zooming.
     zoomScaleAlways: false,
-    // 2.0.5: the + menu opens only on a click (not when the pointer passes over it), and the header search box can
-    // be given its own width in Arrange (0 = Studio's default width).
     createMenuClick: false, searchWidth: 0,
-    // 2.0.5: a request (UR, MP or PUR) closes by itself once your reply has been sent.
     closeAfterReply: false,
-    // 3.1.0: the Case file request window (off: WME's own layout), and after how many quiet days it suggests closing.
     requestCaseFile: true, requestQuietDays: 7,
-    // 4.0.2: with URC-E (URComments-Enhanced) installed, replies, reminders and closing are left to it.
     urceHandoff: true,
-    // 3.0.0: how Review sets the requests you haven't opened apart from the ones you have (picked in a vote).
     taskStyle: 'classic',
-    // 2.2.1: Screen displays (touch screens, iPad first): finger control of the map and map buttons to select
-    // several things, the road between two segments, shape a road and draw a road. The feature lives in the WME Studio
-    // Screen Displays library.
     screenDisplays: false, screenLongPress: true, screenRoadButton: true, screenShapeButton: true, screenDrawButton: true,
-    // 3.0.0: the islands' own background: the theme's, one color of your own, or a gradient of two.
     islandFill: 'theme', islandColor: '#1e3a5f', islandColor2: '#6d28d9', islandAngle: '135',
-    // How strong the islands' color or gradient is: lower blends it with the theme's own background.
     islandIntensity: 100
   });
-  // A shortcut is stored as its modifiers plus the physical key ("Shift+KeyP"), so it is the same key on a Greek
-  // or any other keyboard layout. '' means the shortcut is off. A letter, number or symbol key needs a modifier;
-  // function keys can stand alone.
   const SHORTCUT_CODE = /^(?:Key[A-Z]|Digit\d|Numpad\d|F(?:[1-9]|1\d|2[0-4])|Space|Enter|Comma|Period|Slash|Semicolon|Quote|Backquote|Minus|Equal|BracketLeft|BracketRight|Backslash|IntlBackslash)$/;
   const SHORTCUT_MODIFIERS = ['Ctrl', 'Alt', 'Shift', 'Meta'];
   function normalizeShortcut(value) {
@@ -1434,7 +1283,7 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     return [...modifiers, code].join('+');
   }
   function shortcutFromEvent(event) {
-    if (!event.code || /^(?:Shift|Control|Alt|Meta|OS)/.test(event.code)) return undefined;   // only modifiers are down so far
+    if (!event.code || /^(?:Shift|Control|Alt|Meta|OS)/.test(event.code)) return undefined;
     return normalizeShortcut([event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Meta', event.code].filter(Boolean).join('+'));
   }
   function shortcutLabel(value) {
@@ -1505,8 +1354,6 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
   globalThis.WMEStudioSettings = Object.freeze({ defaults, sanitize, read, write, changes, ink });
 })();
 
-// Day and night switching for the theme and the eye saver. Everything is worked out from the clock, so there is no
-// state to keep: any tab asks "what should be showing right now?" and gets the same answer.
 (() => {
   'use strict';
   if (globalThis.WMEStudioSchedule) return;
@@ -1514,7 +1361,6 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
   const FADE_MS = 30 * 60 * 1000;
   const PLACE_KEY = 'wmeStudio.scheduleLocation';
 
-  // Sunrise and sunset (sun's upper edge at the horizon, with refraction) for the calendar day of `day` in local time.
   function sunTimes(day, lat, lon) {
     const noon = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12);
     const lw = -lon * rad, phi = lat * rad;
@@ -1533,8 +1379,6 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     return { rise: toDate(transit - (set - transit)), set: toDate(set) };
   }
 
-  // Where the sun times are worked out: the map's centre, read at most once a minute and remembered for the next
-  // visit; before the map has loaded the first time, a rough guess from the computer's time zone.
   let place = null, placeRead = 0;
   function mapCenter() {
     const fromSDK = studioSDK.value(api => {
@@ -1572,7 +1416,6 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     const [h, m] = text.split(':').map(Number);
     return new Date(base.getFullYear(), base.getMonth(), base.getDate() + days, h, m);
   };
-  // The "night" stretch that covers `now`, or the next one: from `from` to `to` (custom hours), or sunset to sunrise.
   function stretch(mode, from, to, now) {
     const spans = [];
     if (mode === 'sun') {
@@ -1597,15 +1440,12 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     return { active: !!span, start: span?.[0] || null, end: span?.[1] || null, next };
   }
 
-  // What should show right now for these settings. `theme` and `eyeSaver` are the values to paint; the rest is for
-  // the settings window.
   function resolve(settings, now = new Date()) {
     const out = { theme: settings.theme, eyeSaver: settings.eyeSaver, night: null, themeNext: null, eyeSaverActive: settings.eyeSaver > 0, eyeSaverNext: null, sun: null };
     if ((settings.theme === 'light' && settings.themeSchedule === 'sun') || settings.eyeSaverSchedule === 'sun') {
       const where = currentPlace();
       out.sun = { ...sunTimes(now, where.lat, where.lon), guessed: where.guessed };
     }
-    // Only Light switches: a dark theme chosen by hand is already the night look.
     if (settings.theme === 'light' && settings.themeSchedule && settings.themeSchedule !== 'off') {
       const night = stretch(settings.themeSchedule, settings.themeNightStart, settings.themeDayStart, now);
       out.night = night.active; out.themeNext = night.next;
@@ -1627,8 +1467,6 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
 
 
 
-  // Quick Replies uses inline styles because its toolbar can live inside wz-textarea.
-  // Share these overrides between the page adapter and WME's component stylesheet.
   function studioQuickRepliesToolbarCSS(root) {
     return String.raw`
 ${root} {
@@ -1809,8 +1647,6 @@ ${root} .qr-btn:focus-visible {
       for (const node of compatibilityRoots) attachShadow(node);
     }
     function scheduleRebuild() { if (!rebuildQueued) { rebuildQueued = true; queueMicrotask(rebuild); } }
-    // `builtIn` is only passed for the adapters that ship in this file: their stylesheets are known to be
-    // scoped, so they are not parsed a second time just to check that.
     function registerCompatibilityAdapter(spec, builtIn = false) {
       if (!spec || !/^[a-z][a-z0-9-]*$/.test(spec.id) || !Array.isArray(spec.selectors) || !spec.selectors.length) throw new TypeError('Adapter needs an id and exact root selectors.');
       for (const sel of spec.selectors) {
@@ -1885,14 +1721,11 @@ $root[data-wme-studio-fume-panel] a[href] { color: var(--wme-studio-accent) !imp
 
     registerCompatibilityAdapter({ id: 'wme-quick-replies', selectors: ['.qr-settings','.qr-wrap','.qr-menu','.qr-emoji-pop'], css: studioPart('part2313', { studioQuickRepliesToolbarCSS }) }, true);
 
-    // WME Rapid KOI Roads: the note it adds to map suggestion windows is drawn with an inline light background.
     registerCompatibilityAdapter({ id: 'rapid-koi-roads', selectors: ['#containerOnSegment'], css: String.raw`
 $root { background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; box-shadow: none !important; border-radius: var(--wme-studio-radius) !important; }
 $root :where(h1,h2,h3,h4,h5,h6,p,span,div,label,b,strong) { color: var(--wme-studio-text) !important; }
 $root a[href] { color: var(--wme-studio-accent) !important; }
 ` }, true);
-    // WME Color Errors (2.2.0): its settings sections have light grey headers of their own (#f5f7fa, #e8edf5 when
-    // open) under Studio's light text, so on Dark and Full black the section names could not be read.
     registerCompatibilityAdapter({ id: 'color-errors', selectors: ['.ce-section'], css: String.raw`
 $root { border-color: var(--wme-studio-border) !important; background: transparent !important; }
 $root .ce-section-header { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
@@ -2021,14 +1854,6 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
   if (!standaloneSignin && !/(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname)) return;
   if (globalThis.__wmeStudioRunning) return;
   globalThis.__wmeStudioRunning = true;
-  // Faster matching for Studio's own stylesheets (4.0.0). A rule that ends in ":is(A, B, ...)" (".x :is(#a, .b)")
-  // was tested by the browser on every element it restyled, because the last step names no one id, class, attribute
-  // or tag it could be filed under; the map alone is thousands of elements, and it is restyled whenever the editor
-  // changes a class on a container (opening the side panel, for one). Each such rule is written ".x :where(A):is(A,
-  // B, ...), .x :where(B):is(A, B, ...)" instead (the same form the Resources sheet uses, see the notes at its top):
-  // every part is filed under its own A or B, ":where()" adds no weight and ":is()" keeps the weight the list had, so
-  // the rule matches the same elements and wins or loses exactly as before. ":where(A, B)" becomes ":where(A),
-  // :where(B)". A sheet is looked at once, when it appears or its text changes, before anything is drawn with it.
   const studioRuleBuckets = (() => {
     const done = new WeakSet();
     const splitList = text => {
@@ -2037,9 +1862,9 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
       for (let i = 0; i < text.length; i++) {
         const ch = text.charCodeAt(i);
         if (quote) { if (ch === 92) i++; else if (ch === quote) quote = 0; continue; }
-        if (ch === 34 || ch === 39) quote = ch;          // " '
-        else if (ch === 92) i++;                          // \
-        else if (ch === 40 || ch === 91) depth++;         // ( [
+        if (ch === 34 || ch === 39) quote = ch;
+        else if (ch === 92) i++;
+        else if (ch === 40 || ch === 91) depth++;
         else if (ch === 41 || ch === 93) { if (--depth < 0) return null; }
         else if (ch === 44 && !depth) { parts.push(text.slice(from, i).trim()); from = i + 1; }
       }
@@ -2047,7 +1872,6 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
       parts.push(text.slice(from).trim());
       return parts;
     };
-    // Where the last step of a selector starts, read from the end (selectors with escapes are never passed in).
     const lastStep = selector => {
       let depth = 0, quote = '';
       for (let i = selector.length - 1; i >= 0; i--) {
@@ -2060,8 +1884,6 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
       }
       return depth || quote ? -1 : 0;
     };
-    // One simple selector of a step, from position i: { kind: 'id' | 'class' | 'attr' | 'tag' | 'any' | 'pseudo', text,
-    // name, arg, end }, or null for anything else.
     const nameChar = c => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 45 || c === 95 || c >= 160;
     const partAt = (step, i) => {
       const ch = step[i], code = step.charCodeAt(i); let j = i + 1, kind;
@@ -2089,9 +1911,7 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
       for (let i = 0; i < step.length;) { const part = partAt(step, i); if (!part) return null; out.push(part); i = part.end; }
       return out;
     };
-    // Pseudo-classes and pseudo-elements the browser files rules under.
     const FILED = /^(?::host|:host-context|::slotted|::part|:focus|:focus-visible|:link|:visited|:any-link|:-webkit-any-link|::placeholder|::cue|:root|::-webkit-[a-z-]+|::file-selector-button)$/;
-    // Whether the browser can file a step under something; it stops at the first part that tells.
     const filed = step => {
       for (let i = 0; i < step.length;) {
         const part = partAt(step, i);
@@ -2109,13 +1929,6 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
       return false;
     };
     const filedSelector = selector => { const at = lastStep(selector); return at < 0 || filed(selector.slice(at)); };
-    // Safari files a rule only under an id, class, tag or attribute written plainly in its last step, never under one
-    // inside :where() (4.0.0): every ":where(A):is(A, B)" part was still tried on every element there, and restyling
-    // the page took several times longer than in Chrome (a tap on the iPad answered a second later). So a part is
-    // written "A" plainly instead, with ":not(#ws-0)", ":not(.ws-0)" or ":not(ws-0)" (they match every element) added
-    // until it weighs exactly what the whole list weighs. When A weighs more than that in some column, the selector's
-    // html[...] step goes inside :where() and its weight is added back the same way. The rule still matches the same
-    // elements and wins or loses exactly as before, in every browser.
     const steps = selector => {
       const out = []; let depth = 0, quote = '', from = 0;
       for (let i = 0; i < selector.length; i++) {
@@ -2158,9 +1971,6 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
       return most;
     }
     const padding = diff => ':not(#ws-0)'.repeat(diff[0]) + ':not(.ws-0)'.repeat(diff[1]) + ':not(ws-0)'.repeat(diff[2]);
-    // A part of the list written plainly, or null when it keeps the ":where(A):is(...)" form.
-    // A part made of several steps (".a .b") keeps them in :where() after its own last step written plainly
-    // (".b:where(.a .b)"): it matches the same elements.
     function plainPart(head, arg, before, after, most) {
       if (!most || /^\*/.test(before)) return null;
       const own = steps(arg), last = own[own.length - 1];
@@ -2212,7 +2022,6 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
           const text = rule.selectorText, next = typeof text === 'string' ? rewrite(text) : null;
           if (next) rule.selectorText = next;
         }
-        // Grouping rules (@media, @supports, @layer, @container) and nested rules; never keyframes.
         if (rule.type !== 7 && rule.cssRules?.length) visit(rule.cssRules);
       }
     }
@@ -2242,22 +2051,12 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
     if (!document.head) new MutationObserver((records, own) => { if (!document.head) return; own.disconnect(); observer.disconnect(); watch(); scan(); }).observe(document.documentElement, { childList: true });
     return { scan, rewrite };
   })();
-  // The editor profile's daily edit bubbles (3.0.0): WME draws them dark in every theme, so their text stays light.
-  // Studio's own profile text colour reached the bubble's text too, which in the light theme left dark text on dark.
   if (editorProfile) GM_addStyle(`html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity, #edits-by-type, body) .tooltip .tooltip-inner,
 html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity, #edits-by-type, body) .tooltip .tooltip-inner * { color: #fff !important; }`);
   const config = globalThis.WMEStudioSettings;
   const schedule = globalThis.WMEStudioSchedule;
 
-  // ---- iPhone and iPad: only the map zooms, and what you type shows above the keyboard (2.3.0) -------------------
-  // Safari zooms the whole page when two fingers land on something that is not the map (a header, an island, a
-  // panel), on a double tap, and on its own when a text field smaller than 16px gets the focus. Those are stopped, so
-  // only the map zooms (the map reads the fingers itself, which still works). Safari keeps laying the page out and
-  // turning it as it always did. While the on-screen keyboard is up, a bar just above it shows the field's text and
-  // caret as you type. Islands are drawn a little larger on a touch screen, for a finger.
   const touchScreen = navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse)').matches && window.top === window.self;
-  // On a touch screen islands are a little larger (up to 15%) where there is room for them, and smaller where the
-  // page is short (a phone held sideways is some 450 high), so the side rails and the header still fit.
   const touchHudZoom = () => {
     if (!touchScreen) return 1;
     const height = document.documentElement?.clientHeight || innerHeight;
@@ -2269,11 +2068,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
     const root = document.documentElement;
     root.setAttribute('data-wme-studio-touch', 'on');
 
-    // Two fingers or a double tap never zoom the page. Safari's page zoom comes from its gesture events; the map's
-    // own pinch comes from the touch events, which are left to run.
-    // With Studio turned off the page zooms as it always did.
-    // A page that is zoomed in already (from before Studio started, say) may be pinched back out: only a page at its
-    // own size is held there.
     const zoomedIn = () => (window.visualViewport?.scale || 1) > 1.01;
     let pinchingOut = false;
     const block = event => {
@@ -2288,9 +2082,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
     const touchStyle = document.createElement('style');
     touchStyle.textContent = 'html[data-wme-studio="on"][data-wme-studio-touch="on"],html[data-wme-studio="on"][data-wme-studio-touch="on"] body{touch-action:pan-x pan-y}';
     (document.head || root).append(touchStyle);
-    // Every part of the page (4.0.0), not only the page itself: a panel or a list that scrolls starts afresh, so two
-    // fingers or a double tap on it zoomed the whole page, and it stayed that way. Anything that says otherwise (the
-    // map, which reads the fingers itself, sliders, things you drag) keeps its own. Switched on and off with Studio.
     const pageZoomStyle = document.createElement('style');
     pageZoomStyle.textContent = ':where(*){touch-action:pan-x pan-y}';
     (document.head || root).append(pageZoomStyle);
@@ -2298,8 +2089,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
     syncPageZoom();
     new MutationObserver(syncPageZoom).observe(root, { attributes: true, attributeFilter: ['data-wme-studio'] });
 
-    // What a touch screen does (4.0.0), for Report a bug: how long each tap's click took after the finger lifted, and
-    // how smooth the last drags were (the time between frames while a finger moved). Only looked at, never changed.
     const touchStats = { taps: [], drags: [] };
     globalThis.WMEStudioTouchStats = touchStats;
     {
@@ -2330,10 +2119,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
         if (touchStats.taps.length > 12) touchStats.taps.shift();
       }, true);
     }
-    // Taps on the islands and in Studio's own windows answer at once (4.0.0). Safari on an iPad sends a tap's click
-    // only after a pause, to see what the page does while the finger lifts. A quick tap there (the finger hardly moved)
-    // is clicked by Studio the moment the finger lifts, and Safari's own late click for it is let go. Text fields,
-    // lists, colors, sliders and things you drag keep Safari's own handling, and so do Arrange and the rest of WME.
     if (/AppleWebKit\//.test(navigator.userAgent) && !/\b(?:Chrome|Chromium|Edg|OPR|Firefox)\//.test(navigator.userAgent)) {
       const FAST = '#drawer,#overlay-buttons,#app-head,.ws-custom-island,[data-wme-studio-island-control],#wme-studio-userscript-ui,#wme-studio-command-palette,.ws-quick-replies';
       const KEEP = 'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,option,[contenteditable]:not([contenteditable="false"]),wz-text-input,wz-textarea,wz-select,wz-autocomplete,wz-date-input,[role="slider"],[role="textbox"],[role="combobox"],[role="spinbutton"],[aria-roledescription="draggable"],[draggable="true"],.olMapViewport';
@@ -2357,7 +2142,7 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
         if (!done || event.touches.length || performance.now() - done.at > 450 || !done.target.isConnected || !event.cancelable) return;
         const touch = event.changedTouches[0];
         if (touch && Math.hypot(touch.clientX - done.x, touch.clientY - done.y) > 10) return;
-        event.preventDefault();   // no late click from Safari
+        event.preventDefault();
         sent = { target: done.target, at: performance.now() };
         try {
           if (done.target instanceof HTMLElement) done.target.click();
@@ -2365,7 +2150,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
         }
         catch (error) { reportStudioError('fast tap', error); }
       }, { capture: true, passive: false });
-      // Should Safari still send its own click for that tap, it is dropped.
       document.addEventListener('click', event => {
         if (!sent || !event.isTrusted) return;
         if (performance.now() - sent.at > 800) { sent = null; return; }
@@ -2373,11 +2157,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
       }, true);
     }
 
-    // The page's width. Studio's layout needs a page at least 740 wide: on a phone the page is laid out 980 wide, as
-    // Safari does for a desktop site, and Safari fits it to the screen and turns it itself. Every iPad (an iPad mini
-    // included) keeps the page exactly as Safari lays it out: the page size, height and scale are left alone there.
-    // A text field about to get the focus: for as long as it has it, the page may not grow past its scale right now,
-    // which is what keeps Safari from zooming into the field. It is let go again when the field is left.
     const whenReady = action => { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', action, { once: true }); else action(); };
     const PHONE_WIDTH = 980;
     const phone = Math.min(screen.width, screen.height) < 600;
@@ -2390,7 +2169,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
       let meta = metas.filter(item => !item.hasAttribute('data-wme-studio-made')).pop() || metas[0] || null;
       if (view.original === undefined) view.original = meta ? meta.getAttribute('content') || '' : null;
       if (!phone && !view.hold) {
-        // Nothing to change: put back what the page had.
         if (!view.meta) return;
         if (view.meta.hasAttribute('data-wme-studio-made')) view.meta.remove(); else view.meta.setAttribute('content', view.original || '');
         view.meta = null; view.written = null;
@@ -2404,7 +2182,7 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
       const parts = [];
       if (phone) parts.push(`width=${PHONE_WIDTH}`);
       else if (ownWidth) parts.push(ownWidth, ...original.split(',').map(part => part.trim()).filter(part => /^initial-scale\s*=/i.test(part)));
-      else parts.push(`width=${view.width || root.clientWidth || PHONE_WIDTH}`);   // the width it has now, kept while held
+      else parts.push(`width=${view.width || root.clientWidth || PHONE_WIDTH}`);
       if (view.hold) parts.push(`maximum-scale=${view.hold}`);
       const content = [...parts, ...kept].join(', ');
       view.written = content;
@@ -2413,8 +2191,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
     function holdScale() {
       const scale = window.visualViewport?.scale;
       if (!scale) return;
-      // An iPad lays a page without a width of its own out as a desktop page and does not zoom into its fields.
-      // Giving it a viewport tag, even for a moment, makes Safari lay the page out again, smaller: leave it be.
       if (!phone) return;
       if (!view.hold) view.width = root.clientWidth;
       view.hold = Math.ceil(scale * 1000) / 1000;
@@ -2425,11 +2201,9 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
       view.hold = 0; view.width = 0;
       applyViewport();
     }
-    // As early as the page has a head, and again should the page change the tag itself.
     const watchViewport = () => {
       applyViewport();
       new MutationObserver(() => {
-        // The page's own tag arrived after Studio's: Studio's goes, and the page's is the one changed from now on.
         const own = [...document.querySelectorAll('meta[name="viewport"]')].filter(meta => !meta.hasAttribute('data-wme-studio-made')).pop();
         if (own && own !== view.meta) {
           if (view.meta?.hasAttribute('data-wme-studio-made')) view.meta.remove();
@@ -2445,7 +2219,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
       waitHead.observe(root, { childList: true });
     }
 
-    // What you type, just above the keyboard.
     const TEXT_TYPES = new Set(['', 'text', 'search', 'email', 'url', 'tel', 'password', 'number']);
     const typable = node => {
       if (!node || node.nodeType !== 1 || node.disabled || node.readOnly) return false;
@@ -2485,7 +2258,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
     const keyboardUp = () => {
       const view = visualViewport;
       if (!view) return true;
-      // The keyboard takes a good part of the screen; a hardware keyboard takes none, and then no bar is needed.
       bar.tall = Math.max(bar.tall, view.height * view.scale);
       return view.height * view.scale < bar.tall * 0.82;
     };
@@ -2516,13 +2288,12 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
       let value = field.isContentEditable ? field.innerText : String(field.value ?? '');
       if ((field.getAttribute('type') || '').toLowerCase() === 'password') value = '•'.repeat(value.length);
       let at = value.length;
-      try { if (!field.isContentEditable && typeof field.selectionStart === 'number') at = field.selectionStart; } catch (_) { /* email and number fields have no caret position */ }
+      try { if (!field.isContentEditable && typeof field.selectionStart === 'number') at = field.selectionStart; } catch (_) {   }
       bar.text.replaceChildren();
       if (!value) bar.text.append(Object.assign(document.createElement('span'), { className: 'caret' }));
       else {
         const caret = Object.assign(document.createElement('span'), { className: 'caret' });
         bar.text.append(document.createTextNode(value.slice(0, at)), caret, document.createTextNode(value.slice(at)));
-        // Keep the caret in sight in a long text.
         bar.text.scrollLeft = Math.max(0, caret.offsetLeft - bar.text.clientWidth + 24);
         bar.text.scrollTop = Math.max(0, caret.offsetTop - bar.text.clientHeight + caret.offsetHeight + 2);
       }
@@ -2536,8 +2307,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
       if (bar.host) { bar.box.classList.remove('on'); bar.host.style.display = 'none'; }
     }
     document.addEventListener('touchstart', event => { if (typable(event.composedPath?.()[0] || event.target)) holdScale(); }, { capture: true, passive: true });
-    // A finger that landed on a field and then scrolled away, or a phone turned: the scale is not held for a field that
-    // never got (or no longer has) the focus.
     const releaseUnlessTyping = () => setTimeout(() => { if (!typable(deepActive())) releaseScale(); }, 450);
     document.addEventListener('touchend', releaseUnlessTyping, { capture: true, passive: true });
     document.addEventListener('touchcancel', releaseUnlessTyping, { capture: true, passive: true });
@@ -2548,7 +2317,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
       holdScale();
       bar.field = field;
       clearInterval(bar.timer);
-      // Values set by the page (a suggestion picked, a field cleared) send no event: look again now and then.
       bar.timer = setInterval(queueBar, 250);
       queueBar(); setTimeout(queueBar, 350);
     }, true);
@@ -2558,7 +2326,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
         if (typable(now)) { bar.field = now; queueBar(); return; }
         hideBar();
         releaseScale();
-        // Safari may leave the page pushed up after the keyboard: put it back.
         if (scrollX || scrollY) scrollTo(0, 0);
       }, 60);
     }, true);
@@ -2569,9 +2336,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
     whenReady(measureTall);
     addEventListener('orientationchange', () => { bar.tall = 0; setTimeout(measureTall, 400); });
 
-    // The page's height. After the phone turns, Safari can leave the editor's own full height worked out for the old
-    // shape, so the map stopped short of the bottom of the screen (with the islands, placed by the window, hanging
-    // below it). The editor is given the height Safari shows, and the map is told to measure itself again.
     const heightStyle = document.createElement('style');
     heightStyle.textContent = 'html[data-wme-studio-phone="on"],html[data-wme-studio-phone="on"] body,html[data-wme-studio-phone="on"] body>.app{height:var(--ws-touch-height,100%)!important;min-height:0!important;max-height:var(--ws-touch-height,none)!important}html[data-wme-studio-phone="on"],html[data-wme-studio-phone="on"] body{overflow:hidden!important}';
     (document.head || root).append(heightStyle);
@@ -2579,7 +2343,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
     function fitHeight() {
       heightTimer = 0;
       if (!phone) return;
-      // The keyboard comes and goes over the page; the page keeps its height meanwhile.
       if (typable(deepActive())) return;
       const height = Math.round(innerHeight);
       if (!height) return;
@@ -2587,8 +2350,7 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
       if (root.style.getPropertyValue('--ws-touch-height') === value) return;
       root.style.setProperty('--ws-touch-height', value);
       if (scrollX || scrollY) scrollTo(0, 0);
-      // After Studio has started (the map tools are set up further down).
-      setTimeout(() => { try { resizeMap(true); } catch (_) { /* the editor measures on its own */ } }, 0);
+      setTimeout(() => { try { resizeMap(true); } catch (_) {   } }, 0);
     }
     const fitHeightSoon = () => { clearTimeout(heightTimer); heightTimer = setTimeout(fitHeight, 120); };
     whenReady(fitHeight);
@@ -2597,11 +2359,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
     visualViewport?.addEventListener('resize', fitHeightSoon);
   })();
 
-  // Custom scrollbars: slim, rounded and in the theme's colours everywhere in the editor. Chromium draws them
-  // from ::-webkit-scrollbar only where no element asks for the standard thin scrollbar, so those requests are
-  // switched off while this is on; Firefox gets the standard thin scrollbar in the same colours.
-  // What the map draws (thousands of SVG shapes, none of which can scroll) is left out (4.0.0): these rules were
-  // tested on every one of them each time the map was restyled. ":not(svg|...)" adds no weight.
   const NOT_SVG = ':not(svg|*:not(svg|foreignObject))';
   const studioScrollbarStyle = document.createElement('style');
   studioScrollbarStyle.dataset.wmeStudioScrollbars = '1';
@@ -2630,7 +2387,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
       }
     }`;
   (document.head || document.documentElement).append(studioScrollbarStyle);
-  // The theme and eye saver strength that should show now; with a schedule off they are just the saved values.
   let liveSchedule = null, appliedScheduleTheme = null;
   const refreshSchedule = () => (liveSchedule = schedule.resolve(settings));
   const activeTheme = () => (liveSchedule || refreshSchedule()).theme;
@@ -2755,11 +2511,7 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
   }, true);
 
   let settings = { ...config.defaults };
-  // Two-column Map Layers (3.0.0): a button in the panel's title switches between the two columns and WME's own single
-  // column, and the choice is remembered. The setting decides whether the two columns (and the button) are offered.
   const LAYER_VIEW_KEY = 'wmeStudio.layerColumnsView.v1';
-  // The panel's button is always there in Floating mode (4.0.0). Until it's used, the panel follows the setting; turning
-  // the setting on or off sets the panel too, and the button switches it from there.
   let layerColumnsView = null;
   const layerColumnsActive = () => (layerColumnsView || settings.layerColumns) === 'two';
   Promise.resolve(studioKeep.get(LAYER_VIEW_KEY, null)).then(value => {
@@ -2767,8 +2519,6 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
     layerColumnsView = value;
     if (ready) syncLayerColumns();
   }).catch(error => reportStudioError('layerColumnsView', error));
-  // One or two columns is written on the Map Layers panel itself, not on the page (3.0.2): a change on the page made
-  // the browser restyle every part of the editor, which made the switch lag.
   function markLayerColumn(menu) {
     const view = layerColumnsActive() ? 'two' : 'one';
     if (menu?.getAttribute('data-ws-layers') !== view) menu?.setAttribute('data-ws-layers', view);
@@ -2776,14 +2526,11 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
   function markLayerColumns() {
     for (const menu of document.querySelectorAll('.layer-switcher .menu')) markLayerColumn(menu);
   }
-  // From the panel's own button the islands' layout is left alone (3.0.2): writing it restyled the whole editor on
-  // every switch, and the panel is put back beside its island right after (see the button below).
   function syncLayerColumns(fromButton = false) {
     markLayerColumns();
     if (!fromButton) try { applyCompactLayoutVariables(); } catch (studioError) { reportStudioError('syncLayerColumns', studioError); }
     syncMapLayerWindows(true);
   }
-  // In the style of WME's own full screen icons, sideways: the panel narrows to one column, or widens to two.
   const LAYER_ONE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M3 12h6M6.5 9.5 9 12l-2.5 2.5M21 12h-6M17.5 9.5 15 12l2.5 2.5"/></svg>';
   const LAYER_TWO_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M9 12H3M5.5 9.5 3 12l2.5 2.5M15 12h6M18.5 9.5 21 12l-2.5 2.5"/></svg>';
   function syncLayerColumnsButton(title) {
@@ -2799,16 +2546,12 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
         layerColumnsView = layerColumnsActive() ? 'one' : 'two';
         try { Promise.resolve(studioKeep.set(LAYER_VIEW_KEY, layerColumnsView)).catch(error => reportStudioError('layerColumnsView', error)); } catch (error) { reportStudioError('layerColumnsView', error); }
         syncLayerColumns(true);
-        // The panel keeps the edge beside the island with the Map Layers button (its right edge when that island is on
-        // the right), so it narrows towards the island and a second click in the same place switches straight back.
-        // Done straight away, before the browser draws (3.0.2): the panel never shows a frame in the wrong place.
         if (menu && before) {
           const after = menu.getBoundingClientRect(), island = document.querySelector('.layer-switcher-button')?.getBoundingClientRect();
           const islandOnLeft = !!island?.width && island.left + island.width / 2 < before.left + before.width / 2;
-          // Where its left edge goes: the same place, or moved by the change in width so the right edge stays.
           const shift = islandOnLeft ? 0 : before.width - after.width, target = before.left + shift;
           const guard = headerGuardWindows.get(menu), state = mapLayerWindows.get(menu);
-          if (!after.width) { /* closed meanwhile */ }
+          if (!after.width) {   }
           else if (guard?.requestPoint) {
             if (Math.abs(shift) >= 1) { guard.requestPoint = { ...guard.requestPoint, left: guard.requestPoint.left + shift }; syncHeaderGuardWindows(); }
           } else if (state && canMoveMapLayer(menu)) {
@@ -2817,14 +2560,12 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
               positionMapLayer(state, target, state.position.y, { ...mapLayerDragInsets(), width: after.width, height: after.height });
             }
           } else if (Math.abs(after.left - target) >= 1) {
-            // Placed by the layout: moved on the panel alone until the layout is next worked out (3.0.2).
             menu.style.setProperty('--ws-island-layers-left', `${Math.round(target)}px`);
             menu.setAttribute('data-ws-column-shift', 'on');
           }
         }
       });
     }
-    // Right after the title text, before WME's own buttons.
     const heading = title.querySelector(':scope > h6');
     if (heading) { if (button.previousElementSibling !== heading) heading.after(button); }
     else if (button.parentElement !== title) title.prepend(button);
@@ -2874,25 +2615,11 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
   const arrangeBaseline = new Map();
 
 
-  // The islands' palette when they have a color of their own (3.0.0): every surface, field, border and text color
-  // inside an island is made from the chosen color, so menus and fields in the header follow it too.
-  // WME's own colour tokens (and add-ons' ones) are set from Studio's colours once, on the page root, so a panel or
-  // island that changes Studio's colours has to set them again for itself to see the new ones (3.0.0).
   const ISLAND_ALIASES = studioPart('ISLAND_ALIASES');
   const ISLAND_PANEL_PAINT = '.layer-switcher .menu,#sidebar,#panel-container > *,iframe[data-wme-studio-chat-panel="on"],[data-wme-studio-popup-kind]:not([data-wme-studio-popup-kind] *,[data-wme-studio-panel-preview]),[data-testid="floating-window"]:not([data-wme-studio-popup-kind],[data-wme-studio-popup-kind] *),.save-popover,[class*="changesLog--"] [class*="tooltipContent--"],#filter-panel-region,[id^="TURN_MENU_"]';
-  // Dialogs (Map build status, the restriction editor…) take the colors too; their box is painted from inside (see
-  // the wz-dialog rule in the components' style), the dialog element itself covers the whole page.
   const ISLAND_PANELS = `${ISLAND_PANEL_PAINT},wz-dialog`;
-  // Other scripts' fields on colored islands (3.0.5). Their fields followed only the theme, so a dark island color
-  // under the light theme (or a light one under a dark theme) left them light, and the list a select opens drew in the
-  // theme's colors. On an island they take the island's colors now, and the browser draws its own parts (a select's
-  // list, a date picker, scrollbars) dark or light to match the island. The field rules weigh as much as the theme's,
-  // so a script that colors its own fields keeps its colors.
   const ISLAND_HOSTS = `#app-head,#drawer,#overlay-buttons,.ws-custom-island,#wme-studio-userscript-ui,${ISLAND_PANELS}`;
   const ON_ISLAND = ink => `:where(html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-island-ink${ink ? `="${ink}"` : ''}]:not([data-wme-studio-glass-contrast]) :is(${ISLAND_HOSTS}))`;
-  // Placeholders (4.0.0): with "::placeholder" after it, a part like "[class*="x--"] ..." in front made the browser
-  // restyle everything below any element whose class changed. The Changes log's tooltip is named by the mark Studio
-  // puts on it (data-ws-changes-tip, see markKeptElements) instead; every other island is named as before.
   const ON_ISLAND_PLACEHOLDER = ON_ISLAND().replace('[class*="changesLog--"] [class*="tooltipContent--"]', '[data-ws-changes-tip]');
   globalThis.WMEStudioIslandFieldStyle = GM_addStyle(`
 ${ON_ISLAND('light')} { color-scheme: dark; }
@@ -2908,9 +2635,6 @@ ${ON_ISLAND()} :is(select, datalist) option, ${ON_ISLAND()} select optgroup { ba
 ${ON_ISLAND()} select option:checked { background-color: color-mix(in srgb, var(--wme-studio-accent) 34%, var(--ws-island-a)); color: var(--ws-island-ink); }
 `);
   GM_addStyle(studioPart('part5423', { ISLAND_ALIASES, ISLAND_PANELS, ISLAND_PANEL_PAINT }));
-  // The side panel's size and spot (3.0.0) are written on the panel and the map area (see sideWidthTargets). These
-  // rules live here, beside the code that writes them, so they apply even while a userscript manager still runs an
-  // older copy of WME Studio Resources (it keeps a library until the main script's version changes).
   GM_addStyle(`
 @property --ws-side-width { syntax: '*'; inherits: false; }
 @property --ws-lane-width { syntax: '*'; inherits: false; }
@@ -2939,9 +2663,6 @@ html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fulls
   height: var(--ws-dock-panel-css-height, var(--ws-side-dock-css-height, auto)) !important;
 }
 `);
-  // Your hub › Your impact opened large (3.0.0): in Floating mode the page is a big window over the map, with the
-  // islands kept where they are. Drag its title bar to move it and its edges to size it; double-click the bar to put
-  // it back in the middle at its first size.
   GM_addStyle(`
 @property --ws-hub-left { syntax: '*'; inherits: false; }
 @property --ws-hub-top { syntax: '*'; inherits: false; }
@@ -2969,29 +2690,17 @@ html[data-wme-studio="on"] #sidebar .tab-pane > div[class*="header--"] { z-index
 /* A request window's × sits a little in from the window's edge (4.0.0); the minimize button follows it. */
 html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) [aria-roledescription="draggable"] div[class*="controlsContainer--"] { margin-right: 6px !important; }
 `);
-  // The row with "Sort by" and the page numbers stays one row (WMEStudioFitRows); it wraps only when told to. A column
-  // holding the page count (Events) never wraps (3.0.4).
-  // Ask Waze: its lower parts were rounder than the window, so their corners stuck out; the window's own rounding
-  // clips them now.
   GM_addStyle(`
 html[data-wme-studio="on"] [data-testid="ai-helper-window"] :is([class*="container--"],[class*="disclaimer--"]) { border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
 html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row][data-wme-studio-fit-row]:has(> [class*="pagination--"]) { flex-wrap: nowrap !important; }
 html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row]:not([data-wme-studio-fit-row="column"]):has(> [class*="pagination--"]) { align-items: center; }
 html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row="wrap"][data-wme-studio-fit-row]:has(> [class*="pagination--"]) { flex-wrap: wrap !important; }
 `);
-  // WME's small pop-up panels (a closure's Status history, say) fade the list into the header with a white band drawn
-  // over the top of the list: it takes the panel's color instead (3.0.0).
   GM_addStyle(`
 html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--"]::after {
   background: linear-gradient(var(--wme-studio-surface) 0%, var(--wme-studio-surface) 20%, transparent 100%) !important;
 }
 `);
-  // ---- The islands' own color (3.0.0) ----------------------------------------------------------------------------
-  // Theme: the islands take the theme's surface, as before. Color: one color of your own. Gradient: two colors along
-  // a direction. The glass opacity still applies. On the islands the theme's colors are replaced by ones made from
-  // the chosen color, and text and icons turn dark on a light color and light on a dark one, so they stay readable.
-  // Dark or light text: whichever stays most readable against both ends of the color (a gradient from a light to a
-  // dark color is judged by its worse end, not by the average of the two).
   function islandInk(a, b) {
     const lum = hex => { const [r, g, bl] = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); return r * .2126 + g * .7152 + bl * .0722; };
     const ratio = (x, y) => (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
@@ -2999,7 +2708,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     return Math.min(...ends.map(end => ratio(end, dark))) >= Math.min(...ends.map(end => ratio(end, light))) ? 'dark' : 'light';
   }
   globalThis.WMEStudioIslandInk = islandInk;
-  // Color intensity: the chosen color mixed with the theme's background (100% is the color itself).
   function islandTone(hex, intensity = settings.islandIntensity, theme = activeTheme()) {
     const base = (studioPalettes[theme] || studioPalettes.dark)['--wme-studio-surface'] || '#292d31';
     const share = Math.min(100, Math.max(0, Number(intensity) || 100)) / 100;
@@ -3015,15 +2723,10 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     const paint = opacity => `linear-gradient(${settings.islandAngle}deg, color-mix(in srgb, ${a} var(${opacity}), transparent), color-mix(in srgb, ${b} var(${opacity}), transparent))`;
     rootStyle('--ws-island-paint', fill === 'gradient' ? paint('--ws-compact-opacity, 60%') : '');
     rootStyle('--ws-island-paint-hover', fill === 'gradient' ? paint('--ws-compact-hover-opacity, 90%') : '');
-    // The side panel (and every panel on a touch screen) is solid (3.0.0): the colors themselves, nothing shows through.
     rootStyle('--ws-island-paint-solid', fill === 'gradient' ? `linear-gradient(${settings.islandAngle}deg, ${a}, ${b})` : fill === 'color' ? a : '');
     attr('island-ink', fill === 'theme' ? null : islandInk(a, b));
     queuePaneFills(0);
   }
-  // Bars that stay put inside a colored panel (3.0.0): see the [data-wme-studio-pane-fill] rule.
-  // (4.0.0) Measured right after a frame has been drawn, when the page is already laid out, and once for many calls in a
-  // row: measuring at any moment (every second, and after every change of a slider) made the page lay itself out an
-  // extra time, which made sliders and scrolling lag.
   let paneFillTimer = 0, paneFillQueued = false;
   function queuePaneFills(delay) {
     clearTimeout(paneFillTimer);
@@ -3081,16 +2784,12 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     }
     return Object.keys(out).length ? out : null;
   }
-  // Arrange's stand-ins for windows that are not open (see placePanelPreview), so finding one needs no search.
   var studioPanelPreviews = new Set();
-  // The first of the given elements in page order.
   const firstInPage = elements => elements.reduce((first, element) => !first || (first.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_PRECEDING) ? element : first, null);
   function queryCompactIsland(spec) {
     if (spec.popup && !['layers','messages','sidePanel'].includes(spec.id)) {
       for (const element of headerGuardWindows.keys()) if (requestPopupKind(element) === spec.id && compactVisibleRect(element)) return element;
     }
-    // A request's kind is written by Studio only on the windows it keeps track of (and on Arrange's stand-ins), so
-    // those are all that is looked through, not the whole page (4.0.0).
     let direct;
     if (spec.popup && spec.selector === `[data-wme-studio-popup-kind="${spec.id}"]`) {
       direct = firstInPage([...headerGuardWindows.keys()].filter(element => element.getAttribute('data-wme-studio-popup-kind') === spec.id && !element.hasAttribute('data-wme-studio-panel-preview') && element.isConnected && element.getRootNode() === document));
@@ -3108,9 +2807,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       if (!marked) return null;
     }
     if (typeof roots !== 'undefined' && roots.size) {
-      // Looking through every component for an island that is not there (Map Layers while it is closed, for one) was
-      // done again and again while a panel opened: a miss is believed until a component is added, removed or changes
-      // what it holds, or for a moment at most (4.0.0).
       const now = performance.now(), miss = shadowIslandMisses.get(spec.selector);
       if (miss && miss.version === shadowIslandVersion && now - miss.at < 250 && !(spec.popup && spec.id !== 'layers')) return null;
       for (const shadow of roots.keys()) {
@@ -3121,7 +2817,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     }
     return null;
   }
-  // "var": islands can be looked for before these lines have run.
   var shadowIslandVersion = 0, shadowIslandMisses = new Map();
   function compactHeaderWidth(viewportWidth = innerWidth) {
     const zoom = hudZoomOf(settings.hudScale);
@@ -3135,12 +2830,8 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   function compactHeaderHorizontalInset(width, viewportWidth = innerWidth) {
     return width > viewportWidth - 24 ? 0 : 12;
   }
-  // An island placed in Arrange is put where its size says (a point between the edges, so a taller island starts
-  // higher). WME swaps some buttons for new ones that are drawn a moment later (the share button, when its popup
-  // opens or closes), and for that moment the island is shorter: placed by that size, the whole island jumped and
-  // came back. A smaller size is only believed once it has lasted a little; a bigger one at once.
   const ISLAND_SHRINK_WAIT = 600;
-  const islandHeldSize = new Map();   // island id -> { width, height, since }
+  const islandHeldSize = new Map();
   let islandShrinkTimer = 0;
   function compactIslandSize(spec) {
     const element = queryCompactIsland(spec);
@@ -3173,8 +2864,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   function compactIslandPixels(spec, point, size = compactIslandSize(spec), frame = compactViewportFrame()) {
     const footer = frame.footer;
     const bottom = footer ? Math.min(frame.height - 12, footer.top - COMPACT_ISLAND_GAP) : frame.height - 12;
-    // Popup positions refer to their top-left corner, independently of their live width/height.
-    // Older Arrange layouts used the preview's size; retain that opening point on upgrade.
     const zoom = (settings.panelScale || 100) / 100;
     const reference = spec.popup && spec.id !== 'layers' && point.anchor !== 'viewport' ? {
       width: Math.min(spec.width(), frame.width - 48) * zoom,
@@ -3183,10 +2872,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     const horizontalInset = spec.id === 'header' ? compactHeaderHorizontalInset(size.width, frame.width) : 12;
     let left = point.anchor === 'viewport' ? point.x * frame.width : horizontalInset + point.x * Math.max(0, frame.width - 2 * horizontalInset - reference.width);
     let top = point.anchor === 'viewport' ? point.y * frame.height : 12 + point.y * Math.max(0, frame.height - 24 - reference.height);
-    // Arrange shows a panel as a preview of its usual size, but the panel itself opens at the size you gave it. Saved in
-    // the right or bottom half, it keeps its right or bottom edge where the preview's was: Messages saved in the bottom
-    // right, made wider, came back a few centimetres to the left (3.0.6). A place saved before this kept no size: one
-    // whose preview touched the right or bottom edge stays against that edge.
     if (spec.popup && spec.id !== 'layers' && point.anchor === 'viewport') {
       const w = Number(point.w), h = Number(point.h);
       const previewWidth = Math.min(spec.width(), frame.width - 48) * zoom, previewHeight = Math.min(spec.height(), frame.height - 200) * zoom;
@@ -3278,7 +2963,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   function compactLauncherObstacles(exclude = null) {
     return ['online','tile'].filter(id => id !== exclude).map(id => compactVisibleRect(queryCompactIsland(compactIslandSpec(id)))).filter(Boolean);
   }
-  // Only a header that actually spans the viewport has no horizontal room.
   function compactHeaderPlacement(rect, previous, obstacles, viewport = { width: innerWidth, height: innerHeight }) {
     if (!compactHeaderSpansViewport(rect.width, viewport.width)) return compactSlidePosition(rect, previous, obstacles, viewport, 12, compactHeaderHorizontalInset(rect.width, viewport.width));
     const left = (viewport.width - rect.width) / 2;
@@ -3298,7 +2982,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     candidates.sort((a, b) => Math.abs(a.top - previous.top) - Math.abs(b.top - previous.top));
     return candidates[0] || null;
   }
-  // Street View when it shares the screen with the map (not when Studio has floated it into a window of its own).
   function dockedStreetView() {
     if (streetViewWindow.active && !streetViewWindow.docked) return null;
     const container = document.getElementById('street-view-container');
@@ -3310,8 +2993,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   function compactHeaderIslandObstacles() {
     return [...new Set([...compactIslandSpecs.filter(spec => spec.id !== 'header' && !spec.popup).map(queryCompactIsland), ...customIslandElements()])].map(compactVisibleRect).filter(Boolean);
   }
-  // Panels and windows (the side panel, the filter panel, request windows, ...): the header can pass over them
-  // while it is dragged, but is never left on top of one.
   function compactHeaderPanelObstacles() {
     const islands = new Set(compactIslandSpecs.filter(spec => !spec.popup).map(queryCompactIsland));
     return [...new Set([...compactIslandSpecs.filter(spec => spec.popup).map(queryCompactIsland), document.getElementById('sidebar'), document.getElementById('filter-panel-region'),
@@ -3331,18 +3012,13 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     const leftWidth = Math.max(rect.width, rect.left + rect.width - left), rightWidth = Math.max(rect.width, right - rect.left);
     return { right: rightWidth > leftWidth, width: Math.min(440, Math.max(leftWidth, rightWidth)) };
   }
-  // Islands Studio draws itself (the rail's items gathered in an island of their own). They are real obstacles: WME's own
-  // rail (#drawer) is left behind them a few pixels tall, too small to count, so without them a panel could be sized or
-  // placed right over the rail (3.0.6).
   function customIslandElements() { return [...document.querySelectorAll('.ws-custom-island')]; }
   function compactVisibleRect(element) {
-    // An island Studio draws is hidden from screen readers (its buttons are read where they belong) but it is on screen.
     if (!element?.isConnected || element.hidden || element.getAttribute('aria-hidden') === 'true' && !element.classList.contains('ws-custom-island') || element.classList.contains('hide-layer-switcher')) return null;
     const style = getComputedStyle(element), rect = element.getBoundingClientRect();
     if (style.display === 'none' || style.visibility === 'hidden' || rect.width < 12 || rect.height < 12 || rect.right <= 0 || rect.bottom <= 0 || rect.left >= innerWidth || rect.top >= innerHeight) return null;
     return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
   }
-  // Beside an island Studio draws: next to an upright island, level with the button; above or below a flat one.
   function onlinePanelBesideIsland(moved, size, obstacles = []) {
     const own = moved.control.getBoundingClientRect(), island = moved.island, gap = ONLINE_PANEL_GAP, edge = 12;
     const footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
@@ -3357,11 +3033,9 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       top = island.top + island.height / 2 <= innerHeight / 2 ? island.top + island.height + gap : island.top - gap - height;
     }
     const placed = { left: Math.max(edge, Math.min(left, innerWidth - edge - size.width)), top: Math.max(edge, Math.min(top, bottom - height)), width: size.width, height };
-    // Off the rail, the header and the other islands: the nearest clear spot when beside the island is taken.
     if (!obstacles.length || compactRectClear(placed, obstacles, gap)) return placed;
     return compactFreePosition(placed, obstacles, { width: innerWidth, height: bottom + edge }) || placed;
   }
-  // The online editors list keeps clear of its button (2.2.0): it sat right against it.
   const ONLINE_PANEL_GAP = 10;
   function compactOnlinePanelPlacement(anchor, size, obstacles, viewport = { width: innerWidth, height: innerHeight }) {
     const gap = ONLINE_PANEL_GAP;
@@ -3513,7 +3187,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
         }
         continue;
       }
-      // Toolbox keeps its native drag handler; settle after its mouseup, without competing writes.
       if (state.dragging || element.classList.contains('ui-draggable-dragging') || compactDragInProgress()) continue;
       const style = getComputedStyle(element);
       if (element.hidden || element.getAttribute('aria-hidden')==='true' || style.display==='none' || style.visibility==='hidden') continue;
@@ -3556,7 +3229,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     };
     const obstacles = active ? toolboxPlacementObstacles(null,false) : [];
     const header = active ? compactVisibleRect(document.getElementById('app-head')) : null;
-    // Show warnings first; normal messages never displace or cover them.
     const entries = [...toolboxLoggers].sort(([a],[b])=>Number(b.id==='WMETB_logger_warn')-Number(a.id==='WMETB_logger_warn'));
     for (const [element,observer] of entries) {
       if (!element.isConnected) { observer.disconnect(); toolboxLoggerResize?.unobserve(element); toolboxLoggers.delete(element); clear(element); continue; }
@@ -3582,8 +3254,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       obstacles.push({left:placed.left-6,top:placed.top-6,width:placed.width+12,height:placed.height+12});
     }
   }
-  // Set while a slider is being dragged (see WMEStudioPreview.quick); "var" because placement can be asked for
-  // before this line has run.
   var quickPreviewUntil = 0;
   function queueCompactAuxiliaryPlacement() {
     if (sidePanelResizing() || performance.now() < quickPreviewUntil) return;
@@ -3601,7 +3271,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       element.removeAttribute('data-wme-studio-search-space');
       for (const axis of ['left','top']) if (element.style.getPropertyValue(`--ws-search-area-${axis}`)) element.style.removeProperty(`--ws-search-area-${axis}`);
     };
-    // Use the live geometry even when devtools narrows the viewport below the desktop layout breakpoint.
     const active=ready && settings.enabled && settings.compactMode && !standaloneSignin && !editorProfile;
     if (active && compactDragInProgress()) return;
     for (const element of searchAreaButtons) {
@@ -3618,7 +3287,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       const placed=compactFreePosition({left:(innerWidth-width)/2,top:header?header.top+header.height+12:80,width,height},toolboxPlacementObstacles(element));
       if (!placed) {clear(element);continue;}
       if (element.getAttribute('data-wme-studio-search-space')!=='clear') element.setAttribute('data-wme-studio-search-space','clear');
-      // Fixed elements can inherit a transformed or zoomed map ancestor. Correct in viewport pixels.
       const rect=element.getBoundingClientRect(),zoom=element.currentCSSZoom || 1;
       for (const [axis,value] of [['left',placed.left],['top',placed.top]]) {
         const origin=axis==='left'?rect.left:rect.top;
@@ -3631,7 +3299,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   const addonToasts = new Map();
   const addonToastResize = typeof ResizeObserver==='function' ? new ResizeObserver(queueCompactAuxiliaryPlacement) : null;
   function trackAddonToast(element) {
-    // Alert history is a separate, normally hidden panel, not a live notification stack.
     if (element.id==='toast-container-history' || element.closest('.WWAlertsHistory,#WWAlertsHistory-list')) return;
     if (!addonToasts.has(element)) {
       const observer=new MutationObserver(queueCompactAuxiliaryPlacement);
@@ -3664,7 +3331,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       let placed=null,rect=null;
       if (element.getAttribute('data-wme-studio-toast-space')!=='clear') element.setAttribute('data-wme-studio-toast-space','clear');
       const sizes=[];
-      // Try a narrower stack before adding scroll; a fixed 500px stack could hide every alert.
       for (const width of widths) {
         setElementVariable(element,'--ws-toast-width',`${width/zoom}px`);
         setElementVariable(element,'--ws-toast-height',`${160/zoom}px`);
@@ -3682,7 +3348,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
         if (placed) break;
       }
       if (!placed) {
-        // If expanded panels cover the map, keep warnings visible while still clearing the islands.
         const islands=[...new Set([
           ...compactIslandSpecs.filter(spec=>!spec.popup).map(queryCompactIsland),...customIslandElements(),
           document.querySelector('.wz-map-ol-footer'),floatingHeader.locationLabel,floatingHeader.addonPill,
@@ -3698,7 +3363,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
           if (placed) break;
         }
       }
-      // A fully occupied viewport must not suppress native warnings or confirmation controls.
       if (!placed) {clear(element);continue;}
       setElementVariable(element,'--ws-toast-width',`${placed.width/zoom}px`);
       setElementVariable(element,'--ws-toast-height',`${placed.height/zoom}px`);
@@ -3729,8 +3393,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
         applyChatPanelPosition(state,state.requestedOffset || state.offset,true); panelResizeHints.show(frame, 'messages', state.doc);
       } else panelResizeHints.dismiss(frame);
     }
-    // Windows that open over the map (Map Layers, the side panel, requests…) are kept apart: the Google Maps link
-    // stays where it is under them (3.0.2).
     const obstacles = [], windows = new Set();
     for (const spec of compactIslandSpecs) {
       if (spec.id === 'online' || spec.id === 'tile') continue;
@@ -3751,7 +3413,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     const bottom = footerRect ? innerHeight - footerRect.top + COMPACT_ISLAND_GAP : 36;
     let anchor = null, tile = null, movedOnline = null;
     {
-      // The Online Editors button moved into an island: its list opens from there, not from its old corner.
       const element = queryCompactIsland(compactIslandSpec('online'));
       const control = element?.matches?.('[data-wme-studio-island-control]') ? element : element?.querySelector?.('[data-wme-studio-island-control]');
       const moved = control && movedControlIsland(control);
@@ -3763,7 +3424,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       observeCompactPlacement(element);
       let rect = compactVisibleRect(element);
       if (!rect) continue;
-      // Inside an island the control is where the island put it: its own spot is not worked out (or used) then.
       if (!islandPlaced.has(element) && ((!compactLayoutEditing && !floatingHeader.position) || forceLaunchers)) {
         const size = compactIslandSize(spec), point = compactIslandLayout?.[id];
         const preferred = point ? compactIslandPixels(spec, point, size) : { left: id === 'online' ? 12 : innerWidth - size.width - 12, top: innerHeight - size.height - bottom, ...size };
@@ -3804,9 +3464,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       obstacles.push(placed);
     }
     if (tile) {
-      // In an island the label opens over the island's other controls: only what is outside the island limits it.
-      // Windows (Messages, the side panel, a request…) don't limit it either (4.0.0): it opens over them while you
-      // point at it, instead of being cut short at their edge.
       const own = movedControlIsland(tile.element)?.rect;
       const inside = rect => own && rect.left >= own.left - 1 && rect.top >= own.top - 1 && rect.left + rect.width <= own.left + own.width + 1 && rect.top + rect.height <= own.top + own.height + 1;
       const expansion = compactTileExpansion(tile.rect, obstacles.filter(rect => rect !== tile.rect && !windows.has(rect) && !inside(rect)));
@@ -3814,21 +3471,17 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       if (tile.element.getAttribute('data-wme-studio-tile-expand') !== direction) tile.element.setAttribute('data-wme-studio-tile-expand', direction);
       const width = `${expansion.width}px`;
       if (tile.element.style.getPropertyValue('--ws-tile-expand-width') !== width) tile.element.style.setProperty('--ws-tile-expand-width', width);
-      // Opened inside an island, the label starts at the island's edge and is as thick as the island, so it reads
-      // as the island growing a tab instead of a smaller pill on top of it with a band of island around it.
       const zoom = tile.element.currentCSSZoom || 1, flat = own && own.width > own.height;
       const edge = (value, always) => own && value > 0 && (always || value < 12) ? Math.round(value / zoom * 100) / 100 : 0;
       const out = own ? {
         top: edge(tile.rect.top - own.top, flat), bottom: edge(own.top + own.height - tile.rect.top - tile.rect.height, flat),
         left: edge(tile.rect.left - own.left, !flat || direction === 'right'), right: edge(own.left + own.width - tile.rect.left - tile.rect.width, !flat || direction === 'left')
       } : { top: 0, bottom: 0, left: 0, right: 0 };
-      // In an upright island a tab would make an L of the island; the label opens as a card beside it instead.
       setToggle(tile.element, 'data-wme-studio-tile-detached', !!own && !flat);
       for (const [side, value] of Object.entries(out)) {
         const name = `--ws-tile-out-${side}`, text = `${value}px`;
         if (tile.element.style.getPropertyValue(name) !== text) tile.element.style.setProperty(name, text);
       }
-      // The label's words are drawn at a readable size however far the HUD (or the island) shrinks the control.
       const labelZoom = String(Math.round((tile.element.querySelector(':scope > .tile-build-status')?.currentCSSZoom || zoom) * 1000) / 1000);
       if (tile.element.style.getPropertyValue('--ws-label-zoom') !== labelZoom) tile.element.style.setProperty('--ws-label-zoom', labelZoom);
       const radius = own ? `${Math.round(parseFloat(getComputedStyle(root).getPropertyValue('--ws-compact-radius')) / zoom || 26)}px` : '';
@@ -3836,8 +3489,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     }
     placeGoogleMapsLink(obstacles.filter(rect => !windows.has(rect)));
   }
-  // The Google Maps link WME shows in the map's bottom-right corner (3.0.0): in Floating mode the Tile Update island
-  // sits in that corner and hid it. The link moves left of whatever covers it (or up, when there is no room).
   function placeGoogleMapsLink(obstacles) {
     const link = document.querySelector('.wz-map-ol-control-google-map-permalink');
     if (!link) return;
@@ -3859,7 +3510,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     const dx = Math.round(box.left - base.left), dy = Math.round(box.top - base.top);
     if (dx || dy) link.style.setProperty('translate', `${dx}px ${dy}px`, 'important');
   }
-  // Where the side panel sits in Floating mode is written on the panel itself (3.0.0): see sideWidthTargets.
   const sideDock = new Map();
   function sideDockVariable(name, value) {
     if (value == null) sideDock.delete(name); else sideDock.set(name, value);
@@ -3910,7 +3560,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     try { Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY, compactIslandLayout)).catch((studioError) => { reportStudioError("storeCompactChatLayout",studioError);}); } catch (studioError) { reportStudioError("storeCompactChatLayout",studioError);}
     return true;
   }
-  // The island Studio draws that holds rail items: the one with the open item first, then the rail's own.
   function navigationIslandRect() {
     try {
       const model = islandModel();
@@ -3924,7 +3573,7 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
         if (score > bestScore) { best = island; bestScore = score; }
       }
       return best ? { rect: best.rect, orient: best.orient } : null;
-    } catch (studioError) { return null; }   // the island engine is not ready yet
+    } catch (studioError) { return null; }
   }
   function syncCompactDocks(sizes = null) {
     if (sidePanelResizing()) return;
@@ -3946,8 +3595,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       bar = {...saved,right:saved.left + saved.width,bottom:saved.top + saved.height};
     }
     let panelLeft = null, panelRight = null;
-    // Rail items Studio draws in an island of its own: the panels open from that island. Beside it when it
-    // stands upright, above or below it when it lies flat.
     const railIsland = layout.sidePanel ? null : navigationIslandRect();
     const flatRail = railIsland?.orient === 'h' ? railIsland.rect : null;
     if (flatRail) {
@@ -4027,9 +3674,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       height: vv?.height || document.documentElement.clientHeight || innerHeight
     };
   }
-  // The two default centring offsets are read by one rule each (#drawer and #overlay-buttons). They are kept
-  // in a small sheet scoped to those islands instead of on <html>, where every change would restyle the
-  // whole document.
   const defaultSideCenters = { navigation: ['--ws-default-navigation-top', '#drawer', null], tools: ['--ws-default-tools-top', '#overlay-buttons', null] };
   let defaultSideCenterSheet = null;
   function writeDefaultSideIslandCenters() {
@@ -4067,7 +3711,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       const rect = element.getBoundingClientRect();
       if (rect.width < 12 || rect.height < 12) { needsAnotherPass = true; continue; }
 
-      // Centred by a size that has lasted (see heldIslandSize): a button WME swaps for a moment moves nothing.
       const height = force ? rect.height : heldIslandSize(`centre:${id}`, { width: rect.width, height: rect.height }).height;
       const desiredTop = viewport.top + (viewport.height - height) / 2;
       const cssTop = Number.parseFloat(center[2]);
@@ -4155,9 +3798,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       const baseline = compactLayoutEditing ? arrangeBaseline.get(spec.id) : null;
       const horizontal = spec.id === 'header' ? '--ws-island-header-center' : `--ws-island-${spec.id}-left`;
       if (!point && !baseline) {
-        // Online Editors and Tile Update are given their spot right after this (queueCompactAuxiliaryPlacement).
-        // Clearing it here first made the browser restyle the whole page twice, a second or more each on a busy map,
-        // every time the layout was applied: after sizing the side panel, say (3.0.0).
         const header = typeof floatingHeader === 'undefined' ? null : floatingHeader;
         const element = (spec.id === 'online' || spec.id === 'tile') ? queryCompactIsland(spec) : null;
         if (element && !compactLayoutEditing && !header?.position && !islandPlaced.has(element)) continue;
@@ -4178,9 +3818,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       writes.push([`--ws-island-${spec.id}-top`, `${placed.top}px`]);
       placedIslands.push(spec.id);
     }
-    // The islands Studio draws are laid out again only when something they are placed by changed here: a WME
-    // island's variable, the layout attribute, or the room the islands have (the window, a docked Street View).
-    // Called again with nothing new (the settle passes after a resize), this writes nothing and lays nothing out.
     let changed = false;
     const write = (name, value) => {
       if (value == null) { if (root.style.getPropertyValue(name)) { root.style.removeProperty(name); changed = true; } }
@@ -4190,7 +3827,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     const layoutAttr = placedIslands.length ? placedIslands.join(' ') : null;
     if (root.getAttribute('data-wme-studio-layout') !== layoutAttr) { attr('layout', layoutAttr); changed = true; }
     shiftHeaderControls();
-    // Online Editors and Tile Update are kept beside a docked Street View, not on top of its panorama.
     const space = islandSpace();
     if (space.pane) for (const id of ['online', 'tile']) {
       const element = queryCompactIsland(compactIslandSpec(id));
@@ -4214,7 +3850,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     scheduleDefaultSideIslandCenters();
     syncCompactToolTooltips();
     queueCompactAuxiliaryPlacement(); queueHeaderGuardWindows();
-    // In Arrange every edit lays the islands out again, as before.
     if (changed || compactLayoutEditing || !islandLayout.islands.size) scheduleIslandControls();
   }
   async function storeCompactIslandLayout(value) {
@@ -4231,8 +3866,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     let anchor = null, rich = false, placed = null;
     for (let node = instance.target || source || instance; node;
       node = node.assignedSlot || node.parentElement || node.getRootNode?.().host) {
-      // A tooltip from inside a menu (why an item of the + menu is disabled, say) belongs to that item: WME
-      // places it beside the item, not Studio beside the island the menu's button sits in.
       if (node.matches?.('wz-menu,wz-menu-item,wz-menu-sub-menu,.wz-menu,.wz-menu-item,[role="menu"],[role="menuitem"],[role="listbox"]')) return null;
       if (node.localName === 'wz-rich-tooltip') rich = true;
       if (!placed && node.hasAttribute?.('data-wme-studio-island-control')) placed = node;
@@ -4241,7 +3874,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       if (node.id === 'app-head') return {kind:'header',rail:node,anchor:source?.querySelector?.('wz-button,button,a') || source || instance,passive:!rich};
       if (node.id === 'online-editors') return {kind:'online',rail:node,anchor:anchor || node.querySelector('.online-editors-bubble') || source,passive:!rich};
     }
-    // Any other control Studio has placed in an island (Tile Update, a script's button): beside that island.
     if (placed) return {kind:'moved',rail:placed,anchor:anchor || source || placed,passive:!rich};
     return null;
   }
@@ -4279,7 +3911,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     const rail = location.rail.getBoundingClientRect(), anchor = location.anchor.getBoundingClientRect();
     if (location.passive && !state.content.querySelector('button,wz-button,a[href],input,select,textarea,[role="button"],[contenteditable="true"]')) state.content.setAttribute('data-wme-studio-tooltip-passive','on');
     const gap = 10, edge = 8;
-    // A control moved to another island shows its tooltip beside that island, not beside the rail it came from.
     const moved = movedControlIsland(location.anchor);
     if (moved) {
       const variable = (name,number) => {
@@ -4344,7 +3975,7 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
         }
         current = current.assignedSlot || current.parentElement || current.getRootNode?.().host;
       }
-    } catch (studioError) { /* the island engine is not ready yet */ }
+    } catch (studioError) {   }
     return null;
   }
   function syncCompactToolTooltips() {
@@ -4454,7 +4085,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   }
   function finishWorkspaceSwitch() {
     cancelAnimationFrame(workspaceSwitchFrame);
-    // Apply the final layout at once; suppress native CSS transitions through its first paint.
     if (document.hidden) { workspaceSwitchFrame = 0; attr('workspace-switching', null); return; }
     workspaceSwitchFrame = requestAnimationFrame(() => {
       workspaceSwitchFrame = requestAnimationFrame(() => {
@@ -4485,12 +4115,10 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       for (const animation of scope.getAnimations?.() || []) animations.add(animation);
     }
     for (const animation of animations) {
-      // A looping one (a spinner) has no end to jump to: it is only stopped (3.0.4).
       try { if (Number.isFinite(animation.effect?.getComputedTiming?.().endTime)) animation.finish(); } catch (studioError) { reportStudioError("syncInterfaceMotion",studioError); }
       animation.cancel();
     }
   }
-  // Whether the size the map has on record (its extent over its resolution, from the SDK) is the size of its element.
   function mapSizeOnRecord() {
     return studioSDK.value(api => {
       const element = api.Map.getMapViewportElement(), [left, bottom, right, top] = api.Map.getMapExtent(), resolution = api.Map.getMapResolution();
@@ -4509,11 +4137,9 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       notifyingMapResize = true;
       try {
         if (preferNative && document.getElementById('WazeMap')) {
-          if (mapSizeOnRecord()) return;   // nothing changed for the map: no page-wide resize (Street View drags call this often)
-          // The page's own "the window changed" first, as for any page; WME's resize only if the map did not follow.
+          if (mapSizeOnRecord()) return;
           window.dispatchEvent(new Event('resize'));
           requestAnimationFrame(() => {
-            // The SDK has no way to tell the map its size changed: WME's own call, only when the map missed the event.
             const map = pageWindow.W?.map;
             if (typeof map?.resize !== 'function' || mapSizeOnRecord()) return;
             notifyingMapResize = true;
@@ -4522,9 +4148,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
           });
           return;
         }
-        // A "resize" event makes the editor and every script that listens for it measure the page again.
-        // When the size OpenLayers has on record already equals the size of the map element (a floating
-        // side panel opening over the map, for example) there is nothing to tell it.
         if (!preferNative && mapSizeOnRecord()) return;
         window.dispatchEvent(new Event('resize'));
       } finally { notifyingMapResize = false; }
@@ -4614,10 +4237,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     return {x:placed.left - baseLeft,y:placed.top - baseTop};
   }
 
-  // 2.2.2: WME keeps Messages in a fixed box along the right of the window. Studio moves only the panel inside it,
-  // so once the panel was dragged away the empty box still caught clicks and drags on the map beneath it, and its
-  // shadow stayed on screen as an empty outlined box. Every box around the panel now lets the pointer through and
-  // draws nothing; only the panel itself takes the pointer, and not while the map is being dragged under it.
   const chatUnclipped = new Map();
   function markChatHost(frame, on) {
     const doc = frame.ownerDocument;
@@ -4633,9 +4252,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       if (node.id === 'waze-chat-container' || node === doc.body || node === doc.documentElement) break;
       if (node.getAttribute('data-wme-studio-chat-host') !== 'on') node.setAttribute('data-wme-studio-chat-host', 'on');
     }
-    // (4.0.0) Any box further up that cuts off what leaves it would cut off the panel moved out of it (Safari did, so
-    // the left part with the close button and the pictures was missing). Such a box lets it show, until Messages goes.
-    // The editor's own layout boxes (the ones holding the map or the side panel) are left as they are.
     for (let node = frame.parentElement || frame.getRootNode?.().host; node && node !== doc.body && node !== doc.documentElement && !node.querySelector?.('#WazeMap,#map,#sidebar,.olMapViewport'); node = node.parentElement || node.getRootNode?.().host) {
       if (chatUnclipped.has(node)) continue;
       const style = getComputedStyle(node);
@@ -4645,7 +4261,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     }
     if (markChatHost.watching) return;
     markChatHost.watching = true;
-    // A drag that starts on the map keeps going when it passes over the panel (the panel's page would take it).
     const root = doc.documentElement;
     const stop = () => { if (root.hasAttribute('data-wme-studio-map-panning')) root.removeAttribute('data-wme-studio-map-panning'); };
     doc.addEventListener('pointerdown', event => {
@@ -4697,7 +4312,7 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     state.motion.finished.then(() => { state.motion = null; }).catch(() => {});
   }
   function closeChatPanelThen(state, proceed) {
-    if (state) state.movedByHand = false;   // it opens at its place from Arrange again
+    if (state) state.movedByHand = false;
     if (state.closing) return;
     if (reducedMotion.matches || !settings.motion) { proceed(); return; }
     state.closing = true;
@@ -4715,7 +4330,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       setTimeout(() => {
         if (!state.target.isConnected || !state.closing) return;
         if (chatPanelIsVisible(state)) { replayChatPanelOpen(state); return; }
-        // Closed: the faded-out look is let go, so Messages shows when WME opens it some other way (4.0.0).
         state.closing = false; state.target.removeAttribute('data-wme-studio-chat-closing');
         state.motion?.cancel(); state.motion = null;
       }, 260);
@@ -4896,8 +4510,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       handle.classList.remove('dragging');
       doc.defaultView?.removeEventListener('blur', onChatBlur);
       try { if (handle.hasPointerCapture?.(finished.pointerId)) handle.releasePointerCapture(finished.pointerId); } catch (studioError) { reportStudioError("finishDrag",studioError);}
-      // Moving Messages by hand is for now: the place set for it in Arrange stays, and it opens there next time.
-      // Without a place from Arrange, the last place it was dragged to is remembered as before.
       if (persist) {
         applyChatPanelPosition(state,state.offset,true);
         if (compactIslandLayout?.messages && settings.compactMode) state.movedByHand = true;
@@ -4914,7 +4526,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     handle.addEventListener('lostpointercapture', finishDrag);
     handle.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
     handle.addEventListener('dblclick', event => {
-      // Back to the place set in Arrange when there is one, otherwise to Studio's default place.
       if (compactIslandLayout?.messages && settings.compactMode) { applyCompactChatLayout(state, true, true); event.preventDefault(); event.stopPropagation(); return; }
       storeChatPanelPosition(null); state.movedByHand = false;
       applyChatPanelPosition(state, DEFAULT_CHAT_PANEL_OFFSET);
@@ -4926,8 +4537,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   function editorChatToggleControl(event) {
     for (const node of event.composedPath()) {
       if (node?.nodeType !== 1 || !node.matches?.('button,wz-button,[role="button"]')) continue;
-      // The header's Messages button has no label of its own, only its id and class (4.0.0): Studio never saw it, so
-      // Messages opened and closed with WME's slide instead of Studio's fade.
       if (node.matches('wz-button:is(#chat-button,.toolbar-chat-button)')) return node;
       const label = [
         node.getAttribute('aria-label'), node.getAttribute('title'), node.getAttribute('data-testid'),
@@ -4982,10 +4591,9 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     try {
       const src = frame.getAttribute('src');
       if (src && isThemeFrameURL(new URL(src, location.href))) return true;
-      // Messages opened by moving the frame itself, not by its src (4.0.0): its own address says what it is.
       const href = frame.contentWindow?.location?.href;
       return !!href && href !== 'about:blank' && isThemeFrameURL(new URL(href));
-    } catch (_) { return false; }   // another site's frame: not ours to read
+    } catch (_) { return false; }
   }
   const signinComponentStyle = studioPart('signinComponentStyle');
   function stopSigninComponents(frame) {
@@ -5087,8 +4695,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     };
     watch(doc.documentElement); scan(doc.documentElement);
   }
-  // Something else on the page (seen in Brave, every few seconds) takes the theme's mark off the Messages page, which
-  // then turns white and loses its drag handle (4.0.0). The mark is put back the moment it goes, before anything is drawn.
   const chatThemeKeepers = new WeakMap();
   function keepChatTheme(doc) {
     const html = doc.documentElement;
@@ -5131,9 +4737,6 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       syncChatPanel(frame, doc);
     } catch (studioError) { reportStudioError("syncChatFrame",studioError); stopSigninComponents(frame); resetChatPanel(frame); }
   }
-  // A frame that gets the Messages address only after it's on the page (4.0.0): Brave puts it in empty and fills it in
-  // afterwards, so it was missed and Messages stayed white until the theme was applied again. Such frames are watched,
-  // each on its own (there are only a few), until they turn out to be Messages or leave the page.
   const pendingChatFrames = new WeakSet();
   function watchChatFrame(frame) {
     if (pendingChatFrames.has(frame)) return;
@@ -5170,12 +4773,10 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
         palette.setProperty('color-scheme', activeTheme() === 'light' ? 'light' : 'dark', 'important');
       }
       chatPaletteText = standaloneSignin ? '' : `html[data-wme-studio-chat="on"], html[data-wme-studio-chat="on"] body, html[data-wme-studio-chat="on"] #root { ${palette.cssText} }`;
-      // The islands' color (3.0.0) reaches Messages too: the frame is painted with it, and its own surfaces let it show.
       if (!standaloneSignin && islandOn) {
         const ink = computed.getPropertyValue('--ws-island-ink').trim() || '#f4f6f8', a = islandTone(settings.islandColor);
         const paint = (touchScreen && computed.getPropertyValue('--ws-island-paint-solid').trim()) || computed.getPropertyValue('--ws-island-paint-hover').trim() || a;
         const tint = amount => `color-mix(in srgb, ${ink} ${amount}%, transparent)`;
-        // An open conversation lies over the list of conversations: it is painted solid, or the list showed through it.
         chatPaletteText += `
 html[data-wme-studio-chat="on"], html[data-wme-studio-chat="on"] body, html[data-wme-studio-chat="on"] #root { --wme-studio-surface: transparent !important; --wme-studio-bg: transparent !important; --wme-studio-surface-3: transparent !important; --wme-studio-input: ${tint(10)} !important; --wme-studio-surface-2: ${tint(10)} !important; --wme-studio-hover: ${tint(13)} !important; --wme-studio-active: ${tint(19)} !important; --wme-studio-border: ${tint(16)} !important; --wme-studio-border-strong: ${tint(28)} !important; --wme-studio-text: ${ink} !important; --wme-studio-text-secondary: ${tint(80)} !important; --wme-studio-text-muted: ${tint(64)} !important; --background_default: transparent !important; --background_variant: ${tint(10)} !important; --surface_default: ${tint(10)} !important; --surface_variant: ${tint(13)} !important; --content_default: ${ink} !important; --content_p1: ${tint(80)} !important; --content_p2: ${tint(64)} !important; --hint_text: ${tint(64)} !important; --hairline: ${tint(16)} !important; --hairline_strong: ${tint(28)} !important; color-scheme: ${ink === '#111820' ? 'light' : 'dark'} !important; }
 html[data-wme-studio-chat="on"][data-wme-studio-chat] { background: ${paint} !important; }
@@ -5210,12 +4811,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
   }
 
   let previewBase = null, previewOverride = null;
-  // (4.0.0) Sliders whose value only colors a few things show it there while they move, from a stylesheet of their own:
-  // set on the page's root, a value made the browser restyle every element of the editor (tens of milliseconds in WME)
-  // on every step, so the slider lagged behind the pointer. The value is saved, and set on the root as before, once
-  // the slider rests; any full pass clears what was shown here.
   const ISLAND_ELEMENTS = '#app-head,#drawer,#overlay-buttons,[data-wme-studio-online-editors-panel="on"],[data-wme-studio-online-editors-status="on"],.online-editors-bubble,.wz-map-ol-footer,#tile-build-status,.notifications-box-container,.ws-custom-island,.ws-sd-island,.ws-sd-handle,.ws-sd-bubble,.ws-sd-tip,.wme-studio-header-location,.wme-studio-header-addons,#ws-link-dock,#sidebar,#filter-panel-region';
-  // The panels as plain selectors: a changed rule with descendant parts inside :not() made the browser restyle everything.
   const LIVE_PANELS = '[data-wme-studio-popup-kind],[data-testid="floating-window"],#panel-container > *,iframe[data-wme-studio-chat-panel="on"],.layer-switcher .menu,.save-popover';
   let liveSheet = null;
   function liveCSS(css) {
@@ -5232,8 +4828,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const paint = opacity => `linear-gradient(${settings.islandAngle}deg, color-mix(in srgb, ${a} var(${opacity}), transparent), color-mix(in srgb, ${b} var(${opacity}), transparent))`;
       paints = ` --ws-island-paint: ${paint('--ws-compact-opacity, 60%')}; --ws-island-paint-hover: ${paint('--ws-compact-hover-opacity, 90%')};`;
     }
-    // The stronger text for faint glass (under 50%) switches once the slider rests: switching it restyles the whole
-    // editor, which took a third of a second each time the slider crossed 50%.
     liveCSS(`:is(${ISLAND_ELEMENTS},${LIVE_PANELS}) { --ws-compact-opacity: ${base}; --ws-compact-hover-opacity: ${hover};${paints} }`);
   }
   function liveIntensity(value) {
@@ -5242,7 +4836,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const a = islandTone(settings.islandColor, value), b = fill === 'gradient' ? islandTone(settings.islandColor2, value) : a;
     const paint = opacity => `linear-gradient(${settings.islandAngle}deg, color-mix(in srgb, ${a} var(${opacity}), transparent), color-mix(in srgb, ${b} var(${opacity}), transparent))`;
     const paints = fill === 'gradient' ? ` --ws-island-paint: ${paint('--ws-compact-opacity, 60%')}; --ws-island-paint-hover: ${paint('--ws-compact-hover-opacity, 90%')}; --ws-island-paint-solid: linear-gradient(${settings.islandAngle}deg, ${a}, ${b});` : ` --ws-island-paint-solid: ${a};`;
-    // Light or dark text for the new color is settled once the slider rests (it restyles everything).
     liveCSS(`:is(${ISLAND_ELEMENTS},${LIVE_PANELS},#wme-studio-userscript-ui,#wme-studio-minimized-requests,#wme-studio-compact-layout-editor,#wme-studio-saved-requests,.ws-quick-replies) { --ws-island-a: ${a};${paints} }`);
     return true;
   }
@@ -5262,9 +4855,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     return true;
   }
   globalThis.WMEStudioPreview = Object.freeze({
-    // A moving HUD size or header width slider. The stylesheet scales and places the islands from one variable,
-    // so the drag sets just that: no measuring and no re-placing, which took four layouts of the whole editor
-    // per step. The full pass runs once, when the value is saved as the slider rests.
     quick(key, value) {
       if (!ready || !settings.enabled || !Number.isFinite(value)) return false;
       if (key === 'hudScale') { rootStyle('--ws-hud-zoom', String(hudZoomOf(value))); scheduleIslandControls(); }
@@ -5301,7 +4891,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     for (const state of requestReplyForms.values()) state.schedule();
     if (!ready) return;
     const changed = changedKeys instanceof Set ? changedKeys : null;
-    // A schedule that now picks a different theme repaints like a theme change, whatever setting moved.
     refreshSchedule();
     if (changed && settings.enabled && liveSchedule.theme !== appliedScheduleTheme) changed.add('theme');
     appliedScheduleTheme = settings.enabled ? liveSchedule.theme : null;
@@ -5348,7 +4937,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       attr('header-width', settings.compactHeaderFullWidth ? 'custom' : null);
       attr('layer-columns', null); markLayerColumns();
       attr('requests', settings.compactRequests ? 'compact' : null);
-      attr('task-style', null);   // the Review looks wait for the vote (3.0.0): everyone keeps Classic for now
+      attr('task-style', null);
       attr('scrollbars', settings.customScrollbars ? 'on' : null);
       attr('create-click', settings.createMenuClick || touchScreen ? 'on' : null);
       attr('screen-displays', settings.screenDisplays ? 'on' : null);
@@ -5397,21 +4986,10 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       lastLayout = layout;
       resizeMap(true);
     }
-    // Sliders (glass opacity, color intensity, eye saver) change colors a little at a time and are left to their fades.
     if (changed && affects('enabled', 'theme', 'accent', 'compactMode', 'islandFill', 'islandColor', 'islandColor2', 'islandAngle')) settleThemeChange();
   }
-  // A new theme, accent or island colors (4.0.0): everything takes the new colors in the same frame. Buttons, chips and
-  // the selected option fade their colors over a moment, so they blended from the old colors while the rest had already
-  // switched: white text on pale purple, white rings round the swatches, grey buttons on a light panel. Those fades are
-  // ended at once, here and in the next two frames (some colors are set a moment later), in the page and in every
-  // shadow root, where Studio's own windows live.
-  // Sliders and the color picker change colors many times a second, so the shadow roots found are kept for a moment
-  // instead of looking through the whole page each time.
   let themeSettleFrame = 0, themeScopes = null, themeScopesAt = 0, themeSettledAt = -1e9;
   function settleThemeChange() {
-    // A click settles at once. Many changes in a row (a color dragged in the picker) are settled once their frame has
-    // been drawn, without making the page lay itself out again in between: that doubled the work of every frame and
-    // made dragging lag.
     const rapid = performance.now() - themeSettledAt < 400;
     themeSettledAt = performance.now();
     const isFade = typeof CSSTransition === 'function' ? animation => animation instanceof CSSTransition : animation => 'transitionProperty' in animation;
@@ -5424,15 +5002,12 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     };
     const finish = force => {
       try {
-        if (force) void root.offsetHeight;   // the new colors start their fades now, so they can be ended now
+        if (force) void root.offsetHeight;
         for (const scope of scopes()) for (const animation of scope.getAnimations?.() || []) if (isFade(animation)) animation.finish();
       } catch (studioError) { reportStudioError('settleThemeChange', studioError); }
     };
     if (!rapid) finish(true);
     cancelAnimationFrame(themeSettleFrame);
-    // After the next frame has been drawn (colors set a moment later have started their fades by then). Parts that
-    // copy a color off the page (the reply box at the bottom of an update request) read it again then: it kept the
-    // old theme's band until it was clicked (4.0.0).
     themeSettleFrame = requestAnimationFrame(() => { themeSettleFrame = 0; setTimeout(() => { finish(false); document.dispatchEvent(new Event('wme-studio-colors-settled')); }, 0); });
   }
 
@@ -5504,13 +5079,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     attr('font', fontAdjust ? 'scaled' : null);
   }
   document.fonts?.addEventListener?.('loadingdone', () => { fontAspect = 0; if (ready && settings.enabled && settings.fontScale !== 100) { syncFontScale(); for (const frame of chatFrames.keys()) syncChatFrame(frame); } });
-  // State gates. In both sheets an "@media all { ... }" block is one gate when every selector in it starts
-  // with the same root state (html[data-wme-studio...="..."], or that state inside :host-context() in the
-  // component sheet). syncComponentGates() switches the whole block off while its state is not active, so
-  // its rules take no part in selector matching. Only settings-driven states are wrapped this way, because
-  // switching a gate restyles the page.
-  // A block is registered from its first rule so start-up stays short. The remaining rules are checked
-  // while the browser is idle; a block that mixes states is put back to always on.
   const stateGateBlocks = new WeakSet();
   function splitSelectorList(text) {
     const parts = []; let depth = 0, quote = '', from = 0;
@@ -5525,8 +5093,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     }
     parts.push(text.slice(from).trim()); return parts;
   }
-  // The root state shared by every selector of the given rules, or null. With `lists`, the split selector
-  // lists are collected for reuse.
   function sharedState(rules, prefix, lists = null) {
     let state = null;
     for (const child of rules) {
@@ -5570,11 +5136,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     if (work.length) later();
     return () => run(null);
   }
-  // ":host-context(html[...])" makes the engine walk every ancestor of a component for every candidate rule.
-  // Inside a gate the root state is already known to hold, so the prefix is dropped and its specificity is
-  // given back with always-true ":not()" parts (one class-level part per attribute plus one for the
-  // pseudo-class, and one type-level part for html): on the subject for rules that reach into the shadow
-  // tree, inside ":host(...)" for rules about the host itself.
   const hostCompound = /^(?::host(?:-context)?\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\))* (?![>+~])/;
   function subjectEnd(selector) {
     let depth = 0, quote = '', pseudo = -1;
@@ -5595,10 +5156,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const from = `:host-context(html${state})`.length, attributes = state.split('][').length;
     const onHost = `:host(${':not(.ws-0)'.repeat(attributes)}:not(ws-0))`;
     const onSubject = `${':not(.ws-0)'.repeat(attributes + 1)}:not(ws-0)`;
-    // All the ":host(...)" and ":host-context(...)" parts in front of a host rule belong to one compound, so
-    // their order does not change what it matches. ":host-context()" walks up the page from the component,
-    // while ":host(wz-tab)" is one comparison that turns almost every component away, so the ":host()" parts
-    // go first and the always-true specificity part last.
     const hostPart = /^:host(-context)?\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)/;
     const hostFirst = rest => {
       const own = [], context = [];
@@ -5615,8 +5172,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     let index = 0;
     for (const child of rule.cssRules) child.selectorText = lists[index++].map(rewrite).join(', ');
   }
-  // Rewriting a sheet that shadow roots already use would restyle each of them, so whatever is left of it is
-  // finished right before the first component adopts the sheet.
   let finishComponentGates = null;
   try {
     if (componentSheet && CSS.supports('selector(:host-context(html))')) {
@@ -5626,7 +5181,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
   } catch (error) { if (reportStudioError.active) reportStudioError('Component sheet gating skipped',error); else console.warn('[WME Studio] Component sheet gating skipped.', error.message); }
   try {
     const pageSheet = globalThis.WMEStudioPageStyle?.sheet;
-    // (4.0.0) A rule can start with its state inside :where() (see studioRuleBuckets): it is the same state.
     if (pageSheet) registerStateGates(pageSheet, /^(?::where\()?html((?:\[data-wme-studio(?:-[a-z-]+)?="[a-z-]+"\])+)/);
   } catch (error) { if (reportStudioError.active) reportStudioError('Page sheet gating skipped',error); else console.warn('[WME Studio] Page sheet gating skipped.', error.message); }
   if (componentGates.length) {
@@ -5815,9 +5369,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     }
     return Math.ceil(content) + 2;
   }
-  // The side panel's width goes on the two boxes that use it (the panel and the map area), never on a box around the
-  // map: a variable written there is worked out again for every road and place drawn on the map, which took WME a
-  // second or more each time (3.0.0). The two are declared as variables that do not pass down (see @property).
   function sideWidthTargets(app = document.querySelector('.app')) {
     return [app?.querySelector('#sidebar') || document.getElementById('sidebar'), app?.querySelector('.edit-area-main')].filter(Boolean);
   }
@@ -5888,8 +5439,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     }
     return null;
   }
-  // While one of its menus is open, a panel (the rail, the side panel) is drawn over the header: menus are
-  // short-lived, and a submenu opening beside the header must not slide under it.
   const menuOverSources = { nav: new Set(), task: new Set() };
   function setMenusOver(kind, elements) {
     const previous = menuOverSources[kind];
@@ -5899,14 +5448,10 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (on !== element.hasAttribute('data-wme-studio-menu-over')) element.toggleAttribute('data-wme-studio-menu-over', on);
     }
   }
-  // Buttons WME fills with the accent through its own colour tokens (the rail's + button) keep WME's white icon,
-  // which disappears on a light accent such as white. Such a button is found by its fill: it and its icon (never
-  // a menu it holds) are marked to use the accent's ink, dark on a light accent and white on a dark one.
   let accentFillFrame = 0;
   let accentFillTimer = 0;
   function queueAccentFills() {
     if (!accentFillFrame) accentFillFrame = requestAnimationFrame(() => { accentFillFrame = 0; try { syncAccentFills(); } catch (studioError) { reportStudioError('syncAccentFills', studioError); } });
-    // Once more after the button's colour transition, when its fill has reached the new accent.
     clearTimeout(accentFillTimer);
     accentFillTimer = setTimeout(() => { try { syncAccentFills(); } catch (studioError) { reportStudioError('syncAccentFills', studioError); } }, 450);
   }
@@ -5915,8 +5460,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const accent = /^#[0-9a-f]{6}$/i.test(settings.accent || '') ? settings.accent.slice(1).match(/../g).map(value => parseInt(value, 16)) : null;
     const drawer = document.getElementById('drawer');
     const wanted = new Set();
-    // Only where the theme's text colour (what the icon is drawn in otherwise) is hard to read on the accent:
-    // the default blue keeps its icon as it is, a white or yellow accent gets the accent's dark ink.
     const luminance = rgb => { const [r, g, b] = rgb.map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4); return r * .2126 + g * .7152 + b * .0722; };
     const textHex = (studioPalettes[activeTheme()] || studioPalettes.light)['--wme-studio-text'] || '';
     const text = /^#[0-9a-f]{6}$/i.test(textHex) ? textHex.slice(1).match(/../g).map(value => parseInt(value, 16)) : null;
@@ -5949,8 +5492,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const rect = wrapper.getBoundingClientRect();
       if (!rect.width || !rect.height) continue;
       const owner = compactVisibleRect(state.owner);
-      // A menu that is drawn outside its panel (a fixed one, or one wider than the panel) is not cut off by the
-      // panel: it may use the room down to the bottom of the window, so a short list (Voice) never scrolls.
       const escapes = host.hasAttribute('fixed') || (owner && (rect.left < owner.left - 1 || rect.left + rect.width > owner.left + owner.width + 1 || getComputedStyle(wrapper).position === 'fixed'));
       const bottom = Math.min(innerHeight - 12, owner && !escapes ? owner.top + owner.height - 8 : innerHeight - 12);
       const height = `${Math.max(40, Math.floor(bottom - Math.max(12, rect.top)))}px`;
@@ -5960,9 +5501,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     setMenusOver('task', over);
   }
   function queueTaskMenus() { if (!taskMenuFrame) taskMenuFrame = requestAnimationFrame(syncTaskMenus); }
-  // A header WME keeps at the top of a scrolling list in a panel (Your drives) is sticky without a layer of its
-  // own, so buttons further down that do have one (the page arrows) slide over it instead of under it. The
-  // first time such a list scrolls (and now and then after), its sticky headers are lifted above the rest.
   const stickyChecked = new WeakMap();
   document.addEventListener('scroll', event => {
     const target = event.target;
@@ -5993,9 +5531,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     taskMenus.set(host,state); observeCompactPlacement(owner); queueTaskMenus();
   }
   window.addEventListener('resize',queueTaskMenus,{passive:true});
-  // A drop-down list opened outside the side panel (Voice prompt in the turn menu on the map, a floating window)
-  // takes the height its options need. Near the bottom of the window that ran it past the edge and under the
-  // Screen displays handle: it now stops above both, and opens upward when there is more room above the field.
   const roomMenus = new Map();
   let roomMenuFrame = 0;
   function syncRoomMenus() {
@@ -6019,7 +5554,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (across(handleRect) && handleRect.top > fieldRect.bottom) bottom = Math.min(bottom, handleRect.top - 8);
       const head = document.getElementById('app-head')?.getBoundingClientRect();
       if (across(head) && head.bottom < fieldRect.top) top = Math.max(top, head.bottom + 8);
-      // The list has 4px of padding and a 1px border on each side; it sits 10px under its field.
       const below = (bottom - hostRect.top) / scale - 20, above = (fieldRect.top - top) / scale - 20;
       const need = wrapper.scrollHeight - 8;
       const up = need > below && above > below;
@@ -6068,8 +5602,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const capacity = Math.max(1, viewportHeight - 2 * edge);
     const height = Math.min(menu.height, capacity);
     const width = Math.min(menu.width, viewportWidth - 24);
-    // A rail button moved into an island Studio draws: the menu opens from that button and that island, beside
-    // it when the island stands upright, above or below it when it lies flat.
     if (island && firstLevel) {
       let left, top;
       if (island.orient === 'h') {
@@ -6121,12 +5653,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const borderTop = Number.parseFloat(style.borderTopWidth) || 0;
       const zoom = positioner.currentCSSZoom || 1;
       const naturalHeight = Math.max(menu.height, (wrapper.scrollHeight + borderTop + (Number.parseFloat(style.borderBottomWidth) || 0)) * zoom);
-      // A list is measured as it opens and then keeps that width until it closes: its items do not change while it
-      // is open, and an open submenu (Place › Crisis location) sits inside the list and counts in its scroll width,
-      // so measuring again then made the list wider, which moved the submenu further out, which made the list wider
-      // again, a step more every time the pointer came back to the row. WME's markup for an open submenu has not
-      // been the same everywhere, so it is not relied on: only the first moments after opening may still widen it,
-      // and only while no submenu inside it shows.
       const now = performance.now();
       if (!state.width) state.openedAt = now;
       const nestedOpen = [...state.host.querySelectorAll('wz-menu-sub-menu,wz-menu')].some(sub => {
@@ -6184,8 +5710,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     shadow.addEventListener('scroll', queueNavigationMenus, { capture: true, passive: true });
     navigationMenus.set(host, state); queueNavigationMenus();
   }
-  // Nothing reads the old --ws-compact-drawer-* variables any more, and writing them on <html> restyled the
-  // whole document on every resize, so the drawer is only watched here to keep its menus placed.
   function updateCompactDrawerGeometry() {
     for (const name of ['--ws-compact-drawer-top', '--ws-compact-drawer-height', '--ws-compact-drawer-left']) if (root.style.getPropertyValue(name)) root.style.removeProperty(name);
     if (!ready || !settings.enabled || !settings.compactMode || standaloneSignin || editorProfile) return;
@@ -6222,29 +5746,20 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
   let headerGuardQueued = false, headerGuardHeader = null, headerGuardFooter = null;
   const headerGuardProperties = ['translate', 'max-height', 'min-height', 'overflow-y','--ws-request-body-max-height'];
   const AI_HELPER_WINDOW_SELECTOR = '#AI_HELPER_FLOATING_WINDOW,[data-testid="ai-helper-window"]';
-  // Other scripts' boxes in the dark themes (3.0.1). A box a script paints white keeps the light text Studio gives the
-  // panels, which leaves light grey on white (UR2T's list of answers, for one). Inside the side panel or a request
-  // window, such a box takes the theme's own field color instead, and dark text on a dark box takes the theme's text
-  // color. Coloured boxes (a green "Resolved", a red warning) keep their colors: only near-white ones change.
   const ADDON_SKIP = /^(?:img|svg|path|canvas|video|picture|iframe|script|style|br|hr|option|wz-[a-z-]+)$/;
   const ADDON_OWN = /(?:^|\s)(?:ws-|wme-studio)|--[A-Za-z0-9_-]{5}(?:\s|$)/;
   const rgbaOf = value => { const m = /rgba?\(([^)]+)\)/.exec(value || ''); if (!m) return null; const [r, g, b, a = 1] = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); return { r, g, b, a }; };
   const lightness = c => (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
-  // Whether a box holds any text (4.0.0): it stops at the first word, where joining all of the box's text (for every
-  // box of a big panel, again for each box inside it) took most of the time a panel took to open in the dark themes.
   const holdsText = element => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) if (/\S/.test(node.data)) return true;
     return false;
   };
-  // The boxes added while a frame is being made are looked at together, just before it is drawn (4.0.0): WME builds a
-  // panel in several steps, and each step used to have the page's styles worked out again for it.
   const addonSurfaceBatches = [];
   let addonSurfaceFrame = 0;
   function themeAddonSurfacesSoon(nodes) {
     if (!ready || !settings.enabled || !settings.addons || !/^(?:dark|black)$/.test(activeTheme())) return;
     addonSurfaceBatches.push(nodes);
-    // A hidden tab draws no frames: what it was handed and has lost since is let go of.
     if (addonSurfaceBatches.length > 200) addonSurfaceBatches.splice(0, addonSurfaceBatches.length, ...addonSurfaceBatches.filter(batch => [...batch].some(node => node?.isConnected)));
     if (!addonSurfaceFrame) addonSurfaceFrame = requestAnimationFrame(() => {
       addonSurfaceFrame = 0;
@@ -6262,7 +5777,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (seen) { if (seen.has(element)) return; seen.add(element); }
       const id = typeof element.id === 'string' ? element.id : '';
       if (budget-- <= 0 || ADDON_SKIP.test(element.localName) || id.startsWith('wme-studio') || ADDON_OWN.test(element.getAttribute('class') || '')) return;
-      // A speed sign WME Speedhelper colors keeps its own color (see keepSpeedSigns).
       if (id.startsWith('spd_') && element.style.getPropertyPriority('color') === 'important' && element.closest('#_wmesh_signsholder')) return;
       const style = getComputedStyle(element), back = rgbaOf(style.backgroundColor);
       if (back && back.a >= .9 && back.r >= 245 && back.g >= 245 && back.b >= 245 && style.backgroundImage === 'none' && (/^(?:input|select|textarea)$/.test(element.localName) || holdsText(element))) {
@@ -6271,8 +5785,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       }
       const text = rgbaOf(style.color);
       if (!text || lightness(text) > .35 || element.hasAttribute('data-wme-studio-addon-text') || !holdsText(element)) return;
-      // The first box behind it that has a color of its own. Text drawn on a picture keeps its color: the numbers on
-      // WME Speedhelper's speed signs are black on the sign's white circle (3.0.3).
       for (let node = element; node && node !== document.body; node = node.parentElement) {
         const look = node === element ? style : getComputedStyle(node);
         if (look.backgroundImage !== 'none') break;
@@ -6291,8 +5803,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       }
     }
   }
-  // WME Speedhelper's speed signs (3.0.3): each number keeps the color the script gives it for that country's signs
-  // (black on the usual white sign), whatever color Studio gives the side panel's text.
   function keepSpeedSigns(nodes) {
     for (const node of nodes) {
       if (!node?.isConnected || node.nodeType !== 1) continue;
@@ -6306,8 +5816,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       }
     }
   }
-  // UR2T's answers in a request window (3.0.1) fold away under a header like the URC-E Shortcuts above them, and stay
-  // folded or open from one request to the next.
   const ADDON_FOLDS = [{ block: '.UR2T-responses-block', label: 'UR2T', key: 'wmeStudio.fold.ur2t.v1' }];
   const addonFolded = {};
   for (const fold of ADDON_FOLDS) Promise.resolve(studioKeep.get(fold.key, false)).then(value => {
@@ -6341,7 +5849,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       }
     }
   }
-  // The theme turned dark: the boxes already on the page are looked at once.
   new MutationObserver(() => { if (/^(?:dark|black)$/.test(root.getAttribute('data-wme-studio-theme') || '')) requestAnimationFrame(() => { try { themeAddonSurfaces([document.body]); } catch (studioError) { reportStudioError('themeAddonSurfaces', studioError); } }); })
     .observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio-theme'] });
   const REQUEST_WINDOW_SELECTOR = `[data-issues-tracker-window],[id^="ISSUE_WINDOW"],[data-testid="floating-window"],${AI_HELPER_WINDOW_SELECTOR}`;
@@ -6370,7 +5877,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     state.popupVisible = true;
     requestReveal.openPlaceUpdate(state.element);
     if (!requestPopupMotionEnabled() || typeof state.element.animate !== 'function') return;
-    // A saved request opening again grows out of its chip instead (3.1.0).
     const ownMotion = () => state.element.hasAttribute('data-wme-studio-request-arriving') || state.element.hasAttribute('data-wme-studio-request-growing');
     if (ownMotion()) return;
     state.element.setAttribute('data-wme-studio-popup-enter','pending');
@@ -6473,15 +5979,8 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     if (/map\s+problem/i.test(text)) return 'mapProblem';
     return 'updateRequest';
   }
-  // Keep named requests available for cycling through the native single-request editor.
-  // URC-E (4.0.2; up here since 4.0.3, because the saved requests and follow-ups ask about it while they load). Many editors answer requests with URComments-Enhanced: its comment lists (kept per country by the
-  // community), its reminder and its close days. With it installed, Studio leaves that work to it and only styles the
-  // request window: the Quick replies tab opens URC-E's comments, follow-ups aren't kept, and the case strip doesn't
-  // suggest closing after Studio's own quiet days. Settings › Panels turns this off. Nothing of URC-E's is changed.
   let urceSeen = false, urceLooked = 0;
   const URCE_TABS = '#sidebar :is(.userscripts-drawer-tabs,#user-tabs) > .nav-tabs a';
-  // WME names script tabs itself (#userscript-tab-32), and URC-E's shows only an icon titled "URC-E", so its tab is the
-  // one whose page holds URC-E's panel.
   const isUrceTab = a => {
     const href = a.getAttribute('href') || '', named = value => /^\s*URC-?E\s*$/i.test(value || '');
     if (href === '#sidepanel-urc-e' || named(a.textContent) || named(a.title) || named(a.querySelector('[title]')?.getAttribute('title'))) return true;
@@ -6494,21 +5993,16 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     urceLooked = now;
     try { urceSeen = !!(document.getElementById('sidepanel-urc-e') || document.getElementById('urceDiv') || [...document.querySelectorAll(URCE_TABS)].some(isUrceTab)); }
     catch (_) { urceSeen = false; }
-    // Found after the windows were drawn (scripts start in any order): the parts that step back are told.
-    if (urceSeen) setTimeout(() => { try { document.dispatchEvent(new CustomEvent('wme-studio-urce')); } catch (_) { /* nothing listens */ } }, 0);
+    if (urceSeen) setTimeout(() => { try { document.dispatchEvent(new CustomEvent('wme-studio-urce')); } catch (_) {   } }, 0);
     return urceSeen;
   }
   function urceLeads() { return !!settings.enabled && settings.urceHandoff !== false && urceInstalled(); }
-  globalThis.WMEStudioURCE = Object.freeze({ installed: urceInstalled, leads: urceLeads });   // for Settings, built in a scope of its own
-  // URC-E's tab, in WME's Scripts section. A script's tab is only switched while that section is on screen (switched
-  // from another section, its page showed up inside that one), so the section is opened first.
+  globalThis.WMEStudioURCE = Object.freeze({ installed: urceInstalled, leads: urceLeads });
   function openUrce() {
     try {
       const tab = [...document.querySelectorAll(URCE_TABS)].find(isUrceTab);
       if (!tab) return false;
       globalThis.WMEStudioScriptChosen?.();
-      // Studio's script bar hides WME's own row of tabs, so the Scripts section counts as open when the box around the
-      // tabs is drawn, not the tabs themselves.
       const box = tab.closest('#user-tabs,.userscripts-drawer-tabs') || tab.parentElement;
       const onScreen = () => !!document.querySelector('.app.show-sidebar') && !!box?.getClientRects().length && !!box.offsetParent;
       if (!onScreen()) {
@@ -6519,12 +6013,10 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         const words = item => [item.getAttribute('data-for'), item.id, item.getAttribute('label'), item.getAttribute('aria-label'), item.getAttribute('title'), item.textContent, item.querySelector?.('[class*="w-icon-"]')?.className].join(' ');
         const scripts = items.find(item => item.getAttribute('data-for') === 'userscript_tab') || items.find(points) || items.find(item => /script/i.test(words(item)));
         if (!scripts) { console.info('[WME Studio] URC-E: no Scripts button found', items.map(item => item.getAttribute('data-for') || item.textContent.trim()), [...ids]); return false; }
-        // The button inside it is what WME listens to; a click on the item itself does nothing.
         (scripts.shadowRoot?.querySelector('button.navigation-button, button') || scripts).click();
       }
       let tries = 0, clicks = 0;
       const shown = () => !!document.getElementById('sidepanel-urc-e')?.getClientRects().length;
-      // Clicked again if something else took the section's place (up to three times).
       const press = () => { tab.click(); if (++clicks < 3) setTimeout(() => { if (!shown()) press(); }, 350); };
       const go = () => { if (onScreen()) { press(); return; } if (++tries < 30) setTimeout(go, 50); else { console.info('[WME Studio] URC-E: the Scripts section did not open'); press(); } };
       requestAnimationFrame(go);
@@ -6533,13 +6025,9 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
   }
 
   const requestMinimizer = (() => {
-    // 3.1.0: minimized requests wait behind a button in the header instead of pills at the bottom of the map. Each
-    // one has a name, a color, an icon and an optional tag; the header menu groups them by tag. They are kept
-    // between sessions, so a request saved today is still there tomorrow.
     const limit = 12, items = new Map(), panels = new Map(), SAVED_KEY = 'wmeStudio.savedRequests.v1';
     let sdk = null, zoomSDK = null, zoomLevel = null, sdkReadyHooked = false, sdkReady = false, connectedApp = null, active = null, host = null, shadow = null, naming = null, pendingRestore = null, refreshFrame = 0, positionFrame = 0, footer = null, pillPicker = null, pillColor = '#0099ff', pillIcon = 'request', tooltipButton = null;
     let headerSlot = null, headerShadow = null, menuOpen = false, menuFilter = 'all', headerWatch = null, headerFrame = 0, saveTimer = 0;
-    // Follow-ups (3.1.0): requests I replied to and wait on, by request id.
     const followUps = new Map(), FOLLOW_KEY = 'wmeStudio.followUps.v1', FOLLOW_MAX = 50;
     let followTimer = 0;
     const positions = typeof ResizeObserver==='function' ? new ResizeObserver(queuePositions) : null;
@@ -6564,7 +6052,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const iconValue = value => Object.prototype.hasOwnProperty.call(REQUEST_ICONS, value) ? value : 'request';
     const iconSVG = value => `<svg viewBox="0 0 24 24" aria-hidden="true">${REQUEST_ICONS[iconValue(value)][1]}</svg>`;
     const tagValue = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 24);
-    // Dark or light ink on an item's color, whichever reads better.
     const inkFor = hex => { const [r, g, b] = [1, 3, 5].map(index => parseInt(colorValue(hex).slice(index, index + 2), 16) / 255).map(v => v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); return .2126 * r + .7152 * g + .0722 * b > .42 ? '#14181c' : '#ffffff'; };
     function storedItem(raw) {
       if (!raw || typeof raw !== 'object' || raw.id == null || !String(raw.name || '').trim()) return null;
@@ -6638,9 +6125,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
           else if (!event.shiftKey && focused === focusable.at(-1)) { event.preventDefault(); focusable[0].focus(); }
         }
       });
-      // Esc closes the menu wherever the focus is.
       document.addEventListener('keydown', event => { if (menuOpen && !naming && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeMenu(true); } }, true);
-      // A click anywhere else closes the saved requests menu.
       document.addEventListener('pointerdown', event => {
         if (!menuOpen || naming) return;
         const path = event.composedPath();
@@ -6648,10 +6133,9 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         closeMenu(false);
       }, true);
       window.addEventListener('resize', () => { if (menuOpen) placeMenu(); }, { passive: true });
-      // Native map keyboard and wheel handlers should not act on this dialog.
       for (const type of ['keydown','keypress','keyup','wheel']) host.addEventListener(type,event=>event.stopPropagation());
       (document.body || root).append(host); pillPicker=setupPillPicker(); positionDock();
-      try { globalThis.WMEStudioI18n?.localize?.(shadow); } catch (_) { /* English only */ }
+      try { globalThis.WMEStudioI18n?.localize?.(shadow); } catch (_) {   }
     }
     function setPillColor(value) {
       pillColor=colorValue(value);
@@ -6677,7 +6161,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const tag = tagValue(shadow.querySelector('[name="request-tag"]').value);
       shadow.querySelector('[data-id="preview-tag"]').textContent = tag || tr('No tag');
     }
-    // The tags already in use, to pick with one click; the one typed so far is marked.
     function usedTags() {
       const seen = new Map();
       for (const item of items.values()) { const tag = tagValue(item.tag); if (tag && !seen.has(tag.toLowerCase())) seen.set(tag.toLowerCase(), tag); }
@@ -6851,7 +6334,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (!settings.enabled || compactLayoutEditing) { hideMinimizeTip(); closeName(); closeMenu(false); shadow.querySelector('.status').hidden=true; }
       refreshButtons(); positionDock();
     }
-    // The button in the header: the saved requests' own icons, up to three, then how many more.
     function placeHeader() {
       const show = settings.enabled && !compactLayoutEditing && (items.size > 0 || followCount() > 0);
       const bar = document.querySelector('#app-head .user-toolbar') || document.querySelector('#app-head .secondary-toolbar');
@@ -6874,11 +6356,9 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const key = list.slice(0, 3).map(item => `${item.id}:${item.color}:${item.icon}`).join('|') + `#${list.length}|${followCount()}|${due}`;
       if (button.dataset.key !== key) {
         button.dataset.key = key;
-        // Nothing saved but follow-ups waiting: a clock stands in for the saved requests' icons.
         button.innerHTML = list.slice(0, 3).map(item => `<span class="mini" data-id="${String(item.id).replace(/[^\w-]/g, '')}" style="--c:${colorValue(item.color)};--i:${inkFor(item.color)}">${iconSVG(item.icon)}</span>`).join('') + (list.length > 3 ? `<span class="more">+${list.length - 3}</span>` : '')
           + (!list.length ? `<span class="waiting">${iconSVG('clock')}</span>` : '') + (due ? `<span class="due">${due}</span>` : '');
       }
-      // ‹ › open the previous or next saved request, in the same order as the menu.
       for (const arrow of headerShadow.querySelectorAll('.cycle')) {
         const hide = list.length < 2;
         if (arrow.hidden !== hide) arrow.hidden = hide;
@@ -6892,7 +6372,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       button.setAttribute('aria-expanded', String(menuOpen));
       watchHeader();
     }
-    // WME can draw its header again (a language change, a reload of the toolbar): the button is put back.
     function watchHeader() {
       const head = document.getElementById('app-head');
       if (!head || headerWatch?.head === head) return;
@@ -6910,8 +6389,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const width = Math.min(344, innerWidth - 24), top = Math.round(anchor.bottom + 10);
       const left = Math.round(Math.max(12, Math.min(anchor.right - width, innerWidth - width - 12)));
       host.style.setProperty('--ws-saved-top', `${top}px`); host.style.setProperty('--ws-saved-left', `${left}px`);
-      // About six requests show at a time (4.0.0); the rest scroll with the slim scrollbar, the list fading at the edge
-      // that has more, instead of the menu running down the whole screen.
       host.style.setProperty('--ws-saved-max', `${Math.max(180, Math.min(520, innerHeight - top - 16))}px`);
       menu.style.transformOrigin = `${Math.round(anchor.left + anchor.width / 2 - left)}px top`;
       requestAnimationFrame(() => paintMenuFade(menu.querySelector('.menu-list')));
@@ -6939,7 +6416,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       button?.setAttribute('aria-expanded', 'false');
       if (focus) button?.focus({ preventScroll: true });
     }
-    // After a minimize, the header button gives a short bounce, so you see where the request went.
     function pulseHeader() {
       const button = headerShadow?.querySelector('.saved');
       if (!button || settings.motion === false) return;
@@ -6955,7 +6431,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const days = Math.round(hours / 24);
       return days === 1 ? tr('Saved yesterday') : tr('Saved {0} days ago', days);
     };
-    // The menu's order: tag by tag (alphabetical), then the requests without a tag; inside each, the order saved.
     function orderedItems() {
       const tags = usedTags(), list = [...items.values()];
       if (!tags.length) return list;
@@ -6964,7 +6439,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     }
     function cycle(step) {
       if (!settings.enabled || compactLayoutEditing || items.size < 1) return;
-      // From the one still opening, if a click came quickly after another: each click moves one further.
       const from = pendingRestore?.item?.id ?? (currentPanel() ? active?.id : null);
       const list = orderedItems(), index = list.findIndex(item => item.id === from);
       requestRestore(list[index < 0 ? (step < 0 ? list.length - 1 : 0) : (index + step + list.length) % list.length]);
@@ -7018,7 +6492,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       else if (selected) { sub.textContent = tr('Open now'); sub.dataset.state = 'open'; }
       else sub.textContent = item.draft?.trim() ? tr('Unsent reply kept') : timeAgo(item.savedAt || Date.now());
       open.title = selected ? tr('{0} is open', item.name) : tr('Open {0}', item.name);
-      // Another request can be picked while one is still opening: the newer click wins (3.1.0).
       open.setAttribute('aria-label', open.title); open.disabled = opening;
       open.addEventListener('click', () => { closeMenu(false); requestRestore(item); });
       const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'tool'; edit.dataset.tool = 'edit'; edit.innerHTML = editIcon;
@@ -7075,14 +6548,9 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         draft:replyValue(panel),point:guard?.requestPoint?{...guard.requestPoint}:{left:rect.left,top:rect.top},box:rect.width&&rect.height?{left:Math.round(rect.left),top:Math.round(rect.top),width:Math.round(rect.width),height:Math.round(rect.height)}:saved?.box||null,where:active.where || saved?.where || null,savedAt:saved?.savedAt || Date.now()};
     }
     async function nativeOpen(item, operation = null) {
-      // A newer click took over while this one waited: this one stops (3.1.0).
       const stale = () => operation && pendingRestore !== operation;
-      // Another request still open: it is closed first and the new one opened once it has gone. WME does not swap the
-      // request in an open window, so opening another saved request (or ‹ ›) did nothing (3.0.6).
       const open = currentPanel();
       if (open && sdk?.IssueTracker?.closePanel) {
-        // (4.0.0) The open window fades out first instead of vanishing the moment you click, and stays out of sight: WME
-        // can show the new request in the same window, which then waits there, hidden, to fade in out of the card.
         const win = operation?.lead && (open.closest(REQUEST_WINDOW_SELECTOR) || open.closest('#panel-container > *'));
         let fade = null;
         if (win) { try { fade = win.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: 'ease-in', fill: 'forwards' }); } catch (_) { fade = null; } }
@@ -7090,7 +6558,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
           await new Promise(done => setTimeout(done, 140));
           if (stale()) { fade.cancel(); return; }
           foldCSS(); win.setAttribute('data-wme-studio-request-arriving', 'on'); operation.arriving = win; fade.cancel();
-          // WME shows the new request in a new window instead: this one is let go once it has gone (or if it stayed).
           setTimeout(() => { if (win.isConnected && operation.arriving !== win) win.removeAttribute('data-wme-studio-request-arriving'); }, 1500);
         }
         try { await sdk.IssueTracker.closePanel(); } catch (studioError) { reportStudioError('nativeOpen', studioError); }
@@ -7100,10 +6567,8 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       try {
         if (sdk?.IssueTracker?.showPanel && Number.isFinite(item.mapIssueId)) return await sdk.IssueTracker.showPanel({issueTrackerId:item.mapIssueId,type:'mapUpdateRequest'});
       } catch (error) { reportStudioError("nativeOpen",error);
-        // A minimized request may have left the loaded map data after a pan.
         if (!item.model && !item.where || !pageWindow.W?.reqres?.request) throw error;
       }
-      // Saved in an earlier session or far away: the map goes there first, and the request opens once WME has it.
       if (!item.model || !item.model.getID?.()) {
         const fresh=legacyRequest(item.id);
         if (fresh) item.model=fresh;
@@ -7119,9 +6584,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (!item.model || !pageWindow.W?.reqres?.request) throw new Error('This Update Request cannot be reopened yet.');
       return pageWindow.W.reqres.request('problems:browse',{problem:item.model,showNext:false});
     }
-    // 3.1.0: minimizing folds the window into its chip in the header: a small lift, then it shrinks along a curve into
-    // the chip, which opens a place for it and pops in when it lands. Opening a saved request grows the window back out
-    // of its chip. The window stays below the header, so a copy in the request's color flies above it where they cross.
     const foldMotion = () => settings.motion && !reducedMotion.matches;
     const ease = {
       in2: t => t * t, in3: t => t * t * t, in4: t => t * t * t * t,
@@ -7137,7 +6599,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
 [data-wme-studio-request-folded]{visibility:hidden!important}
 [data-wme-studio-request-arriving]{opacity:0!important}`);
     }
-    // Where an item sits in the header: its own chip, else the "+N" count, else the whole button.
     function headerTarget(id) {
       if (!headerShadow || !headerSlot?.isConnected || headerSlot.hidden) return null;
       const button = headerShadow.querySelector('.saved');
@@ -7147,7 +6608,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       return rect?.width && rect.height ? { element, mini, button, rect } : null;
     }
     function hexAlpha(hex, alpha) { return colorValue(hex) + Math.round(alpha * 255).toString(16).padStart(2, '0'); }
-    // Where the fold (or, backwards, the way back) is at a moment: each part keeps its own easing, as in the mockup.
     function foldPath(from, to, zoom, grow) {
       const dx = to.left - from.left, dy = to.top - from.top, sx = to.width / from.width, sy = to.height / from.height;
       const startRadius = 13 * zoom, endRadius = Math.min(7, to.height / 2), duration = grow ? 720 : 880;
@@ -7166,8 +6626,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       };
       return { duration, at };
     }
-    // Played frame by frame on the window's own style: the floating layout pins some windows with a transform no
-    // animation can override, and a style written on the window can.
     function keepStyle(element, names) {
       const saved = names.map(name => [name, element.style.getPropertyValue(name), element.style.getPropertyPriority(name)]);
       return () => { for (const [name, value, priority] of saved) { if (value) element.style.setProperty(name, value, priority); else element.style.removeProperty(name); } };
@@ -7183,9 +6641,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       node.style.borderRadius = `${at.radius / sx}px / ${at.radius / sy}px`;
       node.style.opacity = String(opacity);
     }
-    // The window moves through four registered custom properties that the browser animates itself: its style is
-    // written once, so nothing watching the window's style (Studio's own placement, Quick replies) wakes on every
-    // frame, which made the fold stutter. A browser without registered properties gets the frame-by-frame way.
     let foldProps = null;
     function foldProperties() {
       if (foldProps !== null) return foldProps;
@@ -7219,7 +6674,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const done = motion.finished.then(() => true, () => false);
       return { done, stop: () => { for (const part of parts) { try { part.cancel(); } catch (_) {} } } };
     }
-    // The first frame is drawn straight away, the rest on each repaint.
     function playPath(duration, frame) {
       let raf = 0, begin = 0, finish = null;
       const done = new Promise(resolve => { finish = resolve; });
@@ -7267,15 +6721,12 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const timer = setTimeout(() => toast.animate([{ opacity: 1 }, { transform: 'translateY(-6px)', opacity: 0 }], { duration: 300, easing: 'ease-in', fill: 'forwards' }).finished.finally(() => toast.remove()), 1950);
       return () => { clearTimeout(timer); show.cancel(); toast.remove(); };
     }
-    // The fold. Resolves when it lands; the returned cleanup puts everything back (after WME closed the window, or
-    // when the minimize could not finish).
     function foldInto(element, item, fresh) {
       const target = headerTarget(item.id);
       const from = element.getBoundingClientRect();
       if (!target || !from.width || !from.height || document.hidden) return null;
       foldCSS();
       const { tabs, zoom, base } = windowParts(element);
-      // A new chip lands where it is drawn now; its place closes until the window flies, then opens for it.
       const to = target.rect, incoming = !!(fresh && target.mini);
       if (incoming) {
         const chip = target.mini;
@@ -7306,18 +6757,12 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       };
       return { landed, cleanup };
     }
-    // Opening a saved request moves at once (3.1.0): a card in the window's shape flies out of the chip to where the
-    // window was and waits there while WME fetches the request. The window then takes its place. Before, nothing
-    // moved until WME had the request, which looked like a second of lag.
     function leadRect(item) {
       const box = item.box || (item.point && Number.isFinite(item.point.left) ? { left: item.point.left, top: item.point.top, width: 380, height: 560 } : null);
       if (!box) return null;
       const width = Math.max(260, Math.min(box.width, innerWidth - 24)), height = Math.max(200, Math.min(box.height, innerHeight - 24));
       return { left: Math.max(12, Math.min(box.left, innerWidth - width - 12)), top: Math.max(12, Math.min(box.top, innerHeight - height - 12)), width, height };
     }
-    // 4.0.0: the card and the window move only with transform and opacity, which the browser plays by itself. While
-    // WME fetches and draws the request it keeps the page busy for most of a second; the card's rounded corners and the
-    // window's growth were redrawn by the page frame by frame, so both stood still in that time and then jumped.
     function leadOut(source, item) {
       const to = source && leadRect(item);
       if (!to) return null;
@@ -7334,14 +6779,10 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       motion.finished.then(() => node.classList.add('waiting'), () => {});
       let gone = false;
       const remove = ms => setTimeout(() => node.remove(), ms + 120);
-      // Where the card is drawn now: the time the browser has really played (it starts late when the page is busy).
       const now = () => { const ms = Math.min(path.duration, Math.max(0, Number(motion.currentTime) || 0)); return { ms, at: path.at(ms) }; };
       const fade = ms => { if (gone) return; gone = true; const { ms: played } = now(); motion.pause(); node.animate([{ opacity: Math.min(1, played / path.duration * 12) }, { opacity: 0 }], { duration: ms, easing: 'ease-out', fill: 'forwards' }); remove(ms); };
       return {
-        // Where the card is now, for the window to grow from.
         rect() { const { at } = now(); return { left: to.left + at.x, top: to.top + at.y, width: Math.max(1, to.width * at.scaleX), height: Math.max(1, to.height * at.scaleY) }; },
-        // The window is ready: the card moves on to the window's place (most of the time it is there already) and then
-        // fades while the window fades in over it. Returns how long the move takes, for the window to wait.
         land(target) {
           if (gone) return 0;
           gone = true;
@@ -7361,10 +6802,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         cancel() { fade(160); }
       };
     }
-    // The way back: the window opens out of its chip, or out of the card that went ahead of it.
     function growFrom(element, source, item, lead = null) {
-      // Studio places the window first (where it was when it was minimized), so it grows to its real place and
-      // doesn't jump there once it has opened.
       try { syncHeaderGuardWindows(); } catch (studioError) { reportStudioError('growFrom place', studioError); }
       const to = element.getBoundingClientRect();
       if (lead && to.width && to.height && !document.hidden) { revealFromLead(element, lead, to); return; }
@@ -7375,7 +6813,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const path = foldPath(to, source, zoom, true);
       const restoreStyle = keepStyle(element, ['transform', 'transform-origin', 'border-radius', 'filter']);
       element.style.setProperty('transform-origin', '0 0', 'important');
-      // From the chip: the chip's colour veils the window as it grows.
       const proxy = layer('fold-proxy', to, colorValue(item.color));
       tabs?.animate([{ opacity: 0 }, { opacity: 0, offset: .72 }, { opacity: 1 }], { duration: path.duration, easing: 'ease-out' });
       element.setAttribute('data-wme-studio-request-growing', 'on');
@@ -7383,8 +6820,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       element.removeAttribute('data-wme-studio-request-arriving');
       player.done.then(() => { player.stop(); proxy.remove(); restoreStyle(); element.removeAttribute('data-wme-studio-request-growing'); queueHeaderGuardWindows(); });
     }
-    // Out of the card (4.0.0): the card settles on the window's place and the window fades in over it, all played by the
-    // browser itself, so it stays smooth while WME is still busy drawing the request.
     function revealFromLead(element, lead, to) {
       foldCSS();
       element.setAttribute('data-wme-studio-request-growing', 'on');
@@ -7410,12 +6845,10 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       let fold=null;
       try { if (foldMotion()) fold=foldInto(element,item,!hadChip); } catch (studioError) { reportStudioError('foldInto',studioError); fold=null; }
       if (!fold) pulseHeader();
-      // Minimized windows are hidden by the stylesheet: after the fold has landed, when there is one.
       if (!fold) element.setAttribute('data-wme-studio-request-minimized','on');
       try {
         if (fold) {
           await fold.landed;
-          // Closed or swapped for another request while it folded (a marker clicked meanwhile): nothing left to close.
           if (!panel.isConnected || !element.isConnected || active && active.id!==item.id) { fold.cleanup(); return; }
           element.setAttribute('data-wme-studio-request-minimized','on');
         }
@@ -7425,7 +6858,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
           if (!control) throw new Error('The native request close button is not ready.');
           control.click();
         }
-        // The window has gone; what the fold left on it is taken off once WME has finished with it.
         if (fold) requestAnimationFrame(()=>requestAnimationFrame(()=>fold.cleanup()));
       } catch (_) { reportStudioError("minimize",_);
         fold?.cleanup(true);
@@ -7446,8 +6878,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     }
     function requestRestore(item,forget=false) {
       if (!item || !settings.enabled || compactLayoutEditing) return;
-      // A click on another request while one is still opening goes to the new one; it used to be ignored until the
-      // first one gave up, so the list seemed to hang (3.1.0).
       if (pendingRestore) { if (pendingRestore.item.id===item.id) return; clearTimeout(pendingRestore.timer); pendingRestore.lead?.cancel(); pendingRestore=null; }
       if (active?.id===item.id && currentPanel()) { if(forget){items.delete(item.id);saveItems();render();} return; }
       const panel=currentPanel();
@@ -7462,7 +6892,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (pendingRestore) { clearTimeout(pendingRestore.timer); pendingRestore.lead?.cancel(); pendingRestore.arriving?.removeAttribute('data-wme-studio-request-arriving'); pendingRestore=null; }
       saveCurrent(); message('');
       const operation={item,swap,rollback,forget,timer:0,previousPanel:currentPanel(),previousId:active?.id}; pendingRestore=operation; render();
-      // Where the window grows from when it opens: the item's chip in the header (3.1.0).
       if (!rollback && foldMotion()) { try { operation.from=pressChip(item.id); operation.lead=leadOut(operation.from,item); } catch (studioError) { reportStudioError('pressChip',studioError); } }
       operation.timer=setTimeout(()=>failedRestore(operation),item.model?5000:10000);
       const start=()=>{
@@ -7470,13 +6899,10 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         try { Promise.resolve(nativeOpen(item,operation)).catch((studioError)=>{ reportStudioError("restore",studioError); return failedRestore(operation); }); }
         catch (_) { reportStudioError("restore",_); failedRestore(operation); }
       };
-      // (4.0.0) WME starts on the request once the card's first frame is on screen: from then on the browser flies the
-      // card by itself, however busy WME keeps the page. Started at once, the card waited for WME and then jumped.
       if (operation.lead) requestAnimationFrame(()=>setTimeout(start,0)); else start();
     }
     function failedRestore(operation) {
       if (pendingRestore!==operation) return;
-      // It did open after all (the window was slow to say so): kept as opened, without the error.
       const shown=currentPanel();
       if (shown && sdkOpen===String(operation.item.id) && active?.id===operation.item.id) { settleRestore(shown,operation); return; }
       clearTimeout(operation.timer); pendingRestore=null; render();
@@ -7487,19 +6913,15 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     }
     function finishRestore(panel) {
       const operation=pendingRestore;
-      // The same window can come back with the new request in it: the SDK saying which request is open settles it.
       if (!operation || active?.id !== operation.item.id || !panel.isConnected || !isUpdate(panel) ||
           operation.previousPanel===panel && operation.previousId!==operation.item.id && sdkOpen!==String(operation.item.id)) return;
       settleRestore(panel,operation);
     }
-    // The unsent reply goes back in as soon as the reply box is there (a closed request has none): opening no longer
-    // waits for it, which kept the list busy until it gave up (3.1.0).
     function restoreDraft(panel,draft,tries=0) {
       if (!draft || !panel.isConnected) return;
       const field=replyField(panel);
       if (!field) { if (tries<40) setTimeout(()=>restoreDraft(panel,draft,tries+1),50); return; }
       if (replyValue(panel).trim()) return;
-      // Update the live native component, allowing its normal change handler to retain the draft.
       field.value=draft;
       const inner=field.localName==='textarea' ? field : field.shadowRoot?.querySelector('textarea');
       if (inner) {
@@ -7524,23 +6946,18 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       }
       clearTimeout(operation.timer); pendingRestore=null;
       saveItems(); render(); queueHeaderGuardWindows();
-      // It opens out of its chip once Studio has put it back where it was.
       const arriving=operation.arriving;
       const open=()=>{ try { if (arriving.isConnected) growFrom(arriving,operation.from,item,operation.lead); else { operation.lead?.cancel(); arriving.removeAttribute('data-wme-studio-request-arriving'); } } catch (studioError) { operation.lead?.cancel(); arriving.removeAttribute('data-wme-studio-request-arriving'); reportStudioError('growFrom',studioError); } };
-      // (4.0.0) With the card waiting in its place, the window comes out once WME has filled it: it opens short while it
-      // loads and grows when the discussion arrives, so the card shrank to it and the window grew again right after.
       if (arriving) { if (operation.lead) whenFilled(arriving,open); else requestAnimationFrame(()=>requestAnimationFrame(open)); }
       else operation.lead?.cancel();
     }
-    // Ready to show: the window keeps its size for a few frames and nothing in it is still loading (WME's spinner), or
-    // two seconds have gone by.
     function whenFilled(element,done,limit=2000) {
       const started=performance.now(), loading='wz-spinner,wz-loader,[class*="spinner" i]:not([class*="ws-"]),[class*="loader" i]:not([class*="ws-"]),[class*="skeleton" i]';
       let last='',steady=0;
       const step=()=>{
         if (!element.isConnected) { done(); return; }
         const box=element.getBoundingClientRect(),size=`${Math.round(box.width)}x${Math.round(box.height)}`;
-        const busy=[...element.querySelectorAll(loading)].some(node=>node.checkVisibility ? node.checkVisibility() : node.getClientRects().length>0);   // WME keeps hidden spinners in it
+        const busy=[...element.querySelectorAll(loading)].some(node=>node.checkVisibility ? node.checkVisibility() : node.getClientRects().length>0);
         steady=size===last && box.height>0 && !busy ? steady+1 : 0; last=size;
         if (steady>=4 || performance.now()-started>limit) done(); else requestAnimationFrame(step);
       };
@@ -7584,8 +7001,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (positionFrame) return;
       positionFrame=requestAnimationFrame(()=>{positionFrame=0;positionDock();if(tooltipButton)showMinimizeTip(tooltipButton);for(const state of panels.values())positionButton(state);});
     }
-    // Measuring at once would force a style pass for every part of a request panel the discovery pass
-    // reaches; afterDiscover() measures once the pass is done, still before anything is painted.
     const awaitingPosition=new Set();
     function deferPosition(state) {
       if (awaitingPosition.has(state)) return;
@@ -7593,9 +7008,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       afterDiscover(()=>{awaitingPosition.delete(state);positionButton(state);});
     }
     window.addEventListener('resize',queuePositions,{passive:true});
-    // The SDK tells which update request opens and closes (sdkOpen: undefined until it has said anything). The request
-    // itself is read through the SDK; WME's own object is kept alongside when it is there, for its issue number (the
-    // SDK has no such number, and WME needs it to reopen the request).
     let sdkOpen, sdkPanelsHooked = false;
     function legacyRequest(id) { try { return pageWindow.W?.model?.mapUpdateRequests?.getObjectById?.(Number(id)) || null; } catch (_) { return null; } }
     function requestFromSDK(id) {
@@ -7607,7 +7019,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const where = point && Number.isFinite(point[0]) && Number.isFinite(point[1]) ? { lon: point[0], lat: point[1] } : null;
       return { type: 'mapUpdateRequest', id: String(id), mapIssueId: Number(legacy?.getMapIssueId?.() ?? NaN), model, where };
     }
-    // Any other request the panel shows (a map problem, say): its position, for keeping it clear of the panels.
     function problemFromSDK(event) {
       const id = event?.id;
       if (id == null) return null;
@@ -7629,9 +7040,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       tellManagers();
     }
     function requestClosed() { saveCurrent(); active=null; closeName(); queueRefresh(); tellManagers(); }
-    // Quick replies management shows the open request and fills the variables from it (3.1.0): it hears about a new
-    // one at once, and again once WME has drawn its window.
-    function tellManagers() { for (const delay of [150, 1200]) setTimeout(() => { try { quickReplies.notifyManagers(); } catch (_) { /* not ready yet */ } }, delay); }
+    function tellManagers() { for (const delay of [150, 1200]) setTimeout(() => { try { quickReplies.notifyManagers(); } catch (_) {   } }, delay); }
     function hookPanelsSDK() {
       if (sdkPanelsHooked) return true;
       const api = studioSDK.get();
@@ -7642,12 +7051,11 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
           else { sdkOpen = null; requestShown(null, problemFromSDK(event)); }
         } });
         api.Events.on({ eventName: 'wme-issue-tracker-panel-closed', eventHandler: () => { sdkOpen = null; requestClosed(); } });
-        // An update request opened from its marker on the map.
         try { api.Events.on({ eventName: 'wme-update-request-panel-opened', eventHandler: event => {
           const id = event?.updateRequestId;
           if (id == null || sdkOpen === String(id)) return;
           sdkOpen = String(id); requestShown(requestFromSDK(id));
-        } }); } catch (_) { /* an SDK without this event: the issue tracker event is enough */ }
+        } }); } catch (_) {   }
         sdkPanelsHooked = true;
       } catch (_) { sdkPanelsHooked = false; }
       return sdkPanelsHooked;
@@ -7659,7 +7067,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         active = { ...(same ? active : {}), ...fresh, mapIssueId: Number.isFinite(fresh.mapIssueId) ? fresh.mapIssueId : same ? active.mapIssueId : NaN };
         return;
       }
-      // Once the SDK reports the panels, its word is the one that counts. Before that (or without it): WME's own answer.
       if (sdkPanelsHooked && sdkOpen !== undefined) return;
       let model;
       try { model=pageWindow.W?.problemsController?.getCurrentProblem?.(); } catch (_) { reportStudioError("readCurrent",_);}
@@ -7676,7 +7083,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       connect(); readCurrent();
       const existing=panels.get(panel),window=panel.closest(REQUEST_WINDOW_SELECTOR);
       const close=panel.querySelector('[class*="closePanel--"]') || window?.querySelector('[aria-roledescription="draggable"] wz-button[aria-label="Close"],[aria-roledescription="draggable"] button[aria-label="Close"]');
-      // Keep Minimize outside the Close tooltip's hover source.
       let anchor=close;
       for (let node=close?.parentElement;node && node!==window && node!==panel;node=node.parentElement) {
         if (node.matches('[aria-roledescription="draggable"],[class*="issuePanelHeader--"],[class*="panelHeaderActions--"]')) break;
@@ -7693,8 +7099,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         button.addEventListener('pointerenter',()=>showMinimizeTip(button));button.addEventListener('pointerleave',hideMinimizeTip);
         button.addEventListener('focus',()=>showMinimizeTip(button));button.addEventListener('blur',hideMinimizeTip);
         button.addEventListener('pointerdown',event=>{event.stopPropagation();hideMinimizeTip();});
-        // A request that is already saved goes straight back to the header with its name, color, icon and tag
-        // (3.1.0); only a new one asks for them.
         button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();hideMinimizeTip();readCurrent();
           const saved=active && items.get(active.id);
           if (saved && settings.enabled && !compactLayoutEditing && !pendingRestore && isUpdate(panel)) { closeMenu(false); minimize(panel,saved.name,{color:saved.color,icon:saved.icon,tag:saved.tag}); }
@@ -7709,7 +7113,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         if (close) positions?.observe(close);
       }
       state.id=pendingRestore?.previousPanel===panel && pendingRestore.previousId!==pendingRestore.item.id ? pendingRestore.previousId : active?.id;
-      // A saved request on its way back stays out of sight until it grows out of its chip.
       const opening=pendingRestore;
       if (opening?.from && window && opening.arriving!==window && opening.previousPanel!==panel && !window.hasAttribute('data-wme-studio-request-minimized')) {
         foldCSS(); opening.arriving=window; window.setAttribute('data-wme-studio-request-arriving','on');
@@ -7735,11 +7138,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (!sdk && (!initialized?.then || sdkReady)) try { sdk=pageWindow.getWmeSdk?.({scriptId:'wme-studio',scriptName:'WME Studio',mode:'async'}); } catch (_) { reportStudioError("connect",_);}
       connectZoom();
       try { trackStreetViewSDK(sdk); } catch (studioError) { reportStudioError("connect",studioError); }
-      // connect() can run before requestReveal has been initialized further down this script.
       queueMicrotask(() => { try { requestReveal.connectPlaceUpdates(sdk); requestReveal.hookMoves(); } catch (studioError) { reportStudioError("connect",studioError); } });
-      // Refreshed once, when the SDK is first hooked. inspect() calls connect() from queueRefresh itself, so
-      // refreshing on every call kept a refresh running every frame while a request was open: the saved requests
-      // menu was drawn again 60 times a second (a click on a row never landed) and everything around it lagged.
       const hookedBefore = sdkPanelsHooked;
       if (hookPanelsSDK()) { if (!hookedBefore) queueRefresh(); return; }
       const app=pageWindow.W?.app;
@@ -7754,16 +7153,10 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       app.on('problems:closed',()=>{ if (!sdkPanelsHooked) requestClosed(); });
       queueRefresh();
     }
-    // ── Follow-ups (3.1.0) ─────────────────────────────────────────────────────────────────────────────────────
-    // Each message I send in an update request is noted. Once the reporter has been quiet for as many days as
-    // Settings › Panels says (the same days the case file suggests closing after), it's due: the header button shows
-    // how many are due and its menu lists them, so a question I asked doesn't get forgotten. An answer from the
-    // reporter, or the request closed, takes it off.
     const quietDays = () => Math.max(1, Number(settings.requestQuietDays) || 7);
     const followDayStart = time => { const date = new Date(time); date.setHours(0, 0, 0, 0); return date.getTime(); };
     const followLeft = item => quietDays() - Math.round((followDayStart(Date.now()) - followDayStart(item.sentAt)) / 86400000);
     function dueFollowUps() { return urceLeads() ? [] : [...followUps.values()].filter(item => followLeft(item) <= 0); }
-    // URC-E keeps its own reminders (4.0.2): while it leads, follow-ups aren't kept or shown (the ones kept before wait).
     function followCount() { return urceLeads() ? 0 : followUps.size; }
     function storedFollowUp(raw) {
       if (!raw || typeof raw !== 'object' || raw.id == null || !Number.isFinite(Number(raw.sentAt))) return null;
@@ -7784,7 +7177,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       catch (studioError) { reportStudioError('loadFollowUps', studioError); }
     }
     function forgetFollowUp(id) { if (followUps.delete(String(id))) { saveFollowUps(); render(); } }
-    // A message I sent: the request is followed (again) from now.
     function noteSent(panel) {
       try {
         if (urceLeads()) return;
@@ -7800,13 +7192,11 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         saveFollowUps(); render();
       } catch (studioError) { reportStudioError('noteSent', studioError); }
     }
-    // What an open request says: closed, or the reporter answered after my last message.
     function noteState(id, closed, last) {
       const item = followUps.get(String(id));
       if (!item) return;
       if (closed || (last?.side === 'reporter' && Number.isFinite(last.time) && last.time > item.sentAt - 60000)) forgetFollowUp(id);
     }
-    // Requests closed meanwhile (seen in the map data around you) are taken off too.
     function pruneFollowUps() {
       let changed = false;
       for (const item of followUps.values()) {
@@ -7853,7 +7243,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (saved) { requestRestore(saved); return; }
       requestRestore({ type: 'mapUpdateRequest', id: item.id, mapIssueId: item.mapIssueId, model: legacyRequest(item.id), name: item.title || tr('Update request'), color: settings.accent, icon: 'clock', tag: '', draft: '', point: null, where: item.where, savedAt: item.sentAt });
     }
-    // A click on Send in an update request (or Ctrl+Enter, which clicks it): noted as soon as there's text to send.
     const sendButtonOf = panel => panel?.querySelector('.new-comment-form wz-button.send-button, .new-comment-form button.send-button');
     document.addEventListener('click', event => {
       if (!settings.enabled) return;
@@ -7864,8 +7253,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     }, true);
     setInterval(() => { if (followUps.size) pruneFollowUps(); }, 60000);
 
-    // ── Next request (3.1.0) ───────────────────────────────────────────────────────────────────────────────────
-    // The nearest open update request in the map data around you that I haven't opened this session.
     const visited = new Set();
     function nextRequest(fromId, fromWhere) {
       let list = [];
@@ -7893,22 +7280,14 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     connect();
     loadItems(); loadFollowUps();
     document.addEventListener('wme-studio-urce', () => render());
-    // Another editor tab saved or removed a request: this tab shows the same list.
-    try { GM_addValueChangeListener?.(SAVED_KEY, (key, before, after, remote) => { if (!remote || !Array.isArray(after)) return; const kept = new Map(items); items.clear(); for (const raw of after.slice(0, limit)) { const item = storedItem(raw); if (item) { const old = kept.get(item.id); items.set(item.id, old ? Object.assign(old, item, { model: old.model }) : item); } } render(); }); } catch (_) { /* no change listener: each tab keeps its own list until reload */ }
+    try { GM_addValueChangeListener?.(SAVED_KEY, (key, before, after, remote) => { if (!remote || !Array.isArray(after)) return; const kept = new Map(items); items.clear(); for (const raw of after.slice(0, limit)) { const item = storedItem(raw); if (item) { const old = kept.get(item.id); items.set(item.id, old ? Object.assign(old, item, { model: old.model }) : item); } } render(); }); } catch (_) {   }
     return Object.freeze({inspect,refresh:()=>{connect();render();},prune:()=>{refreshButtons();if(naming && !naming.edit && !naming.panel?.isConnected)closeName();},
       noteState,openNext,sendButton:sendButtonOf,
-      // The update request open in WME, as the SDK told it (3.1.0): the case file and the {variables} use it when the
-      // window's subtitle has no number (that number is added by another script, URC-E).
-      openId:()=>{ try { readCurrent(); } catch (_) { /* the SDK may not be ready yet */ } const id=active?.type==='mapUpdateRequest'||active?.id!=null?active?.id:sdkOpen; return id!=null&&/^\d+$/.test(String(id))?Number(id):NaN; },
-      // For the chat (Waze Chat Plus): the saved requests, as the header menu shows them.
+      openId:()=>{ try { readCurrent(); } catch (_) {   } const id=active?.type==='mapUpdateRequest'||active?.id!=null?active?.id:sdkOpen; return id!=null&&/^\d+$/.test(String(id))?Number(id):NaN; },
       savedList:()=>[...items.values()].sort((a,b)=>(b.savedAt||0)-(a.savedAt||0)).map(item=>({id:item.id,name:item.name,color:colorValue(item.color),ink:inkFor(item.color),icon:iconSVG(item.icon),tag:item.tag||'',where:item.where||null}))});
   })();
 
   GM_addStyle(studioPart('part10792'));
-  // 3.1.0: Case file. An update request window says where the request stands: who it is waiting on and for how long,
-  // what the usual next step is, and its discussion reads as a conversation (the reporter on one side, editors on the
-  // other, the time between messages marked, the automatic first message folded). Replies the request usually needs
-  // are a click away, written in the language the reporter writes in. Settings › Panels switches back to WME's layout.
   const caseFile = (() => {
     const states = new Map();
     let frame = 0;
@@ -7917,7 +7296,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const uiLocale = () => { try { return globalThis.WMEStudioI18n?.current?.() || document.documentElement.lang || 'en'; } catch (_) { return 'en'; } };
     const on = () => settings.enabled && settings.requestCaseFile !== false;
     const svg = path => `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
-    // The request's type, drawn as an icon (WME's own type numbers).
     const TYPE_ICONS = {
       turn: '<path d="M7 20v-7a4 4 0 0 1 4-4h8"/><path d="m15 5 4 4-4 4"/>',
       road: '<path d="M8 3 5 21M16 3l3 18M12 4v2.5M12 10.5v3M12 17.5V20"/>',
@@ -7928,7 +7306,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     };
     const typeIcon = type => [6, 11, 12, 15].includes(type) ? 'turn' : [8, 13, 14, 16, 19].includes(type) ? 'road' : [7, 21, 22].includes(type) ? 'address' : type === 9 ? 'roundabout' : type === 23 ? 'speed' : 'general';
 
-    // Replies written for the driver, in the driver's language (not the editor's): the ones a request usually needs.
     const REPLIES = {
       en: { spot: 'Thanks for the report! Could you tell us exactly where it happened? A street name or the junction helps us find it.', fixed: "Thank you! We've fixed the map here. The app shows the change after the next map update, usually within a few days.", remind: "Hi again! We still need a little more detail to fix this. Could you tell us exactly where the problem was? If we don't hear back, we'll close this report in a few days.", close: "We didn't hear back, so we're closing this report for now. If it happens again, please send a new report from the spot. Thank you!" },
       el: { spot: 'Ευχαριστούμε για την αναφορά! Μπορείτε να μας πείτε πού ακριβώς συνέβη; Το όνομα του δρόμου ή η διασταύρωση μάς βοηθά να το βρούμε.', fixed: 'Ευχαριστούμε! Διορθώσαμε τον χάρτη σε αυτό το σημείο. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.', remind: 'Γεια σας ξανά! Χρειαζόμαστε λίγες ακόμα πληροφορίες για να το διορθώσουμε. Μπορείτε να μας πείτε πού ακριβώς ήταν το πρόβλημα; Αν δεν λάβουμε απάντηση, θα κλείσουμε την αναφορά σε λίγες μέρες.', close: 'Δεν λάβαμε απάντηση, οπότε κλείνουμε την αναφορά προς το παρόν. Αν συμβεί ξανά, στείλτε νέα αναφορά από το σημείο. Ευχαριστούμε!' },
@@ -7942,7 +7319,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       ru: { spot: 'Спасибо за сообщение! Подскажите, где именно это произошло? Название улицы или перекрёстка поможет нам найти место.', fixed: 'Спасибо! Мы исправили карту в этом месте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.', remind: 'Здравствуйте ещё раз! Нам нужно чуть больше подробностей, чтобы это исправить. Подскажите, где именно была проблема? Если ответа не будет, мы закроем это сообщение через несколько дней.', close: 'Мы не получили ответа, поэтому пока закрываем это сообщение. Если это повторится, отправьте новое сообщение прямо с места. Спасибо!' },
       tr: { spot: 'Bildirim için teşekkürler! Tam olarak nerede olduğunu söyleyebilir misiniz? Sokak adı ya da kavşak, yeri bulmamıza yardımcı olur.', fixed: 'Teşekkürler! Haritayı burada düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.', remind: 'Tekrar merhaba! Bunu düzeltmek için biraz daha ayrıntıya ihtiyacımız var. Sorunun tam olarak nerede olduğunu söyleyebilir misiniz? Yanıt alamazsak bu bildirimi birkaç gün içinde kapatacağız.', close: 'Yanıt alamadığımız için bu bildirimi şimdilik kapatıyoruz. Tekrar olursa lütfen o noktadan yeni bir bildirim gönderin. Teşekkürler!' },
       ka: { spot: 'გმადლობთ შეტყობინებისთვის! შეგიძლიათ გვითხრათ, ზუსტად სად მოხდა? ქუჩის სახელი ან გზაჯვარედინი დაგვეხმარება მის პოვნაში.', fixed: 'გმადლობთ! რუკა ამ ადგილას გავასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.', remind: 'კიდევ ერთხელ გამარჯობა! გამოსასწორებლად ცოტა მეტი დეტალი გვჭირდება. შეგიძლიათ გვითხრათ, ზუსტად სად იყო პრობლემა? თუ პასუხს არ მივიღებთ, შეტყობინებას რამდენიმე დღეში დავხურავთ.', close: 'პასუხი არ მიგვიღია, ამიტომ შეტყობინებას ჯერჯერობით ვხურავთ. თუ ისევ მოხდება, გთხოვთ, იმ ადგილიდან ახალი შეტყობინება გამოგვიგზავნოთ. გმადლობთ!' },
-      // More languages (4.0.0), for reporters whose app is set to them.
       uk: { spot: "Дякуємо за повідомлення! Підкажіть, будь ласка, де саме це сталося? Назва вулиці чи перехрестя допоможе нам знайти місце.", fixed: "Дякуємо! Ми виправили карту в цьому місці. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.", remind: "Вітаємо ще раз! Нам потрібно трохи більше подробиць, щоб це виправити. Підкажіть, будь ласка, де саме була проблема? Якщо ми не отримаємо відповіді, то закриємо це повідомлення за кілька днів.", close: "Ми не отримали відповіді, тож поки що закриваємо це повідомлення. Якщо це повториться, надішліть, будь ласка, нове повідомлення з того місця. Дякуємо!" },
       cs: { spot: "Díky za hlášení! Můžete nám říct, kde přesně se to stalo? Název ulice nebo křižovatky nám pomůže místo najít.", fixed: "Děkujeme! Mapu jsme na tomto místě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.", remind: "Dobrý den znovu! Abychom to mohli opravit, potřebujeme ještě trochu víc podrobností. Můžete nám říct, kde přesně byl problém? Pokud se neozvete, za několik dní hlášení uzavřeme.", close: "Neozvali jste se, proto hlášení zatím uzavíráme. Pokud se to stane znovu, pošlete prosím nové hlášení přímo z místa. Děkujeme!" },
       sk: { spot: "Ďakujeme za hlásenie! Môžete nám povedať, kde presne sa to stalo? Názov ulice alebo križovatky nám pomôže miesto nájsť.", fixed: "Ďakujeme! Mapu sme na tomto mieste opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.", remind: "Dobrý deň znova! Aby sme to mohli opraviť, potrebujeme ešte trochu viac podrobností. Môžete nám povedať, kde presne bol problém? Ak sa neozvete, o niekoľko dní hlásenie uzavrieme.", close: "Neozvali ste sa, preto hlásenie zatiaľ uzatvárame. Ak sa to stane znova, pošlite prosím nové hlásenie priamo z miesta. Ďakujeme!" },
@@ -7972,16 +7348,11 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       hi: { spot: "रिपोर्ट के लिए धन्यवाद! क्या आप बता सकते हैं कि यह ठीक कहाँ हुआ? सड़क का नाम या चौराहा हमें जगह ढूँढने में मदद करता है।", fixed: "धन्यवाद! हमने यहाँ नक्शा ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।", remind: "फिर से नमस्ते! इसे ठीक करने के लिए हमें थोड़ी और जानकारी चाहिए। क्या आप बता सकते हैं कि समस्या ठीक कहाँ थी? अगर हमें जवाब नहीं मिला, तो हम कुछ दिनों में यह रिपोर्ट बंद कर देंगे।", close: "हमें कोई जवाब नहीं मिला, इसलिए हम फ़िलहाल यह रिपोर्ट बंद कर रहे हैं। अगर ऐसा फिर हो, तो कृपया उसी जगह से नई रिपोर्ट भेजें। धन्यवाद!" },
       ca: { spot: "Gràcies per l’avís! Ens pots dir on va passar exactament? El nom del carrer o la cruïlla ens ajuda a trobar-ho.", fixed: "Gràcies! Hem corregit el mapa aquí. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.", remind: "Hola de nou! Encara necessitem una mica més de detall per corregir-ho. Ens pots dir on era exactament el problema? Si no tenim resposta, tancarem aquest avís d’aquí a uns dies.", close: "No hem tingut resposta, així que de moment tanquem aquest avís. Si torna a passar, envia un avís nou des del mateix lloc. Gràcies!" }
     };
-    // Ready replies for each kind of request and for Map Mate reports (4.1.0), in the same languages. A language
-    // without one of them uses the English one, so every key is always there.
     const MORE_REPLIES = /*@@MORE_REPLIES@@*/{"en":{"t-turn-ask":"Thanks for the report! Which turn was it: from which street onto which, and in which direction were you driving?","t-turn-done":"Thank you! We've fixed that turn on the map. The app shows the change after the next map update, usually within a few days.","t-address-ask":"Thanks for the report! What is the correct address or street name, and which place were you trying to reach?","t-address-done":"Thank you! We've corrected the address on the map. The app shows the change after the next map update, usually within a few days.","t-route-ask":"Thanks for the report! Where did you start, where were you going, and which way did you expect the app to take you?","t-route-done":"Thanks for the report! We checked the map here and it's right. The app picks the route from live traffic, so it can differ from day to day.","t-roundabout-ask":"Thanks for the report! Which junction should be a roundabout? The streets that meet there help us find it.","t-roundabout-done":"Thank you! We've added the roundabout to the map. The app shows it after the next map update, usually within a few days.","t-general-ask":"Thanks for the report! Could you tell us a bit more about what was wrong, and where exactly?","t-junction-ask":"Thanks for the report! Which junction, exit or bridge was it, and in which direction were you driving?","t-junction-done":"Thank you! We've fixed the junction on the map. The app shows the change after the next map update, usually within a few days.","t-direction-ask":"Thanks for the report! Which street was it, and in which direction is it really open to traffic?","t-direction-done":"Thank you! We've corrected the driving direction on the map. The app shows the change after the next map update, usually within a few days.","t-road-ask":"Thanks for the report! What is the road called, where does it start and end, and is it open to everyone?","t-road-done":"Thank you! We've added the road to the map. The app shows it after the next map update, usually within a few days.","t-landmark-ask":"Thanks for the report! What is the place called, and where exactly is it?","t-landmark-done":"Thank you! We've added the place to the map. It shows in the app after the next map update, usually within a few days.","t-blocked-ask":"Thanks for the report! Is the road closed for good or for a while? If you know until when, that helps a lot.","t-blocked-done":"Thank you! We've added the closure to the map, so the app routes around it.","t-speed-ask":"Thanks for the report! What speed limit is posted there, and for which direction?","t-speed-done":"Thank you! We've updated the speed limit on the map. The app shows it after the next map update, usually within a few days.","nothing":"Thanks for the report! We checked the map here and couldn't find anything wrong, so we left it as it is. If it happens again, please send a new report from the spot.","mm-ask":"Thanks for your report! Could you tell us a little more: exactly where it is, and in which direction you were driving?","mm-bump-done":"Thank you! We've added the speed bump to the map, so the app warns drivers about it.","mm-bump-none":"Thanks for the report! We checked and couldn't see a speed bump here, so we left the map as it is.","mm-light-done":"Thank you! We've added the traffic lights to the map.","mm-light-none":"Thanks for the report! We checked and couldn't see traffic lights here, so we left the map as it is.","mm-curve-done":"Thank you! We've marked the dangerous curve on the map, so the app warns drivers about it.","mm-curve-none":"Thanks for the report! We checked this curve and didn't find a reason to change the map, so we left it as it is.","mm-rail-done":"Thank you! We've added the railroad crossing to the map, so the app warns drivers about it.","mm-rail-none":"Thanks for the report! We checked and couldn't see a railroad crossing here, so we left the map as it is.","mm-camera-done":"Thank you! We've added the speed camera to the map.","mm-camera-none":"Thanks for the report! We checked and couldn't confirm a speed camera here, so we left the map as it is.","mm-done":"Thank you! We've updated the map here. The app shows the change after the next map update, usually within a few days.","mm-none":"Thanks for the report! We checked the map here and didn't find anything to change, so we left it as it is."},"el":{"t-turn-ask":"Ευχαριστούμε για την αναφορά! Ποια στροφή ήταν: από ποιον δρόμο προς ποιον, και προς ποια κατεύθυνση οδηγούσατε;","t-turn-done":"Ευχαριστούμε! Διορθώσαμε τη στροφή στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-address-ask":"Ευχαριστούμε για την αναφορά! Ποια είναι η σωστή διεύθυνση ή το σωστό όνομα του δρόμου, και πού προσπαθούσατε να πάτε;","t-address-done":"Ευχαριστούμε! Διορθώσαμε τη διεύθυνση στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-route-ask":"Ευχαριστούμε για την αναφορά! Από πού ξεκινήσατε, πού πηγαίνατε και από ποιον δρόμο περιμένατε να σας πάει η εφαρμογή;","t-route-done":"Ευχαριστούμε για την αναφορά! Ελέγξαμε τον χάρτη σε αυτό το σημείο και είναι σωστός. Η εφαρμογή επιλέγει τη διαδρομή με βάση την κίνηση σε πραγματικό χρόνο, οπότε μπορεί να διαφέρει από μέρα σε μέρα.","t-roundabout-ask":"Ευχαριστούμε για την αναφορά! Ποια διασταύρωση θα έπρεπε να είναι κυκλικός κόμβος; Τα ονόματα των δρόμων που συναντιούνται εκεί μάς βοηθούν να τη βρούμε.","t-roundabout-done":"Ευχαριστούμε! Προσθέσαμε τον κυκλικό κόμβο στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-general-ask":"Ευχαριστούμε για την αναφορά! Μπορείτε να μας πείτε λίγα περισσότερα για το τι ήταν λάθος και πού ακριβώς;","t-junction-ask":"Ευχαριστούμε για την αναφορά! Ποιος κόμβος, ποια έξοδος ή ποια γέφυρα ήταν, και προς ποια κατεύθυνση οδηγούσατε;","t-junction-done":"Ευχαριστούμε! Διορθώσαμε τον κόμβο στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-direction-ask":"Ευχαριστούμε για την αναφορά! Ποιος δρόμος ήταν, και προς ποια κατεύθυνση επιτρέπεται πραγματικά η κυκλοφορία;","t-direction-done":"Ευχαριστούμε! Διορθώσαμε την κατεύθυνση κυκλοφορίας στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-road-ask":"Ευχαριστούμε για την αναφορά! Πώς λέγεται ο δρόμος, πού αρχίζει και πού τελειώνει, και είναι ανοιχτός για όλους;","t-road-done":"Ευχαριστούμε! Προσθέσαμε τον δρόμο στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-landmark-ask":"Ευχαριστούμε για την αναφορά! Πώς λέγεται το μέρος και πού ακριβώς βρίσκεται;","t-landmark-done":"Ευχαριστούμε! Προσθέσαμε το μέρος στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-blocked-ask":"Ευχαριστούμε για την αναφορά! Ο δρόμος είναι κλειστός μόνιμα ή προσωρινά; Αν ξέρετε μέχρι πότε, μας βοηθά πολύ.","t-blocked-done":"Ευχαριστούμε! Προσθέσαμε το κλείσιμο του δρόμου στον χάρτη, οπότε η εφαρμογή θα το παρακάμπτει.","t-speed-ask":"Ευχαριστούμε για την αναφορά! Ποιο όριο ταχύτητας δείχνει η πινακίδα εκεί, και για ποια κατεύθυνση;","t-speed-done":"Ευχαριστούμε! Ενημερώσαμε το όριο ταχύτητας στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","nothing":"Ευχαριστούμε για την αναφορά! Ελέγξαμε τον χάρτη σε αυτό το σημείο και δεν βρήκαμε κάποιο λάθος, οπότε τον αφήσαμε ως έχει. Αν συμβεί ξανά, στείλτε νέα αναφορά από το σημείο.","mm-ask":"Ευχαριστούμε για την αναφορά! Μπορείτε να μας πείτε λίγα περισσότερα: πού ακριβώς βρίσκεται και προς ποια κατεύθυνση οδηγούσατε;","mm-bump-done":"Ευχαριστούμε! Προσθέσαμε το σαμαράκι στον χάρτη, ώστε η εφαρμογή να ειδοποιεί τους οδηγούς.","mm-bump-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε και δεν εντοπίσαμε σαμαράκι σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-light-done":"Ευχαριστούμε! Προσθέσαμε τα φανάρια στον χάρτη.","mm-light-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε και δεν εντοπίσαμε φανάρια σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-curve-done":"Ευχαριστούμε! Σημειώσαμε την επικίνδυνη στροφή στον χάρτη, ώστε η εφαρμογή να ειδοποιεί τους οδηγούς.","mm-curve-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε αυτή τη στροφή και δεν βρήκαμε λόγο να αλλάξουμε τον χάρτη, οπότε τον αφήσαμε ως έχει.","mm-rail-done":"Ευχαριστούμε! Προσθέσαμε την ισόπεδη σιδηροδρομική διάβαση στον χάρτη, ώστε η εφαρμογή να ειδοποιεί τους οδηγούς.","mm-rail-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε και δεν εντοπίσαμε ισόπεδη σιδηροδρομική διάβαση σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-camera-done":"Ευχαριστούμε! Προσθέσαμε την κάμερα ελέγχου ταχύτητας στον χάρτη.","mm-camera-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε, αλλά δεν μπορέσαμε να επιβεβαιώσουμε κάμερα ελέγχου ταχύτητας σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-done":"Ευχαριστούμε! Ενημερώσαμε τον χάρτη σε αυτό το σημείο. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","mm-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε τον χάρτη σε αυτό το σημείο και δεν βρήκαμε κάτι να αλλάξουμε, οπότε τον αφήσαμε ως έχει."},"de":{"t-turn-ask":"Danke für die Meldung! Um welche Abbiegung ging es: von welcher Straße in welche, und in welche Richtung bist du gefahren?","t-turn-done":"Danke! Wir haben die Abbiegung auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-address-ask":"Danke für die Meldung! Wie lautet die richtige Adresse oder der richtige Straßenname, und wohin wolltest du?","t-address-done":"Danke! Wir haben die Adresse auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-route-ask":"Danke für die Meldung! Wo bist du losgefahren, wohin wolltest du, und welchen Weg hättest du von der App erwartet?","t-route-done":"Danke für die Meldung! Wir haben die Karte hier geprüft, und sie stimmt. Die App wählt die Route anhand des aktuellen Verkehrs, deshalb kann sie von Tag zu Tag unterschiedlich sein.","t-roundabout-ask":"Danke für die Meldung! Welche Kreuzung sollte ein Kreisverkehr sein? Die Straßen, die dort aufeinandertreffen, helfen uns, sie zu finden.","t-roundabout-done":"Danke! Wir haben den Kreisverkehr auf der Karte ergänzt. Die App zeigt ihn nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-general-ask":"Danke für die Meldung! Kannst du uns etwas mehr dazu sagen, was falsch war und wo genau?","t-junction-ask":"Danke für die Meldung! Um welche Kreuzung, Ausfahrt oder Brücke ging es, und in welche Richtung bist du gefahren?","t-junction-done":"Danke! Wir haben die Kreuzung auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-direction-ask":"Danke für die Meldung! Um welche Straße ging es, und in welche Richtung darf man sie tatsächlich befahren?","t-direction-done":"Danke! Wir haben die Fahrtrichtung auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-road-ask":"Danke für die Meldung! Wie heißt die Straße, wo beginnt und endet sie, und darf sie jeder befahren?","t-road-done":"Danke! Wir haben die Straße auf der Karte ergänzt. Die App zeigt sie nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-landmark-ask":"Danke für die Meldung! Wie heißt der Ort, und wo genau liegt er?","t-landmark-done":"Danke! Wir haben den Ort auf der Karte ergänzt. Er erscheint in der App nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-blocked-ask":"Danke für die Meldung! Ist die Straße dauerhaft oder nur vorübergehend gesperrt? Wenn du weißt, bis wann, hilft uns das sehr.","t-blocked-done":"Danke! Wir haben die Sperrung auf der Karte eingetragen, damit die App sie umfährt.","t-speed-ask":"Danke für die Meldung! Welches Tempolimit ist dort ausgeschildert, und für welche Richtung?","t-speed-done":"Danke! Wir haben das Tempolimit auf der Karte aktualisiert. Die App zeigt es nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","nothing":"Danke für die Meldung! Wir haben die Karte hier geprüft und keinen Fehler gefunden, deshalb haben wir sie so gelassen. Falls es wieder passiert, sende bitte eine neue Meldung von der Stelle aus.","mm-ask":"Danke für die Meldung! Kannst du uns etwas mehr sagen: Wo genau ist es, und in welche Richtung bist du gefahren?","mm-bump-done":"Danke! Wir haben die Bodenschwelle auf der Karte eingetragen, damit die App Fahrer davor warnt.","mm-bump-none":"Danke für die Meldung! Wir haben nachgesehen und hier keine Bodenschwelle gefunden, deshalb haben wir die Karte so gelassen.","mm-light-done":"Danke! Wir haben die Ampel auf der Karte eingetragen.","mm-light-none":"Danke für die Meldung! Wir haben nachgesehen und hier keine Ampel gefunden, deshalb haben wir die Karte so gelassen.","mm-curve-done":"Danke! Wir haben die gefährliche Kurve auf der Karte markiert, damit die App Fahrer davor warnt.","mm-curve-none":"Danke für die Meldung! Wir haben uns die Kurve angesehen und keinen Grund gefunden, die Karte zu ändern, deshalb haben wir sie so gelassen.","mm-rail-done":"Danke! Wir haben den Bahnübergang auf der Karte eingetragen, damit die App Fahrer davor warnt.","mm-rail-none":"Danke für die Meldung! Wir haben nachgesehen und hier keinen Bahnübergang gefunden, deshalb haben wir die Karte so gelassen.","mm-camera-done":"Danke! Wir haben den Blitzer auf der Karte eingetragen.","mm-camera-none":"Danke für die Meldung! Wir haben nachgesehen, konnten hier aber keinen Blitzer bestätigen, deshalb haben wir die Karte so gelassen.","mm-done":"Danke! Wir haben die Karte hier aktualisiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","mm-none":"Danke für die Meldung! Wir haben die Karte hier geprüft und nichts gefunden, was geändert werden müsste, deshalb haben wir sie so gelassen."},"ru":{"t-turn-ask":"Спасибо за сообщение! О каком повороте речь: с какой улицы на какую и в каком направлении вы ехали?","t-turn-done":"Спасибо! Мы исправили этот поворот на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-address-ask":"Спасибо за сообщение! Подскажите правильный адрес или название улицы и куда вы хотели попасть?","t-address-done":"Спасибо! Мы исправили адрес на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-route-ask":"Спасибо за сообщение! Откуда вы выехали, куда направлялись и каким путём, по-вашему, должно было повести приложение?","t-route-done":"Спасибо за сообщение! Мы проверили карту в этом месте, всё верно. Приложение выбирает маршрут с учётом текущей дорожной ситуации, поэтому он может меняться день ото дня.","t-roundabout-ask":"Спасибо за сообщение! Какой перекрёсток должен быть с круговым движением? Названия улиц, которые там сходятся, помогут нам его найти.","t-roundabout-done":"Спасибо! Мы добавили круговое движение на карту. Приложение покажет его после следующего обновления карты, обычно в течение нескольких дней.","t-general-ask":"Спасибо за сообщение! Расскажите, пожалуйста, чуть подробнее: что было не так и где именно?","t-junction-ask":"Спасибо за сообщение! О какой развязке, съезде или мосте речь и в каком направлении вы ехали?","t-junction-done":"Спасибо! Мы исправили развязку на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-direction-ask":"Спасибо за сообщение! О какой улице речь и в каком направлении по ней на самом деле разрешено движение?","t-direction-done":"Спасибо! Мы исправили направление движения на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-road-ask":"Спасибо за сообщение! Как называется дорога, где она начинается и заканчивается и открыта ли она для всех?","t-road-done":"Спасибо! Мы добавили дорогу на карту. Приложение покажет её после следующего обновления карты, обычно в течение нескольких дней.","t-landmark-ask":"Спасибо за сообщение! Как называется это место и где именно оно находится?","t-landmark-done":"Спасибо! Мы добавили это место на карту. Оно появится в приложении после следующего обновления карты, обычно в течение нескольких дней.","t-blocked-ask":"Спасибо за сообщение! Дорога закрыта насовсем или временно? Если знаете, до какого времени, это очень поможет.","t-blocked-done":"Спасибо! Мы отметили перекрытие на карте, так что приложение будет прокладывать маршрут в объезд.","t-speed-ask":"Спасибо за сообщение! Какое ограничение скорости указано там на знаке и для какого направления?","t-speed-done":"Спасибо! Мы обновили ограничение скорости на карте. Приложение покажет его после следующего обновления карты, обычно в течение нескольких дней.","nothing":"Спасибо за сообщение! Мы проверили карту в этом месте и не нашли ошибок, поэтому оставили всё как есть. Если это повторится, отправьте новое сообщение прямо с места.","mm-ask":"Спасибо за сообщение! Подскажите чуть подробнее: где именно это и в каком направлении вы ехали?","mm-bump-done":"Спасибо! Мы добавили лежачего полицейского на карту, и приложение будет предупреждать о нём водителей.","mm-bump-none":"Спасибо за сообщение! Мы проверили и не нашли здесь лежачего полицейского, поэтому оставили карту без изменений.","mm-light-done":"Спасибо! Мы добавили светофор на карту.","mm-light-none":"Спасибо за сообщение! Мы проверили и не нашли здесь светофора, поэтому оставили карту без изменений.","mm-curve-done":"Спасибо! Мы отметили опасный поворот на карте, и приложение будет предупреждать о нём водителей.","mm-curve-none":"Спасибо за сообщение! Мы проверили этот поворот и не нашли причин менять карту, поэтому оставили всё как есть.","mm-rail-done":"Спасибо! Мы добавили железнодорожный переезд на карту, и приложение будет предупреждать о нём водителей.","mm-rail-none":"Спасибо за сообщение! Мы проверили и не нашли здесь железнодорожного переезда, поэтому оставили карту без изменений.","mm-camera-done":"Спасибо! Мы добавили камеру контроля скорости на карту.","mm-camera-none":"Спасибо за сообщение! Мы проверили, но не смогли подтвердить, что здесь есть камера контроля скорости, поэтому оставили карту без изменений.","mm-done":"Спасибо! Мы обновили карту в этом месте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","mm-none":"Спасибо за сообщение! Мы проверили карту в этом месте и не нашли ничего, что нужно менять, поэтому оставили всё как есть."},"cs":{"t-turn-ask":"Díky za hlášení! O které odbočení šlo: z které ulice do které a jakým směrem jste jeli?","t-turn-done":"Děkujeme! Odbočení jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-address-ask":"Díky za hlášení! Jaká je správná adresa nebo název ulice a kam jste se snažili dostat?","t-address-done":"Děkujeme! Adresu jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-route-ask":"Díky za hlášení! Odkud jste vyjížděli, kam jste jeli a kudy jste čekali, že vás aplikace povede?","t-route-done":"Díky za hlášení! Mapu jsme na tomto místě zkontrolovali a je v pořádku. Aplikace vybírá trasu podle aktuální dopravy, takže se může den ode dne lišit.","t-roundabout-ask":"Díky za hlášení! Která křižovatka by měla být kruhový objezd? Názvy ulic, které se tam potkávají, nám pomůžou ji najít.","t-roundabout-done":"Děkujeme! Kruhový objezd jsme přidali do mapy. Aplikace ho ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-general-ask":"Díky za hlášení! Můžete nám říct trochu víc o tom, co bylo špatně a kde přesně?","t-junction-ask":"Díky za hlášení! O kterou křižovatku, sjezd nebo most šlo a jakým směrem jste jeli?","t-junction-done":"Děkujeme! Křižovatku jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-direction-ask":"Díky za hlášení! O kterou ulici šlo a jakým směrem je v ní provoz skutečně povolen?","t-direction-done":"Děkujeme! Směr jízdy jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-road-ask":"Díky za hlášení! Jak se silnice jmenuje, kde začíná a končí a může po ní jezdit každý?","t-road-done":"Děkujeme! Silnici jsme přidali do mapy. Aplikace ji ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-landmark-ask":"Díky za hlášení! Jak se to místo jmenuje a kde přesně je?","t-landmark-done":"Děkujeme! Místo jsme přidali do mapy. V aplikaci se objeví po příští aktualizaci mapy, obvykle během několika dní.","t-blocked-ask":"Díky za hlášení! Je silnice uzavřená natrvalo, nebo jen dočasně? Pokud víte, do kdy, hodně nám to pomůže.","t-blocked-done":"Děkujeme! Uzavírku jsme přidali do mapy, takže ji aplikace bude objíždět.","t-speed-ask":"Díky za hlášení! Jaká rychlost je tam povolená podle značky a pro který směr?","t-speed-done":"Děkujeme! Rychlostní limit jsme na mapě aktualizovali. Aplikace ho ukáže po příští aktualizaci mapy, obvykle během několika dní.","nothing":"Díky za hlášení! Mapu jsme na tomto místě zkontrolovali a žádnou chybu jsme nenašli, takže jsme ji nechali beze změny. Pokud se to stane znovu, pošlete prosím nové hlášení přímo z místa.","mm-ask":"Díky za hlášení! Můžete nám říct trochu víc: kde přesně to je a jakým směrem jste jeli?","mm-bump-done":"Děkujeme! Zpomalovací práh jsme přidali do mapy, takže na něj aplikace řidiče upozorní.","mm-bump-none":"Díky za hlášení! Podívali jsme se a zpomalovací práh jsme tu nenašli, takže jsme mapu nechali beze změny.","mm-light-done":"Děkujeme! Semafor jsme přidali do mapy.","mm-light-none":"Díky za hlášení! Podívali jsme se a semafor jsme tu nenašli, takže jsme mapu nechali beze změny.","mm-curve-done":"Děkujeme! Nebezpečnou zatáčku jsme na mapě označili, takže na ni aplikace řidiče upozorní.","mm-curve-none":"Díky za hlášení! Tuto zatáčku jsme zkontrolovali a nenašli jsme důvod mapu měnit, takže jsme ji nechali beze změny.","mm-rail-done":"Děkujeme! Železniční přejezd jsme přidali do mapy, takže na něj aplikace řidiče upozorní.","mm-rail-none":"Díky za hlášení! Podívali jsme se a železniční přejezd jsme tu nenašli, takže jsme mapu nechali beze změny.","mm-camera-done":"Děkujeme! Rychlostní radar jsme přidali do mapy.","mm-camera-none":"Díky za hlášení! Podívali jsme se, ale rychlostní radar jsme tu nedokázali potvrdit, takže jsme mapu nechali beze změny.","mm-done":"Děkujeme! Mapu jsme na tomto místě upravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","mm-none":"Díky za hlášení! Mapu jsme na tomto místě zkontrolovali a nenašli jsme nic, co by bylo potřeba změnit, takže jsme ji nechali beze změny."},"bg":{"t-turn-ask":"Благодарим за сигнала! За кой завой става дума: от коя улица в коя и в каква посока карахте?","t-turn-done":"Благодарим! Поправихме завоя на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-address-ask":"Благодарим за сигнала! Кой е правилният адрес или името на улицата и до кое място се опитвахте да стигнете?","t-address-done":"Благодарим! Поправихме адреса на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-route-ask":"Благодарим за сигнала! Откъде тръгнахте, накъде отивахте и по кой път очаквахте приложението да ви води?","t-route-done":"Благодарим за сигнала! Проверихме картата тук и тя е вярна. Приложението избира маршрута според трафика в реално време, затова той може да е различен в различните дни.","t-roundabout-ask":"Благодарим за сигнала! Кое кръстовище трябва да е кръгово движение? Улиците, които се събират там, ще ни помогнат да го открием.","t-roundabout-done":"Благодарим! Добавихме кръговото движение на картата. Приложението ще го покаже след следващото обновяване на картата, обикновено до няколко дни.","t-general-ask":"Благодарим за сигнала! Можете ли да ни разкажете малко повече какво не беше наред и къде точно?","t-junction-ask":"Благодарим за сигнала! За кой пътен възел, изход или мост става дума и в каква посока карахте?","t-junction-done":"Благодарим! Поправихме пътния възел на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-direction-ask":"Благодарим за сигнала! За коя улица става дума и в каква посока всъщност е разрешено движението по нея?","t-direction-done":"Благодарим! Поправихме посоката на движение на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-road-ask":"Благодарим за сигнала! Как се казва пътят, откъде започва и докъде стига и отворен ли е за всички?","t-road-done":"Благодарим! Добавихме пътя на картата. Приложението ще го покаже след следващото обновяване на картата, обикновено до няколко дни.","t-landmark-ask":"Благодарим за сигнала! Как се казва мястото и къде точно се намира?","t-landmark-done":"Благодарим! Добавихме мястото на картата. То ще се появи в приложението след следващото обновяване на картата, обикновено до няколко дни.","t-blocked-ask":"Благодарим за сигнала! Пътят затворен ли е завинаги или временно? Ако знаете до кога, това много ще ни помогне.","t-blocked-done":"Благодарим! Добавихме затварянето на картата, така че приложението ще го заобикаля.","t-speed-ask":"Благодарим за сигнала! Какво ограничение на скоростта показва знакът там и за коя посока?","t-speed-done":"Благодарим! Обновихме ограничението на скоростта на картата. Приложението ще го покаже след следващото обновяване на картата, обикновено до няколко дни.","nothing":"Благодарим за сигнала! Проверихме картата тук и не открихме нищо грешно, затова я оставихме както е. Ако се случи отново, моля, изпратете нов сигнал от самото място.","mm-ask":"Благодарим за сигнала! Можете ли да ни кажете малко повече: къде точно е и в каква посока карахте?","mm-bump-done":"Благодарим! Добавихме легналия полицай на картата, така че приложението ще предупреждава шофьорите за него.","mm-bump-none":"Благодарим за сигнала! Проверихме и не видяхме легнал полицай тук, затова оставихме картата както е.","mm-light-done":"Благодарим! Добавихме светофара на картата.","mm-light-none":"Благодарим за сигнала! Проверихме и не видяхме светофар тук, затова оставихме картата както е.","mm-curve-done":"Благодарим! Отбелязахме опасния завой на картата, така че приложението ще предупреждава шофьорите за него.","mm-curve-none":"Благодарим за сигнала! Проверихме този завой и не открихме причина да променяме картата, затова я оставихме както е.","mm-rail-done":"Благодарим! Добавихме железопътния прелез на картата, така че приложението ще предупреждава шофьорите за него.","mm-rail-none":"Благодарим за сигнала! Проверихме и не видяхме железопътен прелез тук, затова оставихме картата както е.","mm-camera-done":"Благодарим! Добавихме камерата за скорост на картата.","mm-camera-none":"Благодарим за сигнала! Проверихме, но не успяхме да потвърдим камера за скорост тук, затова оставихме картата както е.","mm-done":"Благодарим! Обновихме картата тук. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","mm-none":"Благодарим за сигнала! Проверихме картата тук и не открихме нищо за промяна, затова я оставихме както е."},"ar":{"t-turn-ask":"شكرًا على البلاغ! أي انعطاف تقصد: من أي شارع إلى أي شارع، وفي أي اتجاه كنت تقود؟","t-turn-done":"شكرًا لك! لقد صحّحنا هذا الانعطاف على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-address-ask":"شكرًا على البلاغ! ما العنوان أو اسم الشارع الصحيح، وإلى أي مكان كنت تحاول الوصول؟","t-address-done":"شكرًا لك! لقد صحّحنا العنوان على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-route-ask":"شكرًا على البلاغ! من أين انطلقت، وإلى أين كنت متجهًا، وأي طريق كنت تتوقع أن يأخذك فيه التطبيق؟","t-route-done":"شكرًا على البلاغ! لقد راجعنا الخريطة هنا وهي صحيحة. يختار التطبيق المسار بناءً على حركة المرور المباشرة، لذا قد يختلف من يوم لآخر.","t-roundabout-ask":"شكرًا على البلاغ! أي تقاطع يجب أن يكون دوّارًا؟ أسماء الشوارع التي تلتقي هناك تساعدنا على العثور عليه.","t-roundabout-done":"شكرًا لك! لقد أضفنا الدوّار إلى الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-general-ask":"شكرًا على البلاغ! هل يمكنك أن تخبرنا بمزيد من التفاصيل عن الخطأ، وأين بالضبط؟","t-junction-ask":"شكرًا على البلاغ! أي تقاطع أو مخرج أو جسر تقصد، وفي أي اتجاه كنت تقود؟","t-junction-done":"شكرًا لك! لقد صحّحنا التقاطع على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-direction-ask":"شكرًا على البلاغ! أي شارع تقصد، وفي أي اتجاه يُسمح بالسير فيه فعلًا؟","t-direction-done":"شكرًا لك! لقد صحّحنا اتجاه السير على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-road-ask":"شكرًا على البلاغ! ما اسم الطريق، وأين يبدأ وأين ينتهي، وهل هو مفتوح للجميع؟","t-road-done":"شكرًا لك! لقد أضفنا الطريق إلى الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-landmark-ask":"شكرًا على البلاغ! ما اسم المكان، وأين يقع بالضبط؟","t-landmark-done":"شكرًا لك! لقد أضفنا المكان إلى الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-blocked-ask":"شكرًا على البلاغ! هل الطريق مغلق نهائيًا أم مؤقتًا؟ إذا كنت تعرف حتى متى، فهذا يساعدنا كثيرًا.","t-blocked-done":"شكرًا لك! لقد أضفنا الإغلاق إلى الخريطة، لذا سيقترح التطبيق طريقًا بديلًا لتجنّبه.","t-speed-ask":"شكرًا على البلاغ! ما حد السرعة المكتوب على اللافتة هناك، ولأي اتجاه؟","t-speed-done":"شكرًا لك! لقد حدّثنا حد السرعة على الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","nothing":"شكرًا على البلاغ! لقد راجعنا الخريطة هنا ولم نجد أي خطأ، لذا تركناها كما هي. إذا تكرر الأمر، يُرجى إرسال بلاغ جديد من المكان نفسه.","mm-ask":"شكرًا على البلاغ! هل يمكنك أن تخبرنا بالمزيد: أين يقع بالضبط، وفي أي اتجاه كنت تقود؟","mm-bump-done":"شكرًا لك! لقد أضفنا المطب إلى الخريطة، لذا سينبّه التطبيق السائقين إليه.","mm-bump-none":"شكرًا على البلاغ! لقد تحققنا ولم نجد مطبًا هنا، لذا تركنا الخريطة كما هي.","mm-light-done":"شكرًا لك! لقد أضفنا إشارة المرور إلى الخريطة.","mm-light-none":"شكرًا على البلاغ! لقد تحققنا ولم نجد إشارة مرور هنا، لذا تركنا الخريطة كما هي.","mm-curve-done":"شكرًا لك! لقد حدّدنا المنعطف الخطير على الخريطة، لذا سينبّه التطبيق السائقين إليه.","mm-curve-none":"شكرًا على البلاغ! لقد تحققنا من هذا المنعطف ولم نجد سببًا لتغيير الخريطة، لذا تركناها كما هي.","mm-rail-done":"شكرًا لك! لقد أضفنا معبر السكة الحديدية إلى الخريطة، لذا سينبّه التطبيق السائقين إليه.","mm-rail-none":"شكرًا على البلاغ! لقد تحققنا ولم نجد معبر سكة حديدية هنا، لذا تركنا الخريطة كما هي.","mm-camera-done":"شكرًا لك! لقد أضفنا كاميرا مراقبة السرعة إلى الخريطة.","mm-camera-none":"شكرًا على البلاغ! لقد تحققنا لكن لم نتمكن من تأكيد وجود كاميرا مراقبة سرعة هنا، لذا تركنا الخريطة كما هي.","mm-done":"شكرًا لك! لقد حدّثنا الخريطة هنا. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","mm-none":"شكرًا على البلاغ! لقد راجعنا الخريطة هنا ولم نجد ما يستدعي التغيير، لذا تركناها كما هي."},"ja":{"t-turn-ask":"ご報告ありがとうございます！どの右左折でしたか？どの通りからどの通りへ、どちら方面に走行されていたか教えていただけますか？","t-turn-done":"ありがとうございます！地図上のこの右左折を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-address-ask":"ご報告ありがとうございます！正しい住所または通りの名前と、どこへ向かおうとされていたかを教えていただけますか？","t-address-done":"ありがとうございます！地図上の住所を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-route-ask":"ご報告ありがとうございます！出発地と目的地、そしてアプリにどのルートで案内してほしかったかを教えていただけますか？","t-route-done":"ご報告ありがとうございます！この場所の地図を確認したところ、正しく登録されていました。アプリはリアルタイムの交通状況をもとにルートを選ぶため、日によって異なる場合があります。","t-roundabout-ask":"ご報告ありがとうございます！どの交差点がラウンドアバウト（環状交差点）であるべきでしょうか？そこで交わる通りの名前がわかると場所を特定しやすくなります。","t-roundabout-done":"ありがとうございます！地図にラウンドアバウトを追加しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-general-ask":"ご報告ありがとうございます！何が間違っていたのか、具体的にどこだったのか、もう少し詳しく教えていただけますか？","t-junction-ask":"ご報告ありがとうございます！どの分岐点、出口、または橋でしたか？また、どちら方面に走行されていましたか？","t-junction-done":"ありがとうございます！地図上の分岐点を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-direction-ask":"ご報告ありがとうございます！どの通りで、実際にはどちらの方向に通行できますか？","t-direction-done":"ありがとうございます！地図上の通行方向を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-road-ask":"ご報告ありがとうございます！道路の名前、始点と終点、そして誰でも通行できる道路かどうかを教えていただけますか？","t-road-done":"ありがとうございます！地図に道路を追加しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-landmark-ask":"ご報告ありがとうございます！その場所の名前と、具体的な位置を教えていただけますか？","t-landmark-done":"ありがとうございます！地図にその場所を追加しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-blocked-ask":"ご報告ありがとうございます！その道路はずっと通行止めですか、それとも一時的ですか？いつまでかご存じでしたら、とても助かります。","t-blocked-done":"ありがとうございます！地図に通行止めを登録しましたので、アプリはそこを避けてルートを案内します。","t-speed-ask":"ご報告ありがとうございます！そこに表示されている制限速度と、どちらの方向かを教えていただけますか？","t-speed-done":"ありがとうございます！地図上の制限速度を更新しました。次回の地図更新後、通常数日以内にアプリに反映されます。","nothing":"ご報告ありがとうございます！この場所の地図を確認しましたが、問題は見つからなかったため、そのままにしています。また同じことが起きた場合は、その場所から新しく報告してください。","mm-ask":"ご報告ありがとうございます！もう少し詳しく教えていただけますか？具体的な場所と、どちら方面に走行されていたかがわかると助かります。","mm-bump-done":"ありがとうございます！地図に減速帯（ハンプ）を追加しましたので、アプリでドライバーに警告が表示されます。","mm-bump-none":"ご報告ありがとうございます！確認しましたが、この場所に減速帯は見当たらなかったため、地図はそのままにしています。","mm-light-done":"ありがとうございます！地図に信号機を追加しました。","mm-light-none":"ご報告ありがとうございます！確認しましたが、この場所に信号機は見当たらなかったため、地図はそのままにしています。","mm-curve-done":"ありがとうございます！地図に危険なカーブを登録しましたので、アプリでドライバーに警告が表示されます。","mm-curve-none":"ご報告ありがとうございます！このカーブを確認しましたが、地図を変更する理由は見当たらなかったため、そのままにしています。","mm-rail-done":"ありがとうございます！地図に踏切を追加しましたので、アプリでドライバーに警告が表示されます。","mm-rail-none":"ご報告ありがとうございます！確認しましたが、この場所に踏切は見当たらなかったため、地図はそのままにしています。","mm-camera-done":"ありがとうございます！地図にオービスを追加しました。","mm-camera-none":"ご報告ありがとうございます！調べましたが、この場所のオービスは確認できなかったため、地図はそのままにしています。","mm-done":"ありがとうございます！この場所の地図を更新しました。次回の地図更新後、通常数日以内にアプリに反映されます。","mm-none":"ご報告ありがとうございます！この場所の地図を確認しましたが、変更が必要な点は見つからなかったため、そのままにしています。"},"da":{"t-turn-ask":"Tak for rapporten! Hvilket sving var det: fra hvilken vej ind på hvilken, og i hvilken retning kørte du?","t-turn-done":"Tak! Vi har rettet svinget på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-address-ask":"Tak for rapporten! Hvad er den rigtige adresse eller det rigtige vejnavn, og hvilket sted prøvede du at komme til?","t-address-done":"Tak! Vi har rettet adressen på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-route-ask":"Tak for rapporten! Hvor startede du, hvor skulle du hen, og hvilken vej havde du forventet, at appen ville sende dig?","t-route-done":"Tak for rapporten! Vi har tjekket kortet her, og det er korrekt. Appen vælger ruten ud fra den aktuelle trafik, så den kan variere fra dag til dag.","t-roundabout-ask":"Tak for rapporten! Hvilket kryds burde være en rundkørsel? Navnene på de veje, der mødes der, hjælper os med at finde det.","t-roundabout-done":"Tak! Vi har tilføjet rundkørslen på kortet. Den vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-general-ask":"Tak for rapporten! Kan du fortælle os lidt mere om, hvad der var galt, og hvor præcis?","t-junction-ask":"Tak for rapporten! Hvilket kryds, hvilken frakørsel eller bro var det, og i hvilken retning kørte du?","t-junction-done":"Tak! Vi har rettet krydset på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-direction-ask":"Tak for rapporten! Hvilken vej var det, og i hvilken retning må man faktisk køre på den?","t-direction-done":"Tak! Vi har rettet kørselsretningen på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-road-ask":"Tak for rapporten! Hvad hedder vejen, hvor starter og slutter den, og er den åben for alle?","t-road-done":"Tak! Vi har tilføjet vejen på kortet. Den vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-landmark-ask":"Tak for rapporten! Hvad hedder stedet, og hvor præcis ligger det?","t-landmark-done":"Tak! Vi har tilføjet stedet på kortet. Det vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-blocked-ask":"Tak for rapporten! Er vejen lukket permanent eller kun midlertidigt? Hvis du ved, hvor længe, hjælper det os meget.","t-blocked-done":"Tak! Vi har tilføjet spærringen på kortet, så appen sender dig uden om den.","t-speed-ask":"Tak for rapporten! Hvilken hastighedsgrænse er skiltet der, og i hvilken retning?","t-speed-done":"Tak! Vi har opdateret hastighedsgrænsen på kortet. Den vises i appen efter næste kortopdatering, som regel inden for et par dage.","nothing":"Tak for rapporten! Vi har tjekket kortet her og kunne ikke finde noget forkert, så vi har ladet det være, som det er. Hvis det sker igen, så send gerne en ny rapport fra stedet.","mm-ask":"Tak for rapporten! Kan du fortælle os lidt mere: præcis hvor det er, og i hvilken retning du kørte?","mm-bump-done":"Tak! Vi har tilføjet vejbumpet på kortet, så appen advarer bilister om det.","mm-bump-none":"Tak for rapporten! Vi har tjekket og kunne ikke se noget vejbump her, så vi har ladet kortet være, som det er.","mm-light-done":"Tak! Vi har tilføjet lyskrydset på kortet.","mm-light-none":"Tak for rapporten! Vi har tjekket og kunne ikke se noget lyskryds her, så vi har ladet kortet være, som det er.","mm-curve-done":"Tak! Vi har markeret det farlige sving på kortet, så appen advarer bilister om det.","mm-curve-none":"Tak for rapporten! Vi har tjekket svinget og fandt ingen grund til at ændre kortet, så vi har ladet det være, som det er.","mm-rail-done":"Tak! Vi har tilføjet jernbaneoverkørslen på kortet, så appen advarer bilister om den.","mm-rail-none":"Tak for rapporten! Vi har tjekket og kunne ikke se nogen jernbaneoverkørsel her, så vi har ladet kortet være, som det er.","mm-camera-done":"Tak! Vi har tilføjet fartkameraet på kortet.","mm-camera-none":"Tak for rapporten! Vi har tjekket, men kunne ikke bekræfte noget fartkamera her, så vi har ladet kortet være, som det er.","mm-done":"Tak! Vi har opdateret kortet her. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","mm-none":"Tak for rapporten! Vi har tjekket kortet her og fandt ikke noget, der skulle ændres, så vi har ladet det være, som det er."},"et":{"t-turn-ask":"Aitäh teate eest! Millise pöördega oli tegu: milliselt tänavalt millisele ja mis suunas te sõitsite?","t-turn-done":"Aitäh! Parandasime selle pöörde kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-address-ask":"Aitäh teate eest! Milline on õige aadress või tänava nimi ja kuhu te püüdsite jõuda?","t-address-done":"Aitäh! Parandasime aadressi kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-route-ask":"Aitäh teate eest! Kust te alustasite, kuhu sõitsite ja millist teed mööda ootasite, et rakendus teid juhataks?","t-route-done":"Aitäh teate eest! Kontrollisime kaarti selles kohas ja see on õige. Rakendus valib marsruudi reaalajas liiklusolude põhjal, seega võib see päeviti erineda.","t-roundabout-ask":"Aitäh teate eest! Milline ristmik peaks olema ringristmik? Sinna kokku saavate tänavate nimed aitavad meil selle üles leida.","t-roundabout-done":"Aitäh! Lisasime ringristmiku kaardile. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-general-ask":"Aitäh teate eest! Kas saaksite veidi täpsemalt öelda, mis oli valesti ja kus täpselt?","t-junction-ask":"Aitäh teate eest! Millise ristmiku, mahasõidu või sillaga oli tegu ja mis suunas te sõitsite?","t-junction-done":"Aitäh! Parandasime ristmiku kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-direction-ask":"Aitäh teate eest! Millise tänavaga oli tegu ja mis suunas on sellel tegelikult liiklus lubatud?","t-direction-done":"Aitäh! Parandasime sõidusuuna kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-road-ask":"Aitäh teate eest! Mis on tee nimi, kust see algab ja kus lõpeb ning kas see on kõigile avatud?","t-road-done":"Aitäh! Lisasime tee kaardile. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-landmark-ask":"Aitäh teate eest! Mis on koha nimi ja kus see täpselt asub?","t-landmark-done":"Aitäh! Lisasime koha kaardile. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-blocked-ask":"Aitäh teate eest! Kas tee on suletud jäädavalt või ajutiselt? Kui teate, mis ajani, aitab see meid väga.","t-blocked-done":"Aitäh! Lisasime teesulgemise kaardile, nii et rakendus juhatab sellest mööda.","t-speed-ask":"Aitäh teate eest! Milline kiiruspiirang seal märgiga kehtib ja millises suunas?","t-speed-done":"Aitäh! Uuendasime kiiruspiirangut kaardil. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","nothing":"Aitäh teate eest! Kontrollisime kaarti selles kohas ega leidnud midagi valesti, seega jätsime selle nii, nagu see on. Kui see juhtub uuesti, saatke palun uus teade otse sellest kohast.","mm-ask":"Aitäh teate eest! Kas saaksite veidi täpsemalt öelda: kus see täpselt asub ja mis suunas te sõitsite?","mm-bump-done":"Aitäh! Lisasime lamava politseiniku kaardile, nii et rakendus hoiatab juhte selle eest.","mm-bump-none":"Aitäh teate eest! Kontrollisime ega näinud siin lamavat politseinikku, seega jätsime kaardi nii, nagu see on.","mm-light-done":"Aitäh! Lisasime foorid kaardile.","mm-light-none":"Aitäh teate eest! Kontrollisime ega näinud siin foore, seega jätsime kaardi nii, nagu see on.","mm-curve-done":"Aitäh! Märkisime ohtliku kurvi kaardile, nii et rakendus hoiatab juhte selle eest.","mm-curve-none":"Aitäh teate eest! Kontrollisime seda kurvi ega leidnud põhjust kaarti muuta, seega jätsime selle nii, nagu see on.","mm-rail-done":"Aitäh! Lisasime raudteeülesõidu kaardile, nii et rakendus hoiatab juhte selle eest.","mm-rail-none":"Aitäh teate eest! Kontrollisime ega näinud siin raudteeülesõitu, seega jätsime kaardi nii, nagu see on.","mm-camera-done":"Aitäh! Lisasime kiiruskaamera kaardile.","mm-camera-none":"Aitäh teate eest! Kontrollisime, kuid ei suutnud siin kiiruskaamerat kinnitada, seega jätsime kaardi nii, nagu see on.","mm-done":"Aitäh! Uuendasime kaarti selles kohas. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","mm-none":"Aitäh teate eest! Kontrollisime kaarti selles kohas ega leidnud midagi, mida muuta, seega jätsime selle nii, nagu see on."},"vi":{"t-turn-ask":"Cảm ơn bạn đã báo cáo! Đó là chỗ rẽ nào: từ đường nào sang đường nào, và bạn đang đi theo hướng nào?","t-turn-done":"Cảm ơn bạn! Chúng tôi đã sửa chỗ rẽ đó trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-address-ask":"Cảm ơn bạn đã báo cáo! Địa chỉ hoặc tên đường đúng là gì, và bạn đang muốn đến địa điểm nào?","t-address-done":"Cảm ơn bạn! Chúng tôi đã sửa địa chỉ trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-route-ask":"Cảm ơn bạn đã báo cáo! Bạn xuất phát từ đâu, muốn đi đến đâu, và bạn mong ứng dụng dẫn đường theo lối nào?","t-route-done":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra bản đồ tại đây và thấy bản đồ đúng. Ứng dụng chọn tuyến đường dựa trên tình hình giao thông thực tế, nên tuyến đường có thể khác nhau tùy ngày.","t-roundabout-ask":"Cảm ơn bạn đã báo cáo! Giao lộ nào nên là vòng xuyến? Tên các con đường giao nhau ở đó sẽ giúp chúng tôi tìm ra vị trí.","t-roundabout-done":"Cảm ơn bạn! Chúng tôi đã thêm vòng xuyến vào bản đồ. Ứng dụng sẽ hiển thị vòng xuyến sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-general-ask":"Cảm ơn bạn đã báo cáo! Bạn có thể cho chúng tôi biết thêm một chút về lỗi gặp phải, và chính xác là ở đâu không?","t-junction-ask":"Cảm ơn bạn đã báo cáo! Đó là nút giao, lối ra hay cây cầu nào, và bạn đang đi theo hướng nào?","t-junction-done":"Cảm ơn bạn! Chúng tôi đã sửa nút giao trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-direction-ask":"Cảm ơn bạn đã báo cáo! Đó là đường nào, và thực tế xe được phép đi theo chiều nào?","t-direction-done":"Cảm ơn bạn! Chúng tôi đã sửa chiều lưu thông trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-road-ask":"Cảm ơn bạn đã báo cáo! Con đường tên là gì, bắt đầu và kết thúc ở đâu, và có mở cho mọi người đi không?","t-road-done":"Cảm ơn bạn! Chúng tôi đã thêm con đường vào bản đồ. Ứng dụng sẽ hiển thị con đường sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-landmark-ask":"Cảm ơn bạn đã báo cáo! Địa điểm đó tên là gì, và chính xác nằm ở đâu?","t-landmark-done":"Cảm ơn bạn! Chúng tôi đã thêm địa điểm vào bản đồ. Ứng dụng sẽ hiển thị địa điểm sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-blocked-ask":"Cảm ơn bạn đã báo cáo! Đường bị đóng vĩnh viễn hay chỉ tạm thời? Nếu bạn biết đóng đến khi nào thì sẽ giúp chúng tôi rất nhiều.","t-blocked-done":"Cảm ơn bạn! Chúng tôi đã thêm đoạn đường bị đóng vào bản đồ, nên ứng dụng sẽ chỉ đường tránh qua đó.","t-speed-ask":"Cảm ơn bạn đã báo cáo! Biển báo ở đó ghi giới hạn tốc độ bao nhiêu, và áp dụng cho hướng nào?","t-speed-done":"Cảm ơn bạn! Chúng tôi đã cập nhật giới hạn tốc độ trên bản đồ. Ứng dụng sẽ hiển thị giới hạn mới sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","nothing":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra bản đồ tại đây và không thấy có gì sai, nên vẫn giữ nguyên. Nếu việc này xảy ra lại, vui lòng gửi báo cáo mới ngay tại vị trí đó.","mm-ask":"Cảm ơn bạn đã báo cáo! Bạn có thể cho chúng tôi biết thêm một chút không: chính xác là ở đâu, và bạn đang đi theo hướng nào?","mm-bump-done":"Cảm ơn bạn! Chúng tôi đã thêm gờ giảm tốc vào bản đồ, nên ứng dụng sẽ cảnh báo tài xế.","mm-bump-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra và không thấy gờ giảm tốc ở đây, nên vẫn giữ nguyên bản đồ.","mm-light-done":"Cảm ơn bạn! Chúng tôi đã thêm đèn giao thông vào bản đồ.","mm-light-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra và không thấy đèn giao thông ở đây, nên vẫn giữ nguyên bản đồ.","mm-curve-done":"Cảm ơn bạn! Chúng tôi đã đánh dấu khúc cua nguy hiểm trên bản đồ, nên ứng dụng sẽ cảnh báo tài xế.","mm-curve-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra khúc cua này và không thấy lý do để thay đổi bản đồ, nên vẫn giữ nguyên.","mm-rail-done":"Cảm ơn bạn! Chúng tôi đã thêm điểm giao cắt đường sắt vào bản đồ, nên ứng dụng sẽ cảnh báo tài xế.","mm-rail-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra và không thấy điểm giao cắt đường sắt ở đây, nên vẫn giữ nguyên bản đồ.","mm-camera-done":"Cảm ơn bạn! Chúng tôi đã thêm camera bắn tốc độ vào bản đồ.","mm-camera-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra nhưng chưa xác nhận được có camera bắn tốc độ ở đây, nên vẫn giữ nguyên bản đồ.","mm-done":"Cảm ơn bạn! Chúng tôi đã cập nhật bản đồ tại đây. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","mm-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra bản đồ tại đây và không thấy cần thay đổi gì, nên vẫn giữ nguyên."},"es":{"t-turn-ask":"¡Gracias por el aviso! ¿Qué giro era: de qué calle a qué calle, y en qué sentido circulabas?","t-turn-done":"¡Gracias! Hemos corregido ese giro en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-address-ask":"¡Gracias por el aviso! ¿Cuál es la dirección o el nombre de calle correcto, y a qué lugar intentabas llegar?","t-address-done":"¡Gracias! Hemos corregido la dirección en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-route-ask":"¡Gracias por el aviso! ¿Desde dónde salías, adónde ibas y por dónde esperabas que te llevara la app?","t-route-done":"¡Gracias por el aviso! Hemos revisado el mapa aquí y está bien. La app elige la ruta según el tráfico en tiempo real, así que puede variar de un día a otro.","t-roundabout-ask":"¡Gracias por el aviso! ¿Qué cruce debería ser una rotonda? Las calles que se juntan ahí nos ayudan a encontrarlo.","t-roundabout-done":"¡Gracias! Hemos añadido la rotonda al mapa. La app la mostrará tras la próxima actualización del mapa, normalmente en pocos días.","t-general-ask":"¡Gracias por el aviso! ¿Puedes contarnos un poco más sobre qué estaba mal y dónde exactamente?","t-junction-ask":"¡Gracias por el aviso! ¿Qué cruce, salida o puente era, y en qué sentido circulabas?","t-junction-done":"¡Gracias! Hemos corregido el cruce en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-direction-ask":"¡Gracias por el aviso! ¿Qué calle era, y en qué sentido está abierta realmente al tráfico?","t-direction-done":"¡Gracias! Hemos corregido el sentido de circulación en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-road-ask":"¡Gracias por el aviso! ¿Cómo se llama la vía, dónde empieza y dónde termina, y está abierta a todo el mundo?","t-road-done":"¡Gracias! Hemos añadido la vía al mapa. La app la mostrará tras la próxima actualización del mapa, normalmente en pocos días.","t-landmark-ask":"¡Gracias por el aviso! ¿Cómo se llama el lugar y dónde está exactamente?","t-landmark-done":"¡Gracias! Hemos añadido el lugar al mapa. Aparecerá en la app tras la próxima actualización del mapa, normalmente en pocos días.","t-blocked-ask":"¡Gracias por el aviso! ¿La vía está cortada de forma definitiva o temporal? Si sabes hasta cuándo, nos ayuda mucho.","t-blocked-done":"¡Gracias! Hemos añadido el corte al mapa, así que la app lo evitará al calcular la ruta.","t-speed-ask":"¡Gracias por el aviso! ¿Qué límite de velocidad indica la señal ahí, y para qué sentido?","t-speed-done":"¡Gracias! Hemos actualizado el límite de velocidad en el mapa. La app lo mostrará tras la próxima actualización del mapa, normalmente en pocos días.","nothing":"¡Gracias por el aviso! Hemos revisado el mapa aquí y no hemos encontrado nada incorrecto, así que lo dejamos como está. Si vuelve a pasar, envía un aviso nuevo desde el lugar.","mm-ask":"¡Gracias por el aviso! ¿Puedes contarnos un poco más: dónde está exactamente y en qué sentido circulabas?","mm-bump-done":"¡Gracias! Hemos añadido el badén al mapa, así que la app avisará a los conductores.","mm-bump-none":"¡Gracias por el aviso! Lo hemos revisado y no vemos ningún badén aquí, así que dejamos el mapa como está.","mm-light-done":"¡Gracias! Hemos añadido el semáforo al mapa.","mm-light-none":"¡Gracias por el aviso! Lo hemos revisado y no vemos ningún semáforo aquí, así que dejamos el mapa como está.","mm-curve-done":"¡Gracias! Hemos marcado la curva peligrosa en el mapa, así que la app avisará a los conductores.","mm-curve-none":"¡Gracias por el aviso! Hemos revisado esta curva y no vemos motivo para cambiar el mapa, así que lo dejamos como está.","mm-rail-done":"¡Gracias! Hemos añadido el paso a nivel al mapa, así que la app avisará a los conductores.","mm-rail-none":"¡Gracias por el aviso! Lo hemos revisado y no vemos ningún paso a nivel aquí, así que dejamos el mapa como está.","mm-camera-done":"¡Gracias! Hemos añadido el radar al mapa.","mm-camera-none":"¡Gracias por el aviso! Lo hemos revisado y no podemos confirmar que haya un radar aquí, así que dejamos el mapa como está.","mm-done":"¡Gracias! Hemos actualizado el mapa aquí. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","mm-none":"¡Gracias por el aviso! Hemos revisado el mapa aquí y no hemos encontrado nada que cambiar, así que lo dejamos como está."},"it":{"t-turn-ask":"Grazie per la segnalazione! Di quale svolta si tratta: da quale via verso quale, e in che direzione stavi guidando?","t-turn-done":"Grazie! Abbiamo corretto quella svolta sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-address-ask":"Grazie per la segnalazione! Qual è l’indirizzo o il nome della via corretto, e quale luogo stavi cercando di raggiungere?","t-address-done":"Grazie! Abbiamo corretto l’indirizzo sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-route-ask":"Grazie per la segnalazione! Qual era il punto di partenza, dove stavi andando e da che parte ti aspettavi che ti portasse l’app?","t-route-done":"Grazie per la segnalazione! Abbiamo controllato la mappa in questo punto ed è corretta. L’app sceglie il percorso in base al traffico in tempo reale, quindi può cambiare da un giorno all’altro.","t-roundabout-ask":"Grazie per la segnalazione! Quale incrocio dovrebbe essere una rotatoria? Le vie che si incontrano lì ci aiutano a trovarlo.","t-roundabout-done":"Grazie! Abbiamo aggiunto la rotatoria alla mappa. L’app la mostrerà dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-general-ask":"Grazie per la segnalazione! Puoi dirci qualcosa in più su cosa non andava e dove esattamente?","t-junction-ask":"Grazie per la segnalazione! Di quale incrocio, uscita o ponte si tratta, e in che direzione stavi guidando?","t-junction-done":"Grazie! Abbiamo corretto l’incrocio sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-direction-ask":"Grazie per la segnalazione! Di quale via si tratta, e in quale senso è davvero aperta al traffico?","t-direction-done":"Grazie! Abbiamo corretto il senso di marcia sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-road-ask":"Grazie per la segnalazione! Come si chiama la strada, dove inizia e dove finisce, ed è aperta a tutti?","t-road-done":"Grazie! Abbiamo aggiunto la strada alla mappa. L’app la mostrerà dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-landmark-ask":"Grazie per la segnalazione! Come si chiama il luogo e dove si trova esattamente?","t-landmark-done":"Grazie! Abbiamo aggiunto il luogo alla mappa. Comparirà nell’app dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-blocked-ask":"Grazie per la segnalazione! La strada è chiusa definitivamente o solo per un periodo? Se sai fino a quando, ci aiuta molto.","t-blocked-done":"Grazie! Abbiamo aggiunto la chiusura alla mappa, così l’app la eviterà nel calcolo del percorso.","t-speed-ask":"Grazie per la segnalazione! Quale limite di velocità è indicato lì, e per quale direzione?","t-speed-done":"Grazie! Abbiamo aggiornato il limite di velocità sulla mappa. L’app lo mostrerà dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","nothing":"Grazie per la segnalazione! Abbiamo controllato la mappa in questo punto e non abbiamo trovato nulla di sbagliato, quindi l’abbiamo lasciata com’è. Se succede di nuovo, invia una nuova segnalazione dal punto.","mm-ask":"Grazie per la segnalazione! Puoi dirci qualcosa in più: dove si trova esattamente e in che direzione stavi guidando?","mm-bump-done":"Grazie! Abbiamo aggiunto il dosso alla mappa, così l’app avviserà i conducenti.","mm-bump-none":"Grazie per la segnalazione! Abbiamo controllato e non vediamo nessun dosso qui, quindi abbiamo lasciato la mappa com’è.","mm-light-done":"Grazie! Abbiamo aggiunto il semaforo alla mappa.","mm-light-none":"Grazie per la segnalazione! Abbiamo controllato e non vediamo nessun semaforo qui, quindi abbiamo lasciato la mappa com’è.","mm-curve-done":"Grazie! Abbiamo segnato la curva pericolosa sulla mappa, così l’app avviserà i conducenti.","mm-curve-none":"Grazie per la segnalazione! Abbiamo controllato questa curva e non abbiamo trovato motivi per modificare la mappa, quindi l’abbiamo lasciata com’è.","mm-rail-done":"Grazie! Abbiamo aggiunto il passaggio a livello alla mappa, così l’app avviserà i conducenti.","mm-rail-none":"Grazie per la segnalazione! Abbiamo controllato e non vediamo nessun passaggio a livello qui, quindi abbiamo lasciato la mappa com’è.","mm-camera-done":"Grazie! Abbiamo aggiunto l’autovelox alla mappa.","mm-camera-none":"Grazie per la segnalazione! Abbiamo controllato e non possiamo confermare la presenza di un autovelox qui, quindi abbiamo lasciato la mappa com’è.","mm-done":"Grazie! Abbiamo aggiornato la mappa in questo punto. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","mm-none":"Grazie per la segnalazione! Abbiamo controllato la mappa in questo punto e non abbiamo trovato nulla da modificare, quindi l’abbiamo lasciata com’è."},"tr":{"t-turn-ask":"Bildirim için teşekkürler! Hangi dönüştü: hangi sokaktan hangi sokağa dönüyordunuz ve hangi yönde gidiyordunuz?","t-turn-done":"Teşekkürler! O dönüşü haritada düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-address-ask":"Bildirim için teşekkürler! Doğru adres ya da sokak adı nedir ve hangi yere ulaşmaya çalışıyordunuz?","t-address-done":"Teşekkürler! Adresi haritada düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-route-ask":"Bildirim için teşekkürler! Nereden yola çıktınız, nereye gidiyordunuz ve uygulamanın sizi hangi yoldan götürmesini bekliyordunuz?","t-route-done":"Bildirim için teşekkürler! Buradaki haritayı kontrol ettik, doğru görünüyor. Uygulama rotayı anlık trafiğe göre seçtiği için rota günden güne değişebilir.","t-roundabout-ask":"Bildirim için teşekkürler! Hangi kavşak döner kavşak olmalı? Orada birleşen sokakların adları yeri bulmamıza yardımcı olur.","t-roundabout-done":"Teşekkürler! Döner kavşağı haritaya ekledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-general-ask":"Bildirim için teşekkürler! Neyin yanlış olduğunu ve tam olarak nerede olduğunu biraz daha anlatabilir misiniz?","t-junction-ask":"Bildirim için teşekkürler! Hangi kavşak, çıkış ya da köprüydü ve hangi yönde gidiyordunuz?","t-junction-done":"Teşekkürler! Kavşağı haritada düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-direction-ask":"Bildirim için teşekkürler! Hangi sokaktı ve gerçekte hangi yönde trafiğe açık?","t-direction-done":"Teşekkürler! Haritadaki trafik yönünü düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-road-ask":"Bildirim için teşekkürler! Yolun adı ne, nerede başlayıp nerede bitiyor ve herkesin kullanımına açık mı?","t-road-done":"Teşekkürler! Yolu haritaya ekledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-landmark-ask":"Bildirim için teşekkürler! Yerin adı ne ve tam olarak nerede?","t-landmark-done":"Teşekkürler! Yeri haritaya ekledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-blocked-ask":"Bildirim için teşekkürler! Yol kalıcı olarak mı yoksa geçici olarak mı kapalı? Ne zamana kadar kapalı olduğunu biliyorsanız bu çok yardımcı olur.","t-blocked-done":"Teşekkürler! Yol kapanışını haritaya ekledik, böylece uygulama rotayı bu yolu kullanmadan oluşturur.","t-speed-ask":"Bildirim için teşekkürler! Oradaki tabelada hangi hız sınırı yazıyor ve hangi yön için geçerli?","t-speed-done":"Teşekkürler! Haritadaki hız sınırını güncelledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","nothing":"Bildirim için teşekkürler! Buradaki haritayı kontrol ettik ve bir sorun bulamadık, bu yüzden olduğu gibi bıraktık. Tekrar olursa lütfen o noktadan yeni bir bildirim gönderin.","mm-ask":"Bildirim için teşekkürler! Biraz daha bilgi verebilir misiniz: tam olarak nerede ve hangi yönde gidiyordunuz?","mm-bump-done":"Teşekkürler! Hız kesiciyi haritaya ekledik, böylece uygulama sürücüleri uyaracak.","mm-bump-none":"Bildirim için teşekkürler! Kontrol ettik ama burada bir hız kesici göremedik, bu yüzden haritayı olduğu gibi bıraktık.","mm-light-done":"Teşekkürler! Trafik ışıklarını haritaya ekledik.","mm-light-none":"Bildirim için teşekkürler! Kontrol ettik ama burada trafik ışığı göremedik, bu yüzden haritayı olduğu gibi bıraktık.","mm-curve-done":"Teşekkürler! Tehlikeli virajı haritada işaretledik, böylece uygulama sürücüleri uyaracak.","mm-curve-none":"Bildirim için teşekkürler! Bu virajı kontrol ettik ve haritayı değiştirmek için bir neden bulamadık, bu yüzden olduğu gibi bıraktık.","mm-rail-done":"Teşekkürler! Hemzemin geçidi haritaya ekledik, böylece uygulama sürücüleri uyaracak.","mm-rail-none":"Bildirim için teşekkürler! Kontrol ettik ama burada bir hemzemin geçit göremedik, bu yüzden haritayı olduğu gibi bıraktık.","mm-camera-done":"Teşekkürler! Hız kamerasını haritaya ekledik.","mm-camera-none":"Bildirim için teşekkürler! Kontrol ettik ama burada bir hız kamerası olduğunu doğrulayamadık, bu yüzden haritayı olduğu gibi bıraktık.","mm-done":"Teşekkürler! Haritayı burada güncelledik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","mm-none":"Bildirim için teşekkürler! Buradaki haritayı kontrol ettik ve değiştirilecek bir şey bulamadık, bu yüzden olduğu gibi bıraktık."},"sk":{"t-turn-ask":"Ďakujeme za hlásenie! O ktoré odbočenie išlo: z ktorej ulice na ktorú a ktorým smerom ste išli?","t-turn-done":"Ďakujeme! Odbočenie sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-address-ask":"Ďakujeme za hlásenie! Aká je správna adresa alebo názov ulice a na aké miesto ste sa chceli dostať?","t-address-done":"Ďakujeme! Adresu sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-route-ask":"Ďakujeme za hlásenie! Odkiaľ ste vyrážali, kam ste išli a ktorou cestou ste čakali, že vás aplikácia povedie?","t-route-done":"Ďakujeme za hlásenie! Mapu na tomto mieste sme skontrolovali a je v poriadku. Aplikácia vyberá trasu podľa aktuálnej dopravy, takže sa môže zo dňa na deň líšiť.","t-roundabout-ask":"Ďakujeme za hlásenie! Ktorá križovatka by mala byť kruhový objazd? Názvy ulíc, ktoré sa tam stretávajú, nám pomôžu ju nájsť.","t-roundabout-done":"Ďakujeme! Kruhový objazd sme pridali do mapy. Aplikácia ho ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-general-ask":"Ďakujeme za hlásenie! Môžete nám povedať trochu viac o tom, čo bolo zle a kde presne?","t-junction-ask":"Ďakujeme za hlásenie! O ktorú križovatku, výjazd alebo most išlo a ktorým smerom ste išli?","t-junction-done":"Ďakujeme! Križovatku sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-direction-ask":"Ďakujeme za hlásenie! O ktorú ulicu išlo a ktorým smerom je v skutočnosti prejazdná?","t-direction-done":"Ďakujeme! Smer jazdy sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-road-ask":"Ďakujeme za hlásenie! Ako sa cesta volá, kde začína a kde končí a je prístupná pre všetkých?","t-road-done":"Ďakujeme! Cestu sme pridali do mapy. Aplikácia ju ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-landmark-ask":"Ďakujeme za hlásenie! Ako sa to miesto volá a kde presne sa nachádza?","t-landmark-done":"Ďakujeme! Miesto sme pridali do mapy. V aplikácii sa zobrazí po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-blocked-ask":"Ďakujeme za hlásenie! Je cesta uzavretá natrvalo, alebo len dočasne? Ak viete, dokedy, veľmi nám to pomôže.","t-blocked-done":"Ďakujeme! Uzávierku sme pridali do mapy, takže ju aplikácia bude obchádzať.","t-speed-ask":"Ďakujeme za hlásenie! Aká najvyššia povolená rýchlosť je tam vyznačená a pre ktorý smer?","t-speed-done":"Ďakujeme! Rýchlostný limit sme na mape aktualizovali. Aplikácia ho ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","nothing":"Ďakujeme za hlásenie! Mapu na tomto mieste sme skontrolovali a nenašli sme na nej chybu, preto sme ju nechali tak. Ak sa to stane znova, pošlite prosím nové hlásenie priamo z miesta.","mm-ask":"Ďakujeme za hlásenie! Môžete nám povedať trochu viac: kde presne to je a ktorým smerom ste išli?","mm-bump-done":"Ďakujeme! Spomaľovací prah sme pridali do mapy, takže aplikácia naň vodičov upozorní.","mm-bump-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale spomaľovací prah sme tu nenašli, preto sme mapu nechali tak.","mm-light-done":"Ďakujeme! Semafor sme pridali do mapy.","mm-light-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale semafor sme tu nenašli, preto sme mapu nechali tak.","mm-curve-done":"Ďakujeme! Nebezpečnú zákrutu sme označili na mape, takže aplikácia na ňu vodičov upozorní.","mm-curve-none":"Ďakujeme za hlásenie! Túto zákrutu sme skontrolovali a nenašli sme dôvod mapu meniť, preto sme ju nechali tak.","mm-rail-done":"Ďakujeme! Železničné priecestie sme pridali do mapy, takže aplikácia naň vodičov upozorní.","mm-rail-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale železničné priecestie sme tu nenašli, preto sme mapu nechali tak.","mm-camera-done":"Ďakujeme! Rýchlostný radar sme pridali do mapy.","mm-camera-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale rýchlostný radar sa nám tu nepodarilo potvrdiť, preto sme mapu nechali tak.","mm-done":"Ďakujeme! Mapu sme na tomto mieste aktualizovali. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","mm-none":"Ďakujeme za hlásenie! Mapu na tomto mieste sme skontrolovali a nenašli sme nič, čo by bolo treba zmeniť, preto sme ju nechali tak."},"sr":{"t-turn-ask":"Hvala na prijavi! O kom skretanju je reč: iz koje ulice u koju, i u kom smeru ste vozili?","t-turn-done":"Hvala! Ispravili smo to skretanje na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-address-ask":"Hvala na prijavi! Koja je tačna adresa ili naziv ulice, i do kog mesta ste pokušavali da stignete?","t-address-done":"Hvala! Ispravili smo adresu na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-route-ask":"Hvala na prijavi! Odakle ste krenuli, kuda ste išli i kojim putem ste očekivali da vas aplikacija vodi?","t-route-done":"Hvala na prijavi! Proverili smo mapu na ovom mestu i ispravna je. Aplikacija bira rutu prema saobraćaju u realnom vremenu, pa se ruta može razlikovati iz dana u dan.","t-roundabout-ask":"Hvala na prijavi! Koja raskrsnica treba da bude kružni tok? Nazivi ulica koje se tu spajaju pomoći će nam da je pronađemo.","t-roundabout-done":"Hvala! Dodali smo kružni tok na mapu. Aplikacija će ga prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-general-ask":"Hvala na prijavi! Možete li nam reći nešto više o tome šta nije bilo u redu i gde tačno?","t-junction-ask":"Hvala na prijavi! O kojoj raskrsnici, izlazu ili mostu je reč, i u kom smeru ste vozili?","t-junction-done":"Hvala! Ispravili smo raskrsnicu na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-direction-ask":"Hvala na prijavi! O kojoj ulici je reč, i u kom smeru je zaista otvorena za saobraćaj?","t-direction-done":"Hvala! Ispravili smo smer kretanja na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-road-ask":"Hvala na prijavi! Kako se put zove, gde počinje i gde se završava, i da li je otvoren za sve?","t-road-done":"Hvala! Dodali smo put na mapu. Aplikacija će ga prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-landmark-ask":"Hvala na prijavi! Kako se to mesto zove i gde se tačno nalazi?","t-landmark-done":"Hvala! Dodali smo mesto na mapu. U aplikaciji će se prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-blocked-ask":"Hvala na prijavi! Da li je put zatvoren trajno ili privremeno? Ako znate do kada, to nam mnogo pomaže.","t-blocked-done":"Hvala! Dodali smo zatvaranje puta na mapu, pa će ga aplikacija zaobilaziti.","t-speed-ask":"Hvala na prijavi! Koje je ograničenje brzine istaknuto na tom mestu, i za koji smer?","t-speed-done":"Hvala! Ažurirali smo ograničenje brzine na mapi. Aplikacija će ga prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","nothing":"Hvala na prijavi! Proverili smo mapu na ovom mestu i nismo pronašli grešku, pa smo je ostavili kakva jeste. Ako se ponovi, pošaljite novu prijavu sa tog mesta.","mm-ask":"Hvala na prijavi! Možete li nam reći malo više: gde se tačno nalazi i u kom smeru ste vozili?","mm-bump-done":"Hvala! Dodali smo ležećeg policajca na mapu, pa će aplikacija upozoravati vozače na njega.","mm-bump-none":"Hvala na prijavi! Proverili smo i ovde nismo videli ležećeg policajca, pa smo mapu ostavili kakva jeste.","mm-light-done":"Hvala! Dodali smo semafor na mapu.","mm-light-none":"Hvala na prijavi! Proverili smo i ovde nismo videli semafor, pa smo mapu ostavili kakva jeste.","mm-curve-done":"Hvala! Označili smo opasnu krivinu na mapi, pa će aplikacija upozoravati vozače na nju.","mm-curve-none":"Hvala na prijavi! Proverili smo ovu krivinu i nismo našli razlog da menjamo mapu, pa smo je ostavili kakva jeste.","mm-rail-done":"Hvala! Dodali smo pružni prelaz na mapu, pa će aplikacija upozoravati vozače na njega.","mm-rail-none":"Hvala na prijavi! Proverili smo i ovde nismo videli pružni prelaz, pa smo mapu ostavili kakva jeste.","mm-camera-done":"Hvala! Dodali smo radar na mapu.","mm-camera-none":"Hvala na prijavi! Proverili smo i nismo mogli da potvrdimo da ovde postoji radar, pa smo mapu ostavili kakva jeste.","mm-done":"Hvala! Ažurirali smo mapu na ovom mestu. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","mm-none":"Hvala na prijavi! Proverili smo mapu na ovom mestu i nismo pronašli ništa što treba menjati, pa smo je ostavili kakva jeste."},"he":{"t-turn-ask":"תודה על הדיווח! על איזו פנייה מדובר: מאיזה רחוב לאיזה רחוב, ובאיזה כיוון נסעתם?","t-turn-done":"תודה! תיקנו את הפנייה במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-address-ask":"תודה על הדיווח! מה הכתובת או שם הרחוב הנכונים, ולאיזה מקום ניסיתם להגיע?","t-address-done":"תודה! תיקנו את הכתובת במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-route-ask":"תודה על הדיווח! מאיפה יצאתם, לאן נסעתם, ובאיזו דרך ציפיתם שהאפליקציה תוביל אתכם?","t-route-done":"תודה על הדיווח! בדקנו את המפה כאן והיא תקינה. האפליקציה בוחרת את המסלול לפי התנועה בזמן אמת, ולכן הוא יכול להשתנות מיום ליום.","t-roundabout-ask":"תודה על הדיווח! איזה צומת אמור להיות כיכר? שמות הרחובות שנפגשים שם יעזרו לנו למצוא אותו.","t-roundabout-done":"תודה! הוספנו את הכיכר למפה. היא תופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-general-ask":"תודה על הדיווח! תוכלו לספר לנו עוד קצת מה לא היה תקין, ואיפה בדיוק?","t-junction-ask":"תודה על הדיווח! על איזה צומת, יציאה או גשר מדובר, ובאיזה כיוון נסעתם?","t-junction-done":"תודה! תיקנו את הצומת במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-direction-ask":"תודה על הדיווח! על איזה רחוב מדובר, ובאיזה כיוון התנועה בו מותרת בפועל?","t-direction-done":"תודה! תיקנו את כיוון הנסיעה במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-road-ask":"תודה על הדיווח! איך קוראים לכביש, איפה הוא מתחיל ואיפה נגמר, והאם הוא פתוח לכולם?","t-road-done":"תודה! הוספנו את הכביש למפה. הוא יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-landmark-ask":"תודה על הדיווח! איך קוראים למקום, ואיפה בדיוק הוא נמצא?","t-landmark-done":"תודה! הוספנו את המקום למפה. הוא יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-blocked-ask":"תודה על הדיווח! הכביש סגור לצמיתות או לזמן מה? אם אתם יודעים עד מתי, זה יעזור לנו מאוד.","t-blocked-done":"תודה! הוספנו את החסימה למפה, כך שהאפליקציה תנווט מסביב לה.","t-speed-ask":"תודה על הדיווח! איזו מהירות מותרת מופיעה בשלט שם, ובאיזה כיוון?","t-speed-done":"תודה! עדכנו את המהירות המותרת במפה. היא תופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","nothing":"תודה על הדיווח! בדקנו את המפה כאן ולא מצאנו שום בעיה, ולכן השארנו אותה כמו שהיא. אם זה יקרה שוב, נא לשלוח דיווח חדש מהמקום עצמו.","mm-ask":"תודה על הדיווח! תוכלו לספר לנו עוד קצת: איפה בדיוק זה, ובאיזה כיוון נסעתם?","mm-bump-done":"תודה! הוספנו את פס ההאטה למפה, כך שהאפליקציה תתריע עליו לנהגים.","mm-bump-none":"תודה על הדיווח! בדקנו ולא ראינו כאן פס האטה, ולכן השארנו את המפה כמו שהיא.","mm-light-done":"תודה! הוספנו את הרמזור למפה.","mm-light-none":"תודה על הדיווח! בדקנו ולא ראינו כאן רמזור, ולכן השארנו את המפה כמו שהיא.","mm-curve-done":"תודה! סימנו את העיקול המסוכן במפה, כך שהאפליקציה תתריע עליו לנהגים.","mm-curve-none":"תודה על הדיווח! בדקנו את העיקול הזה ולא מצאנו סיבה לשנות את המפה, ולכן השארנו אותה כמו שהיא.","mm-rail-done":"תודה! הוספנו את מפגש מסילת הברזל למפה, כך שהאפליקציה תתריע עליו לנהגים.","mm-rail-none":"תודה על הדיווח! בדקנו ולא ראינו כאן מפגש מסילת ברזל, ולכן השארנו את המפה כמו שהיא.","mm-camera-done":"תודה! הוספנו את מצלמת המהירות למפה.","mm-camera-none":"תודה על הדיווח! בדקנו ולא הצלחנו לאשר שיש כאן מצלמת מהירות, ולכן השארנו את המפה כמו שהיא.","mm-done":"תודה! עדכנו את המפה כאן. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","mm-none":"תודה על הדיווח! בדקנו את המפה כאן ולא מצאנו מה לשנות, ולכן השארנו אותה כמו שהיא."},"ko":{"t-turn-ask":"신고해 주셔서 감사합니다! 어느 도로에서 어느 도로로 회전하는 구간이었는지, 그리고 어느 방향으로 주행 중이셨는지 알려주실 수 있나요?","t-turn-done":"감사합니다! 해당 회전 구간을 지도에서 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-address-ask":"신고해 주셔서 감사합니다! 올바른 주소나 도로명은 무엇이며, 어느 장소로 가려고 하셨나요?","t-address-done":"감사합니다! 지도에서 주소를 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-route-ask":"신고해 주셔서 감사합니다! 어디에서 출발해 어디로 가셨는지, 그리고 앱이 어느 길로 안내하길 기대하셨는지 알려주실 수 있나요?","t-route-done":"신고해 주셔서 감사합니다! 이곳의 지도를 확인해 보니 정확했습니다. 앱은 실시간 교통 상황에 따라 경로를 정하기 때문에 날마다 경로가 달라질 수 있습니다.","t-roundabout-ask":"신고해 주셔서 감사합니다! 어느 교차로가 회전교차로여야 하나요? 그곳에서 만나는 도로 이름을 알려주시면 위치를 찾는 데 도움이 됩니다.","t-roundabout-done":"감사합니다! 지도에 회전교차로를 추가했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-general-ask":"신고해 주셔서 감사합니다! 무엇이 잘못되었는지, 정확히 어디였는지 조금 더 알려주실 수 있나요?","t-junction-ask":"신고해 주셔서 감사합니다! 어느 교차로, 출구 또는 다리였는지, 그리고 어느 방향으로 주행 중이셨는지 알려주실 수 있나요?","t-junction-done":"감사합니다! 지도에서 해당 교차로를 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-direction-ask":"신고해 주셔서 감사합니다! 어느 도로였는지, 그리고 실제로 어느 방향으로 통행이 가능한지 알려주실 수 있나요?","t-direction-done":"감사합니다! 지도에서 통행 방향을 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-road-ask":"신고해 주셔서 감사합니다! 도로 이름이 무엇인지, 어디에서 시작해 어디에서 끝나는지, 그리고 누구나 통행할 수 있는 도로인지 알려주실 수 있나요?","t-road-done":"감사합니다! 지도에 도로를 추가했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-landmark-ask":"신고해 주셔서 감사합니다! 장소 이름이 무엇이고, 정확히 어디에 있나요?","t-landmark-done":"감사합니다! 지도에 장소를 추가했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-blocked-ask":"신고해 주셔서 감사합니다! 도로가 영구적으로 폐쇄된 건가요, 아니면 일시적인가요? 언제까지인지 아시면 큰 도움이 됩니다.","t-blocked-done":"감사합니다! 지도에 도로 통제를 추가해, 앱이 그 구간을 피해서 안내합니다.","t-speed-ask":"신고해 주셔서 감사합니다! 그곳에 표시된 제한속도는 얼마이고, 어느 방향 기준인가요?","t-speed-done":"감사합니다! 지도에서 제한속도를 업데이트했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","nothing":"신고해 주셔서 감사합니다! 이곳의 지도를 확인했지만 잘못된 점을 찾지 못해 그대로 두었습니다. 같은 일이 다시 생기면 해당 장소에서 새로 신고해 주세요.","mm-ask":"신고해 주셔서 감사합니다! 정확히 어디인지, 그리고 어느 방향으로 주행 중이셨는지 조금 더 알려주실 수 있나요?","mm-bump-done":"감사합니다! 지도에 과속방지턱을 추가해, 앱이 운전자에게 미리 알려줍니다.","mm-bump-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에서 과속방지턱을 찾지 못해 지도를 그대로 두었습니다.","mm-light-done":"감사합니다! 지도에 신호등을 추가했습니다.","mm-light-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에서 신호등을 찾지 못해 지도를 그대로 두었습니다.","mm-curve-done":"감사합니다! 지도에 위험한 커브를 표시해, 앱이 운전자에게 미리 알려줍니다.","mm-curve-none":"신고해 주셔서 감사합니다! 이 커브를 확인했지만 지도를 변경할 이유를 찾지 못해 그대로 두었습니다.","mm-rail-done":"감사합니다! 지도에 철도 건널목을 추가해, 앱이 운전자에게 미리 알려줍니다.","mm-rail-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에서 철도 건널목을 찾지 못해 지도를 그대로 두었습니다.","mm-camera-done":"감사합니다! 지도에 과속 단속 카메라를 추가했습니다.","mm-camera-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에 과속 단속 카메라가 있는지 확인할 수 없어 지도를 그대로 두었습니다.","mm-done":"감사합니다! 이곳의 지도를 업데이트했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","mm-none":"신고해 주셔서 감사합니다! 이곳의 지도를 확인했지만 변경할 부분을 찾지 못해 그대로 두었습니다."},"fi":{"t-turn-ask":"Kiitos ilmoituksesta! Mistä käännöksestä oli kyse: miltä kadulta mille, ja mihin suuntaan ajoit?","t-turn-done":"Kiitos! Korjasimme käännöksen kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-address-ask":"Kiitos ilmoituksesta! Mikä on oikea osoite tai kadunnimi, ja mihin paikkaan olit menossa?","t-address-done":"Kiitos! Korjasimme osoitteen kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-route-ask":"Kiitos ilmoituksesta! Mistä lähdit, minne olit menossa ja mitä reittiä odotit sovelluksen ehdottavan?","t-route-done":"Kiitos ilmoituksesta! Tarkistimme kartan tässä kohdassa, ja se on kunnossa. Sovellus valitsee reitin reaaliaikaisen liikennetilanteen mukaan, joten se voi vaihdella päivästä toiseen.","t-roundabout-ask":"Kiitos ilmoituksesta! Minkä risteyksen pitäisi olla kiertoliittymä? Siinä kohtaavien katujen nimet auttavat meitä löytämään sen.","t-roundabout-done":"Kiitos! Lisäsimme kiertoliittymän kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-general-ask":"Kiitos ilmoituksesta! Voisitko kertoa hieman tarkemmin, mikä oli vialla ja missä tarkalleen?","t-junction-ask":"Kiitos ilmoituksesta! Mistä risteyksestä, liittymästä tai sillasta oli kyse, ja mihin suuntaan ajoit?","t-junction-done":"Kiitos! Korjasimme risteyksen kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-direction-ask":"Kiitos ilmoituksesta! Mistä kadusta oli kyse, ja mihin suuntaan sillä oikeasti saa ajaa?","t-direction-done":"Kiitos! Korjasimme ajosuunnan kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-road-ask":"Kiitos ilmoituksesta! Mikä tien nimi on, mistä se alkaa ja mihin se päättyy, ja onko se kaikkien käytössä?","t-road-done":"Kiitos! Lisäsimme tien kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-landmark-ask":"Kiitos ilmoituksesta! Mikä paikan nimi on, ja missä se tarkalleen sijaitsee?","t-landmark-done":"Kiitos! Lisäsimme paikan kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-blocked-ask":"Kiitos ilmoituksesta! Onko tie suljettu pysyvästi vai väliaikaisesti? Jos tiedät, mihin asti, se auttaa paljon.","t-blocked-done":"Kiitos! Lisäsimme tiesulun kartalle, joten sovellus ohjaa sen ohi.","t-speed-ask":"Kiitos ilmoituksesta! Mikä nopeusrajoitus siellä on merkitty, ja kumpaan suuntaan?","t-speed-done":"Kiitos! Päivitimme nopeusrajoituksen kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","nothing":"Kiitos ilmoituksesta! Tarkistimme kartan tässä kohdassa emmekä löytäneet virhettä, joten jätimme sen ennalleen. Jos sama toistuu, lähetä uusi ilmoitus paikan päältä.","mm-ask":"Kiitos ilmoituksesta! Voisitko kertoa hieman tarkemmin: missä tarkalleen se on ja mihin suuntaan ajoit?","mm-bump-done":"Kiitos! Lisäsimme hidastetöyssyn kartalle, joten sovellus varoittaa siitä kuljettajia.","mm-bump-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme nähneet tässä hidastetöyssyä, joten jätimme kartan ennalleen.","mm-light-done":"Kiitos! Lisäsimme liikennevalot kartalle.","mm-light-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme nähneet tässä liikennevaloja, joten jätimme kartan ennalleen.","mm-curve-done":"Kiitos! Merkitsimme vaarallisen mutkan kartalle, joten sovellus varoittaa siitä kuljettajia.","mm-curve-none":"Kiitos ilmoituksesta! Tarkistimme tämän mutkan emmekä löytäneet syytä muuttaa karttaa, joten jätimme sen ennalleen.","mm-rail-done":"Kiitos! Lisäsimme tasoristeyksen kartalle, joten sovellus varoittaa siitä kuljettajia.","mm-rail-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme nähneet tässä tasoristeystä, joten jätimme kartan ennalleen.","mm-camera-done":"Kiitos! Lisäsimme nopeusvalvontakameran kartalle.","mm-camera-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme voineet varmistaa, että tässä on nopeusvalvontakamera, joten jätimme kartan ennalleen.","mm-done":"Kiitos! Päivitimme kartan tässä kohdassa. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","mm-none":"Kiitos ilmoituksesta! Tarkistimme kartan tässä kohdassa emmekä löytäneet muutettavaa, joten jätimme sen ennalleen."},"id":{"t-turn-ask":"Terima kasih atas laporannya! Belokan yang mana: dari jalan apa ke jalan apa, dan ke arah mana Anda berkendara?","t-turn-done":"Terima kasih! Kami sudah memperbaiki belokan itu di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-address-ask":"Terima kasih atas laporannya! Apa alamat atau nama jalan yang benar, dan tempat mana yang ingin Anda tuju?","t-address-done":"Terima kasih! Kami sudah memperbaiki alamatnya di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-route-ask":"Terima kasih atas laporannya! Dari mana Anda berangkat, ke mana tujuan Anda, dan lewat jalan mana Anda harapkan aplikasi mengarahkan Anda?","t-route-done":"Terima kasih atas laporannya! Kami sudah memeriksa peta di sini dan sudah benar. Aplikasi memilih rute berdasarkan kondisi lalu lintas terkini, jadi rutenya bisa berbeda dari hari ke hari.","t-roundabout-ask":"Terima kasih atas laporannya! Persimpangan mana yang seharusnya menjadi bundaran? Nama jalan-jalan yang bertemu di sana membantu kami menemukannya.","t-roundabout-done":"Terima kasih! Kami sudah menambahkan bundaran ke peta. Bundaran ini akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-general-ask":"Terima kasih atas laporannya! Bisakah Anda ceritakan sedikit lebih banyak tentang apa yang salah, dan di mana tepatnya?","t-junction-ask":"Terima kasih atas laporannya! Persimpangan, jalan keluar, atau jembatan mana itu, dan ke arah mana Anda berkendara?","t-junction-done":"Terima kasih! Kami sudah memperbaiki persimpangan itu di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-direction-ask":"Terima kasih atas laporannya! Jalan mana itu, dan ke arah mana sebenarnya jalan itu boleh dilalui?","t-direction-done":"Terima kasih! Kami sudah memperbaiki arah lalu lintas di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-road-ask":"Terima kasih atas laporannya! Apa nama jalannya, dari mana sampai mana, dan apakah jalan itu terbuka untuk umum?","t-road-done":"Terima kasih! Kami sudah menambahkan jalan itu ke peta. Jalan ini akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-landmark-ask":"Terima kasih atas laporannya! Apa nama tempatnya, dan di mana tepatnya lokasinya?","t-landmark-done":"Terima kasih! Kami sudah menambahkan tempat itu ke peta. Tempat ini akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-blocked-ask":"Terima kasih atas laporannya! Apakah jalannya ditutup permanen atau sementara? Jika Anda tahu sampai kapan, itu sangat membantu.","t-blocked-done":"Terima kasih! Kami sudah menambahkan penutupan jalan ke peta, jadi aplikasi akan mengarahkan pengemudi lewat jalan lain.","t-speed-ask":"Terima kasih atas laporannya! Berapa batas kecepatan yang tertera di sana, dan untuk arah mana?","t-speed-done":"Terima kasih! Kami sudah memperbarui batas kecepatan di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","nothing":"Terima kasih atas laporannya! Kami sudah memeriksa peta di sini dan tidak menemukan kesalahan, jadi petanya kami biarkan seperti semula. Jika terjadi lagi, silakan kirim laporan baru dari lokasi tersebut.","mm-ask":"Terima kasih atas laporannya! Bisakah Anda memberi tahu kami sedikit lebih banyak: di mana tepatnya lokasinya, dan ke arah mana Anda berkendara?","mm-bump-done":"Terima kasih! Kami sudah menambahkan polisi tidur ke peta, jadi aplikasi akan memperingatkan pengemudi.","mm-bump-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak melihat polisi tidur di sini, jadi petanya kami biarkan seperti semula.","mm-light-done":"Terima kasih! Kami sudah menambahkan lampu lalu lintas ke peta.","mm-light-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak melihat lampu lalu lintas di sini, jadi petanya kami biarkan seperti semula.","mm-curve-done":"Terima kasih! Kami sudah menandai tikungan berbahaya di peta, jadi aplikasi akan memperingatkan pengemudi.","mm-curve-none":"Terima kasih atas laporannya! Kami sudah memeriksa tikungan ini dan tidak menemukan alasan untuk mengubah peta, jadi petanya kami biarkan seperti semula.","mm-rail-done":"Terima kasih! Kami sudah menambahkan perlintasan kereta api ke peta, jadi aplikasi akan memperingatkan pengemudi.","mm-rail-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak melihat perlintasan kereta api di sini, jadi petanya kami biarkan seperti semula.","mm-camera-done":"Terima kasih! Kami sudah menambahkan kamera kecepatan ke peta.","mm-camera-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak dapat memastikan adanya kamera kecepatan di sini, jadi petanya kami biarkan seperti semula.","mm-done":"Terima kasih! Kami sudah memperbarui peta di sini. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","mm-none":"Terima kasih atas laporannya! Kami sudah memeriksa peta di sini dan tidak menemukan apa pun yang perlu diubah, jadi petanya kami biarkan seperti semula."},"hi":{"t-turn-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सा मोड़ था: किस सड़क से किस सड़क पर, और आप किस दिशा में जा रहे थे?","t-turn-done":"धन्यवाद! हमने नक्शे पर वह मोड़ ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-address-ask":"रिपोर्ट के लिए धन्यवाद! सही पता या सड़क का नाम क्या है, और आप किस जगह पहुँचना चाहते थे?","t-address-done":"धन्यवाद! हमने नक्शे पर पता ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-route-ask":"रिपोर्ट के लिए धन्यवाद! आप कहाँ से चले थे, कहाँ जा रहे थे, और आपको ऐप से किस रास्ते की उम्मीद थी?","t-route-done":"रिपोर्ट के लिए धन्यवाद! हमने यहाँ नक्शा जाँचा और वह सही है। ऐप लाइव ट्रैफ़िक के हिसाब से रास्ता चुनता है, इसलिए यह हर दिन अलग हो सकता है।","t-roundabout-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सा चौराहा गोल चक्कर होना चाहिए? वहाँ मिलने वाली सड़कों के नाम हमें उसे ढूँढने में मदद करते हैं।","t-roundabout-done":"धन्यवाद! हमने नक्शे पर गोल चक्कर जोड़ दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगा।","t-general-ask":"रिपोर्ट के लिए धन्यवाद! क्या आप थोड़ा और बता सकते हैं कि क्या गलत था, और ठीक कहाँ?","t-junction-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सा जंक्शन, एग्ज़िट या पुल था, और आप किस दिशा में जा रहे थे?","t-junction-done":"धन्यवाद! हमने नक्शे पर जंक्शन ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-direction-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सी सड़क थी, और असल में उस पर किस दिशा में ट्रैफ़िक चल सकता है?","t-direction-done":"धन्यवाद! हमने नक्शे पर ट्रैफ़िक की दिशा ठीक कर दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-road-ask":"रिपोर्ट के लिए धन्यवाद! सड़क का नाम क्या है, वह कहाँ से शुरू होकर कहाँ खत्म होती है, और क्या वह सबके लिए खुली है?","t-road-done":"धन्यवाद! हमने नक्शे पर सड़क जोड़ दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगी।","t-landmark-ask":"रिपोर्ट के लिए धन्यवाद! उस जगह का नाम क्या है, और वह ठीक कहाँ है?","t-landmark-done":"धन्यवाद! हमने नक्शे पर वह जगह जोड़ दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगी।","t-blocked-ask":"रिपोर्ट के लिए धन्यवाद! क्या सड़क हमेशा के लिए बंद है या कुछ समय के लिए? अगर आपको पता है कि कब तक, तो इससे बहुत मदद मिलेगी।","t-blocked-done":"धन्यवाद! हमने नक्शे पर सड़क बंद होने की जानकारी जोड़ दी है, इसलिए ऐप अब दूसरे रास्ते से ले जाएगा।","t-speed-ask":"रिपोर्ट के लिए धन्यवाद! वहाँ बोर्ड पर कितनी स्पीड लिमिट लिखी है, और किस दिशा के लिए?","t-speed-done":"धन्यवाद! हमने नक्शे पर स्पीड लिमिट अपडेट कर दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगी।","nothing":"रिपोर्ट के लिए धन्यवाद! हमने यहाँ नक्शा जाँचा, लेकिन कोई गलती नहीं मिली, इसलिए हमने उसे वैसे ही छोड़ दिया है। अगर ऐसा फिर हो, तो कृपया उसी जगह से नई रिपोर्ट भेजें।","mm-ask":"रिपोर्ट के लिए धन्यवाद! क्या आप थोड़ा और बता सकते हैं: यह ठीक कहाँ है, और आप किस दिशा में जा रहे थे?","mm-bump-done":"धन्यवाद! हमने नक्शे पर स्पीड ब्रेकर जोड़ दिया है, इसलिए ऐप ड्राइवरों को इसके बारे में चेतावनी देगा।","mm-bump-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ कोई स्पीड ब्रेकर नहीं दिखा, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-light-done":"धन्यवाद! हमने नक्शे पर ट्रैफ़िक लाइट जोड़ दी है।","mm-light-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ कोई ट्रैफ़िक लाइट नहीं दिखी, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-curve-done":"धन्यवाद! हमने नक्शे पर खतरनाक मोड़ चिह्नित कर दिया है, इसलिए ऐप ड्राइवरों को इसके बारे में चेतावनी देगा।","mm-curve-none":"रिपोर्ट के लिए धन्यवाद! हमने इस मोड़ को जाँचा, लेकिन नक्शा बदलने की कोई वजह नहीं मिली, इसलिए हमने उसे वैसे ही छोड़ दिया है।","mm-rail-done":"धन्यवाद! हमने नक्शे पर रेलवे फाटक जोड़ दिया है, इसलिए ऐप ड्राइवरों को इसके बारे में चेतावनी देगा।","mm-rail-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ कोई रेलवे फाटक नहीं दिखा, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-camera-done":"धन्यवाद! हमने नक्शे पर स्पीड कैमरा जोड़ दिया है।","mm-camera-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ स्पीड कैमरा होने की पुष्टि नहीं कर पाए, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-done":"धन्यवाद! हमने यहाँ नक्शा अपडेट कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","mm-none":"रिपोर्ट के लिए धन्यवाद! हमने यहाँ नक्शा जाँचा, लेकिन बदलने लायक कुछ नहीं मिला, इसलिए हमने उसे वैसे ही छोड़ दिया है।"},"pt":{"t-turn-ask":"Obrigado pelo aviso! Que viragem era: de que rua para que rua, e em que sentido seguia?","t-turn-done":"Obrigado! Corrigimos essa viragem no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-address-ask":"Obrigado pelo aviso! Qual é a morada ou o nome da rua correto, e a que local queria chegar?","t-address-done":"Obrigado! Corrigimos a morada no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-route-ask":"Obrigado pelo aviso! De onde partiu, para onde ia e por onde esperava que a app o levasse?","t-route-done":"Obrigado pelo aviso! Verificámos o mapa aqui e está correto. A app escolhe o percurso com base no trânsito em tempo real, por isso pode variar de dia para dia.","t-roundabout-ask":"Obrigado pelo aviso! Que cruzamento deveria ser uma rotunda? Os nomes das ruas que lá se cruzam ajudam-nos a encontrá-lo.","t-roundabout-done":"Obrigado! Acrescentámos a rotunda ao mapa. A app mostra-a depois da próxima atualização do mapa, normalmente em poucos dias.","t-general-ask":"Obrigado pelo aviso! Pode dizer-nos um pouco mais sobre o que estava errado, e onde exatamente?","t-junction-ask":"Obrigado pelo aviso! Que cruzamento, saída ou ponte era, e em que sentido seguia?","t-junction-done":"Obrigado! Corrigimos o cruzamento no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-direction-ask":"Obrigado pelo aviso! Que rua era, e em que sentido está realmente aberta ao trânsito?","t-direction-done":"Obrigado! Corrigimos o sentido de circulação no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-road-ask":"Obrigado pelo aviso! Como se chama a estrada, onde começa e acaba, e está aberta a todos?","t-road-done":"Obrigado! Acrescentámos a estrada ao mapa. A app mostra-a depois da próxima atualização do mapa, normalmente em poucos dias.","t-landmark-ask":"Obrigado pelo aviso! Como se chama o local, e onde fica exatamente?","t-landmark-done":"Obrigado! Acrescentámos o local ao mapa. Aparece na app depois da próxima atualização do mapa, normalmente em poucos dias.","t-blocked-ask":"Obrigado pelo aviso! A estrada está cortada de vez ou só durante algum tempo? Se souber até quando, ajuda muito.","t-blocked-done":"Obrigado! Acrescentámos o corte de estrada ao mapa, por isso a app passa a contorná-lo.","t-speed-ask":"Obrigado pelo aviso! Qual é o limite de velocidade sinalizado no local, e para que sentido?","t-speed-done":"Obrigado! Atualizámos o limite de velocidade no mapa. A app mostra-o depois da próxima atualização do mapa, normalmente em poucos dias.","nothing":"Obrigado pelo aviso! Verificámos o mapa aqui e não encontrámos nada de errado, por isso deixámo-lo como está. Se voltar a acontecer, envie um novo aviso a partir do local.","mm-ask":"Obrigado pelo aviso! Pode dizer-nos um pouco mais: onde fica exatamente e em que sentido seguia?","mm-bump-done":"Obrigado! Acrescentámos a lomba ao mapa, por isso a app avisa os condutores.","mm-bump-none":"Obrigado pelo aviso! Verificámos e não encontrámos nenhuma lomba aqui, por isso deixámos o mapa como está.","mm-light-done":"Obrigado! Acrescentámos os semáforos ao mapa.","mm-light-none":"Obrigado pelo aviso! Verificámos e não encontrámos semáforos aqui, por isso deixámos o mapa como está.","mm-curve-done":"Obrigado! Assinalámos a curva perigosa no mapa, por isso a app avisa os condutores.","mm-curve-none":"Obrigado pelo aviso! Verificámos esta curva e não encontrámos motivo para alterar o mapa, por isso deixámo-lo como está.","mm-rail-done":"Obrigado! Acrescentámos a passagem de nível ao mapa, por isso a app avisa os condutores.","mm-rail-none":"Obrigado pelo aviso! Verificámos e não encontrámos nenhuma passagem de nível aqui, por isso deixámos o mapa como está.","mm-camera-done":"Obrigado! Acrescentámos o radar de velocidade ao mapa.","mm-camera-none":"Obrigado pelo aviso! Verificámos e não conseguimos confirmar um radar de velocidade aqui, por isso deixámos o mapa como está.","mm-done":"Obrigado! Atualizámos o mapa aqui. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","mm-none":"Obrigado pelo aviso! Verificámos o mapa aqui e não encontrámos nada para alterar, por isso deixámo-lo como está."},"nl":{"t-turn-ask":"Bedankt voor de melding! Om welke afslag ging het: van welke straat naar welke, en in welke richting reed je?","t-turn-done":"Bedankt! We hebben die afslag op de kaart aangepast. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-address-ask":"Bedankt voor de melding! Wat is het juiste adres of de juiste straatnaam, en naar welke plek wilde je?","t-address-done":"Bedankt! We hebben het adres op de kaart gecorrigeerd. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-route-ask":"Bedankt voor de melding! Waar vertrok je, waar ging je naartoe en welke route had je van de app verwacht?","t-route-done":"Bedankt voor de melding! We hebben de kaart hier gecontroleerd en die klopt. De app kiest de route op basis van het actuele verkeer, dus die kan per dag verschillen.","t-roundabout-ask":"Bedankt voor de melding! Welk kruispunt zou een rotonde moeten zijn? De straten die daar samenkomen helpen ons het te vinden.","t-roundabout-done":"Bedankt! We hebben de rotonde aan de kaart toegevoegd. De app toont die na de volgende kaartupdate, meestal binnen een paar dagen.","t-general-ask":"Bedankt voor de melding! Kun je ons iets meer vertellen over wat er niet klopte, en waar precies?","t-junction-ask":"Bedankt voor de melding! Om welk kruispunt, welke afrit of welke brug ging het, en in welke richting reed je?","t-junction-done":"Bedankt! We hebben het kruispunt op de kaart aangepast. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-direction-ask":"Bedankt voor de melding! Om welke straat ging het, en in welke richting is die echt open voor verkeer?","t-direction-done":"Bedankt! We hebben de rijrichting op de kaart gecorrigeerd. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-road-ask":"Bedankt voor de melding! Hoe heet de weg, waar begint en eindigt hij, en is hij voor iedereen toegankelijk?","t-road-done":"Bedankt! We hebben de weg aan de kaart toegevoegd. De app toont hem na de volgende kaartupdate, meestal binnen een paar dagen.","t-landmark-ask":"Bedankt voor de melding! Hoe heet de plek, en waar ligt die precies?","t-landmark-done":"Bedankt! We hebben de plek aan de kaart toegevoegd. Die verschijnt in de app na de volgende kaartupdate, meestal binnen een paar dagen.","t-blocked-ask":"Bedankt voor de melding! Is de weg voorgoed afgesloten of tijdelijk? Als je weet tot wanneer, helpt dat enorm.","t-blocked-done":"Bedankt! We hebben de afsluiting op de kaart gezet, dus de app leidt je er nu omheen.","t-speed-ask":"Bedankt voor de melding! Welke maximumsnelheid staat daar aangegeven, en voor welke richting?","t-speed-done":"Bedankt! We hebben de maximumsnelheid op de kaart bijgewerkt. De app toont die na de volgende kaartupdate, meestal binnen een paar dagen.","nothing":"Bedankt voor de melding! We hebben de kaart hier gecontroleerd en niets verkeerds gevonden, dus we laten hem zoals hij is. Gebeurt het opnieuw, stuur dan een nieuwe melding vanaf de plek.","mm-ask":"Bedankt voor de melding! Kun je ons iets meer vertellen: waar het precies is, en in welke richting je reed?","mm-bump-done":"Bedankt! We hebben de verkeersdrempel aan de kaart toegevoegd, dus de app waarschuwt bestuurders ervoor.","mm-bump-none":"Bedankt voor de melding! We hebben gekeken, maar zagen hier geen verkeersdrempel, dus we laten de kaart zoals hij is.","mm-light-done":"Bedankt! We hebben de verkeerslichten aan de kaart toegevoegd.","mm-light-none":"Bedankt voor de melding! We hebben gekeken, maar zagen hier geen verkeerslichten, dus we laten de kaart zoals hij is.","mm-curve-done":"Bedankt! We hebben de gevaarlijke bocht op de kaart gemarkeerd, dus de app waarschuwt bestuurders ervoor.","mm-curve-none":"Bedankt voor de melding! We hebben deze bocht bekeken en geen reden gevonden om de kaart aan te passen, dus we laten hem zoals hij is.","mm-rail-done":"Bedankt! We hebben de spoorwegovergang aan de kaart toegevoegd, dus de app waarschuwt bestuurders ervoor.","mm-rail-none":"Bedankt voor de melding! We hebben gekeken, maar zagen hier geen spoorwegovergang, dus we laten de kaart zoals hij is.","mm-camera-done":"Bedankt! We hebben de flitspaal aan de kaart toegevoegd.","mm-camera-none":"Bedankt voor de melding! We hebben gekeken, maar konden hier geen flitspaal bevestigen, dus we laten de kaart zoals hij is.","mm-done":"Bedankt! We hebben de kaart hier bijgewerkt. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","mm-none":"Bedankt voor de melding! We hebben de kaart hier gecontroleerd en niets gevonden om aan te passen, dus we laten hem zoals hij is."},"ka":{"t-turn-ask":"გმადლობთ შეტყობინებისთვის! რომელი მოხვევა იყო: რომელი ქუჩიდან რომელზე და რა მიმართულებით მოძრაობდით?","t-turn-done":"გმადლობთ! ეს მოხვევა რუკაზე გავასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-address-ask":"გმადლობთ შეტყობინებისთვის! რა არის სწორი მისამართი ან ქუჩის სახელი და რომელ ადგილას მისვლას ცდილობდით?","t-address-done":"გმადლობთ! მისამართი რუკაზე შევასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-route-ask":"გმადლობთ შეტყობინებისთვის! საიდან დაიძარით, სად მიდიოდით და რომელი გზით ელოდით, რომ აპი წაგიყვანდათ?","t-route-done":"გმადლობთ შეტყობინებისთვის! რუკა ამ ადგილას შევამოწმეთ და ყველაფერი სწორადაა. აპი მარშრუტს მიმდინარე მოძრაობის მიხედვით ირჩევს, ამიტომ ის შეიძლება დღიდან დღემდე განსხვავდებოდეს.","t-roundabout-ask":"გმადლობთ შეტყობინებისთვის! რომელი გზაჯვარედინი უნდა იყოს წრიული მოძრაობით? იქ შემხვედრი ქუჩების სახელები დაგვეხმარება მის პოვნაში.","t-roundabout-done":"გმადლობთ! წრიული მოძრაობის გზაჯვარედინი რუკაზე დავამატეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-general-ask":"გმადლობთ შეტყობინებისთვის! შეგიძლიათ ცოტა მეტი გვითხრათ, რა იყო არასწორად და ზუსტად სად?","t-junction-ask":"გმადლობთ შეტყობინებისთვის! რომელი გზაჯვარედინი, გასასვლელი ან ხიდი იყო და რა მიმართულებით მოძრაობდით?","t-junction-done":"გმადლობთ! გზაჯვარედინი რუკაზე გავასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-direction-ask":"გმადლობთ შეტყობინებისთვის! რომელი ქუჩა იყო და სინამდვილეში რომელი მიმართულებით არის ღია მოძრაობისთვის?","t-direction-done":"გმადლობთ! მოძრაობის მიმართულება რუკაზე შევასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-road-ask":"გმადლობთ შეტყობინებისთვის! რა ჰქვია გზას, სად იწყება და სად მთავრდება, და ღიაა თუ არა ყველასთვის?","t-road-done":"გმადლობთ! გზა რუკაზე დავამატეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-landmark-ask":"გმადლობთ შეტყობინებისთვის! რა ჰქვია ამ ადგილს და ზუსტად სად მდებარეობს?","t-landmark-done":"გმადლობთ! ადგილი რუკაზე დავამატეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-blocked-ask":"გმადლობთ შეტყობინებისთვის! გზა სამუდამოდაა ჩაკეტილი თუ დროებით? თუ იცით, როდემდე, ეს ძალიან დაგვეხმარება.","t-blocked-done":"გმადლობთ! გზის ჩაკეტვა რუკაზე დავამატეთ, ასე რომ, აპი მარშრუტს მისი გვერდის ავლით გაიყვანს.","t-speed-ask":"გმადლობთ შეტყობინებისთვის! სიჩქარის რა ზღვარია იქ ნიშნით მითითებული და რომელი მიმართულებისთვის?","t-speed-done":"გმადლობთ! სიჩქარის ზღვარი რუკაზე განვაახლეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","nothing":"გმადლობთ შეტყობინებისთვის! რუკა ამ ადგილას შევამოწმეთ და შეცდომა ვერ ვიპოვეთ, ამიტომ ისე დავტოვეთ, როგორც იყო. თუ ისევ მოხდება, გთხოვთ, იმ ადგილიდან ახალი შეტყობინება გამოგვიგზავნოთ.","mm-ask":"გმადლობთ შეტყობინებისთვის! შეგიძლიათ ცოტა მეტი გვითხრათ: ზუსტად სად არის და რა მიმართულებით მოძრაობდით?","mm-bump-done":"გმადლობთ! ხელოვნური უსწორმასწორობა რუკაზე დავამატეთ, ასე რომ, აპი მძღოლებს ამის შესახებ გააფრთხილებს.","mm-bump-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ ხელოვნური უსწორმასწორობა ვერ დავინახეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-light-done":"გმადლობთ! შუქნიშანი რუკაზე დავამატეთ.","mm-light-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ შუქნიშანი ვერ დავინახეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-curve-done":"გმადლობთ! სახიფათო მოსახვევი რუკაზე მოვნიშნეთ, ასე რომ, აპი მძღოლებს ამის შესახებ გააფრთხილებს.","mm-curve-none":"გმადლობთ შეტყობინებისთვის! ეს მოსახვევი შევამოწმეთ და რუკის შეცვლის მიზეზი ვერ ვნახეთ, ამიტომ ისე დავტოვეთ, როგორც იყო.","mm-rail-done":"გმადლობთ! სარკინიგზო გადასასვლელი რუკაზე დავამატეთ, ასე რომ, აპი მძღოლებს ამის შესახებ გააფრთხილებს.","mm-rail-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ სარკინიგზო გადასასვლელი ვერ დავინახეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-camera-done":"გმადლობთ! სიჩქარის კამერა რუკაზე დავამატეთ.","mm-camera-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ სიჩქარის კამერის არსებობა ვერ დავადასტურეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-done":"გმადლობთ! რუკა ამ ადგილას განვაახლეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","mm-none":"გმადლობთ შეტყობინებისთვის! რუკა ამ ადგილას შევამოწმეთ და შესაცვლელი ვერაფერი ვიპოვეთ, ამიტომ ისე დავტოვეთ, როგორც იყო."},"hu":{"t-turn-ask":"Köszönjük a bejelentést! Melyik kanyarodásról van szó: melyik utcából melyikbe, és milyen irányban haladtál?","t-turn-done":"Köszönjük! Kijavítottuk ezt a kanyarodást a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-address-ask":"Köszönjük a bejelentést! Mi a helyes cím vagy utcanév, és hova szerettél volna eljutni?","t-address-done":"Köszönjük! Kijavítottuk a címet a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-route-ask":"Köszönjük a bejelentést! Honnan indultál, hova tartottál, és merre számítottál, hogy az alkalmazás visz?","t-route-done":"Köszönjük a bejelentést! Megnéztük itt a térképet, és rendben van. Az alkalmazás az aktuális forgalom alapján választja az útvonalat, így az napról napra eltérhet.","t-roundabout-ask":"Köszönjük a bejelentést! Melyik kereszteződésnek kellene körforgalomnak lennie? Az ott találkozó utcák segítenek megtalálni.","t-roundabout-done":"Köszönjük! Felvettük a körforgalmat a térképre. Az alkalmazás a következő térképfrissítés után mutatja, általában néhány napon belül.","t-general-ask":"Köszönjük a bejelentést! Megírnád egy kicsit részletesebben, mi volt a hiba, és pontosan hol?","t-junction-ask":"Köszönjük a bejelentést! Melyik kereszteződésről, lehajtóról vagy hídról van szó, és milyen irányban haladtál?","t-junction-done":"Köszönjük! Kijavítottuk a kereszteződést a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-direction-ask":"Köszönjük a bejelentést! Melyik utcáról van szó, és valójában melyik irányban járható?","t-direction-done":"Köszönjük! Kijavítottuk a menetirányt a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-road-ask":"Köszönjük a bejelentést! Mi az út neve, hol kezdődik és hol ér véget, és mindenki számára nyitott?","t-road-done":"Köszönjük! Felvettük az utat a térképre. Az alkalmazás a következő térképfrissítés után mutatja, általában néhány napon belül.","t-landmark-ask":"Köszönjük a bejelentést! Mi a hely neve, és pontosan hol található?","t-landmark-done":"Köszönjük! Felvettük a helyet a térképre. A következő térképfrissítés után jelenik meg az alkalmazásban, általában néhány napon belül.","t-blocked-ask":"Köszönjük a bejelentést! Az út véglegesen vagy csak egy ideig van lezárva? Ha tudod, meddig, az sokat segít.","t-blocked-done":"Köszönjük! Felvettük a lezárást a térképre, így az alkalmazás elkerüli.","t-speed-ask":"Köszönjük a bejelentést! Milyen sebességkorlátozás van ott kitáblázva, és melyik irányban?","t-speed-done":"Köszönjük! Frissítettük a sebességkorlátozást a térképen. Az alkalmazás a következő térképfrissítés után mutatja, általában néhány napon belül.","nothing":"Köszönjük a bejelentést! Megnéztük itt a térképet, de nem találtunk hibát, ezért úgy hagytuk, ahogy van. Ha újra előfordul, kérjük, küldj új bejelentést a helyszínről.","mm-ask":"Köszönjük a bejelentést! Megírnád egy kicsit részletesebben, pontosan hol van, és milyen irányban haladtál?","mm-bump-done":"Köszönjük! Felvettük a fekvőrendőrt a térképre, így az alkalmazás figyelmezteti rá a sofőröket.","mm-bump-none":"Köszönjük a bejelentést! Megnéztük, de nem láttunk itt fekvőrendőrt, ezért a térképet úgy hagytuk, ahogy van.","mm-light-done":"Köszönjük! Felvettük a jelzőlámpát a térképre.","mm-light-none":"Köszönjük a bejelentést! Megnéztük, de nem láttunk itt jelzőlámpát, ezért a térképet úgy hagytuk, ahogy van.","mm-curve-done":"Köszönjük! Megjelöltük a veszélyes kanyart a térképen, így az alkalmazás figyelmezteti rá a sofőröket.","mm-curve-none":"Köszönjük a bejelentést! Megnéztük ezt a kanyart, de nem találtunk okot a térkép módosítására, ezért úgy hagytuk, ahogy van.","mm-rail-done":"Köszönjük! Felvettük a vasúti átjárót a térképre, így az alkalmazás figyelmezteti rá a sofőröket.","mm-rail-none":"Köszönjük a bejelentést! Megnéztük, de nem láttunk itt vasúti átjárót, ezért a térképet úgy hagytuk, ahogy van.","mm-camera-done":"Köszönjük! Felvettük a traffipaxot a térképre.","mm-camera-none":"Köszönjük a bejelentést! Megnéztük, de nem tudtuk megerősíteni, hogy itt traffipax van, ezért a térképet úgy hagytuk, ahogy van.","mm-done":"Köszönjük! Frissítettük itt a térképet. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","mm-none":"Köszönjük a bejelentést! Megnéztük itt a térképet, de nem találtunk semmi módosítanivalót, ezért úgy hagytuk, ahogy van."},"hr":{"t-turn-ask":"Hvala na prijavi! O kojem je skretanju riječ: iz koje ulice u koju i u kojem ste smjeru vozili?","t-turn-done":"Hvala! Ispravili smo to skretanje na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-address-ask":"Hvala na prijavi! Koja je točna adresa ili naziv ulice i do kojeg ste mjesta htjeli stići?","t-address-done":"Hvala! Ispravili smo adresu na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-route-ask":"Hvala na prijavi! Odakle ste krenuli, kamo ste išli i kojim ste putem očekivali da će vas aplikacija voditi?","t-route-done":"Hvala na prijavi! Provjerili smo kartu na ovom mjestu i ispravna je. Aplikacija odabire rutu prema prometu u stvarnom vremenu, pa se ona može razlikovati iz dana u dan.","t-roundabout-ask":"Hvala na prijavi! Koje bi raskrižje trebalo biti kružni tok? Nazivi ulica koje se ondje susreću pomoći će nam da ga pronađemo.","t-roundabout-done":"Hvala! Dodali smo kružni tok na kartu. Aplikacija će ga prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-general-ask":"Hvala na prijavi! Možete li nam reći nešto više o tome što nije bilo u redu i gdje točno?","t-junction-ask":"Hvala na prijavi! O kojem je raskrižju, izlazu ili mostu riječ i u kojem ste smjeru vozili?","t-junction-done":"Hvala! Ispravili smo raskrižje na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-direction-ask":"Hvala na prijavi! O kojoj je ulici riječ i u kojem je smjeru zaista otvorena za promet?","t-direction-done":"Hvala! Ispravili smo smjer vožnje na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-road-ask":"Hvala na prijavi! Kako se cesta zove, gdje počinje i gdje završava te je li otvorena za sve?","t-road-done":"Hvala! Dodali smo cestu na kartu. Aplikacija će je prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-landmark-ask":"Hvala na prijavi! Kako se mjesto zove i gdje se točno nalazi?","t-landmark-done":"Hvala! Dodali smo mjesto na kartu. U aplikaciji će se prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-blocked-ask":"Hvala na prijavi! Je li cesta zatvorena trajno ili privremeno? Ako znate do kada, to nam puno pomaže.","t-blocked-done":"Hvala! Dodali smo zatvaranje ceste na kartu, pa će aplikacija voditi vozače zaobilaznim putem.","t-speed-ask":"Hvala na prijavi! Koje je ograničenje brzine ondje označeno i za koji smjer?","t-speed-done":"Hvala! Ažurirali smo ograničenje brzine na karti. Aplikacija će ga prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","nothing":"Hvala na prijavi! Provjerili smo kartu na ovom mjestu i nismo pronašli ništa pogrešno pa smo je ostavili kakva jest. Ako se ponovi, pošaljite novu prijavu s tog mjesta.","mm-ask":"Hvala na prijavi! Možete li nam reći nešto više: gdje se točno nalazi i u kojem ste smjeru vozili?","mm-bump-done":"Hvala! Dodali smo ležećeg policajca na kartu, pa će aplikacija upozoravati vozače na njega.","mm-bump-none":"Hvala na prijavi! Provjerili smo i ovdje nismo vidjeli ležećeg policajca pa smo kartu ostavili kakva jest.","mm-light-done":"Hvala! Dodali smo semafor na kartu.","mm-light-none":"Hvala na prijavi! Provjerili smo i ovdje nismo vidjeli semafor pa smo kartu ostavili kakva jest.","mm-curve-done":"Hvala! Označili smo opasan zavoj na karti, pa će aplikacija upozoravati vozače na njega.","mm-curve-none":"Hvala na prijavi! Provjerili smo ovaj zavoj i nismo pronašli razlog za promjenu karte pa smo je ostavili kakva jest.","mm-rail-done":"Hvala! Dodali smo željeznički prijelaz na kartu, pa će aplikacija upozoravati vozače na njega.","mm-rail-none":"Hvala na prijavi! Provjerili smo i ovdje nismo vidjeli željeznički prijelaz pa smo kartu ostavili kakva jest.","mm-camera-done":"Hvala! Dodali smo kameru za nadzor brzine na kartu.","mm-camera-none":"Hvala na prijavi! Provjerili smo i nismo mogli potvrditi da ovdje postoji kamera za nadzor brzine pa smo kartu ostavili kakva jest.","mm-done":"Hvala! Ažurirali smo kartu na ovom mjestu. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","mm-none":"Hvala na prijavi! Provjerili smo kartu na ovom mjestu i nismo pronašli ništa što treba promijeniti pa smo je ostavili kakva jest."},"fa":{"t-turn-ask":"از گزارش شما سپاسگزاریم! کدام گردش بود: از کدام خیابان به کدام خیابان، و در چه جهتی رانندگی می‌کردید؟","t-turn-done":"سپاسگزاریم! آن گردش را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-address-ask":"از گزارش شما سپاسگزاریم! نشانی یا نام درست خیابان چیست و می‌خواستید به کدام مکان بروید؟","t-address-done":"سپاسگزاریم! نشانی را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-route-ask":"از گزارش شما سپاسگزاریم! از کجا راه افتادید، به کجا می‌رفتید و انتظار داشتید برنامه شما را از کدام مسیر ببرد؟","t-route-done":"از گزارش شما سپاسگزاریم! نقشه را در این محل بررسی کردیم و درست است. برنامه مسیر را بر اساس ترافیک لحظه‌ای انتخاب می‌کند، بنابراین ممکن است از روزی به روز دیگر فرق کند.","t-roundabout-ask":"از گزارش شما سپاسگزاریم! کدام تقاطع باید میدان باشد؟ نام خیابان‌هایی که آنجا به هم می‌رسند به ما کمک می‌کند آن را پیدا کنیم.","t-roundabout-done":"سپاسگزاریم! میدان را به نقشه اضافه کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-general-ask":"از گزارش شما سپاسگزاریم! ممکن است کمی بیشتر توضیح دهید که چه چیزی اشتباه بود و دقیقاً کجا؟","t-junction-ask":"از گزارش شما سپاسگزاریم! کدام تقاطع، خروجی یا پل بود و در چه جهتی رانندگی می‌کردید؟","t-junction-done":"سپاسگزاریم! تقاطع را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-direction-ask":"از گزارش شما سپاسگزاریم! کدام خیابان بود و در واقع در چه جهتی برای تردد باز است؟","t-direction-done":"سپاسگزاریم! جهت حرکت را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-road-ask":"از گزارش شما سپاسگزاریم! نام این راه چیست، از کجا شروع و به کجا ختم می‌شود، و آیا برای همه باز است؟","t-road-done":"سپاسگزاریم! این راه را به نقشه اضافه کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-landmark-ask":"از گزارش شما سپاسگزاریم! نام این مکان چیست و دقیقاً کجاست؟","t-landmark-done":"سپاسگزاریم! این مکان را به نقشه اضافه کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-blocked-ask":"از گزارش شما سپاسگزاریم! آیا راه برای همیشه بسته است یا موقتاً؟ اگر می‌دانید تا کی، خیلی کمک می‌کند.","t-blocked-done":"سپاسگزاریم! بسته بودن راه را به نقشه اضافه کردیم، بنابراین برنامه رانندگان را از مسیر دیگری می‌برد.","t-speed-ask":"از گزارش شما سپاسگزاریم! محدودیت سرعتی که آنجا با تابلو اعلام شده چقدر است و برای کدام جهت؟","t-speed-done":"سپاسگزاریم! محدودیت سرعت را روی نقشه به‌روز کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","nothing":"از گزارش شما سپاسگزاریم! نقشه را در این محل بررسی کردیم و مشکلی پیدا نکردیم، بنابراین آن را همان‌طور که بود گذاشتیم. اگر دوباره پیش آمد، لطفاً از همان محل گزارش جدیدی بفرستید.","mm-ask":"از گزارش شما سپاسگزاریم! ممکن است کمی بیشتر بگویید: دقیقاً کجاست و در چه جهتی رانندگی می‌کردید؟","mm-bump-done":"سپاسگزاریم! سرعت‌گیر را به نقشه اضافه کردیم، بنابراین برنامه به رانندگان درباره آن هشدار می‌دهد.","mm-bump-none":"از گزارش شما سپاسگزاریم! بررسی کردیم و اینجا سرعت‌گیری ندیدیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-light-done":"سپاسگزاریم! چراغ راهنمایی را به نقشه اضافه کردیم.","mm-light-none":"از گزارش شما سپاسگزاریم! بررسی کردیم و اینجا چراغ راهنمایی ندیدیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-curve-done":"سپاسگزاریم! پیچ خطرناک را روی نقشه مشخص کردیم، بنابراین برنامه به رانندگان درباره آن هشدار می‌دهد.","mm-curve-none":"از گزارش شما سپاسگزاریم! این پیچ را بررسی کردیم و دلیلی برای تغییر نقشه پیدا نکردیم، بنابراین آن را همان‌طور که بود گذاشتیم.","mm-rail-done":"سپاسگزاریم! گذرگاه راه‌آهن را به نقشه اضافه کردیم، بنابراین برنامه به رانندگان درباره آن هشدار می‌دهد.","mm-rail-none":"از گزارش شما سپاسگزاریم! بررسی کردیم و اینجا گذرگاه راه‌آهنی ندیدیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-camera-done":"سپاسگزاریم! دوربین کنترل سرعت را به نقشه اضافه کردیم.","mm-camera-none":"از گزارش شما سپاسگزاریم! بررسی کردیم اما نتوانستیم وجود دوربین کنترل سرعت را در اینجا تأیید کنیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-done":"سپاسگزاریم! نقشه را در این محل به‌روز کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","mm-none":"از گزارش شما سپاسگزاریم! نقشه را در این محل بررسی کردیم و چیزی برای تغییر پیدا نکردیم، بنابراین آن را همان‌طور که بود گذاشتیم."},"sv":{"t-turn-ask":"Tack för rapporten! Vilken sväng gällde det: från vilken gata in på vilken, och åt vilket håll körde du?","t-turn-done":"Tack! Vi har rättat svängen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-address-ask":"Tack för rapporten! Vilken är rätt adress eller gatunamn, och vilken plats försökte du ta dig till?","t-address-done":"Tack! Vi har rättat adressen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-route-ask":"Tack för rapporten! Var startade du, vart var du på väg och vilken väg hade du väntat dig att appen skulle ta?","t-route-done":"Tack för rapporten! Vi har kollat kartan här och den stämmer. Appen väljer rutt utifrån trafiken i realtid, så den kan skilja sig från dag till dag.","t-roundabout-ask":"Tack för rapporten! Vilken korsning borde vara en rondell? Gatorna som möts där hjälper oss att hitta den.","t-roundabout-done":"Tack! Vi har lagt till rondellen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-general-ask":"Tack för rapporten! Kan du berätta lite mer om vad som var fel, och exakt var?","t-junction-ask":"Tack för rapporten! Vilken korsning, avfart eller bro gällde det, och åt vilket håll körde du?","t-junction-done":"Tack! Vi har rättat korsningen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-direction-ask":"Tack för rapporten! Vilken gata gällde det, och åt vilket håll är den egentligen öppen för trafik?","t-direction-done":"Tack! Vi har rättat körriktningen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-road-ask":"Tack för rapporten! Vad heter vägen, var börjar och slutar den, och är den öppen för alla?","t-road-done":"Tack! Vi har lagt till vägen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-landmark-ask":"Tack för rapporten! Vad heter platsen, och var ligger den exakt?","t-landmark-done":"Tack! Vi har lagt till platsen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-blocked-ask":"Tack för rapporten! Är vägen avstängd för gott eller bara ett tag? Om du vet hur länge hjälper det mycket.","t-blocked-done":"Tack! Vi har lagt in avstängningen på kartan, så appen leder trafiken runt den.","t-speed-ask":"Tack för rapporten! Vilken hastighetsgräns är skyltad där, och åt vilket håll?","t-speed-done":"Tack! Vi har uppdaterat hastighetsgränsen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","nothing":"Tack för rapporten! Vi har kollat kartan här men inte hittat något fel, så vi låter den vara som den är. Om det händer igen får du gärna skicka en ny rapport från platsen.","mm-ask":"Tack för rapporten! Kan du berätta lite mer: exakt var det är, och åt vilket håll du körde?","mm-bump-done":"Tack! Vi har lagt till farthindret på kartan, så appen varnar förare för det.","mm-bump-none":"Tack för rapporten! Vi har kollat men kunde inte se något farthinder här, så vi låter kartan vara som den är.","mm-light-done":"Tack! Vi har lagt till trafikljusen på kartan.","mm-light-none":"Tack för rapporten! Vi har kollat men kunde inte se några trafikljus här, så vi låter kartan vara som den är.","mm-curve-done":"Tack! Vi har markerat den farliga kurvan på kartan, så appen varnar förare för den.","mm-curve-none":"Tack för rapporten! Vi har kollat kurvan men inte hittat någon anledning att ändra kartan, så vi låter den vara som den är.","mm-rail-done":"Tack! Vi har lagt till järnvägsövergången på kartan, så appen varnar förare för den.","mm-rail-none":"Tack för rapporten! Vi har kollat men kunde inte se någon järnvägsövergång här, så vi låter kartan vara som den är.","mm-camera-done":"Tack! Vi har lagt till fartkameran på kartan.","mm-camera-none":"Tack för rapporten! Vi har kollat men kunde inte bekräfta någon fartkamera här, så vi låter kartan vara som den är.","mm-done":"Tack! Vi har uppdaterat kartan här. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","mm-none":"Tack för rapporten! Vi har kollat kartan här men inte hittat något att ändra, så vi låter den vara som den är."},"lt":{"t-turn-ask":"Ačiū už pranešimą! Apie kurį posūkį kalbate: iš kurios gatvės į kurią ir kuria kryptimi važiavote?","t-turn-done":"Ačiū! Pataisėme šį posūkį žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-address-ask":"Ačiū už pranešimą! Koks yra teisingas adresas ar gatvės pavadinimas ir į kurią vietą norėjote nuvykti?","t-address-done":"Ačiū! Pataisėme adresą žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-route-ask":"Ačiū už pranešimą! Iš kur išvykote, kur važiavote ir kokiu keliu tikėjotės, kad programėlė jus nuves?","t-route-done":"Ačiū už pranešimą! Patikrinome žemėlapį šioje vietoje ir jis teisingas. Programėlė maršrutą parenka pagal eismą realiuoju laiku, todėl jis kiekvieną dieną gali skirtis.","t-roundabout-ask":"Ačiū už pranešimą! Kuri sankryža turėtų būti žiedinė? Ten susikertančių gatvių pavadinimai padės mums ją rasti.","t-roundabout-done":"Ačiū! Pažymėjome žiedinę sankryžą žemėlapyje. Programėlėje ji bus matoma po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-general-ask":"Ačiū už pranešimą! Ar galite papasakoti šiek tiek daugiau, kas buvo negerai ir kur tiksliai?","t-junction-ask":"Ačiū už pranešimą! Kuri tai buvo sankryža, nuovaža ar tiltas ir kuria kryptimi važiavote?","t-junction-done":"Ačiū! Pataisėme sankryžą žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-direction-ask":"Ačiū už pranešimą! Kuri tai gatvė ir kuria kryptimi joje iš tikrųjų leidžiamas eismas?","t-direction-done":"Ačiū! Pataisėme eismo kryptį žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-road-ask":"Ačiū už pranešimą! Kaip vadinasi kelias, kur jis prasideda ir baigiasi, ir ar juo gali važiuoti visi?","t-road-done":"Ačiū! Įtraukėme kelią į žemėlapį. Programėlėje jis bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-landmark-ask":"Ačiū už pranešimą! Kaip vadinasi ta vieta ir kur tiksliai ji yra?","t-landmark-done":"Ačiū! Įtraukėme vietą į žemėlapį. Programėlėje ji bus matoma po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-blocked-ask":"Ačiū už pranešimą! Ar kelias uždarytas visam laikui, ar laikinai? Jei žinote, iki kada, tai labai padėtų.","t-blocked-done":"Ačiū! Pažymėjome uždarymą žemėlapyje, todėl programėlė parinks maršrutą jį aplenkdama.","t-speed-ask":"Ačiū už pranešimą! Koks greičio apribojimas ten nurodytas ženklu ir kuria kryptimi?","t-speed-done":"Ačiū! Atnaujinome greičio apribojimą žemėlapyje. Programėlėje jis bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","nothing":"Ačiū už pranešimą! Patikrinome žemėlapį šioje vietoje ir klaidų neradome, todėl palikome jį tokį, koks yra. Jei tai pasikartos, atsiųskite naują pranešimą iš tos vietos.","mm-ask":"Ačiū už pranešimą! Ar galite papasakoti šiek tiek daugiau: kur tiksliai tai yra ir kuria kryptimi važiavote?","mm-bump-done":"Ačiū! Pažymėjome greičio mažinimo kalnelį žemėlapyje, todėl programėlė apie jį įspės vairuotojus.","mm-bump-none":"Ačiū už pranešimą! Patikrinome, bet greičio mažinimo kalnelio čia nepastebėjome, todėl žemėlapį palikome tokį, koks yra.","mm-light-done":"Ačiū! Pažymėjome šviesoforą žemėlapyje.","mm-light-none":"Ačiū už pranešimą! Patikrinome, bet šviesoforo čia nepastebėjome, todėl žemėlapį palikome tokį, koks yra.","mm-curve-done":"Ačiū! Pažymėjome pavojingą posūkį žemėlapyje, todėl programėlė apie jį įspės vairuotojus.","mm-curve-none":"Ačiū už pranešimą! Patikrinome šį posūkį ir neradome priežasties keisti žemėlapį, todėl palikome jį tokį, koks yra.","mm-rail-done":"Ačiū! Pažymėjome geležinkelio pervažą žemėlapyje, todėl programėlė apie ją įspės vairuotojus.","mm-rail-none":"Ačiū už pranešimą! Patikrinome, bet geležinkelio pervažos čia nepastebėjome, todėl žemėlapį palikome tokį, koks yra.","mm-camera-done":"Ačiū! Pažymėjome greičio matuoklį žemėlapyje.","mm-camera-none":"Ačiū už pranešimą! Patikrinome, bet negalėjome patvirtinti, kad čia yra greičio matuoklis, todėl žemėlapį palikome tokį, koks yra.","mm-done":"Ačiū! Atnaujinome žemėlapį šioje vietoje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","mm-none":"Ačiū už pranešimą! Patikrinome žemėlapį šioje vietoje ir neradome nieko, ką reikėtų keisti, todėl palikome jį tokį, koks yra."},"ms":{"t-turn-ask":"Terima kasih atas laporan anda! Belokan yang mana satu: dari jalan mana ke jalan mana, dan ke arah mana anda memandu?","t-turn-done":"Terima kasih! Kami telah membetulkan belokan itu di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-address-ask":"Terima kasih atas laporan anda! Apakah alamat atau nama jalan yang betul, dan ke tempat mana anda hendak pergi?","t-address-done":"Terima kasih! Kami telah membetulkan alamat itu di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-route-ask":"Terima kasih atas laporan anda! Dari mana anda bermula, ke mana anda hendak pergi, dan ikut jalan mana yang anda jangka aplikasi akan bawa anda?","t-route-done":"Terima kasih atas laporan anda! Kami telah menyemak peta di sini dan ia betul. Aplikasi memilih laluan berdasarkan trafik semasa, jadi laluannya mungkin berbeza dari hari ke hari.","t-roundabout-ask":"Terima kasih atas laporan anda! Persimpangan mana yang sepatutnya menjadi bulatan? Nama jalan yang bertemu di situ membantu kami mencarinya.","t-roundabout-done":"Terima kasih! Kami telah menambah bulatan itu ke peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-general-ask":"Terima kasih atas laporan anda! Boleh beritahu kami sedikit lagi tentang apa yang salah, dan di mana tepatnya?","t-junction-ask":"Terima kasih atas laporan anda! Persimpangan, susur keluar atau jambatan yang mana, dan ke arah mana anda memandu?","t-junction-done":"Terima kasih! Kami telah membetulkan persimpangan itu di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-direction-ask":"Terima kasih atas laporan anda! Jalan yang mana, dan ke arah mana sebenarnya ia dibuka kepada lalu lintas?","t-direction-done":"Terima kasih! Kami telah membetulkan arah pemanduan di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-road-ask":"Terima kasih atas laporan anda! Apakah nama jalan itu, di mana ia bermula dan berakhir, dan adakah ia dibuka kepada semua?","t-road-done":"Terima kasih! Kami telah menambah jalan itu ke peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-landmark-ask":"Terima kasih atas laporan anda! Apakah nama tempat itu, dan di mana tepatnya ia terletak?","t-landmark-done":"Terima kasih! Kami telah menambah tempat itu ke peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-blocked-ask":"Terima kasih atas laporan anda! Adakah jalan itu ditutup terus atau buat sementara? Jika anda tahu sehingga bila, itu sangat membantu.","t-blocked-done":"Terima kasih! Kami telah menambah penutupan jalan itu ke peta, jadi aplikasi akan memilih laluan lain.","t-speed-ask":"Terima kasih atas laporan anda! Berapakah had laju yang dipaparkan pada papan tanda di situ, dan untuk arah mana?","t-speed-done":"Terima kasih! Kami telah mengemas kini had laju di peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","nothing":"Terima kasih atas laporan anda! Kami telah menyemak peta di sini dan tidak menemui sebarang kesilapan, jadi kami membiarkannya seperti sedia ada. Jika ia berlaku lagi, sila hantar laporan baharu dari lokasi itu.","mm-ask":"Terima kasih atas laporan anda! Boleh beritahu kami sedikit lagi: di mana tepatnya, dan ke arah mana anda memandu?","mm-bump-done":"Terima kasih! Kami telah menambah bonggol jalan itu ke peta, jadi aplikasi akan memberi amaran kepada pemandu.","mm-bump-none":"Terima kasih atas laporan anda! Kami telah menyemak dan tidak nampak sebarang bonggol jalan di sini, jadi kami membiarkan peta seperti sedia ada.","mm-light-done":"Terima kasih! Kami telah menambah lampu isyarat itu ke peta.","mm-light-none":"Terima kasih atas laporan anda! Kami telah menyemak dan tidak nampak sebarang lampu isyarat di sini, jadi kami membiarkan peta seperti sedia ada.","mm-curve-done":"Terima kasih! Kami telah menandakan selekoh berbahaya itu di peta, jadi aplikasi akan memberi amaran kepada pemandu.","mm-curve-none":"Terima kasih atas laporan anda! Kami telah menyemak selekoh ini dan tidak menemui sebab untuk mengubah peta, jadi kami membiarkannya seperti sedia ada.","mm-rail-done":"Terima kasih! Kami telah menambah lintasan kereta api itu ke peta, jadi aplikasi akan memberi amaran kepada pemandu.","mm-rail-none":"Terima kasih atas laporan anda! Kami telah menyemak dan tidak nampak sebarang lintasan kereta api di sini, jadi kami membiarkan peta seperti sedia ada.","mm-camera-done":"Terima kasih! Kami telah menambah kamera had laju itu ke peta.","mm-camera-none":"Terima kasih atas laporan anda! Kami telah menyemak tetapi tidak dapat mengesahkan adanya kamera had laju di sini, jadi kami membiarkan peta seperti sedia ada.","mm-done":"Terima kasih! Kami telah mengemas kini peta di sini. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","mm-none":"Terima kasih atas laporan anda! Kami telah menyemak peta di sini dan tidak menemui apa-apa yang perlu diubah, jadi kami membiarkannya seperti sedia ada."},"ca":{"t-turn-ask":"Gràcies per l’avís! Quin gir era: de quin carrer a quin, i en quin sentit circulaves?","t-turn-done":"Gràcies! Hem corregit aquest gir al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-address-ask":"Gràcies per l’avís! Quina és l’adreça o el nom del carrer correcte, i a quin lloc volies arribar?","t-address-done":"Gràcies! Hem corregit l’adreça al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-route-ask":"Gràcies per l’avís! D’on sorties, on anaves i per on esperaves que et portés l’app?","t-route-done":"Gràcies per l’avís! Hem revisat el mapa aquí i és correcte. L’app tria la ruta segons el trànsit en temps real, així que pot variar d’un dia a l’altre.","t-roundabout-ask":"Gràcies per l’avís! Quina cruïlla hauria de ser una rotonda? Els carrers que s’hi troben ens ajuden a localitzar-la.","t-roundabout-done":"Gràcies! Hem afegit la rotonda al mapa. L’app la mostrarà després de la propera actualització del mapa, normalment en pocs dies.","t-general-ask":"Gràcies per l’avís! Ens pots explicar una mica més què no anava bé, i on exactament?","t-junction-ask":"Gràcies per l’avís! Quina cruïlla, sortida o pont era, i en quin sentit circulaves?","t-junction-done":"Gràcies! Hem corregit la cruïlla al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-direction-ask":"Gràcies per l’avís! Quin carrer era, i en quin sentit està obert realment al trànsit?","t-direction-done":"Gràcies! Hem corregit el sentit de circulació al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-road-ask":"Gràcies per l’avís! Com es diu la via, on comença i on acaba, i és oberta a tothom?","t-road-done":"Gràcies! Hem afegit la via al mapa. L’app la mostrarà després de la propera actualització del mapa, normalment en pocs dies.","t-landmark-ask":"Gràcies per l’avís! Com es diu el lloc, i on és exactament?","t-landmark-done":"Gràcies! Hem afegit el lloc al mapa. Apareixerà a l’app després de la propera actualització del mapa, normalment en pocs dies.","t-blocked-ask":"Gràcies per l’avís! La via està tallada definitivament o només durant un temps? Si saps fins quan, ens ajuda molt.","t-blocked-done":"Gràcies! Hem afegit el tall al mapa, així que l’app proposarà rutes que l’evitin.","t-speed-ask":"Gràcies per l’avís! Quin límit de velocitat hi ha senyalitzat, i per a quin sentit?","t-speed-done":"Gràcies! Hem actualitzat el límit de velocitat al mapa. L’app el mostrarà després de la propera actualització del mapa, normalment en pocs dies.","nothing":"Gràcies per l’avís! Hem revisat el mapa aquí i no hi hem trobat res malament, així que l’hem deixat tal com estava. Si torna a passar, envia un avís nou des del mateix lloc.","mm-ask":"Gràcies per l’avís! Ens pots explicar una mica més: on és exactament i en quin sentit circulaves?","mm-bump-done":"Gràcies! Hem afegit el ressalt al mapa, així que l’app n’avisarà els conductors.","mm-bump-none":"Gràcies per l’avís! Ho hem revisat i no hi hem vist cap ressalt, així que hem deixat el mapa tal com estava.","mm-light-done":"Gràcies! Hem afegit el semàfor al mapa.","mm-light-none":"Gràcies per l’avís! Ho hem revisat i no hi hem vist cap semàfor, així que hem deixat el mapa tal com estava.","mm-curve-done":"Gràcies! Hem marcat el revolt perillós al mapa, així que l’app n’avisarà els conductors.","mm-curve-none":"Gràcies per l’avís! Hem revisat aquest revolt i no hem trobat cap motiu per canviar el mapa, així que l’hem deixat tal com estava.","mm-rail-done":"Gràcies! Hem afegit el pas a nivell al mapa, així que l’app n’avisarà els conductors.","mm-rail-none":"Gràcies per l’avís! Ho hem revisat i no hi hem vist cap pas a nivell, així que hem deixat el mapa tal com estava.","mm-camera-done":"Gràcies! Hem afegit el radar al mapa.","mm-camera-none":"Gràcies per l’avís! Ho hem revisat i no hem pogut confirmar que hi hagi un radar, així que hem deixat el mapa tal com estava.","mm-done":"Gràcies! Hem actualitzat el mapa aquí. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","mm-none":"Gràcies per l’avís! Hem revisat el mapa aquí i no hi hem trobat res a canviar, així que l’hem deixat tal com estava."},"fr":{"t-turn-ask":"Merci pour le signalement ! Où fallait-il tourner : de quelle rue vers quelle rue, et dans quel sens rouliez-vous ?","t-turn-done":"Merci ! Nous avons corrigé ce changement de direction sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-address-ask":"Merci pour le signalement ! Quelle est la bonne adresse ou le bon nom de rue, et quel lieu cherchiez-vous à rejoindre ?","t-address-done":"Merci ! Nous avons corrigé l’adresse sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-route-ask":"Merci pour le signalement ! D’où êtes-vous parti, où alliez-vous, et par où pensiez-vous que l’appli vous ferait passer ?","t-route-done":"Merci pour le signalement ! Nous avons vérifié la carte ici et elle est correcte. L’appli choisit l’itinéraire en fonction du trafic en temps réel, il peut donc varier d’un jour à l’autre.","t-roundabout-ask":"Merci pour le signalement ! Quel carrefour devrait être un rond-point ? Le nom des rues qui s’y croisent nous aide à le trouver.","t-roundabout-done":"Merci ! Nous avons ajouté le rond-point sur la carte. L’appli l’affichera après la prochaine mise à jour de la carte, en général sous quelques jours.","t-general-ask":"Merci pour le signalement ! Pouvez-vous nous en dire un peu plus sur le problème, et où exactement ?","t-junction-ask":"Merci pour le signalement ! De quel carrefour, sortie ou pont s’agit-il, et dans quel sens rouliez-vous ?","t-junction-done":"Merci ! Nous avons corrigé le carrefour sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-direction-ask":"Merci pour le signalement ! De quelle rue s’agit-il, et dans quel sens la circulation y est-elle réellement autorisée ?","t-direction-done":"Merci ! Nous avons corrigé le sens de circulation sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-road-ask":"Merci pour le signalement ! Comment s’appelle la route, où commence-t-elle et où finit-elle, et est-elle ouverte à tous ?","t-road-done":"Merci ! Nous avons ajouté la route sur la carte. L’appli l’affichera après la prochaine mise à jour de la carte, en général sous quelques jours.","t-landmark-ask":"Merci pour le signalement ! Comment s’appelle ce lieu, et où se trouve-t-il exactement ?","t-landmark-done":"Merci ! Nous avons ajouté le lieu sur la carte. Il apparaîtra dans l’appli après la prochaine mise à jour de la carte, en général sous quelques jours.","t-blocked-ask":"Merci pour le signalement ! La route est-elle fermée définitivement ou temporairement ? Si vous savez jusqu’à quand, cela nous aide beaucoup.","t-blocked-done":"Merci ! Nous avons ajouté la fermeture sur la carte, l’appli la contourne donc désormais.","t-speed-ask":"Merci pour le signalement ! Quelle limitation de vitesse est indiquée à cet endroit, et dans quel sens ?","t-speed-done":"Merci ! Nous avons mis à jour la limitation de vitesse sur la carte. L’appli l’affichera après la prochaine mise à jour de la carte, en général sous quelques jours.","nothing":"Merci pour le signalement ! Nous avons vérifié la carte ici sans rien trouver d’anormal, nous l’avons donc laissée telle quelle. Si cela se reproduit, envoyez un nouveau signalement depuis l’endroit.","mm-ask":"Merci pour le signalement ! Pouvez-vous nous en dire un peu plus : où exactement, et dans quel sens rouliez-vous ?","mm-bump-done":"Merci ! Nous avons ajouté le ralentisseur sur la carte, l’appli avertira donc les conducteurs.","mm-bump-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas vu de ralentisseur ici, nous avons donc laissé la carte telle quelle.","mm-light-done":"Merci ! Nous avons ajouté les feux tricolores sur la carte.","mm-light-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas vu de feux tricolores ici, nous avons donc laissé la carte telle quelle.","mm-curve-done":"Merci ! Nous avons signalé le virage dangereux sur la carte, l’appli avertira donc les conducteurs.","mm-curve-none":"Merci pour le signalement ! Nous avons vérifié ce virage et n’avons trouvé aucune raison de modifier la carte, nous l’avons donc laissée telle quelle.","mm-rail-done":"Merci ! Nous avons ajouté le passage à niveau sur la carte, l’appli avertira donc les conducteurs.","mm-rail-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas vu de passage à niveau ici, nous avons donc laissé la carte telle quelle.","mm-camera-done":"Merci ! Nous avons ajouté le radar sur la carte.","mm-camera-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas pu confirmer la présence d’un radar ici, nous avons donc laissé la carte telle quelle.","mm-done":"Merci ! Nous avons corrigé la carte à cet endroit. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","mm-none":"Merci pour le signalement ! Nous avons vérifié la carte ici et n’avons rien trouvé à modifier, nous l’avons donc laissée telle quelle."},"pl":{"t-turn-ask":"Dziękujemy za zgłoszenie! O który skręt chodzi: z jakiej ulicy w jaką i w którym kierunku jazdy?","t-turn-done":"Dziękujemy! Poprawiliśmy ten skręt na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-address-ask":"Dziękujemy za zgłoszenie! Jaki jest prawidłowy adres lub nazwa ulicy i o jakie miejsce chodzi?","t-address-done":"Dziękujemy! Poprawiliśmy adres na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-route-ask":"Dziękujemy za zgłoszenie! Skąd i dokąd była trasa i którędy, twoim zdaniem, aplikacja powinna cię poprowadzić?","t-route-done":"Dziękujemy za zgłoszenie! Sprawdziliśmy mapę w tym miejscu i wszystko się zgadza. Aplikacja wybiera trasę na podstawie bieżącego ruchu, więc może się ona różnić z dnia na dzień.","t-roundabout-ask":"Dziękujemy za zgłoszenie! Które skrzyżowanie powinno być rondem? Nazwy ulic, które się tam spotykają, pomogą nam je znaleźć.","t-roundabout-done":"Dziękujemy! Dodaliśmy rondo do mapy. Aplikacja pokaże je po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-general-ask":"Dziękujemy za zgłoszenie! Czy możesz napisać trochę więcej o tym, co było nie tak i gdzie dokładnie?","t-junction-ask":"Dziękujemy za zgłoszenie! O które skrzyżowanie, zjazd lub most chodzi i w którym kierunku jazdy?","t-junction-done":"Dziękujemy! Poprawiliśmy skrzyżowanie na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-direction-ask":"Dziękujemy za zgłoszenie! O którą ulicę chodzi i w którym kierunku ruch jest na niej faktycznie dozwolony?","t-direction-done":"Dziękujemy! Poprawiliśmy kierunek ruchu na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-road-ask":"Dziękujemy za zgłoszenie! Jak nazywa się ta droga, gdzie się zaczyna i kończy i czy jest dostępna dla wszystkich?","t-road-done":"Dziękujemy! Dodaliśmy drogę do mapy. Aplikacja pokaże ją po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-landmark-ask":"Dziękujemy za zgłoszenie! Jak nazywa się to miejsce i gdzie dokładnie się znajduje?","t-landmark-done":"Dziękujemy! Dodaliśmy to miejsce do mapy. Pojawi się w aplikacji po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-blocked-ask":"Dziękujemy za zgłoszenie! Czy droga jest zamknięta na stałe, czy tymczasowo? Jeśli wiesz, do kiedy, bardzo nam to pomoże.","t-blocked-done":"Dziękujemy! Dodaliśmy zamknięcie do mapy, więc aplikacja będzie je omijać.","t-speed-ask":"Dziękujemy za zgłoszenie! Jakie ograniczenie prędkości jest tam na znaku i dla którego kierunku?","t-speed-done":"Dziękujemy! Zaktualizowaliśmy ograniczenie prędkości na mapie. Aplikacja pokaże je po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","nothing":"Dziękujemy za zgłoszenie! Sprawdziliśmy mapę w tym miejscu i nie znaleźliśmy błędu, więc zostawiliśmy ją bez zmian. Jeśli to się powtórzy, wyślij nowe zgłoszenie z tego miejsca.","mm-ask":"Dziękujemy za zgłoszenie! Czy możesz napisać trochę więcej: gdzie dokładnie to jest i w którym kierunku jazdy?","mm-bump-done":"Dziękujemy! Dodaliśmy próg zwalniający do mapy, więc aplikacja ostrzeże przed nim kierowców.","mm-bump-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie widzimy tu progu zwalniającego, więc zostawiliśmy mapę bez zmian.","mm-light-done":"Dziękujemy! Dodaliśmy sygnalizację świetlną do mapy.","mm-light-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie widzimy tu sygnalizacji świetlnej, więc zostawiliśmy mapę bez zmian.","mm-curve-done":"Dziękujemy! Oznaczyliśmy na mapie niebezpieczny zakręt, więc aplikacja ostrzeże przed nim kierowców.","mm-curve-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy ten zakręt i nie znaleźliśmy powodu, by zmieniać mapę, więc zostawiliśmy ją bez zmian.","mm-rail-done":"Dziękujemy! Dodaliśmy przejazd kolejowy do mapy, więc aplikacja ostrzeże przed nim kierowców.","mm-rail-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie widzimy tu przejazdu kolejowego, więc zostawiliśmy mapę bez zmian.","mm-camera-done":"Dziękujemy! Dodaliśmy fotoradar do mapy.","mm-camera-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie udało nam się potwierdzić, że jest tu fotoradar, więc zostawiliśmy mapę bez zmian.","mm-done":"Dziękujemy! Zaktualizowaliśmy mapę w tym miejscu. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","mm-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy mapę w tym miejscu i nie znaleźliśmy nic do zmiany, więc zostawiliśmy ją bez zmian."},"uk":{"t-turn-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, про який поворот ідеться: з якої вулиці на яку і в якому напрямку ви їхали?","t-turn-done":"Дякуємо! Ми виправили цей поворот на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-address-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, яка правильна адреса чи назва вулиці і куди саме ви хотіли потрапити?","t-address-done":"Дякуємо! Ми виправили адресу на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-route-ask":"Дякуємо за повідомлення! Звідки й куди ви їхали і яким шляхом, на вашу думку, мав вести застосунок?","t-route-done":"Дякуємо за повідомлення! Ми перевірили карту в цьому місці, і з нею все гаразд. Застосунок обирає маршрут з урахуванням поточного трафіку, тому він може відрізнятися з дня на день.","t-roundabout-ask":"Дякуємо за повідомлення! Яке перехрестя має бути з круговим рухом? Назви вулиць, що там сходяться, допоможуть нам його знайти.","t-roundabout-done":"Дякуємо! Ми позначили на карті перехрестя з круговим рухом. Воно з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-general-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, трохи докладніше, що саме було не так і де саме?","t-junction-ask":"Дякуємо за повідомлення! Про яке перехрестя, з’їзд чи міст ідеться і в якому напрямку ви їхали?","t-junction-done":"Дякуємо! Ми виправили перехрестя на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-direction-ask":"Дякуємо за повідомлення! Про яку вулицю йдеться і в якому напрямку рух нею насправді дозволений?","t-direction-done":"Дякуємо! Ми виправили напрямок руху на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-road-ask":"Дякуємо за повідомлення! Як називається дорога, де вона починається й закінчується і чи відкрита вона для всіх?","t-road-done":"Дякуємо! Ми додали дорогу на карту. Вона з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-landmark-ask":"Дякуємо за повідомлення! Як називається це місце і де саме воно розташоване?","t-landmark-done":"Дякуємо! Ми додали це місце на карту. Воно з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-blocked-ask":"Дякуємо за повідомлення! Дорогу закрито назовсім чи тимчасово? Якщо знаєте, до якого часу, це дуже допоможе.","t-blocked-done":"Дякуємо! Ми додали перекриття на карту, тож застосунок прокладатиме маршрут в об’їзд.","t-speed-ask":"Дякуємо за повідомлення! Яке обмеження швидкості вказано на знаку і для якого напрямку?","t-speed-done":"Дякуємо! Ми оновили обмеження швидкості на карті. Воно з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","nothing":"Дякуємо за повідомлення! Ми перевірили карту в цьому місці й не знайшли помилок, тому залишили все як є. Якщо це повториться, надішліть, будь ласка, нове повідомлення з того місця.","mm-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, трохи більше: де саме це місце і в якому напрямку ви їхали?","mm-bump-done":"Дякуємо! Ми додали «лежачого поліцейського» на карту, тож застосунок попереджатиме про нього водіїв.","mm-bump-none":"Дякуємо за повідомлення! Ми перевірили й не побачили тут «лежачого поліцейського», тому залишили карту без змін.","mm-light-done":"Дякуємо! Ми додали світлофор на карту.","mm-light-none":"Дякуємо за повідомлення! Ми перевірили й не побачили тут світлофора, тому залишили карту без змін.","mm-curve-done":"Дякуємо! Ми позначили на карті небезпечний поворот, тож застосунок попереджатиме про нього водіїв.","mm-curve-none":"Дякуємо за повідомлення! Ми перевірили цей поворот і не знайшли причин змінювати карту, тому залишили все як є.","mm-rail-done":"Дякуємо! Ми додали залізничний переїзд на карту, тож застосунок попереджатиме про нього водіїв.","mm-rail-none":"Дякуємо за повідомлення! Ми перевірили й не побачили тут залізничного переїзду, тому залишили карту без змін.","mm-camera-done":"Дякуємо! Ми додали камеру контролю швидкості на карту.","mm-camera-none":"Дякуємо за повідомлення! Ми перевірили й не змогли підтвердити, що тут є камера контролю швидкості, тому залишили карту без змін.","mm-done":"Дякуємо! Ми оновили карту в цьому місці. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","mm-none":"Дякуємо за повідомлення! Ми перевірили карту в цьому місці й не знайшли, що змінювати, тому залишили все як є."},"ro":{"t-turn-ask":"Mulțumim pentru raportare! Despre ce viraj e vorba: de pe ce stradă pe ce stradă și în ce direcție mergeai?","t-turn-done":"Mulțumim! Am corectat virajul pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-address-ask":"Mulțumim pentru raportare! Care este adresa sau numele corect al străzii și unde voiai să ajungi?","t-address-done":"Mulțumim! Am corectat adresa pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-route-ask":"Mulțumim pentru raportare! De unde ai plecat, unde mergeai și pe ce traseu te așteptai să te ducă aplicația?","t-route-done":"Mulțumim pentru raportare! Am verificat harta aici și este corectă. Aplicația alege traseul în funcție de traficul în timp real, așa că poate diferi de la o zi la alta.","t-roundabout-ask":"Mulțumim pentru raportare! Ce intersecție ar trebui să fie sens giratoriu? Numele străzilor care se întâlnesc acolo ne ajută să o găsim.","t-roundabout-done":"Mulțumim! Am adăugat sensul giratoriu pe hartă. Aplicația îl va arăta după următoarea actualizare a hărții, de obicei în câteva zile.","t-general-ask":"Mulțumim pentru raportare! Ne poți spune puțin mai multe despre ce nu era în regulă și unde exact?","t-junction-ask":"Mulțumim pentru raportare! Despre ce intersecție, ieșire sau pod e vorba și în ce direcție mergeai?","t-junction-done":"Mulțumim! Am corectat intersecția pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-direction-ask":"Mulțumim pentru raportare! Despre ce stradă e vorba și în ce sens se circulă de fapt pe ea?","t-direction-done":"Mulțumim! Am corectat sensul de circulație pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-road-ask":"Mulțumim pentru raportare! Cum se numește drumul, unde începe și unde se termină și este deschis tuturor?","t-road-done":"Mulțumim! Am adăugat drumul pe hartă. Aplicația îl va arăta după următoarea actualizare a hărții, de obicei în câteva zile.","t-landmark-ask":"Mulțumim pentru raportare! Cum se numește locul și unde exact se află?","t-landmark-done":"Mulțumim! Am adăugat locul pe hartă. Va apărea în aplicație după următoarea actualizare a hărții, de obicei în câteva zile.","t-blocked-ask":"Mulțumim pentru raportare! Drumul este închis definitiv sau temporar? Dacă știi până când, ne ajută mult.","t-blocked-done":"Mulțumim! Am adăugat închiderea pe hartă, așa că aplicația o va ocoli.","t-speed-ask":"Mulțumim pentru raportare! Ce limită de viteză este afișată acolo și pentru ce sens?","t-speed-done":"Mulțumim! Am actualizat limita de viteză pe hartă. Aplicația o va arăta după următoarea actualizare a hărții, de obicei în câteva zile.","nothing":"Mulțumim pentru raportare! Am verificat harta aici și nu am găsit nicio problemă, așa că am lăsat-o așa cum este. Dacă se întâmplă din nou, te rugăm să trimiți un raport nou chiar din locul respectiv.","mm-ask":"Mulțumim pentru raportare! Ne poți spune puțin mai multe: unde exact este și în ce direcție mergeai?","mm-bump-done":"Mulțumim! Am adăugat limitatorul de viteză pe hartă, așa că aplicația îi va avertiza pe șoferi.","mm-bump-none":"Mulțumim pentru raportare! Am verificat și nu am văzut niciun limitator de viteză aici, așa că am lăsat harta așa cum este.","mm-light-done":"Mulțumim! Am adăugat semaforul pe hartă.","mm-light-none":"Mulțumim pentru raportare! Am verificat și nu am văzut niciun semafor aici, așa că am lăsat harta așa cum este.","mm-curve-done":"Mulțumim! Am marcat curba periculoasă pe hartă, așa că aplicația îi va avertiza pe șoferi.","mm-curve-none":"Mulțumim pentru raportare! Am verificat această curbă și nu am găsit niciun motiv să modificăm harta, așa că am lăsat-o așa cum este.","mm-rail-done":"Mulțumim! Am adăugat trecerea la nivel cu calea ferată pe hartă, așa că aplicația îi va avertiza pe șoferi.","mm-rail-none":"Mulțumim pentru raportare! Am verificat și nu am văzut nicio trecere la nivel cu calea ferată aici, așa că am lăsat harta așa cum este.","mm-camera-done":"Mulțumim! Am adăugat radarul pe hartă.","mm-camera-none":"Mulțumim pentru raportare! Am verificat și nu am putut confirma un radar aici, așa că am lăsat harta așa cum este.","mm-done":"Mulțumim! Am actualizat harta aici. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","mm-none":"Mulțumim pentru raportare! Am verificat harta aici și nu am găsit nimic de schimbat, așa că am lăsat-o așa cum este."},"sl":{"t-turn-ask":"Hvala za prijavo! Za kateri zavoj gre: s katere ulice na katero in v katero smer ste vozili?","t-turn-done":"Hvala! Ta zavoj smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-address-ask":"Hvala za prijavo! Kateri je pravilni naslov ali ime ulice in kam ste želeli priti?","t-address-done":"Hvala! Naslov smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-route-ask":"Hvala za prijavo! Od kod ste šli, kam ste bili namenjeni in po kateri poti ste pričakovali, da vas bo vodila aplikacija?","t-route-done":"Hvala za prijavo! Zemljevid smo na tem mestu preverili in je pravilen. Aplikacija izbira pot glede na promet v živo, zato se lahko iz dneva v dan razlikuje.","t-roundabout-ask":"Hvala za prijavo! Katero križišče bi moralo biti krožišče? Imena ulic, ki se tam stikajo, nam pomagajo najti mesto.","t-roundabout-done":"Hvala! Krožišče smo dodali na zemljevid. Aplikacija ga bo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-general-ask":"Hvala za prijavo! Nam lahko poveste malo več o tem, kaj je bilo narobe in kje točno?","t-junction-ask":"Hvala za prijavo! Za katero križišče, izvoz ali most gre in v katero smer ste vozili?","t-junction-done":"Hvala! Križišče smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-direction-ask":"Hvala za prijavo! Za katero ulico gre in v katero smer je promet po njej v resnici dovoljen?","t-direction-done":"Hvala! Smer vožnje smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-road-ask":"Hvala za prijavo! Kako se cesta imenuje, kje se začne in konča ter ali je odprta za vse?","t-road-done":"Hvala! Cesto smo dodali na zemljevid. Aplikacija jo bo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-landmark-ask":"Hvala za prijavo! Kako se imenuje ta lokacija in kje točno se nahaja?","t-landmark-done":"Hvala! Lokacijo smo dodali na zemljevid. V aplikaciji bo vidna po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-blocked-ask":"Hvala za prijavo! Je cesta zaprta za stalno ali začasno? Če veste, do kdaj, nam to zelo pomaga.","t-blocked-done":"Hvala! Zaporo smo dodali na zemljevid, zato jo aplikacija zdaj obide.","t-speed-ask":"Hvala za prijavo! Kakšna omejitev hitrosti je tam označena in za katero smer?","t-speed-done":"Hvala! Omejitev hitrosti smo na zemljevidu posodobili. Aplikacija jo bo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","nothing":"Hvala za prijavo! Zemljevid smo na tem mestu preverili in nismo našli napake, zato smo ga pustili, kot je. Če se ponovi, pošljite novo prijavo kar s tistega mesta.","mm-ask":"Hvala za prijavo! Nam lahko poveste malo več: kje točno je to in v katero smer ste vozili?","mm-bump-done":"Hvala! Hitrostno oviro smo dodali na zemljevid, zato bo aplikacija nanjo opozorila voznike.","mm-bump-none":"Hvala za prijavo! Preverili smo in tu nismo videli hitrostne ovire, zato smo zemljevid pustili, kot je.","mm-light-done":"Hvala! Semafor smo dodali na zemljevid.","mm-light-none":"Hvala za prijavo! Preverili smo in tu nismo videli semaforja, zato smo zemljevid pustili, kot je.","mm-curve-done":"Hvala! Nevaren ovinek smo označili na zemljevidu, zato bo aplikacija nanj opozorila voznike.","mm-curve-none":"Hvala za prijavo! Ta ovinek smo preverili in nismo našli razloga za spremembo zemljevida, zato smo ga pustili, kot je.","mm-rail-done":"Hvala! Železniški prehod smo dodali na zemljevid, zato bo aplikacija nanj opozorila voznike.","mm-rail-none":"Hvala za prijavo! Preverili smo in tu nismo videli železniškega prehoda, zato smo zemljevid pustili, kot je.","mm-camera-done":"Hvala! Radar smo dodali na zemljevid.","mm-camera-none":"Hvala za prijavo! Preverili smo, a radarja tu nismo mogli potrditi, zato smo zemljevid pustili, kot je.","mm-done":"Hvala! Zemljevid smo na tem mestu posodobili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","mm-none":"Hvala za prijavo! Zemljevid smo na tem mestu preverili in nismo našli ničesar za spremembo, zato smo ga pustili, kot je."},"zh":{"t-turn-ask":"感谢您的报告！是哪个转弯：从哪条街转到哪条街，您当时往哪个方向行驶？","t-turn-done":"谢谢！我们已在地图上修正了这个转弯。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-address-ask":"感谢您的报告！正确的地址或街道名称是什么？您当时想去哪个地方？","t-address-done":"谢谢！我们已在地图上修正了地址。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-route-ask":"感谢您的报告！您从哪里出发、要去哪里，原本希望应用带您走哪条路线？","t-route-done":"感谢您的报告！我们检查了这里的地图，没有问题。应用会根据实时路况选择路线，所以每天的路线可能不同。","t-roundabout-ask":"感谢您的报告！哪个路口应该是环岛？在那里交汇的街道名称能帮助我们找到位置。","t-roundabout-done":"谢谢！我们已在地图上添加了环岛。下次地图更新后，应用中就会显示，通常在几天内。","t-general-ask":"感谢您的报告！能否再详细说说是哪里有问题、具体在什么位置？","t-junction-ask":"感谢您的报告！是哪个路口、出口或桥梁？您当时往哪个方向行驶？","t-junction-done":"谢谢！我们已在地图上修正了这个路口。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-direction-ask":"感谢您的报告！是哪条街道？它实际允许往哪个方向通行？","t-direction-done":"谢谢！我们已在地图上修正了行驶方向。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-road-ask":"感谢您的报告！这条道路叫什么名字，起点和终点在哪里，是否对所有人开放？","t-road-done":"谢谢！我们已在地图上添加了这条道路。下次地图更新后，应用中就会显示，通常在几天内。","t-landmark-ask":"感谢您的报告！这个地点叫什么名字，具体在哪里？","t-landmark-done":"谢谢！我们已在地图上添加了这个地点。下次地图更新后，应用中就会显示，通常在几天内。","t-blocked-ask":"感谢您的报告！这条路是永久封闭还是临时封闭？如果您知道封到什么时候，会对我们很有帮助。","t-blocked-done":"谢谢！我们已在地图上添加了封路信息，应用会绕开这里规划路线。","t-speed-ask":"感谢您的报告！那里标示的限速是多少，适用于哪个方向？","t-speed-done":"谢谢！我们已在地图上更新了限速。下次地图更新后，应用中就会显示，通常在几天内。","nothing":"感谢您的报告！我们检查了这里的地图，没有发现问题，所以保持原样。如果再次发生，请在现场重新提交报告。","mm-ask":"感谢您的报告！能否再告诉我们一些细节：具体位置在哪里，您当时往哪个方向行驶？","mm-bump-done":"谢谢！我们已在地图上添加了减速带，应用会提醒驾驶员注意。","mm-bump-none":"感谢您的报告！我们检查后没有发现这里有减速带，所以地图保持原样。","mm-light-done":"谢谢！我们已在地图上添加了红绿灯。","mm-light-none":"感谢您的报告！我们检查后没有发现这里有红绿灯，所以地图保持原样。","mm-curve-done":"谢谢！我们已在地图上标出了这个危险弯道，应用会提醒驾驶员注意。","mm-curve-none":"感谢您的报告！我们检查了这个弯道，没有发现需要修改地图的理由，所以保持原样。","mm-rail-done":"谢谢！我们已在地图上添加了铁路道口，应用会提醒驾驶员注意。","mm-rail-none":"感谢您的报告！我们检查后没有发现这里有铁路道口，所以地图保持原样。","mm-camera-done":"谢谢！我们已在地图上添加了测速摄像头。","mm-camera-none":"感谢您的报告！我们检查后无法确认这里有测速摄像头，所以地图保持原样。","mm-done":"谢谢！我们已在此处修正了地图。下次地图更新后，应用中就会显示这项更改，通常在几天内。","mm-none":"感谢您的报告！我们检查了这里的地图，没有发现需要修改的地方，所以保持原样。"},"no":{"t-turn-ask":"Takk for rapporten! Hvilken sving gjelder det: fra hvilken gate inn på hvilken, og hvilken retning kjørte du?","t-turn-done":"Takk! Vi har rettet svingen på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-address-ask":"Takk for rapporten! Hva er riktig adresse eller gatenavn, og hvilket sted prøvde du å komme til?","t-address-done":"Takk! Vi har rettet adressen på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-route-ask":"Takk for rapporten! Hvor startet du, hvor skulle du, og hvilken vei forventet du at appen skulle sende deg?","t-route-done":"Takk for rapporten! Vi har sjekket kartet her, og det stemmer. Appen velger rute ut fra trafikken i sanntid, så den kan variere fra dag til dag.","t-roundabout-ask":"Takk for rapporten! Hvilket kryss skal være en rundkjøring? Navnene på gatene som møtes der, hjelper oss å finne det.","t-roundabout-done":"Takk! Vi har lagt rundkjøringen inn på kartet. Den vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-general-ask":"Takk for rapporten! Kan du fortelle oss litt mer om hva som var feil, og nøyaktig hvor?","t-junction-ask":"Takk for rapporten! Hvilket kryss, hvilken avkjørsel eller bro gjelder det, og hvilken retning kjørte du?","t-junction-done":"Takk! Vi har rettet krysset på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-direction-ask":"Takk for rapporten! Hvilken gate gjelder det, og i hvilken retning er den egentlig åpen for trafikk?","t-direction-done":"Takk! Vi har rettet kjøreretningen på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-road-ask":"Takk for rapporten! Hva heter veien, hvor starter og slutter den, og er den åpen for alle?","t-road-done":"Takk! Vi har lagt veien inn på kartet. Den vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-landmark-ask":"Takk for rapporten! Hva heter stedet, og nøyaktig hvor ligger det?","t-landmark-done":"Takk! Vi har lagt stedet inn på kartet. Det vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-blocked-ask":"Takk for rapporten! Er veien stengt for godt eller bare en periode? Hvis du vet til når, hjelper det mye.","t-blocked-done":"Takk! Vi har lagt stengingen inn på kartet, så appen leder trafikken utenom.","t-speed-ask":"Takk for rapporten! Hvilken fartsgrense er skiltet der, og for hvilken retning?","t-speed-done":"Takk! Vi har oppdatert fartsgrensen på kartet. Den vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","nothing":"Takk for rapporten! Vi har sjekket kartet her og fant ingen feil, så vi lot det være som det er. Hvis det skjer igjen, send gjerne en ny rapport fra stedet.","mm-ask":"Takk for rapporten! Kan du fortelle oss litt mer: nøyaktig hvor det er, og hvilken retning du kjørte?","mm-bump-done":"Takk! Vi har lagt fartsdumpen inn på kartet, så appen varsler sjåførene om den.","mm-bump-none":"Takk for rapporten! Vi har sjekket og fant ingen fartsdump her, så vi lot kartet være som det er.","mm-light-done":"Takk! Vi har lagt trafikklysene inn på kartet.","mm-light-none":"Takk for rapporten! Vi har sjekket og fant ingen trafikklys her, så vi lot kartet være som det er.","mm-curve-done":"Takk! Vi har markert den farlige svingen på kartet, så appen varsler sjåførene om den.","mm-curve-none":"Takk for rapporten! Vi har sjekket denne svingen og fant ingen grunn til å endre kartet, så vi lot det være som det er.","mm-rail-done":"Takk! Vi har lagt planovergangen inn på kartet, så appen varsler sjåførene om den.","mm-rail-none":"Takk for rapporten! Vi har sjekket og fant ingen planovergang her, så vi lot kartet være som det er.","mm-camera-done":"Takk! Vi har lagt fotoboksen inn på kartet.","mm-camera-none":"Takk for rapporten! Vi har sjekket, men kunne ikke bekrefte noen fotoboks her, så vi lot kartet være som det er.","mm-done":"Takk! Vi har oppdatert kartet her. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","mm-none":"Takk for rapporten! Vi har sjekket kartet her og fant ingenting å endre, så vi lot det være som det er."},"lv":{"t-turn-ask":"Paldies par ziņojumu! Par kuru pagriezienu ir runa: no kuras ielas uz kuru, un kurā virzienā braucāt?","t-turn-done":"Paldies! Mēs izlabojām šo pagriezienu kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-address-ask":"Paldies par ziņojumu! Kāda ir pareizā adrese vai ielas nosaukums, un uz kuru vietu vēlējāties nokļūt?","t-address-done":"Paldies! Mēs izlabojām adresi kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-route-ask":"Paldies par ziņojumu! No kurienes braucāt, uz kurieni devāties un pa kuru ceļu gaidījāt, ka lietotne jūs vedīs?","t-route-done":"Paldies par ziņojumu! Mēs pārbaudījām karti šajā vietā, un tā ir pareiza. Lietotne izvēlas maršrutu pēc satiksmes reāllaikā, tāpēc tas var atšķirties no dienas uz dienu.","t-roundabout-ask":"Paldies par ziņojumu! Kuram krustojumam vajadzētu būt aplim? Ielu nosaukumi, kas tur krustojas, palīdzēs mums to atrast.","t-roundabout-done":"Paldies! Mēs pievienojām kartei apli. Lietotnē tas būs redzams pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-general-ask":"Paldies par ziņojumu! Vai varat pastāstīt mazliet vairāk par to, kas bija nepareizi, un kur tieši?","t-junction-ask":"Paldies par ziņojumu! Par kuru krustojumu, nobrauktuvi vai tiltu ir runa, un kurā virzienā braucāt?","t-junction-done":"Paldies! Mēs izlabojām krustojumu kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-direction-ask":"Paldies par ziņojumu! Par kuru ielu ir runa, un kurā virzienā pa to patiesībā drīkst braukt?","t-direction-done":"Paldies! Mēs izlabojām braukšanas virzienu kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-road-ask":"Paldies par ziņojumu! Kā sauc šo ceļu, kur tas sākas un beidzas, un vai tas ir atvērts visiem?","t-road-done":"Paldies! Mēs pievienojām kartei šo ceļu. Lietotnē tas būs redzams pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-landmark-ask":"Paldies par ziņojumu! Kā sauc šo vietu, un kur tieši tā atrodas?","t-landmark-done":"Paldies! Mēs pievienojām kartei šo vietu. Lietotnē tā būs redzama pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-blocked-ask":"Paldies par ziņojumu! Vai ceļš ir slēgts pavisam vai uz laiku? Ja zināt, līdz kuram laikam, tas ļoti palīdzēs.","t-blocked-done":"Paldies! Mēs atzīmējām slēgto ceļu kartē, tāpēc lietotne maršrutu veidos tam apkārt.","t-speed-ask":"Paldies par ziņojumu! Kāds ātruma ierobežojums tur norādīts, un kuram braukšanas virzienam?","t-speed-done":"Paldies! Mēs atjauninājām ātruma ierobežojumu kartē. Lietotnē tas būs redzams pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","nothing":"Paldies par ziņojumu! Mēs pārbaudījām karti šajā vietā un neatradām nekādu kļūdu, tāpēc atstājām to kā ir. Ja tas atkārtosies, lūdzu, nosūtiet jaunu ziņojumu no tās vietas.","mm-ask":"Paldies par ziņojumu! Vai varat pastāstīt mazliet vairāk: kur tieši tas ir un kurā virzienā braucāt?","mm-bump-done":"Paldies! Mēs pievienojām kartei ātrumvalni, tāpēc lietotne par to brīdinās vadītājus.","mm-bump-none":"Paldies par ziņojumu! Mēs pārbaudījām un šeit ātrumvalni neredzējām, tāpēc atstājām karti kā ir.","mm-light-done":"Paldies! Mēs pievienojām kartei luksoforu.","mm-light-none":"Paldies par ziņojumu! Mēs pārbaudījām un šeit luksoforu neredzējām, tāpēc atstājām karti kā ir.","mm-curve-done":"Paldies! Mēs atzīmējām kartē bīstamo līkumu, tāpēc lietotne par to brīdinās vadītājus.","mm-curve-none":"Paldies par ziņojumu! Mēs pārbaudījām šo līkumu un neatradām iemeslu mainīt karti, tāpēc atstājām to kā ir.","mm-rail-done":"Paldies! Mēs pievienojām kartei dzelzceļa pārbrauktuvi, tāpēc lietotne par to brīdinās vadītājus.","mm-rail-none":"Paldies par ziņojumu! Mēs pārbaudījām un šeit dzelzceļa pārbrauktuvi neredzējām, tāpēc atstājām karti kā ir.","mm-camera-done":"Paldies! Mēs pievienojām kartei fotoradaru.","mm-camera-none":"Paldies par ziņojumu! Mēs pārbaudījām, bet nevarējām apstiprināt, ka šeit ir fotoradars, tāpēc atstājām karti kā ir.","mm-done":"Paldies! Mēs atjauninājām karti šajā vietā. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","mm-none":"Paldies par ziņojumu! Mēs pārbaudījām karti šajā vietā un neatradām neko, ko mainīt, tāpēc atstājām to kā ir."},"th":{"t-turn-ask":"ขอบคุณสำหรับการรายงาน! ช่วยบอกเราได้ไหมว่าเป็นการเลี้ยวจากถนนไหนเข้าถนนไหน และคุณขับมาทางทิศไหน?","t-turn-done":"ขอบคุณ! เราแก้ไขจุดเลี้ยวนี้บนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-address-ask":"ขอบคุณสำหรับการรายงาน! ที่อยู่หรือชื่อถนนที่ถูกต้องคืออะไร และคุณกำลังจะไปที่ไหน?","t-address-done":"ขอบคุณ! เราแก้ไขที่อยู่บนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-route-ask":"ขอบคุณสำหรับการรายงาน! คุณเริ่มต้นจากที่ไหน กำลังจะไปที่ไหน และคิดว่าแอปควรพาไปทางไหน?","t-route-done":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแผนที่ตรงนี้แล้วและถูกต้อง แอปเลือกเส้นทางตามสภาพการจราจรแบบเรียลไทม์ จึงอาจต่างกันไปในแต่ละวัน","t-roundabout-ask":"ขอบคุณสำหรับการรายงาน! ทางแยกไหนที่ควรเป็นวงเวียน? ชื่อถนนที่มาบรรจบกันตรงนั้นจะช่วยให้เราหาตำแหน่งได้","t-roundabout-done":"ขอบคุณ! เราเพิ่มวงเวียนลงในแผนที่แล้ว แอปจะแสดงวงเวียนนี้หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-general-ask":"ขอบคุณสำหรับการรายงาน! ช่วยเล่าเพิ่มเติมอีกนิดได้ไหมว่ามีอะไรผิดพลาด และอยู่ตรงไหนกันแน่?","t-junction-ask":"ขอบคุณสำหรับการรายงาน! เป็นทางแยก ทางออก หรือสะพานไหน และคุณขับมาทางทิศไหน?","t-junction-done":"ขอบคุณ! เราแก้ไขทางแยกนี้บนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-direction-ask":"ขอบคุณสำหรับการรายงาน! เป็นถนนเส้นไหน และจริง ๆ แล้วเปิดให้รถวิ่งไปทิศทางไหน?","t-direction-done":"ขอบคุณ! เราแก้ไขทิศทางการเดินรถบนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-road-ask":"ขอบคุณสำหรับการรายงาน! ถนนเส้นนี้ชื่ออะไร เริ่มต้นและสิ้นสุดที่ไหน และเปิดให้ทุกคนใช้ได้หรือไม่?","t-road-done":"ขอบคุณ! เราเพิ่มถนนเส้นนี้ลงในแผนที่แล้ว แอปจะแสดงถนนเส้นนี้หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-landmark-ask":"ขอบคุณสำหรับการรายงาน! สถานที่นี้ชื่ออะไร และอยู่ตรงไหนกันแน่?","t-landmark-done":"ขอบคุณ! เราเพิ่มสถานที่นี้ลงในแผนที่แล้ว แอปจะแสดงสถานที่นี้หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-blocked-ask":"ขอบคุณสำหรับการรายงาน! ถนนปิดถาวรหรือปิดชั่วคราว? ถ้าคุณรู้ว่าจะปิดถึงเมื่อไร จะช่วยเราได้มาก","t-blocked-done":"ขอบคุณ! เราเพิ่มการปิดถนนลงในแผนที่แล้ว แอปจึงจะพาเลี่ยงจุดนี้","t-speed-ask":"ขอบคุณสำหรับการรายงาน! ป้ายจำกัดความเร็วตรงนั้นระบุไว้เท่าไร และสำหรับทิศทางไหน?","t-speed-done":"ขอบคุณ! เราอัปเดตความเร็วจำกัดบนแผนที่แล้ว แอปจะแสดงความเร็วจำกัดใหม่หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","nothing":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแผนที่ตรงนี้แล้วไม่พบสิ่งผิดปกติ จึงคงไว้ตามเดิม หากเกิดขึ้นอีก กรุณาส่งรายงานใหม่จากจุดนั้น","mm-ask":"ขอบคุณสำหรับการรายงาน! ช่วยบอกรายละเอียดเพิ่มอีกนิดได้ไหมว่าอยู่ตรงไหนกันแน่ และคุณขับมาทางทิศไหน?","mm-bump-done":"ขอบคุณ! เราเพิ่มลูกระนาดลงในแผนที่แล้ว แอปจะได้แจ้งเตือนผู้ขับขี่","mm-bump-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วไม่พบลูกระนาดตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-light-done":"ขอบคุณ! เราเพิ่มสัญญาณไฟจราจรลงในแผนที่แล้ว","mm-light-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วไม่พบสัญญาณไฟจราจรตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-curve-done":"ขอบคุณ! เราทำเครื่องหมายโค้งอันตรายบนแผนที่แล้ว แอปจะได้แจ้งเตือนผู้ขับขี่","mm-curve-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบโค้งนี้แล้วไม่พบเหตุผลที่ต้องแก้ไขแผนที่ จึงคงไว้ตามเดิม","mm-rail-done":"ขอบคุณ! เราเพิ่มจุดตัดทางรถไฟลงในแผนที่แล้ว แอปจะได้แจ้งเตือนผู้ขับขี่","mm-rail-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วไม่พบจุดตัดทางรถไฟตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-camera-done":"ขอบคุณ! เราเพิ่มกล้องตรวจจับความเร็วลงในแผนที่แล้ว","mm-camera-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วแต่ยืนยันไม่ได้ว่ามีกล้องตรวจจับความเร็วตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-done":"ขอบคุณ! เราอัปเดตแผนที่ตรงนี้แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","mm-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแผนที่ตรงนี้แล้วไม่พบสิ่งที่ต้องแก้ไข จึงคงไว้ตามเดิม"}}/*@@END@@*/;
     for (const [lang, set] of Object.entries(MORE_REPLIES)) if (REPLIES[lang]) Object.assign(REPLIES[lang], set);
     for (const set of Object.values(REPLIES)) for (const [key, text] of Object.entries(MORE_REPLIES.en || {})) if (!set[key]) set[key] = text;
-    // WME's request types, grouped by the reply they need (its own type numbers).
     const TYPE_GROUPS = { 6: 'turn', 11: 'turn', 7: 'address', 21: 'address', 22: 'address', 8: 'route', 9: 'roundabout', 10: 'general',
       12: 'junction', 13: 'junction', 15: 'junction', 14: 'direction', 16: 'road', 18: 'landmark', 19: 'blocked', 23: 'speed' };
-    // A report sent with Map Mate, and what it is about, read from its words (several languages: the description is
-    // the driver's). The kinds are the permanent hazards an editor adds: speed bumps, railroad crossings and so on.
     const MAP_MATE_KINDS = [
       ['rail', /rail|level crossing|grade crossing|passage à niveau|bahnübergang|passaggio a livello|paso a nivel|passagem de nível|overweg|przejazd kolejow|переезд|hemzemin|ισόπεδ|გადასასვლ/i],
       ['bump', /speed ?(?:bump|hump|breaker)|\bbump|ralentisseur|dos d.âne|schwelle|dosso|rallentator|tope|reductor de velocidad|lombada|quebra-?molas|drempel|próg|лежач|искусственн|hız kesici|κασίδ|σαμαράκ|ბორცვ/i],
@@ -7997,9 +7368,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const ISO3 = { eng: 'en', ell: 'el', gre: 'el', spa: 'es', por: 'pt', fra: 'fr', fre: 'fr', deu: 'de', ger: 'de', ita: 'it', nld: 'nl', dut: 'nl', pol: 'pl', rus: 'ru', tur: 'tr', kat: 'ka', geo: 'ka',
       ukr: 'uk', ces: 'cs', cze: 'cs', slk: 'sk', slo: 'sk', hun: 'hu', ron: 'ro', rum: 'ro', bul: 'bg', srp: 'sr', hrv: 'hr', slv: 'sl', ara: 'ar', heb: 'he', fas: 'fa', per: 'fa',
       zho: 'zh', chi: 'zh', jpn: 'ja', kor: 'ko', swe: 'sv', nor: 'no', nob: 'no', dan: 'da', fin: 'fi', lit: 'lt', lav: 'lv', est: 'et', ind: 'id', msa: 'ms', may: 'ms', tha: 'th', vie: 'vi', hin: 'hi', cat: 'ca' };
-    // The Waze app names its languages in words (4.0.0): "polski", "eng_uk", "espanol_latam", "portuguese_br",
-    // "francais_BE", "dutch_be", "deutsch", "turkish", "georgian"… Read as two letters, "polski" was "po" and the
-    // replies came out in English. The word's start says the language; an ISO code still works too.
     const APP_WORDS = [[/^(?:eng|english)/, 'en'], [/^(?:greek|ellin|hellen)/, 'el'], [/^(?:espa|spanish|castel)/, 'es'], [/^portug/, 'pt'],
       [/^(?:fran|french)/, 'fr'], [/^(?:deutsch|german)/, 'de'], [/^italia/, 'it'], [/^(?:dutch|nederl|flemish|vlaams)/, 'nl'], [/^(?:polsk|polish)/, 'pl'],
       [/^(?:russ|русск)/, 'ru'], [/^(?:turk|türk)/, 'tr'], [/^(?:georgian|kartul|ქართ)/, 'ka'],
@@ -8018,8 +7386,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const alias = { nb: 'no', nn: 'no', iw: 'he', in: 'id' }[code] || code;
       return REPLIES[alias] ? alias : '';
     }
-    // The language the reporter writes in: their own messages first, by their letters (Greek, Georgian, Cyrillic,
-    // Hebrew, Arabic, Thai, Devanagari, Korean, Japanese, Chinese), then the app's.
     function reporterLanguage(texts, appLanguage) {
       const own = texts.join(' '), app = appLanguageCode(appLanguage);
       if (/[Ͱ-Ͽἀ-῿]/.test(own)) return 'el';
@@ -8034,18 +7400,13 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (/[\u4E00-\u9FFF]/.test(own)) return app === 'ja' ? 'ja' : 'zh';
       return app || 'en';
     }
-    // A language I picked for a request's replies (4.0.0), from Quick replies' ⋯ menu: it holds until WME is closed.
     const chosenLanguage = new Map();
-    // The country a request is in (4.0.0), as two letters (GR, PL…), for replies kept for some countries only. WME
-    // names its countries in English but gives them its own letters (GM is Germany, UK the United Kingdom), so the
-    // name is what's matched. The request's city first, else the country the map is mostly showing.
     const COUNTRY_ALIASES = { 'czech republic': 'CZ', turkey: 'TR', russia: 'RU', 'south korea': 'KR', 'korea south': 'KR', 'north korea': 'KP', 'ivory coast': 'CI',
       swaziland: 'SZ', macedonia: 'MK', burma: 'MM', 'vatican city': 'VA', palestine: 'PS', 'palestinian territories': 'PS', 'united states': 'US', usa: 'US', 'united kingdom': 'GB',
       'great britain': 'GB', 'hong kong': 'HK', macau: 'MO', macao: 'MO', taiwan: 'TW', laos: 'LA', 'east timor': 'TL', 'cape verde': 'CV', 'democratic republic of the congo': 'CD',
       'republic of the congo': 'CG', congo: 'CG', 'bosnia and herzegovina': 'BA', bosnia: 'BA', kosovo: 'XK', 'saint lucia': 'LC', 'saint kitts and nevis': 'KN',
       'saint vincent and the grenadines': 'VC', 'sao tome and principe': 'ST', 'trinidad and tobago': 'TT', 'antigua and barbuda': 'AG', 'turks and caicos islands': 'TC', reunion: 'RE', curacao: 'CW' };
     const foldCountry = name => String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, 'and').replace(/^the\s+/, '').replace(/[’'.]/g, '').replace(/\s+/g, ' ').trim();
-    // Letters of countries that no longer exist or were renamed (East Germany, Burma…): the current ones are used.
     const OLD_CODES = new Set('AN HV DY BU ZR CS YU DD FX UK NH RH SU TP VD YD'.split(' '));
     let countryNames = null;
     function countryCode(country) {
@@ -8060,7 +7421,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
             if (!name || name === code) continue;
             for (const form of [name, name.replace(/\s*\(.*\)\s*/g, ' '), name.replace(/\s+SAR China$/, '')]) if (!countryNames.has(foldCountry(form))) countryNames.set(foldCountry(form), code);
           }
-        } catch (_) { /* no region names here */ }
+        } catch (_) {   }
         for (const [name, code] of Object.entries(COUNTRY_ALIASES)) countryNames.set(name, code);
       }
       return countryNames.get(foldCountry(country.name)) || '';
@@ -8081,7 +7442,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     }
     const shortDate = time => { try { return new Intl.DateTimeFormat(uiLocale(), { month: 'short', day: 'numeric' }).format(new Date(time)); } catch (_) { return new Date(time).toDateString().slice(4, 10); } };
     const daysText = days => days <= 0 ? tr('today') : days === 1 ? tr('1 day') : tr('{0} days', days);
-    // Days counted on the calendar, as WME counts them: a message from yesterday evening is 1 day old this morning.
     const dayStart = time => { const date = new Date(time); date.setHours(0, 0, 0, 0); return date.getTime(); };
     const calendarDays = (from, to) => Math.round((dayStart(to) - dayStart(from)) / DAY);
 
@@ -8089,19 +7449,15 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     function sessionComments(id) { try { return pageWindow.W?.model?.updateRequestSessions?.getObjectById?.(id)?.attributes?.comments || null; } catch (_) { return null; } }
     function isUpdatePanel(panel) { return panel?.matches?.('.problem-edit') && !!panel.closest('#ISSUE_WINDOW_UPDATE_REQUEST') && !panel.closest('#wme-studio-compact-layout-editor'); }
 
-    // What the window holds: the request's id and type, and each message with who wrote it and when.
     function read(panel) {
       const header = panel.querySelector('[class*="issuePanelHeader--"]');
       const subtitle = header?.querySelector('[class*="subTitle--"]')?.textContent.trim() || '';
       const match = /^(.*?)\s*\((\d+)\)\s*$/.exec(subtitle);
-      // WME's own subtitle is just the type; the number in brackets comes from URC-E. Without it, the SDK says which
-      // request is open (3.1.0), so the case file, the variables and Quick replies management work on their own.
       let id = match ? Number(match[2]) : NaN;
       if (!Number.isFinite(id)) { try { id = requestMinimizer.openId(); } catch (_) { id = NaN; } }
       const model = Number.isFinite(id) ? requestModel(id) : null, attrs = model?.attributes || {};
       const items = [...panel.querySelectorAll('.conversation-view .comment-list > :is(.comment, wz-list-item)')];
       const stored = Number.isFinite(id) ? sessionComments(id) : null;
-      // Me, so other editors' messages can look different from mine (4.0.2).
       const me = (() => { let meId = null, meName = ''; try { const user = pageWindow.W?.loginManager?.user; const value = Number(user?.attributes?.id ?? user?.id); if (Number.isFinite(value)) meId = value; } catch (_) { meId = null; } try { meName = String(wmeUserName() || '').trim().toLowerCase(); } catch (_) { meName = ''; } return { id: meId, name: meName }; })();
       const messages = items.map((item, index) => {
         const name = item.querySelector('.username')?.textContent.trim() || '';
@@ -8109,15 +7465,11 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         const auto = !reporter && /^map[\s_-]*team/i.test(name);
         let time = Number(stored?.length === items.length ? stored[index]?.createdOn : NaN);
         if (!Number.isFinite(time)) { const parsed = Date.parse(item.querySelector('.comment-title .date:not(.urce)')?.textContent || ''); time = Number.isFinite(parsed) ? parsed : NaN; }
-        // Unknown when Studio can't tell who I am: then every editor's message keeps the one color.
         const mine = me.id == null && !me.name ? null : !reporter && !auto && ((me.id != null && stored?.length === items.length && stored[index]?.userID === me.id) || (!!me.name && name.replace(/\s*\(\d+\)\s*$/, '').trim().toLowerCase() === me.name));
         return { item, name, side: reporter ? 'reporter' : auto ? 'auto' : 'editor', mine, time, text: item.querySelector('.text')?.textContent || '' };
       });
       const checked = panel.querySelector('.actions input[type="radio"]:checked')?.value;
-      // WME shows "Closed on … by …" in place of the Solved / Not identified buttons once a request is closed (4.0.1): the
-      // model isn't always loaded, so that line counts too.
       const closed = attrs.open === false || attrs.resolution != null || checked === 'solved' || checked === 'not-identified' || !!panel.querySelector('.actions .close-details, .close-details');
-      // Without the request in the map data, WME's "Closed" line says how (4.0.2): by a class it carries, or its words.
       const closeLine = attrs.resolution == null && !checked ? panel.querySelector('.actions .close-details, .close-details') : null;
       const closeWords = closeLine ? `${closeLine.className} ${closeLine.innerHTML.match(/class="[^"]*"/g)?.join(' ') || ''} ${closeLine.textContent}`.toLowerCase() : '';
       const closedAs = /not[\s_-]*identified|unidentified|not-?identif/.test(closeWords) ? 'not-identified' : /solved|resolved/.test(closeWords) ? 'solved' : '';
@@ -8126,7 +7478,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
         ...(() => { const own = reporterLanguage(messages.filter(message => message.side === 'reporter').map(message => message.text), attrs.reporterLanguage); return { ownLanguage: own, language: (Number.isFinite(id) && chosenLanguage.get(id)) || own }; })() };
     }
 
-    // Where the request stands.
     function standing(data) {
       const now = Date.now(), quiet = Math.max(1, Number(settings.requestQuietDays) || 7);
       const last = data.messages.at(-1), asked = data.messages.some(message => message.side !== 'reporter');
@@ -8148,7 +7499,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       }
       field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
       field.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-      try { (inner || field).focus({ preventScroll: true }); inner?.setSelectionRange?.(text.length, text.length); } catch (_) { /* focus is a nicety */ }
+      try { (inner || field).focus({ preventScroll: true }); inner?.setSelectionRange?.(text.length, text.length); } catch (_) {   }
     }
     const button = (className, label, onClick) => {
       const element = document.createElement('button'); element.type = 'button'; element.className = className; element.textContent = label;
@@ -8158,11 +7509,8 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     };
 
     function paintHead(state, data) {
-      // WME's "Username:" line for the reporter (when Waze knows who reported) stays under the title, its profile link
-      // and chat button included, labelled with Studio's own word (4.0.0). WME may add it after the head is painted.
       const who = data.header?.querySelector?.('[class*="username--"]');
       if (who && who.getAttribute('data-ws-label') !== tr('Reporter')) who.setAttribute('data-ws-label', tr('Reporter'));
-      // WME's own line ("Submitted on: …"), for when the request isn't in the loaded map data and its time is unknown.
       const wmeWhen = String(data.header?.querySelector?.('[class*="reported--"]')?.textContent || '').replace(/^[^:]*:\s*/, '').replace(/\s+/g, ' ').trim();
       const key = `${data.type}|${data.title}|${data.id}|${data.city}|${data.driveTime}|${wmeWhen}`;
       if (state.head?.isConnected && state.headKey === key) return;
@@ -8171,8 +7519,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       head.innerHTML = `<span class="ws-case-type">${svg(TYPE_ICONS[typeIcon(data.type)])}</span><span class="ws-case-names"><strong></strong><small></small><small class="ws-case-when"></small></span>`;
       head.querySelector('strong').textContent = data.title;
       head.querySelector('small').textContent = [Number.isFinite(data.id) ? `#${data.id}` : '', data.city].filter(Boolean).join(' · ');
-      // When it was reported, date and time (4.0.2): WME's own "Submitted on" line is hidden with the rest of its header.
-      // Short (no year when it's this year's) so it fits beside the window's buttons; the full date is its tooltip.
       const when = head.querySelector('.ws-case-when'), time = Number.isFinite(data.driveTime) ? data.driveTime : wmeWhen ? Date.parse(wmeWhen) : NaN;
       const format = (value, options) => { try { return new Intl.DateTimeFormat(uiLocale(), options).format(new Date(value)); } catch (_) { return new Date(value).toLocaleString(); } };
       if (Number.isFinite(time)) {
@@ -8185,9 +7531,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       data.header.prepend(head);
       state.head = head; state.headKey = key;
     }
-    // One slim strip: where the request stands and, once the reporter has been quiet for as long as you set, the two
-    // replies that usually come next. The step names and the full sentence are its tooltip, so the discussion keeps its
-    // room (3.1.0: the separate card took the window's middle).
     function paintStatus(state, data, stand) {
       const late = stand.tone === 'late';
       const label = late ? tr('No answer for {0}', daysText(stand.days)) : stand.label;
@@ -8219,10 +7562,6 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       data.header.append(status);
       state.status = status; state.statusKey = key;
     }
-    // The reporter's description is never cut down to a few lines with a scrollbar of its own (4.0.2): WME gives its
-    // box a fixed height, so a long one scrolled inside it however tall the window was made. It now takes the room it
-    // needs and the window grows (or the request scrolls as a whole, with the description's text easy to reach).
-    // A description I minimised with WME's own arrow stays minimised (4.1.0): it isn't let out again.
     GM_addStyle(`html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data,
 html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data > .section[class*="description"]:not([class*="collapsed"]),
 html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data > .section[class*="description"]:not([class*="collapsed"]) > :is(.content,.collapsible,div):not([class*="collapsed"]) {
@@ -8231,7 +7570,6 @@ html[data-wme-studio="on"] [data-ws-desc-free] { max-height: none !important; he
 html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] { --ws-case-tone: #30a46c !important; }
 html[data-wme-studio="on"][data-wme-studio-theme="light"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] { --ws-case-tone: #1f8a55 !important; }
 html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] .ws-case-bars span { background-color: var(--ws-case-tone) !important; }`);
-    // 4.1.0: the reply buttons above the box, and the note on a suggested first reply. Text centred in each.
     GM_addStyle(`html[data-wme-studio="on"] .ws-reply-buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px var(--ws-pad, 12px) 4px; }
 html[data-wme-studio="on"] .ws-reply-buttons .ws-rb { display: inline-flex; align-items: center; gap: 6px; max-width: 190px; height: 28px; margin: 0; padding: 0 11px 0 9px; border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--c) 15%, transparent); color: var(--wme-studio-text, inherit); font: 600 12px/1 var(--ws-font, inherit); cursor: pointer; }
 html[data-wme-studio="on"] .ws-reply-buttons .ws-rb:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
@@ -8247,9 +7585,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-dat
 html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] .ws-case-tr-text { color: var(--wme-studio-text); font: 13px/18px var(--ws-font); white-space: pre-line; overflow-wrap: anywhere; }
 html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] .ws-case-tr-switch { display: inline-flex; align-items: center; height: 16px; margin: 2px 0 0; padding: 0; border: 0; background: none !important; color: var(--wme-studio-accent, #0099ff); font: 600 11px/16px var(--ws-font); cursor: pointer; }
 html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] .ws-case-tr-switch:hover { text-decoration: underline; }`);
-    // A request closed as solved is green; closed as not identified stays grey (4.0.2).
-    // The description folds to one line (4.0.2), with the arrow at its top right, so a small screen has room for the
-    // discussion. One choice for every request, remembered.
     const DESC_KEY = 'wmeStudio.descriptionFolded';
     let descFolded = (() => { try { return localStorage.getItem(DESC_KEY) === '1'; } catch (_) { return false; } })();
     const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>';
@@ -8274,7 +7609,7 @@ html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .ws-desc-fold svg 
         button.addEventListener('click', event => {
           event.preventDefault(); event.stopPropagation();
           descFolded = !descFolded;
-          try { localStorage.setItem(DESC_KEY, descFolded ? '1' : '0'); } catch (_) { /* this visit only */ }
+          try { localStorage.setItem(DESC_KEY, descFolded ? '1' : '0'); } catch (_) {   }
           for (const other of document.querySelectorAll('.problem-edit[data-wme-studio-case="on"]')) foldDescription(other);
         });
         description.prepend(button);
@@ -8289,12 +7624,9 @@ html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .ws-desc-fold svg 
       }
       if (panel.hasAttribute('data-ws-desc-folded') !== descFolded) panel.toggleAttribute('data-ws-desc-folded', descFolded);
     }
-    // Whatever box WME scrolls the description in (its markup changes): found by what it does, and let go.
     function freeDescription(panel) {
       const description = panel.querySelector('.problem-data > .section[class*="description"]') || panel.querySelector('.section[class*="description"]');
       if (!description) return;
-      // Minimised with WME's arrow (or on its way there): what I let out goes back, and nothing more is let out. Before
-      // 4.1.0 the next look (a scroll was enough) found the shut box "too small" and opened it again.
       const box = description.querySelector(':scope > .collapsible, :scope > .content');
       const shut = description.matches('[class*="collapsed"]') || !!description.querySelector(':scope > [class*="collapsed"], :scope > [aria-expanded="false"], :scope > * > [aria-expanded="false"]')
         || (box && (box.style.display === 'none' || /^0(px)?$/.test(box.style.height) || box.style.maxHeight === '0px'));
@@ -8305,8 +7637,6 @@ html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .ws-desc-fold svg 
         if (/^(auto|scroll|hidden|clip)$/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 2) node.setAttribute('data-ws-desc-free', '');
       }
     }
-    // Other editors' messages in another color than mine (4.0.2): the accent turned a third of the way round the color
-    // wheel, so it never matches it (a plain violet where the browser can't turn colors).
     GM_addStyle(`html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment[data-ws-side="editor"][data-ws-who="other"] {
   background: color-mix(in srgb, #9b6bff 24%, var(--wme-studio-input)) !important;
   background: color-mix(in srgb, oklch(from var(--wme-studio-accent, #0099ff) l c calc(h + 110)) 24%, var(--wme-studio-input)) !important; }
@@ -8323,15 +7653,12 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] [class*="iss
 html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment [data-ws-profile] { cursor: pointer !important; border-radius: 4px; }
 html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment [data-ws-profile]:hover { text-decoration: underline !important; text-underline-offset: 2px; }
 html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment [data-ws-profile]:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff) !important; outline-offset: 1px; }`);
-    // An editor's name in the discussion opens their editor profile in a new tab (4.0.2). The reporter is a driver, not an
-    // editor, so their name stays plain.
-    // The reporter's name goes where WME's own link at the top of the request goes.
     const profileOf = node => node?.closest?.('.problem-edit[data-wme-studio-case="on"] .comment[data-ws-side] [data-ws-profile]');
     const openProfile = node => {
       if (node.getAttribute('data-ws-profile') === '@reporter') {
         const link = node.closest('.problem-edit')?.querySelector('[class*="username--"] wz-a, [class*="username--"] a'); if (!link) return;
         const href = link.getAttribute('href');
-        if (!href || href.startsWith('#') || /^javascript:/i.test(href)) { link.click(); return; }   // WME handles it itself
+        if (!href || href.startsWith('#') || /^javascript:/i.test(href)) { link.click(); return; }
         try { pageWindow.open(new URL(href, location.href).href, '_blank', 'noopener'); } catch (_) { link.click(); }
         return;
       }
@@ -8359,14 +7686,11 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       if (!label?.hasAttribute('data-ws-profile')) return;
       for (const name of ['data-ws-profile', 'role', 'tabindex', 'title']) label.removeAttribute(name);
     }
-    // Who wrote each message, the time between them, and the automatic first message folded.
-    // The reporter's Waze username, from the Username line of the request's details (4.0.1); '' when WME hides it.
     function reporterName(panel) {
       const link = panel.querySelector('[class*="username--"] wz-a, [class*="username--"] a'); if (!link) return '';
       const own = [...link.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join(' ');
       return (own.trim() || link.textContent).replace(/\s*\(\d+\)\s*$/, '').replace(/[↗\s]+$/, '').replace(/\s+/g, ' ').trim().slice(0, 60);
     }
-    // The reporter's messages carry their username instead of WME's "Reporter" (4.0.2), when Waze says who reported.
     function nameReporter(item, name) {
       const label = item.querySelector('.username.reporter') || item.querySelector('.comment-title .username');
       if (!label) return;
@@ -8402,15 +7726,12 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         previous = message;
       });
     }
-    // Driver settings start folded, like Drive details, and stay the way you last left them.
     const DRIVER_KEY = 'wmeStudio.caseDriverSettingsOpen', driverSeen = new WeakSet();
     let driverOpen = false;
     try { driverOpen = localStorage.getItem(DRIVER_KEY) === '1'; } catch {}
     function measureDrive(panel, drive) {
       const width = Math.round(drive.offsetWidth); if (width) panel.style.setProperty('--ws-drive-w', width + 'px');
       const data = drive.closest('.problem-data'); if (!data || !drive.offsetHeight) return;
-      // From the layout's own offsets, not the screen: the window grows in with a transform when it opens, and
-      // measuring then put the Driver settings pill too low until the window was resized.
       let offset = 0, node = drive;
       while (node && node !== data) { offset += node.offsetTop; node = node.offsetParent; }
       if (node !== data) return;
@@ -8418,15 +7739,12 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       if (panel.style.getPropertyValue('--ws-drive-top') !== top) panel.style.setProperty('--ws-drive-top', top);
     }
     function paintDriver(state, panel) {
-      // The Driver settings pill sits right after the Drive details pill, so it needs that pill's width.
       const drive = panel.querySelector('.problem-data > .more-info.section > .title');
       if (drive !== state.driveTitle) {
         state.driveSize?.disconnect(); state.driveSize = null; state.driveTitle = drive;
         if (drive && typeof ResizeObserver === 'function') {
           state.driveSize = new ResizeObserver(() => measureDrive(panel, drive));
           state.driveSize.observe(drive);
-          // A request with a description has it above the pills (3.1.0): the Driver settings pill follows Drive
-          // details down instead of sitting over the description.
           const data = drive.closest('.problem-data'); if (data) state.driveSize.observe(data);
         }
       }
@@ -8434,11 +7752,8 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       const section = panel.querySelector('.problem-data > .reporter-preferences.section');
       if (!section || driverSeen.has(section)) return;
       driverSeen.add(section);
-      // Through WME's own click, so its idea of open or folded stays the same as what you see.
       if (section.classList.contains('collapsed') === driverOpen) section.querySelector(':scope > .title')?.click();
     }
-    // The Translate tab on the side of the discussion: the messages in your language, translated by Chrome itself, on
-    // this computer (nothing is sent anywhere). A browser without that translator opens Google Translate instead.
     const translators = new Map();
     let detector = null;
     const shortLang = code => String(code || '').toLowerCase().split(/[-_]/)[0];
@@ -8446,7 +7761,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     const pageApi = name => { try { return pageWindow[name] || globalThis[name] || null; } catch (_) { return null; } };
     const commentItems = panel => [...panel.querySelectorAll('.conversation-view .comment-list > :is(.comment, wz-list-item)')];
     const messageText = item => (item.querySelector(':scope > .text')?.innerText || item.querySelector('.text')?.textContent || '').trim();
-    // The reporter's own description, above the discussion (4.0.4): translated with the messages, first.
     function descriptionPart(panel) {
       const section = panel.querySelector('.problem-data > .section[class*="description"]');
       if (!section) return null;
@@ -8454,16 +7768,12 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       const text = (box?.innerText || box?.textContent || '').trim();
       return box && text ? { item: section, box, text } : null;
     }
-    // What the Translate tab works on: the description, then every message.
     const translateParts = panel => [descriptionPart(panel), ...commentItems(panel).map(item => ({ item, box: item.querySelector(':scope > .text'), text: messageText(item) }))].filter(part => part && part.text);
     const TRANSLATE_ICON = '<path d="M4 5h9M8.5 3v2M6 5c.7 3.3 2.8 6 6 7.5M11 5c-.8 3.6-3.4 6.6-7 8"/><path d="m12.5 21 4-10 4 10M14 17.5h5"/>';
     function labelTab(state) {
       const tab = state.tab; if (!tab) return;
       const mode = state.translate || 'off', target = languageName(shortLang(uiLocale()));
       const fetching = mode === 'busy' && download.share < 1 && Date.now() - download.at < 8000;
-      // The tab keeps its word and its size (3.1.0): "Translating…" or "Downloading 40%" made it grow and push the
-      // Quick replies tab down. While it works, a spinner turns in place of the icon and a thin bar fills with the
-      // download; "already in your language" shows as a tick. The details are in its tooltip.
       const same = mode !== 'busy' && mode !== 'on' && Date.now() < (state.sameUntil || 0);
       const label = mode === 'on' ? tr('Original') : tr('Translate');
       const icon = mode === 'busy' ? 'busy' : same ? 'same' : 'translate';
@@ -8479,7 +7789,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       tab.toggleAttribute('data-busy', mode === 'busy');
     }
     function paintTranslate(state) {
-      // Outside the window, on its right, above the Quick replies tab (in the same column, which Quick replies keeps).
       const list = state.panel.querySelector('.conversation-view > .comment-list');
       const host = state.panel.closest('#ISSUE_WINDOW_UPDATE_REQUEST')?.querySelector(':scope > .ws-quick-replies');
       if (!host || (!list && !descriptionPart(state.panel)) || !translateParts(state.panel).length) { if (state.tab) { state.tab.remove(); state.tab = null; } return; }
@@ -8491,19 +7800,17 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         host.prepend(tab); state.tab = tab; state.tabIcon = 'translate';
       }
       labelTab(state);
-      if (state.translate === 'on') translateMessages(state);   // a message that arrives later comes in translated too
+      if (state.translate === 'on') translateMessages(state);
     }
     function untranslate(state) {
       for (const box of state.panel.querySelectorAll('.ws-case-tr')) box.remove();
       for (const item of state.panel.querySelectorAll('[data-ws-tr],[data-ws-orig],[data-ws-tr-same],[data-ws-tr-src]')) for (const name of ['data-ws-tr', 'data-ws-orig', 'data-ws-tr-same', 'data-ws-tr-src']) item.removeAttribute(name);
     }
     async function toggleTranslate(state) {
-      // A click while it works stops it (a first download can take a while).
       if (state.translate === 'busy') { state.translate = 'off'; untranslate(state); labelTab(state); return; }
       if (state.translate === 'on') { state.translate = 'off'; untranslate(state); labelTab(state); return; }
       const T = pageApi('Translator');
       if (!T) { openGoogle(state.panel); return; }
-      // Started straight away, while the click still counts: Chrome downloads a language only right after a click.
       const target = shortLang(uiLocale()), guess = shortLang(read(state.panel).language);
       if (guess && guess !== target) translatorFor(T, guess, target);
       startDetector();
@@ -8511,7 +7818,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       const result = await translateMessages(state);
       if (state.translate !== 'busy') return;
       if (result === 'same') {
-        // Nothing to translate: every message is already in your language. Said on the tab for a moment.
         state.translate = 'off';
         state.sameUntil = Date.now() + 2500; labelTab(state);
         clearTimeout(state.sameTimer); state.sameTimer = setTimeout(() => labelTab(state), 2600);
@@ -8520,19 +7826,15 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       state.translate = result === 'none' ? 'off' : 'on'; labelTab(state);
       if (result === 'none') openGoogle(state.panel);
     }
-    // How far Chrome got with a language it is fetching, shown on the tab.
     const download = { share: 1, at: 0 };
     function downloadProgress(share) {
       download.share = Math.max(0, Math.min(1, Number(share) || 0)); download.at = Date.now();
       for (const state of states.values()) if (state.translate === 'busy') labelTab(state);
     }
     const STALL = 45000;
-    // Fails when nothing happens for a while: a download that stops moving, or a translation that never answers.
     function patient(promise, ms = STALL) {
       return new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('timed out')), ms); promise.then(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); }); });
     }
-    // The language of each message, when Chrome has its language detector at hand. If it still has to fetch it, the
-    // fetch starts (it's small) and meanwhile the reporter's language is used.
     function startDetector() {
       const D = pageApi('LanguageDetector');
       if (!D || detector) return detector;
@@ -8558,7 +7860,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       if (!translators.has(key)) translators.set(key, (async () => {
         const availability = typeof T.availability === 'function' ? await T.availability({ sourceLanguage: source, targetLanguage: target }) : 'available';
         if (availability === 'unavailable') return null;
-        // Each step of a download resets the wait, so a slow connection still gets there; one that stops does not hang.
         return await new Promise((resolve, reject) => {
           let stall = setTimeout(() => reject(new Error('stalled')), STALL);
           const moved = event => { clearTimeout(stall); stall = setTimeout(() => reject(new Error('stalled')), STALL); downloadProgress(event.loaded); };
@@ -8568,15 +7869,13 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       })().catch(() => { translators.delete(key); downloadProgress(1); return null; }));
       return translators.get(key);
     }
-    // 'done'; 'same' when every message is already in your language; 'none' when not one message could be translated
-    // here (a language Chrome does not have).
     function translateMessages(state) {
       if (state.translating) return state.translating;
       state.translating = (async () => {
         const T = pageApi('Translator'), target = shortLang(uiLocale()), fallback = shortLang(read(state.panel).language);
         let translated = 0, missing = 0;
         for (const { item, box, text } of translateParts(state.panel)) {
-          if (state.translate === 'off') return 'done';   // stopped with a click
+          if (state.translate === 'off') return 'done';
           if (item.hasAttribute('data-ws-tr') || item.hasAttribute('data-ws-tr-same')) continue;
           const source = await detect(text) || fallback;
           if (!source || source === target) { item.setAttribute('data-ws-tr-same', ''); continue; }
@@ -8647,7 +7946,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
             if (!streets.has(streetId)) { let found = null; try { const one = model.Streets.getById({ streetId }); const city = one?.cityId != null ? model.Cities?.getById?.({ cityId: one.cityId }) : null; if (one?.name?.trim()) found = { name: one.name.trim(), city: city?.name?.trim() || '' }; } catch (_) { found = null; } streets.set(streetId, found); }
             return streets.get(streetId);
           };
-          // Roads people drive on: no walking trails, stairs, railways, runways or ferries.
           const skip = new Set([5, 10, 15, 16, 18, 19]);
           const near = [];
           for (const segment of model.Segments.getAll()) {
@@ -8660,7 +7958,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
           near.sort((a, b) => a.distance - b.distance);
           const named = near.find(one => street(one.segment.primaryStreetId));
           if (named) { const found = street(named.segment.primaryStreetId); place.street = found.name; place.area = found.city; }
-          // The nearest node where roads with two different names meet.
           let junction = null;
           for (const { segment } of near.slice(0, 16)) for (const nodeId of [segment.fromNodeId, segment.toNodeId]) {
             if (nodeId == null) continue;
@@ -8684,14 +7981,12 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       if (!state) {
         state = { panel, head: null, status: null, card: null, driveTitle: null, driveSize: null, tab: null, translate: 'off', translating: null };
         state.observer = new MutationObserver(records => {
-          // Only WME's own changes (a new message, the request swapped): what Studio adds is left out.
           if (records.every(record => [record.target, ...record.addedNodes, ...record.removedNodes].every(node => node.nodeType !== 1 ? node.parentElement?.closest?.('.ws-case-head,.ws-case-status,.ws-case-next,.ws-case-translate,.ws-case-tr,.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-desc-fold,.ws-reply-buttons,.ws-suggested') : node.closest?.('.ws-case-head,.ws-case-status,.ws-case-next,.ws-case-translate,.ws-case-tr,.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-desc-fold,.ws-reply-buttons,.ws-suggested')))) return;
           queue();
         });
         state.observer.observe(panel, { childList: true, subtree: true, characterData: true });
         panel.addEventListener('click', event => {
           const driver = event.target.closest?.('.reporter-preferences.section > .title')?.parentElement;
-          // WME folds the section itself; I only remember which way you left it.
           if (driver && event.isTrusted) { setTimeout(() => { driverOpen = !driver.classList.contains('collapsed'); try { localStorage.setItem(DRIVER_KEY, driverOpen ? '1' : '0'); } catch {} }); return; }
           const title = event.target.closest?.('.comment-title[data-ws-toggle]');
           const item = title?.closest('[data-ws-side="auto"]');
@@ -8703,7 +7998,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       }
       if (panel.getAttribute('data-wme-studio-case') !== 'on') panel.setAttribute('data-wme-studio-case', 'on');
       try { freeDescription(panel); foldDescription(panel); } catch (studioError) { reportStudioError('caseFile description', studioError); }
-      // A followed request that the reporter answered, or that was closed, is no longer waited on (3.1.0).
       try { if (Number.isFinite(data.id)) requestMinimizer.noteState(data.id, data.closed, data.messages.at(-1)); } catch (studioError) { reportStudioError('caseFile follow-up', studioError); }
       const stand = standing(data);
       try { paintHead(state, data); paintStatus(state, data, stand); paintMessages(state, data, stand); paintDriver(state, panel); paintTranslate(state); }
@@ -8717,14 +8011,12 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         for (const panel of [...states.keys()]) if (!panel.isConnected) { states.get(panel)?.observer?.disconnect(); states.delete(panel); }
       });
     }
-    setInterval(() => { if (states.size) queue(); }, 60000);   // "18 days" turns into "19 days" without a reload
+    setInterval(() => { if (states.size) queue(); }, 60000);
     document.addEventListener('wme-studio-urce', () => queue());
     return Object.freeze({ inspect: panel => { if (panel?.matches?.('.problem-edit')) queue(); }, refresh: queue,
-      // For Quick replies: the reporter's language and the replies written in it, and putting text in the reply box.
       allReplies: () => JSON.parse(JSON.stringify(REPLIES)),
       replies: panel => { let language = 'en'; try { language = read(panel).language || 'en'; } catch (_) { language = 'en'; } return { language, name: languageName(language), set: REPLIES[language] || REPLIES.en }; },
       country: panel => { try { return requestCountry(read(panel).id); } catch (_) { return ''; } },
-      // The languages Studio's replies are written in, which one the request uses, and the reporter's own.
       replyLanguages: panel => {
         let data = null; try { data = read(panel); } catch (_) { data = null; }
         const list = Object.keys(REPLIES).map(code => ({ code, name: languageName(code) })).sort((a, b) => a.name.localeCompare(b.name, uiLocale()));
@@ -8737,9 +8029,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         queue();
       },
       fill: (panel, text) => fillReply(panel, text),
-      // The Translate tab, from the keyboard (T).
       toggleTranslate: panel => { const state = states.get(panel); if (state?.tab) toggleTranslate(state); },
-      // My reply in the reporter's language (3.1.0): { text, source } or { same } or null when Chrome can't.
       translateReply: async (panel, text) => {
         const T = pageApi('Translator'); if (!T || !text.trim()) return null;
         const target = shortLang(read(panel).language || 'en');
@@ -8750,35 +8040,25 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         if (!translator) return null;
         try { return { text: await patient(Promise.resolve(translator.translate(text)), 30000), source, target }; } catch (_) { return null; }
       },
-      // For the reply's Translate button: whether Chrome can translate here, and into what.
       replyTarget: panel => { try { const language = shortLang(read(panel).language || 'en'); return { language, name: languageName(language), can: !!pageApi('Translator'), mine: shortLang(uiLocale()) }; } catch (_) { return null; } },
       downloadShare: () => (Date.now() - download.at < 8000 && download.share < 1 ? download.share : 1),
-      // What a quick reply's {variables} are made from.
       facts: panel => {
         const data = read(panel), attrs = requestModel(data.id)?.attributes || {};
         let where = null;
         try { const geometry = studioSDK.get()?.DataModel?.MapUpdateRequests?.getById?.({ mapUpdateRequestId: Number(data.id) })?.geometry; if (geometry?.type === 'Point') where = { lon: geometry.coordinates[0], lat: geometry.coordinates[1] }; } catch (_) { where = null; }
         return { id: data.id, title: data.title, city: data.city, driveTime: data.driveTime, language: data.language, languageName: languageName(data.language),
           description: String(attrs.description || '').replace(/\s+/g, ' ').trim(), messages: data.messages.map(message => ({ side: message.side, time: message.time, name: message.name, text: message.text.replace(/\s+/g, ' ').trim() })), where,
-          // The reporter's drive, as WME keeps it (3.1.0): the local time of the drive, the device, the vehicle and
-          // what the app was set to avoid; the device as Driver settings shows it (CarPlay, Android Auto…).
           localDrive: typeof attrs.localDriveTime === 'string' ? attrs.localDriveTime : '', os: String(attrs.os || ''), vehicle: String(attrs.vehicleType || ''),
           device: panel.querySelector('.reporter-preferences wz-badge.os')?.textContent.trim() || '',
           avoid: { tolls: attrs.avoidTolls === true, ferries: attrs.avoidFerries === true, highways: attrs.avoidPrimaries === true, unpaved: !!attrs.avoidTrails && !/^allow$/i.test(String(attrs.avoidTrails)), turns: attrs.avoidDangerousTurns === true },
-          // When I'd close it without an answer: my quiet days after my last message (from today when it's my turn).
           quietDays: Math.max(1, Number(settings.requestQuietDays) || 7), closed: data.closed,
-          // The reporter's Waze username, from the Username line of the request's details (4.0.1); '' when WME hides it.
           reporter: reporterName(panel),
-          // 4.1.0: WME's type number, the reply group it belongs to, and whether it came from Map Mate (and about what).
           type: data.type, group: TYPE_GROUPS[data.type] || '',
           mapMate: mapMateOf(data, String(attrs.description || descriptionPart(panel)?.text || ''), reporterName(panel)) };
       },
-      // The street, the nearest junction and the municipality at the request's spot, from the roads on the map
-      // (3.1.0). Kept for a minute per request: it looks through every road that is loaded.
       place: panel => placeAt(read(panel).id) });
   })();
 
-  // A link that opens an update request in WME, centred on it when its place is known.
   function studioRequestLink(id, where) {
     if (!id) return '';
     const round = value => String(Math.round(value * 1e5) / 1e5);
@@ -8787,13 +8067,8 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     return `${location.origin}/editor?env=${encodeURIComponent(env)}${place}&mapUpdateRequest=${encodeURIComponent(id)}`;
   }
 
-  // Quick replies (3.1.0): a tab on the outside edge of an update request window. It opens ready replies: a few in the
-  // reporter's language, and your own, kept in groups for different occasions. A click puts the reply in the reply box
-  // (after anything already typed there); nothing is sent.
   const quickReplies = (() => {
     const KEY = 'wmeStudio.quickReplies.v1', MAX = 200, WINDOW = '#ISSUE_WINDOW_UPDATE_REQUEST';
-    // Studio's ready replies: [key, name, group]. 'misc' ones show for every request (under Studio's replies); a
-    // request type's own ones (4.1.0) come first on requests of that type, and Map Mate's on Map Mate reports.
     const TYPE_BUILT = {
       turn: [['t-turn-ask', 'Ask about the turn'], ['t-turn-done', 'Turn fixed']],
       address: [['t-address-ask', 'Ask for the address'], ['t-address-done', 'Address fixed']],
@@ -8820,8 +8095,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       ['mm-ask', 'Ask for more details', 'mapmate'],
       ...Object.entries(MAP_MATE_BUILT).flatMap(([kind, list]) => list.map(([key, title]) => [key, title, `mapmate:${kind}`]))];
     const BUILT_KEYS = new Set(BUILT_IN.map(([key]) => key));
-    // What a reply does after it goes in the box (4.1.0): nothing, or tick Solved or Not identified in the request
-    // window (WME still saves it with the rest; nothing is sent). Studio's replies come with the usual choice.
     const ACTIONS = ['', 'solved', 'not-identified'];
     const builtDefaultAction = key => (key === 'fixed' || /-done$/.test(key) && key !== 't-route-done' ? 'solved' : ['nothing', 'close', 't-route-done'].includes(key) || /-none$/.test(key) ? 'not-identified' : '');
     const BUTTONS_MAX = 8;
@@ -8833,19 +8106,14 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       group: String(item.group || '').trim().slice(0, 40), type: String(item.type || '').trim().slice(0, 60), text: String(item.text || '').slice(0, 2000),
       pinned: item.pinned === true, uses: Math.max(0, Math.floor(Number(item.uses) || 0)), lastUsed: Math.max(0, Number(item.lastUsed) || 0),
       countries: cleanCountries(item.countries),
-      // 4.0.0: a reply can stay in the management page but out of the list in WME, and knows when it was written.
       hidden: item.hidden === true, created: Math.max(0, Number(item.created) || 0),
-      // 4.1.0: what it does after it goes in, and whether it has a button on the request window.
       action: ACTIONS.includes(item.action) ? item.action : '', button: item.button === true })).filter(item => item.title && item.text.trim());
-    // Countries a reply or a folder is for (4.0.0): two capital letters each; none means everywhere.
     function cleanCountries(list) { return [...new Set((Array.isArray(list) ? list : []).map(code => String(code || '').trim().toUpperCase()).filter(code => /^[A-Z]{2}$/.test(code)))].slice(0, 30); }
-    // Folders (3.1.0): the groups, in my order, empty ones kept too.
     const FOLDERS_KEY = 'wmeStudio.quickReplyFolders.v1';
     let folders = [];
     const cleanFolders = list => [...new Set((Array.isArray(list) ? list : []).map(name => String(name || '').trim().slice(0, 40)).filter(Boolean))].slice(0, 60);
     const folderNames = () => { const names = [...folders]; for (const item of custom) if (item.group && !names.includes(item.group)) names.push(item.group); return names; };
     const saveFolders = () => { try { Promise.resolve(studioKeep.set(FOLDERS_KEY, folders)).catch(error => reportStudioError('quick replies save', error)); } catch (error) { reportStudioError('quick replies save', error); } };
-    // How each folder looks (3.1.0): a colour and an icon I pick, and tags that find it when I search.
     const FOLDER_LOOK = {
       colors: { blue: ['#5aaeff', '#0a6fc4'], green: ['#3bd07a', '#12a150'], amber: ['#f5b94c', '#b26a00'], purple: ['#b18cff', '#7c4ddb'], red: ['#ff7a6e', '#c4321f'],
         teal: ['#2fd0c0', '#0b8a7e'], pink: ['#f47fbf', '#c0267a'], lime: ['#a8d65a', '#4d7c0f'], orange: ['#ff9d4d', '#c25a00'], gray: ['#a2acb9', '#566070'] },
@@ -8875,26 +8143,17 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       return out;
     };
     const saveMeta = () => { try { Promise.resolve(studioKeep.set(FOLDER_META_KEY, folderMeta)).catch(error => reportStudioError('quick replies save', error)); } catch (error) { reportStudioError('quick replies save', error); } };
-    // How the panel shows them (3.1.0): Studio's replies first, last or hidden, the folders I folded, and which of
-    // Studio's replies I pinned.
     const VIEW_KEY = 'wmeStudio.quickRepliesView.v1';
     let view = { studio: 'first', folded: [], builtPins: [], tour: { more: 0, manage: 0 }, builtActions: {}, builtButtons: [], suggest: false, translate: true };
     const cleanView = value => ({ studio: ['first', 'last', 'hidden'].includes(value?.studio) ? value.studio : 'first',
       folded: [...new Set((Array.isArray(value?.folded) ? value.folded : []).map(key => String(key).slice(0, 50)))].slice(0, 80),
       builtPins: [...new Set((Array.isArray(value?.builtPins) ? value.builtPins : []).filter(key => BUILT_KEYS.has(key)))],
-      // 4.1.0: what Studio's replies do (when I changed it), which of them have a button on the window, and whether a
-      // first reply is suggested in the box of a request nobody answered yet.
       builtActions: Object.fromEntries(Object.entries(value?.builtActions && typeof value.builtActions === 'object' ? value.builtActions : {}).filter(([key, action]) => BUILT_KEYS.has(key) && ACTIONS.includes(action))),
       builtButtons: [...new Set((Array.isArray(value?.builtButtons) ? value.builtButtons : []).filter(key => BUILT_KEYS.has(key)))].slice(0, BUTTONS_MAX),
       suggest: value?.suggest === true,
-      // 4.1.0: my own replies go in already translated into the reporter's language (on unless I turn it off).
       translate: value?.translate !== false,
       tour: { more: value?.tour?.more === 1 ? 1 : 0, manage: value?.tour?.manage === 1 ? 1 : 0 } });
     const saveView = () => { try { Promise.resolve(studioKeep.set(VIEW_KEY, view)).catch(error => reportStudioError('quick replies save', error)); } catch (error) { reportStudioError('quick replies save', error); } };
-    // The management page's Start (4.0.0): what helps me get into the habit. When I last saved a backup and whether I
-    // want a reminder, the tip I'm at, and the notes I put away. Also a short log of the replies I used (when, how
-    // long, in which language: 60 days, for "This week") and the reporters' languages where I opened Quick replies
-    // (30 days, for Studio's replies). Read only when the page or a reply needs them.
     const GUIDE_KEY = 'wmeStudio.quickRepliesGuide.v1', USAGE_KEY = 'wmeStudio.quickRepliesUsage.v1', SEEN_KEY = 'wmeStudio.quickRepliesSeen.v1';
     let guide = { backupAt: 0, remind: true, hideStart: false, tip: 0, dismissed: {} }, usageLog = [], seenLog = [], extras = null, extrasTimer = 0;
     const cleanGuide = value => ({ backupAt: Math.max(0, Number(value?.backupAt) || 0), remind: value?.remind !== false, hideStart: value?.hideStart === true,
@@ -8907,8 +8166,8 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       }).catch(() => {});
       return extras;
     }
-    const saveGuide = () => { try { Promise.resolve(studioKeep.set(GUIDE_KEY, guide)).catch(() => {}); } catch (_) { /* not kept */ } };
-    const saveLogs = () => { clearTimeout(extrasTimer); extrasTimer = setTimeout(() => { try { studioKeep.set(USAGE_KEY, usageLog); studioKeep.set(SEEN_KEY, seenLog); } catch (_) { /* not kept */ } }, 2000); };
+    const saveGuide = () => { try { Promise.resolve(studioKeep.set(GUIDE_KEY, guide)).catch(() => {}); } catch (_) {   } };
+    const saveLogs = () => { clearTimeout(extrasTimer); extrasTimer = setTimeout(() => { try { studioKeep.set(USAGE_KEY, usageLog); studioKeep.set(SEEN_KEY, seenLog); } catch (_) {   } }, 2000); };
     function logUse(id, chars, lang) {
       loadExtras().then(() => { usageLog = cleanLog([...usageLog, [Date.now(), String(id || '').slice(0, 30), Math.max(0, Math.min(5000, Number(chars) || 0)), String(lang || '').slice(0, 12)]], 60, 500); saveLogs(); if (managers.size) notifyManagers(); });
     }
@@ -8923,8 +8182,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       return loaded;
     }
     const save = () => { try { Promise.resolve(studioKeep.set(KEY, custom)).catch(error => reportStudioError('quick replies save', error)); } catch (error) { reportStudioError('quick replies save', error); } };
-    // Studio's own replies can be changed too (3.1.0), each in each language: my wording is used instead, and a
-    // reply I hide stays out of the list until I bring it back.
     const BUILT_KEY = 'wmeStudio.quickRepliesBuiltIn.v1';
     let builtEdits = {};
     const cleanBuilt = value => {
@@ -8941,7 +8198,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     };
     const saveBuilt = () => { try { Promise.resolve(studioKeep.set(BUILT_KEY, builtEdits)).catch(error => reportStudioError('quick replies save', error)); } catch (error) { reportStudioError('quick replies save', error); } };
     Promise.resolve(studioKeep.get(BUILT_KEY, {})).then(value => { builtEdits = cleanBuilt(value); }).catch(() => { builtEdits = {}; });
-    // A ready reply as I see it: mine where I changed it, else Studio's.
     function builtReply(lang, key, set) {
       const edit = builtEdits[lang]?.[key], title = BUILT_IN.find(([one]) => one === key)?.[1] || key;
       return { key, lang, builtIn: true, title: edit?.title || tr(title), text: edit?.text?.trim() ? edit.text : set[key], edited: !!(edit?.title || edit?.text?.trim()), hidden: !!edit?.hidden, original: set[key], originalTitle: tr(title),
@@ -8963,15 +8219,10 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     };
     const svg = path => `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
     const CSS = studioPart('CSS', { studioStripCSS });
-    // Where the window clips what sticks out of it (Floating mode, when WME puts it in the panel container), the
-    // window's own card keeps the round corners and the tab stays visible outside.
     GM_addStyle(`html[data-wme-studio="on"][data-wme-studio-compact="on"] #panel-container > :has(> .ws-quick-replies) { overflow: visible !important; }
 html[data-wme-studio="on"][data-wme-studio-compact="on"] #panel-container > :has(> .ws-quick-replies) > wz-card { border-radius: 17px !important; overflow: clip !important; }`);
-    // The side tabs and the reply's + belong to their window: hidden with it (Arrange, a window folding into the
-    // header). Their own reset (all: initial) used to make them visible on their own, so they stayed in Arrange.
     GM_addStyle(`html[data-wme-studio="on"] :is(.ws-quick-replies,.ws-reply-details) { visibility: inherit !important; }
 html[data-wme-studio-layout-editing="on"] :is(.ws-quick-replies,.ws-reply-details) { display: none !important; }`);
-    // A short request window scrolls with the same slim scrollbar as its discussion, not the plain one with arrows.
     GM_addStyle(`@supports selector(::-webkit-scrollbar) {
 html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) :is(.problem-edit,.problem-edit *):not(#ws-sb-a):not(#ws-sb-b) { scrollbar-width: auto !important; scrollbar-color: auto !important; }
 html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit::-webkit-scrollbar,
@@ -8990,13 +8241,10 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const field = panel?.querySelector('wz-textarea.new-comment-text') || panel?.querySelector('.new-comment-form textarea');
       return String(field?.value ?? field?.shadowRoot?.querySelector('textarea')?.value ?? '');
     }
-    // {variables} in a reply, filled in when it's picked: dates and greetings in the reporter's language.
     const GREETINGS = { en: ['Good morning', 'Good afternoon', 'Good evening'], el: ['Καλημέρα', 'Καλό απόγευμα', 'Καλησπέρα'], es: ['Buenos días', 'Buenas tardes', 'Buenas noches'],
       pt: ['Bom dia', 'Boa tarde', 'Boa noite'], fr: ['Bonjour', 'Bonjour', 'Bonsoir'], de: ['Guten Morgen', 'Guten Tag', 'Guten Abend'], it: ['Buongiorno', 'Buon pomeriggio', 'Buonasera'],
       nl: ['Goedemorgen', 'Goedemiddag', 'Goedenavond'], pl: ['Dzień dobry', 'Dzień dobry', 'Dobry wieczór'], ru: ['Доброе утро', 'Добрый день', 'Добрый вечер'],
       tr: ['Günaydın', 'İyi günler', 'İyi akşamlar'], ka: ['დილა მშვიდობისა', 'შუადღე მშვიდობისა', 'საღამო მშვიდობისა'] };
-    // Every variable: its name, what it holds, and where the reply box's + menu lists it (3.1.0: street, junction,
-    // the drive, the close date and more; '' keeps one out of that menu).
     const VARIABLES = [
       ['type', 'The kind of request', 'request'], ['id', 'The request number', 'request'], ['city', 'The city', 'request'],
       ['area', 'The municipality', 'request'], ['street', 'The street', 'request'], ['junction', 'The nearest junction', 'request'],
@@ -9015,7 +8263,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       ['greeting', 'Good morning, afternoon or evening, in their language', 'you'], ['me', 'Your editor name', 'you'],
       ['rank', 'Your editor level', 'you'], ['today', 'Today’s date', 'you'], ['now', 'The time now', 'you']];
     const BUILT_IN_NAMES = new Set(VARIABLES.map(([name]) => name));
-    // Words that go in a reply, in the reporter's language.
     const VEHICLES = { en: ['car', 'taxi', 'motorcycle'], el: ['αυτοκίνητο', 'ταξί', 'μοτοσικλέτα'], es: ['coche', 'taxi', 'moto'], pt: ['carro', 'táxi', 'mota'], fr: ['voiture', 'taxi', 'moto'],
       de: ['Auto', 'Taxi', 'Motorrad'], it: ['auto', 'taxi', 'moto'], nl: ['auto', 'taxi', 'motor'], pl: ['samochód', 'taksówka', 'motocykl'], ru: ['автомобиль', 'такси', 'мотоцикл'],
       tr: ['otomobil', 'taksi', 'motosiklet'], ka: ['მანქანა', 'ტაქსი', 'მოტოციკლი'] };
@@ -9028,12 +8275,10 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     const DAY_PARTS = { en: ['morning', 'afternoon', 'evening', 'night'], el: ['πρωί', 'απόγευμα', 'βράδυ', 'νύχτα'], es: ['mañana', 'tarde', 'tarde', 'noche'], pt: ['manhã', 'tarde', 'noite', 'noite'],
       fr: ['matin', 'après-midi', 'soir', 'nuit'], de: ['Morgen', 'Nachmittag', 'Abend', 'Nacht'], it: ['mattina', 'pomeriggio', 'sera', 'notte'], nl: ['ochtend', 'middag', 'avond', 'nacht'],
       pl: ['rano', 'popołudnie', 'wieczór', 'noc'], ru: ['утро', 'день', 'вечер', 'ночь'], tr: ['sabah', 'öğleden sonra', 'akşam', 'gece'], ka: ['დილა', 'შუადღე', 'საღამო', 'ღამე'] };
-    // The same words in the languages added in 4.0.0.
     Object.assign(GREETINGS, {"uk": ["Доброго ранку", "Добрий день", "Добрий вечір"], "cs": ["Dobré ráno", "Dobré odpoledne", "Dobrý večer"], "sk": ["Dobré ráno", "Dobrý deň", "Dobrý večer"], "hu": ["Jó reggelt", "Jó napot", "Jó estét"], "ro": ["Bună dimineața", "Bună ziua", "Bună seara"], "bg": ["Добро утро", "Добър ден", "Добър вечер"], "sr": ["Dobro jutro", "Dobar dan", "Dobro veče"], "hr": ["Dobro jutro", "Dobar dan", "Dobra večer"], "sl": ["Dobro jutro", "Dober dan", "Dober večer"], "ar": ["صباح الخير", "مساء الخير", "مساء الخير"], "he": ["בוקר טוב", "צהריים טובים", "ערב טוב"], "fa": ["صبح بخیر", "عصر بخیر", "عصر بخیر"], "zh": ["早上好", "下午好", "晚上好"], "ja": ["おはようございます", "こんにちは", "こんばんは"], "ko": ["좋은 아침입니다", "안녕하세요", "좋은 저녁입니다"], "sv": ["God morgon", "God eftermiddag", "God kväll"], "no": ["God morgen", "God ettermiddag", "God kveld"], "da": ["Godmorgen", "God eftermiddag", "Godaften"], "fi": ["Hyvää huomenta", "Hyvää iltapäivää", "Hyvää iltaa"], "lt": ["Labas rytas", "Laba diena", "Labas vakaras"], "lv": ["Labrīt", "Labdien", "Labvakar"], "et": ["Tere hommikust", "Tere päevast", "Tere õhtust"], "id": ["Selamat pagi", "Selamat siang", "Selamat malam"], "ms": ["Selamat pagi", "Selamat petang", "Selamat malam"], "th": ["สวัสดีตอนเช้า", "สวัสดีตอนบ่าย", "สวัสดีตอนเย็น"], "vi": ["Chào buổi sáng", "Chào buổi chiều", "Chào buổi tối"], "hi": ["सुप्रभात", "नमस्ते", "शुभ संध्या"], "ca": ["Bon dia", "Bona tarda", "Bon vespre"]});
     Object.assign(VEHICLES, {"uk": ["автомобіль", "таксі", "мотоцикл"], "cs": ["auto", "taxi", "motocykl"], "sk": ["auto", "taxík", "motocykel"], "hu": ["autó", "taxi", "motor"], "ro": ["mașină", "taxi", "motocicletă"], "bg": ["автомобил", "такси", "мотоциклет"], "sr": ["automobil", "taksi", "motocikl"], "hr": ["automobil", "taksi", "motocikl"], "sl": ["avto", "taksi", "motor"], "ar": ["سيارة", "سيارة أجرة", "دراجة نارية"], "he": ["רכב", "מונית", "אופנוע"], "fa": ["خودرو", "تاکسی", "موتورسیکلت"], "zh": ["汽车", "出租车", "摩托车"], "ja": ["車", "タクシー", "バイク"], "ko": ["승용차", "택시", "오토바이"], "sv": ["bil", "taxi", "motorcykel"], "no": ["bil", "taxi", "motorsykkel"], "da": ["bil", "taxa", "motorcykel"], "fi": ["auto", "taksi", "moottoripyörä"], "lt": ["automobilis", "taksi", "motociklas"], "lv": ["automašīna", "taksometrs", "motocikls"], "et": ["auto", "takso", "mootorratas"], "id": ["mobil", "taksi", "sepeda motor"], "ms": ["kereta", "teksi", "motosikal"], "th": ["รถยนต์", "แท็กซี่", "รถจักรยานยนต์"], "vi": ["ô tô", "taxi", "xe máy"], "hi": ["कार", "टैक्सी", "मोटरसाइकिल"], "ca": ["cotxe", "taxi", "moto"]});
     Object.assign(AVOIDS, {"uk": ["платні дороги", "пороми", "автомагістралі", "ґрунтові дороги", "складні перехрестя"], "cs": ["placené silnice", "trajekty", "dálnice", "nezpevněné cesty", "složité křižovatky"], "sk": ["spoplatnené cesty", "trajekty", "diaľnice", "nespevnené cesty", "zložité križovatky"], "hu": ["fizetős utak", "kompok", "autópályák", "burkolatlan utak", "nehéz kereszteződések"], "ro": ["drumuri cu taxă", "feriboturi", "autostrăzi", "drumuri neasfaltate", "intersecții dificile"], "bg": ["платени пътища", "фериботи", "магистрали", "черни пътища", "трудни кръстовища"], "sr": ["putevi s naplatom", "trajekti", "autoputevi", "neasfaltirani putevi", "složene raskrsnice"], "hr": ["ceste s naplatom", "trajekti", "autoceste", "neasfaltirane ceste", "složena raskrižja"], "sl": ["cestninske ceste", "trajekti", "avtoceste", "makadamske ceste", "zahtevna križišča"], "ar": ["الطرق ذات الرسوم", "العبّارات", "الطرق السريعة", "الطرق غير المعبّدة", "التقاطعات الصعبة"], "he": ["כבישי אגרה", "מעבורות", "כבישים מהירים", "דרכי עפר", "צמתים מסובכים"], "fa": ["جاده‌های عوارضی", "کشتی‌ها", "آزادراه‌ها", "جاده‌های خاکی", "تقاطع‌های دشوار"], "zh": ["收费道路", "渡轮", "高速公路", "未铺装道路", "复杂路口"], "ja": ["有料道路", "フェリー", "高速道路", "未舗装路", "難しい交差点"], "ko": ["유료 도로", "페리", "고속도로", "비포장도로", "복잡한 교차로"], "sv": ["betalvägar", "färjor", "motorvägar", "grusvägar", "svåra korsningar"], "no": ["bomveier", "ferjer", "motorveier", "grusveier", "vanskelige kryss"], "da": ["betalingsveje", "færger", "motorveje", "grusveje", "vanskelige kryds"], "fi": ["maksulliset tiet", "lautat", "moottoritiet", "päällystämättömät tiet", "hankalat risteykset"], "lt": ["mokami keliai", "keltai", "greitkeliai", "žvyrkeliai", "sudėtingos sankryžos"], "lv": ["maksas ceļi", "prāmji", "automaģistrāles", "grants ceļi", "sarežģīti krustojumi"], "et": ["tasulised teed", "praamid", "kiirteed", "kruusateed", "keerulised ristmikud"], "id": ["jalan tol", "feri", "jalan raya utama", "jalan tanpa aspal", "persimpangan sulit"], "ms": ["jalan bertol", "feri", "lebuh raya", "jalan tidak berturap", "persimpangan sukar"], "th": ["ทางด่วนเก็บเงิน", "เรือข้ามฟาก", "ทางหลวง", "ถนนลูกรัง", "ทางแยกที่ยุ่งยาก"], "vi": ["đường thu phí", "phà", "đường cao tốc", "đường đất", "giao lộ phức tạp"], "hi": ["टोल सड़कें", "फ़ेरी", "हाईवे", "कच्ची सड़कें", "मुश्किल चौराहे"], "ca": ["peatges", "transbordadors", "autopistes", "camins sense asfaltar", "cruïlles difícils"]});
     Object.assign(DAY_PARTS, {"uk": ["ранок", "день", "вечір", "ніч"], "cs": ["ráno", "odpoledne", "večer", "noc"], "sk": ["ráno", "popoludnie", "večer", "noc"], "hu": ["reggel", "délután", "este", "éjszaka"], "ro": ["dimineață", "după-amiază", "seară", "noapte"], "bg": ["сутрин", "следобед", "вечер", "нощ"], "sr": ["jutro", "popodne", "veče", "noć"], "hr": ["jutro", "poslijepodne", "večer", "noć"], "sl": ["jutro", "popoldne", "večer", "noč"], "ar": ["الصباح", "بعد الظهر", "المساء", "الليل"], "he": ["בוקר", "צהריים", "ערב", "לילה"], "fa": ["صبح", "بعدازظهر", "عصر", "شب"], "zh": ["早上", "下午", "晚上", "夜间"], "ja": ["朝", "午後", "夕方", "夜"], "ko": ["아침", "오후", "저녁", "밤"], "sv": ["morgon", "eftermiddag", "kväll", "natt"], "no": ["morgen", "ettermiddag", "kveld", "natt"], "da": ["morgen", "eftermiddag", "aften", "nat"], "fi": ["aamu", "iltapäivä", "ilta", "yö"], "lt": ["rytas", "popietė", "vakaras", "naktis"], "lv": ["rīts", "pēcpusdiena", "vakars", "nakts"], "et": ["hommik", "pärastlõuna", "õhtu", "öö"], "id": ["pagi", "siang", "sore", "malam"], "ms": ["pagi", "tengah hari", "petang", "malam"], "th": ["เช้า", "บ่าย", "เย็น", "กลางคืน"], "vi": ["buổi sáng", "buổi chiều", "buổi tối", "ban đêm"], "hi": ["सुबह", "दोपहर", "शाम", "रात"], "ca": ["matí", "tarda", "vespre", "nit"]});
-    // My own variables ({signature}, {discord}…): a name of letters and the text it stands for.
     const MINE_KEY = 'wmeStudio.replyVariables.v1', MINE_MAX = 30;
     let mineVars = [], mineLoaded = null;
     const cleanMine = list => (Array.isArray(list) ? list : []).filter(item => item && typeof item === 'object')
@@ -9058,7 +8303,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       try { const level = Number(studioSDK.get()?.State?.getUserInfo?.()?.rank); if (Number.isFinite(level)) rank = String(level + 1); } catch (_) { rank = ''; }
       const where = facts.where, round = value => Number.isFinite(value) ? String(Math.round(value * 1e5) / 1e5) : '';
       const link = studioRequestLink(facts.id, where);
-      // The drive in the reporter's own time when WME has it ("2026-08-31 19:42"), else the report's time here.
       const local = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(facts.localDrive || '');
       const drove = local ? new Date(+local[1], local[2] - 1, +local[3], +local[4], +local[5]) : Number.isFinite(facts.driveTime) ? new Date(facts.driveTime) : null;
       const weekday = drove ? (() => { try { return new Intl.DateTimeFormat(lang, { weekday: 'long' }).format(drove); } catch (_) { return ''; } })() : '';
@@ -9074,7 +8318,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const avoids = list(['tolls', 'ferries', 'highways', 'unpaved', 'turns'].map((key, index) => (avoid[key] ? avoidWords[index] : '')).filter(Boolean));
       const reporterLast = [...messages].reverse().find(message => message.side === 'reporter' && message.text);
       const editorLast = [...messages].reverse().find(message => message.side === 'editor');
-      // The day I'd close it: my quiet days after my last message while it waits on the reporter, else from today.
       const quiet = Math.max(1, Number(facts.quietDays) || 7), lastMessage = messages.filter(message => Number.isFinite(message.time)).at(-1);
       const base = lastMessage && lastMessage.side !== 'reporter' ? start(lastMessage.time) : start(Date.now());
       const closeAt = Math.max(start(Date.now()), base + quiet * day), closein = facts.id && !facts.closed ? String(Math.round((closeAt - start(Date.now())) / day)) : '';
@@ -9084,14 +8327,12 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         messages: String(messages.length), today: date(Date.now()), now: clock(Date.now()), link, language: (() => { try { const name = new Intl.DisplayNames([lang], { type: 'language' }).of(lang); return name ? name[0].toLocaleUpperCase(lang) + name.slice(1) : facts.languageName || ''; } catch (_) { return facts.languageName || ''; } })(),
         lat: round(where?.lat), lon: round(where?.lon), weekday, timeofday, reportago, device, vehicle, avoids,
         lastmessage: reporterLast?.text || '', lasteditor: String(editorLast?.name || '').replace(/\s*\(\d+\)\s*$/, '').trim(), closedate, closein, rank };
-      // The street, the junction and the municipality are looked up only when something asks for them.
       let place = null;
       const placed = () => { if (!place) { try { place = facts.id ? caseFile.place(panel) : null; } catch (_) { place = null; } place ||= { street: '', junction: [], area: '' }; } return place; };
       Object.defineProperties(known, {
         street: { enumerable: true, get: () => placed().street },
         junction: { enumerable: true, get: () => (placed().junction.length ? list(placed().junction) : '') },
         area: { enumerable: true, get: () => placed().area || facts.city || '' },
-        // The streets of the road segments selected on the map right now (4.1.0), each name once.
         selected: { enumerable: true, get: () => list(selectedStreets()) }
       });
       for (const item of mineVars) if (!Object.hasOwn(known, item.name)) known[item.name] = item.value;
@@ -9111,9 +8352,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         return names;
       } catch (_) { return []; }
     }
-    // Unknown names stay as they are, so a brace in a normal sentence is left alone.
     const fillVariables = (text, panel) => { const known = values(panel); return text.replace(/\{([a-z]+)\}/gi, (whole, name) => (Object.hasOwn(known, name.toLowerCase()) ? known[name.toLowerCase()] : whole)); };
-    // How often and when I use each of my replies, for "most used" in the management page.
     function noteUse(id, chars = 0, lang = '') {
       const item = custom.find(one => one.id === id); if (!item) return;
       item.uses = (item.uses || 0) + 1; item.lastUsed = Date.now(); save(); notifyManagers();
@@ -9122,7 +8361,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     function insert(state, text, item = null) {
       const panel = state.win.querySelector('.problem-edit'); if (!panel) return;
       let now = replyText(panel).trimEnd(); const filled = fillVariables(text, panel);
-      // A suggested first reply still as it was is replaced by the one picked, not added to.
       if (state.suggestedText && now.trim() === state.suggestedText.trim()) { now = ''; panel.querySelector('.ws-suggested')?.remove(); }
       state.suggestedText = '';
       const lang = (() => { try { return caseFile.facts(panel).language || ''; } catch (_) { return ''; } })();
@@ -9131,22 +8369,16 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       applyAction(panel, item?.action);
       paintButtons(state);
       close(state);
-      // 4.1.0: my own replies are written in my language, so they go in translated, as the Translate button would do
-      // it (Undo translation brings back what I wrote). Studio's replies only when none are written in the reporter's
-      // language and I didn't pick one for this request.
       if (!view.translate || !item) return;
       let ownLanguage = true;
       if (item.builtIn) { try { const languages = caseFile.replyLanguages(panel); ownLanguage = !languages.chosen && !languages.list.some(one => one.code === languages.language); } catch (_) { ownLanguage = false; } }
       if (ownLanguage) replyTools.autoTranslate(panel, now, filled);
     }
-    // Ticks Solved or Not identified in the request window, as a click there would (WME saves it with the rest).
     function applyAction(panel, action) {
       if (!action) return;
       const radio = panel.querySelector(`.actions input[type="radio"][value="${action}"]`);
       if (radio && !radio.checked && !radio.disabled) { try { radio.click(); } catch (error) { reportStudioError('quick replies action', error); } }
     }
-    // The tab sits on the right of the window, near its bottom next to the reply box, and the list opens upwards from it.
-    // Only a window right at the edge of the screen has it on its left.
     function place(state) {
       const rect = state.win.getBoundingClientRect();
       const open = !state.panel.hidden, need = 34 + (open ? Math.min(320, innerWidth - 24) + 8 : 0);
@@ -9154,8 +8386,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (state.host.dataset.side !== side) state.host.dataset.side = side;
       const max = `${Math.max(220, Math.min(560, rect.bottom - 64 - 12))}px`;
       if (state.host.style.getPropertyValue('--ws-qr-max') !== max) state.host.style.setProperty('--ws-qr-max', max);
-      // A short window keeps the tabs inside its height: first they drop their words (the icons keep their tooltips),
-      // then they sit lower (3.1.0: they stuck out above a short window).
       const zoom = state.win.currentCSSZoom || 1, height = rect.height / zoom, stack = state.shadow.querySelector('.stack');
       if (!height || !stack) return;
       const compact = state.host.hasAttribute('data-compact');
@@ -9167,12 +8397,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (state.host.style.getPropertyValue('--ws-qr-bottom') !== bottom) state.host.style.setProperty('--ws-qr-bottom', bottom);
       paintTabs(state);
     }
-    // A window painted with the islands' gradient (4.0.0): each tab shows the part of the gradient right beside it, laid
-    // out over the whole window, instead of the whole gradient squeezed into the tab (it changed color from tab to tab
-    // and didn't match the window's edge). The tab samples the window's nearest edge.
     function paintTabs(state) {
-      // In the window's own pixels, inside its border, where its gradient is drawn: a window still growing in as it
-      // opens is drawn smaller than it is.
       const frame = state.win, win = frame.getBoundingClientRect();
       if (!win.width || !win.height || !frame.offsetWidth) return;
       const unit = win.width / frame.offsetWidth, width = frame.clientWidth, size = `${width}px ${frame.clientHeight}px`;
@@ -9195,8 +8420,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       await load();
       state.panel.hidden = false; state.tab.setAttribute('aria-expanded', 'true');
       state.filter = 'all'; place(state); renderList(state); place(state);
-      // The panel takes the keys (numbers, arrows, typing to search) but not the search field itself: on an iPad that
-      // would open the keyboard every time (4.0.0). The first letter typed moves into the search.
       state.panel.focus({ preventScroll: true });
     }
     const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
@@ -9208,14 +8431,11 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     function head(state, title, extra = null) {
       const box = el('div', 'head'); box.append(el('strong', '', title));
       if (extra) box.append(extra);
-      // Closed with a click, the focus stays put instead of moving to the tab in the request window (4.1.0): a request
-      // drawn again for it looked like one opened anew, and URC-E closed and reopened it.
       const shut = iconButton('close', tr('Close'), () => close(state, shut.wsKeyboard === true));
       shut.addEventListener('pointerdown', () => { shut.wsKeyboard = false; }); shut.addEventListener('keydown', () => { shut.wsKeyboard = true; });
       box.append(shut);
       return box;
     }
-    // The request's type, as WME names it ("Missing roundabout"), so a reply can be tied to it.
     const typeOf = panel => { try { return String(caseFile.facts(panel)?.title || '').trim(); } catch (_) { return ''; } };
     const sameType = (one, two) => !!one && !!two && one.localeCompare(two, undefined, { sensitivity: 'base' }) === 0;
     const fold = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -9224,20 +8444,15 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const box = el('div', isCustom ? 'item custom' : 'item');
       const button = el('button', 'row'); button.type = 'button'; button.title = item.text;
       const words = el('span', 'words');
-      // Each in its own direction (4.0.0): Arabic, Hebrew and Persian read from the right.
       const name = el('b', '', item.title); name.dir = 'auto'; words.append(name);
-      // A reply kept for some countries shows their flags (4.0.0).
       if (item.countries?.length) { const flags = el('span', 'flags'); flags.title = item.countries.join(', '); for (const code of item.countries.slice(0, 3)) { const flag = studioFlags.img(code, 'flag'); if (flag) flags.append(flag); } if (flags.childElementCount) words.append(flags); }
       if (item.pinned) { const star = el('span', 'star'); star.innerHTML = svg(ICONS.pin); words.append(star); }
-      // Under Pinned each reply says where it lives: its folder, or Studio.
       if (tagged && (item.builtIn || item.group)) { const tag = el('span', 'qtag', item.builtIn ? 'Studio' : item.group); if (!item.builtIn) tag.style.setProperty('--c', folderColor(item.group)); words.append(tag); }
-      // What it does after it goes in (4.1.0), as a small tag.
       if (item.action) { const tag = el('span', `qtag act ${item.action}`, item.action === 'solved' ? tr('Solved') : tr('Not identified')); words.append(tag); }
       const preview = el('span', 'x', item.text.replace(/\s+/g, ' ').trim()); preview.dir = 'auto'; words.append(preview);
       button.append(el('kbd', 'num'), words);
       button.addEventListener('click', () => insert(state, item.text, item));
       box.append(button);
-      // Over the end of the line, while I point at it: the star pins it to the top (Studio's too), the pencil edits it.
       const acts = el('div', 'acts');
       const star = iconButton('pin', item.pinned ? tr('Unpin') : tr('Pin to the top of Quick replies'), () => {
         if (item.builtIn) { view.builtPins = view.builtPins.includes(item.key) ? view.builtPins.filter(key => key !== item.key) : [...view.builtPins, item.key]; saveView(); }
@@ -9250,11 +8465,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       box.append(acts);
       return box;
     }
-    // The list (3.1.0): chips across the top show one folder at a time; under All come my pinned replies, the ones
-    // for this request's type, then each folder (folded or not, as I left it) and Studio's ready replies in the
-    // reporter's language, first or last as I chose in the ⋯ menu. The search field looks through what's shown;
-    // 1–9 put the numbered ones in the reply box.
-    // Out of the list (the form, variables…) the panel grows with what it shows, but not smaller than the list was.
     function freeHeight(state) {
       if (state.panel.style.height) { state.panel.style.minHeight = state.panel.style.height; state.panel.style.height = ''; }
       state.heightFor = '';
@@ -9277,7 +8487,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const add = el('button', 'btn'); add.type = 'button'; add.innerHTML = svg(ICONS.plus); add.append(tr('New reply'));
       add.disabled = custom.length >= MAX;
       add.addEventListener('click', () => renderForm(state, null));
-      // Everything else (folders, Studio's replies, variables, sharing and backups) is on its own page.
       const manage = el('button', 'btn ghost'); manage.type = 'button'; manage.innerHTML = svg(ICONS.external); manage.append(tr('Manage'));
       manage.title = tr('Open Quick replies management'); manage.setAttribute('aria-label', tr('Open Quick replies management'));
       manage.addEventListener('click', () => { seeTour(state, 'manage'); openManager(state); });
@@ -9285,7 +8494,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const tools = el('span', 'head-tools');
       const more = iconButton('dots', tr('More'), () => { seeTour(state, 'more'); toggleMenu(state); }); more.classList.add('more'); more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', 'false');
       tools.append(iconButton('braces', tr('Your variables'), () => renderVars(state)), more);
-      // The first times (4.0.0): Manage and ⋯ are lit, with a line saying what they hold, until each was used once.
       const tour = view.tour || {};
       if (!tour.more) more.classList.add('coach');
       if (!tour.manage) manage.classList.add('coach');
@@ -9306,7 +8514,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       for (const key of keys) state.panel.querySelector(key === 'more' ? '.icon.more' : '.foot .btn.ghost')?.classList.remove('coach');
       if (tour.more && tour.manage) state.panel.querySelector('.tour')?.remove();
     }
-    // The ⋯ menu: where Studio's replies go, and folding every folder at once.
     function toggleMenu(state, show = !state.menuOpen) {
       state.panel.querySelector('.menu')?.remove();
       const button = state.panel.querySelector('.icon.more');
@@ -9324,12 +8531,11 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const keys = foldKeys(state);
       const panel = state.win.querySelector('.problem-edit');
       let languages = null; try { languages = caseFile.replyLanguages(panel); } catch (_) { languages = null; }
-      // The language Studio's replies are in (4.0.0): the reporter's, as the request says, or one I pick for it.
       const languagePage = () => {
         const back = el('button', 'mo'); back.type = 'button'; back.setAttribute('role', 'menuitem');
         back.innerHTML = svg(ICONS.chevLeft); back.append(el('span', '', tr('Reply language')));
         back.addEventListener('click', event => { event.stopPropagation(); toggleMenu(state, true); });
-        const pick = code => () => { try { caseFile.setReplyLanguage(panel, code); } catch (_) { /* no request open */ } };
+        const pick = code => () => { try { caseFile.setReplyLanguage(panel, code); } catch (_) {   } };
         menu.replaceChildren(back, el('div', 'sep'),
           item('studio', tr('The reporter’s language ({0})', languages.ownName), !languages.chosen, pick(null), true),
           el('div', 'sep'),
@@ -9352,7 +8558,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         el('div', 'sep'), el('div', 'mh', tr('Folders')),
         item('chev', tr('Unfold all'), false, () => { view.folded = []; saveView(); }),
         item('chevRight', tr('Fold all'), false, () => { view.folded = keys; saveView(); }),
-        // 4.1.0: a first reply ready in the box of a request nobody answered yet, and files other tools read.
         el('div', 'sep'), el('div', 'mh', tr('Replies')),
         item('studio', tr('Suggest a first reply'), !!view.suggest, () => { view = cleanView({ ...view, suggest: !view.suggest }); saveView(); suggestFirst(state); }, true),
         item('lang', tr('Translate my replies for the reporter'), !!view.translate, () => { view = cleanView({ ...view, translate: !view.translate }); saveView(); }, true),
@@ -9362,14 +8567,12 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       state.panel.append(menu);
       menu.querySelector('[aria-checked="true"], .mo')?.focus({ preventScroll: true });
     }
-    // Each folder has its own colour, in the order of the folders, the same as in Quick replies management.
     const FOLDER_COLORS = { dark: ['#5aaeff', '#3bd07a', '#f5b94c', '#b18cff', '#ff7a6e', '#2fd0c0', '#f47fbf', '#a8d65a'], light: ['#0a6fc4', '#12a150', '#b26a00', '#7c4ddb', '#c4321f', '#0b8a7e', '#c0267a', '#4d7c0f'] };
     const folderColor = name => {
       const light = activeTheme() === 'light', picked = FOLDER_LOOK.colors[folderMeta[name]?.color];
       if (picked) return picked[light ? 1 : 0];
       const set = FOLDER_COLORS[light ? 'light' : 'dark'], at = folderNames().indexOf(name); return set[Math.max(0, at) % set.length];
     };
-    // A folder's mark: its icon in its colour when I picked one, else a dot.
     function folderMark(name) {
       const color = folderColor(name), icon = FOLDER_LOOK.icons[folderMeta[name]?.icon];
       const node = el('span', icon ? 'fmark' : 'dot'); node.style.setProperty('--c', color);
@@ -9381,7 +8584,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const panel = state.win.querySelector('.problem-edit');
       const keys = folderNames().filter(name => custom.some(item => item.group === name)).map(name => `f:${name}`);
       if (custom.some(item => !item.group)) keys.push('none');
-      try { if (caseFile.replies(panel).set) keys.push('studio'); } catch (_) { /* no request */ }
+      try { if (caseFile.replies(panel).set) keys.push('studio'); } catch (_) {   }
       return keys;
     }
     function paintChips(state, chips) {
@@ -9414,21 +8617,16 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const panel = state.win.querySelector('.problem-edit');
       const { name, set, language } = caseFile.replies(panel);
       const type = typeOf(panel), query = fold(state.query).trim();
-      // Replies kept for some countries (4.0.0): only the ones for this request's country show, and the rest wait
-      // behind a link (a search finds them all).
       const here = (() => { try { return caseFile.country(panel); } catch (_) { return ''; } })();
       const countriesOf = item => (item.countries?.length ? item.countries : (item.group && folderMeta[item.group]?.countries) || []);
-      // Replies hidden in the management page (4.0.0) stay out of the list; a search still finds them.
       const pool = query ? custom : custom.filter(item => !item.hidden);
       const elsewhere = here ? pool.filter(item => { const list = countriesOf(item); return list.length && !list.includes(here); }) : [];
       const mine = query || state.allCountries ? pool : pool.filter(item => !elsewhere.includes(item));
-      try { noteSeen(caseFile.facts(panel).id, language); } catch (_) { /* counted next time */ }
-      // A folder's tags find its replies too.
+      try { noteSeen(caseFile.facts(panel).id, language); } catch (_) {   }
       const hit = item => !query || fold(`${item.title} ${item.group || ''} ${item.group ? folderTags(item.group) : ''} ${item.text}`).includes(query);
       const builtIns = BUILT_IN.filter(([key, , group]) => group === 'misc' && set[key]).map(([key]) => ({ ...builtReply(language, key, set), pinned: view.builtPins.includes(key) }));
       const shownBuilt = builtIns.filter(item => !item.hidden);
       const names = folderNames();
-      // This request's own ready replies (4.1.0): the ones for its type, or Map Mate's for what the report is about.
       let facts = {}; try { facts = caseFile.facts(panel) || {}; } catch (_) { facts = {}; }
       const mm = facts.mapMate || null;
       const typeLabel = mm ? (mm.kind ? `Map Mate · ${tr(MAP_MATE_KIND_NAMES[mm.kind])}` : 'Map Mate') : type;
@@ -9437,13 +8635,10 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const pinned = [...mine.filter(item => item.pinned), ...shownBuilt.filter(item => item.pinned), ...typeBuilt.filter(item => item.pinned)];
       const forMe = item => sameType(item.type, type) || (!!mm && /map\s*-?\s*mate/i.test(item.type || ''));
       const forType = typeLabel ? [...typeBuilt.filter(item => !item.pinned), ...mine.filter(item => !item.pinned && forMe(item))] : [];
-      // Opened on this request's replies the first time it shows (a click on another chip stays until the next request).
       const requestKey = `${facts.id}|${mm ? 'mm' : facts.group}`;
-      // Each request opens on All (its own type's replies come first there); a chip I picked stays until the next one.
       if (state.autoFor !== requestKey) { state.autoFor = requestKey; if (!query) state.filter = 'all'; }
       const rest = mine.filter(item => !item.pinned && !forType.includes(item));
       const studioShown = view.studio !== 'hidden' && shownBuilt.length;
-      // The chips: All, Pinned, this type, Studio's replies, then each folder with replies in it.
       const chips = [{ key: 'all', label: tr('All'), count: mine.length + (studioShown ? shownBuilt.length : pinned.filter(item => item.builtIn).length) }];
       if (pinned.length) chips.push({ key: 'pinned', label: tr('Pinned'), count: pinned.length, icon: 'pin' });
       if (forType.length) chips.push({ key: 'type', label: typeLabel, count: forType.length, icon: 'flag' });
@@ -9505,8 +8700,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (!query && !custom.length && filter === 'all') nodes.push(el('p', 'hint', tr('Add your own replies for different occasions, and keep them in groups like Closures or Speed limits.')));
       body.replaceChildren(...nodes);
       [...body.querySelectorAll('.row')].forEach((button, index) => { const num = button.querySelector('.num'); if (num) num.textContent = index < 9 ? String(index + 1) : ''; });
-      // One height for the whole time the list is open (4.1.0), whatever chip I'm on or search for: the height "All"
-      // has when it opens (laid out first when it opens on another chip). What doesn't fit scrolls.
       const heightKey = `${state.autoFor}|${state.panel.style.getPropertyValue('--ws-qr-max') || state.host.style.getPropertyValue('--ws-qr-max')}`;
       if (state.heightFor !== heightKey && !state.measuring && !state.panel.hidden) {
         state.heightFor = heightKey; state.panel.style.height = '';
@@ -9519,7 +8712,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         }
       }
     }
-    // Keys inside the list: arrows move, Enter picks, 1–9 pick by number, any letter starts a search.
     function listKeys(state, event) {
       if (state.view !== 'list' || event.ctrlKey || event.metaKey || event.altKey) return false;
       const rows = [...state.panel.querySelectorAll('.body .row')], focused = state.shadow.activeElement, inSearch = focused?.classList?.contains('find');
@@ -9529,7 +8721,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         options[(index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length]?.focus();
         return true;
       }
-      // On the chips, ← and → pick the one before or after; ↓ goes into the list.
       if (focused?.classList?.contains('chip')) {
         if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
           const chips = [...state.panel.querySelectorAll('.chip')], index = chips.indexOf(focused), next = chips[index + (event.key === 'ArrowRight' ? 1 : -1)];
@@ -9544,7 +8735,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         if (next < 0) state.panel.querySelector('.find')?.focus(); else rows[next]?.focus({ preventScroll: false });
         return true;
       }
-      // A number picks its reply, also from the search field while nothing is typed in it yet.
       if (/^[1-9]$/.test(event.key) && rows[Number(event.key) - 1] && (!inSearch || !focused.value)) { rows[Number(event.key) - 1].click(); return true; }
       if (inSearch) return false;
       if (event.key.length === 1 && /\S/.test(event.key) && !focused?.matches?.('input,textarea')) {
@@ -9553,8 +8743,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       }
       return false;
     }
-    // Suggestions under a field (4.0.0), in place of the browser's own list, which opened off to the side in its own
-    // colours. Typing narrows them, ↑ ↓ and Enter pick one, and the arrow shows them all.
     function suggest(input, items) {
       const wrap = el('div', 'combo'), box = el('div', 'sugg'), toggle = el('button', 'combo-btn');
       toggle.type = 'button'; toggle.tabIndex = -1; toggle.innerHTML = svg(ICONS.chev); toggle.setAttribute('aria-label', tr('Show suggestions'));
@@ -9588,18 +8776,14 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       toggle.addEventListener('pointerdown', event => { event.preventDefault(); if (!box.hidden) hide(); else { input.focus({ preventScroll: true }); paint(true); } });
       return wrap;
     }
-    // A "?" that explains a setting (4.1.0): its note shows while it's pointed at or focused, under the setting's row.
     function tipButton(text) {
       const tip = el('button', 'tip'); tip.type = 'button'; tip.setAttribute('aria-label', text);
-      // Drawn, not typed: a "?" in the button's font sat low in the circle.
       tip.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.9 5.6a2.15 2.15 0 1 1 3 2c-.55.25-.9.7-.9 1.3v.4"/><circle cx="8" cy="11.7" r=".9"/></svg>';
       tip.append(el('span', 'bubble', text));
       tip.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); tip.focus(); });
       return tip;
     }
     function labelRow(text, tip) { const row = el('div', 'lab-row'); row.append(el('span', 'lab', text), tipButton(tip)); return row; }
-    // A dropdown of Studio's own (4.1.0), in place of the browser's: each choice with its icon and a line on what it
-    // does. Arrows, Enter and Esc work as in any list. Its value reads like a <select>'s.
     function dropdown(options, value, label) {
       const wrap = el('div', 'dd'), button = el('button', 'dd-btn'), list = el('div', 'dd-menu');
       button.type = 'button'; button.setAttribute('aria-haspopup', 'listbox'); button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-label', label);
@@ -9639,7 +8823,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const field = (labelText, node) => { const label = el('label', '', labelText); label.append(node); return label; };
       const title = el('input'); title.maxLength = 60; title.value = item?.title || ''; title.placeholder = tr('Road closed for works');
       const group = el('input'); group.maxLength = 40; group.value = item?.group || ''; group.placeholder = tr('Closures');
-      // The request type it's for: shown first when a request of that type is open.
       const current = typeOf(state.win.querySelector('.problem-edit'));
       const type = el('input'); type.maxLength = 60; type.value = item?.type || ''; type.placeholder = current || tr('Missing roundabout');
       const typeLabel = field(tr('Show first for (optional)'), suggest(type, () => [...new Set([current, ...custom.map(one => one.type)].filter(Boolean))]));
@@ -9652,7 +8835,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       }
       const text = el('textarea'); text.maxLength = 2000; text.value = item?.text || ''; text.placeholder = tr('{greeting}! Thanks for the report from {reportdate}. The road is closed for works until Friday, so the app avoids it. {me}');
       const error = el('p', 'err');
-      // The variables, as chips under the reply: a click puts one where the cursor is.
       const vars = el('div', 'vars');
       vars.append(el('span', 'vars-label', tr('Variables, filled in when you pick the reply:')));
       for (const [name, about] of VARIABLES) {
@@ -9669,7 +8851,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         vars.append(chip);
       }
       const builtIn = !!item?.builtIn;
-      // 4.1.0: what it does after it goes in the box, and a button for it on the request window.
       const action = dropdown([
         ['', tr('Leave the request as it is'), tr('Only puts the reply in the box.')],
         ['solved', tr('Tick Solved'), tr('Also ticks Solved in the request window.')],
@@ -9695,7 +8876,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const saveButton = el('button', 'btn primary', tr('Save')); saveButton.type = 'submit';
       foot.append(el('span', 'grow'), cancel, saveButton);
       if (builtIn) {
-        // Hide takes it out of the list; Original brings Studio's wording back.
         const edits = () => (builtEdits[item.lang] ||= {});
         const hide = el('button', 'btn danger', tr('Hide')); hide.type = 'button'; hide.title = tr('Take it out of the list. You can show it again at the end of the list.');
         hide.addEventListener('click', () => { edits()[item.key] = { ...(edits()[item.key] || { title: '', text: '' }), hidden: true }; saveBuilt(); renderList(state); });
@@ -9730,8 +8910,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       state.panel.replaceChildren(head(state, item ? tr('Edit reply') : tr('New reply')), body, foot);
       title.focus({ preventScroll: true });
     }
-    // Your variables (3.1.0): your own words to drop into replies, like a sign-off. {name} in a reply, or the + in
-    // the reply box, puts the text in.
     function renderVars(state, back = () => renderList(state)) {
       state.view = 'vars'; freeHeight(state);
       const form = el('form'); form.noValidate = true;
@@ -9773,8 +8951,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       state.panel.replaceChildren(head(state, tr('Your variables')), body, foot);
       rows.querySelector('input')?.focus({ preventScroll: true });
     }
-    // Share packs (3.1.0): your replies (all, or one group) as a code to paste, or a file. Whoever imports them
-    // gets them added to their own.
     const PACK = 'WMESTUDIO-REPLIES:';
     const packOf = list => PACK + btoa(unescape(encodeURIComponent(JSON.stringify({ v: 1, replies: list.map(item => ({ title: item.title, group: item.group, type: item.type || '', text: item.text })) }))));
     function readPack(raw) {
@@ -9855,10 +9031,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       state.panel.replaceChildren(head(state, tr('Import replies')), body, foot);
       code.focus({ preventScroll: true });
     }
-    // ---- 4.1.0: buttons on the window, a suggested first reply, CSV and XML -------------------------------------
-    // Up to 8 replies get a button above the reply box: one click puts the reply in (and ticks Solved or Not identified
-    // when the reply says so), without opening Quick replies.
-    // In the list and the form (4.1.0): the action tag on a reply, the action menu and the button checkbox.
     const QR_EXTRA = `.qtag.act{max-width:none}.qtag.act.solved{--c:#30a46c}.qtag.act.not-identified{--c:#8b95a3}
       .fld{position:relative;display:flex;flex-direction:column;gap:5px}
       .lab-row{position:relative;display:flex;align-items:center;gap:6px;min-height:18px}.lab{color:var(--wme-studio-text-muted,#9aa3ad);font-size:12px;font-weight:600;line-height:16px}
@@ -9919,8 +9091,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       }));
       if (bar.nextElementSibling !== form) form.before(bar);
     }
-    // A first reply for a request nobody answered yet, put in the box once (4.1.0, off unless I turn it on): the one
-    // that asks what this type of request needs. Marked to be read before sending; nothing is sent.
     function suggestFirst(state) {
       const panel = state?.win?.querySelector('.problem-edit'); if (!panel) return;
       let facts = null; try { facts = caseFile.facts(panel); } catch (_) { facts = null; }
@@ -9941,7 +9111,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       clear.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); caseFile.fill(panel, ''); mark.remove(); });
       mark.append(clear);
       form.before(mark);
-      // Gone once the reply is changed or sent.
       const watch = setInterval(() => { if (!mark.isConnected || replyText(panel).trim() !== text.trim()) { clearInterval(watch); mark.remove(); } }, 1500);
     }
     function download(name, text, type) {
@@ -9967,8 +9136,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         }
       });
     }
-    // CSV (with a header row: title, text and the others in any order, comma or semicolon), XML (<reply> elements)
-    // or JSON (a backup or a shared file). Replies are added; the same name with the same text isn't added twice.
     function parseCsv(text) {
       const rows = [], first = text.split(/\r?\n/, 1)[0] || '', sep = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
       let row = [], cell = '', quoted = false;
@@ -10022,7 +9189,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       state.tab.querySelector('span').textContent = tr('Quick replies');
       state.tab.title = tr('Quick replies'); state.panel.setAttribute('aria-label', tr('Quick replies'));
       state.tab.addEventListener('click', event => { event.stopPropagation(); if (urceLeads() && openUrce()) { close(state); return; } if (state.panel.hidden) open(state); else close(state); });
-      // Keys and clicks inside stay here: WME's shortcuts listen on the whole page, and its map would take the clicks.
       for (const type of ['keydown', 'keyup', 'keypress']) shadow.addEventListener(type, event => {
         if (type === 'keydown') {
           if (event.key === 'Escape') { event.preventDefault(); if (state.menuOpen) { toggleMenu(state, false); state.panel.querySelector('.icon.more')?.focus({ preventScroll: true }); } else if (state.view !== 'list') renderList(state); else close(state, true); }
@@ -10031,17 +9197,12 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         }
         event.stopPropagation();
       });
-      // The end of a press and a focus moving in stay here too (4.1.0): WME can take a focus inside its window for a
-      // window to bring forward, and draw the request again.
       for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'wheel', 'dblclick', 'focusin']) host.addEventListener(type, event => event.stopPropagation());
-      // A press outside the ⋯ menu closes it.
       state.panel.addEventListener('pointerdown', event => { if (state.menuOpen && !event.composedPath().some(node => node.classList?.contains('menu') || node.classList?.contains('more'))) toggleMenu(state, false); });
       win.append(host);
-      caseFile.refresh();   // its Translate tab goes in this column
-      // The window moves (dragged, or placed by Floating mode): the side is checked again.
+      caseFile.refresh();
       state.observer = new MutationObserver(() => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; for (const one of states.values()) place(one); }); });
       state.observer.observe(win, { attributes: true, attributeFilter: ['style', 'class'] });
-      // Its height changes too (the messages, a size set in Arrange), and so do the tabs (Translate comes and goes).
       if (typeof ResizeObserver === 'function') {
         state.size = new ResizeObserver(() => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; for (const one of states.values()) place(one); }); });
         state.size.observe(win); state.size.observe(shadow.querySelector('.stack'));
@@ -10051,9 +9212,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       place(state);
       load().then(() => { paintButtons(state); suggestFirst(state); });
     }
-    // With URC-E leading (4.0.2), the tab opens URC-E's comments instead of Studio's replies.
-    // It carries URC-E's own name and icon (the one on its Greasy Fork page, when Studio's script bar has it), so it's
-    // plain whose comments these are.
     function urceMode(state) {
       const lead = urceLeads(), icon = lead ? String(globalThis.WMEStudioScriptIcon?.('375430') || '') : '';
       const key = lead ? 'urce:' + icon : '';
@@ -10073,8 +9231,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (lead && !state.panel.hidden) close(state);
     }
     document.addEventListener('wme-studio-urce', () => { for (const state of states.values()) urceMode(state); });
-    // A reply box made taller gives its room from the discussion, so the window doesn't get a scrollbar (which also
-    // made everything in it narrower).
     function scroller(from, stop) {
       for (let node = from?.parentElement; node && node !== stop.parentElement; node = node.parentElement) {
         const overflow = getComputedStyle(node).overflowY;
@@ -10089,7 +9245,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       list.style.removeProperty('max-height');
       const over = box.scrollHeight - box.clientHeight;
       if (over > 1) list.style.setProperty('max-height', `${Math.max(72, Math.floor(list.getBoundingClientRect().height - over))}px`, 'important');
-      // The discussion can't give more: the reply box stops growing where the window ends.
       const still = box.scrollHeight - box.clientHeight;
       const inner = state.reply?.shadowRoot?.querySelector('textarea') || panel.querySelector('.new-comment-form textarea');
       if (still > 1 && inner?.style.height) inner.style.height = `${Math.max(32, Math.floor(inner.getBoundingClientRect().height - still))}px`;
@@ -10119,9 +9274,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }, true);
     addEventListener('resize', () => { for (const state of states.values()) place(state); }, { passive: true });
     load(); loadMine();
-    // Quick replies management (3.1.0): a page of its own in a new tab, made here (nothing is downloaded), for
-    // folders, pins, Studio's replies, my variables, sharing and backups. It talks to this tab with messages that
-    // carry a one-off key, and each change it sends is checked and saved here like the panel's own.
     const MANAGER_HTML = studioPart('MANAGER_HTML');
     const MANAGER_STRINGS = ["1 folder", "1 reply", "1 selected", "<1 min", "A backup is one file with all your replies, folders, variables and changes to Studio’s replies.", "A code fits in a Discord message. A file is easier for many replies.", "A deleted reply", "Add", "Add 1 reply", "Add a country", "Add a tag", "Add a variable", "Add replies", "Add replies someone shared", "Add {0}", "Add {0} replies", "Added 1 reply", "Added to your replies", "Added {0} replies", "All my replies", "All replies", "All variables", "All {0} languages", "Answer requests in one click", "Ask for the exact spot", "Automatic", "Back", "Back to Studio’s", "Back to Studio’s wording", "Backup", "Backup saved", "Cancel", "Changed", "Choose what to share", "Clear the selection", "Close", "Code to import", "Code to share", "Color", "Connected to WME", "Conversation", "Copied", "Copy code", "Copy text", "Copy {0}", "Counted from the requests where you opened Quick replies in the last 30 days.", "Countries", "Countries (optional)", "Delete", "Delete folder", "Delete folder and replies", "Delete folder, keep replies", "Delete replies too", "Delete {0} replies", "Delete “{0}”?", "Delete “{0}”? It has 1 reply.", "Delete “{0}”? It has {1} replies.", "Delete “{0}”? Its {1} replies move to No folder.", "Details", "Did you mean {0}?", "Drag and right-click", "Drag replies onto a folder on the left to move them. Right-click a reply or a folder for more.", "Drag to reorder, or onto a folder", "Duplicate", "Edit", "Edit folder", "Edit reply", "Empty means everywhere.", "Everything in one file: your replies and folders, your changes to Studio’s replies and your variables. Keep it safe, or use it to move to another computer.", "Filled from #{0}", "Filled in from the open request, #{0}. Green parts come from variables.", "First in the list", "First in the list for", "Fixed, shows after the update", "Folder", "Folder actions", "Folder name", "Folders", "Folders group replies by subject, like Closures or Speed limits.", "Folders show as chips in WME, so the right reply is one click away.", "From its folder: {0}", "From {0}", "Getting started", "Give each variable a name.", "Give it a name.", "Greets the reporter in their language", "Have a look", "Hidden in WME", "Hide in WME", "Hide it from WME to keep your list short. It stays here.", "Hide this", "Icon", "Import replies", "Import replies a friend shared", "In #{0}", "In a reply, type { to pick a variable. {greeting} and {me} fill themselves in when you use it.", "Insert variable", "It goes in the reply box, filled in. Read it, then send.", "It says good morning or good evening in the reporter’s language, so every reply opens warmly.", "Its replies show only for requests in these countries, unless a reply has its own.", "Keep replies", "Keep their folders", "Last used", "Library", "Long for a phone: {0} characters. Under 320 reads best.", "Missing roundabout", "More", "Most of your reporters write in {0}", "Most used", "Most used: {0}", "Move down", "Move to", "Move to…", "Move up", "Moved out of folders", "Moved to {0}", "My variables they use", "Name", "New", "New folder", "New folder…", "New reply", "New reply here", "Next tip", "No answer, closing", "No backup yet", "No folder", "No greeting yet. {0} says good morning or good evening in the reporter’s language.", "No icon", "No replies of your own yet", "No reply matches “{0}”.", "None", "Not connected", "Not now", "Not used yet", "Nothing chosen yet", "Nothing here yet. New reply adds one, or drag replies onto a folder on the left.", "Nothing to tidy up. Your replies are in good shape.", "Nothing yet. Each reply you use in WME counts here.", "Now", "Off: it stays here but not in WME’s list. Searching there still finds it.", "On an open request in WME, press Q to open Quick replies, then 1 to 9 to put that reply in the box.", "On requests of this type, it comes first.", "One file with all your replies, folders and variables.", "Open", "Open a file", "Open a request in WME", "Open a request in WME, press Q, then the number of the reply.", "Open an update request in WME to see its details filled in.", "Open request", "Or start from one below and change the wording.", "Or start from one of these", "Or write a new one. It’s saved as soon as it has a name and some text.", "Paste a code here, or open a file", "Paste the code another editor shared, or open their file. The replies are added to yours; nothing is replaced.", "Paste their code or open their file. You choose which ones to add before anything changes.", "Pick a reply to edit it", "Pick them", "Pin", "Pin it, and it sits at the top of Quick replies.", "Pin or unpin", "Pin the replies you use most", "Pin the replies you use most: they show first in Quick replies.", "Pin to the top of Quick replies", "Pin your favourites and they sit at the top of Quick replies, so their numbers stay the same.", "Pinned", "Pinned replies come first", "Pinned replies sit at the top of Quick replies in WME, so they get the first numbers.", "Place variables can be empty when there’s no street nearby. Read the reply before you send it.", "Press 1 to use it", "Preview", "Preview for #{0}", "Previews use this request’s details", "Put it in a folder", "Put them in", "Q opens Quick replies", "Quick replies", "Ready replies for drivers, in the reporter’s language. Your wording is used instead of Studio’s, also by the case file’s buttons.", "Recently used", "Remind me after 2 weeks", "Remove", "Remove {0}", "Replace", "Replace everything with this backup: {0} replies, {1} folders, {2} variables?", "Replies to share", "Reply", "Reply check", "Reporter’s language", "Restore", "Restore a backup", "Restored", "Road closed for works", "Route depends on traffic", "Save", "Save a backup", "Save as file", "Saved", "Search", "Search replies", "Sections", "Select all", "Select {0}", "Send it", "Send this code to other editors, for example in Discord. They add it under Share and backup › Import replies.", "Share and backup", "Share replies", "Share with other editors", "Shared replies", "Shared {0}", "Short enough to read on a phone in the car", "Show first for (optional)", "Show in Quick replies", "Show in WME", "Show me", "Show suggestions", "Shown", "Shown in WME", "Shown only for requests in these countries. Leave it empty for everywhere.", "Sort", "Sort them", "Speed limit is already right", "Start", "Start from Studio’s", "Start your replies with {0}", "Studio speaks their language", "Studio’s", "Studio’s replies", "Studio’s replies already speak it. Have a look, and add your own wording if you like.", "Studio’s replies follow the reporter’s language. Change their wording under Studio’s replies.", "Studio’s variables", "Studio’s wording", "Tags", "Temporary closure", "Text", "Text it puts in", "They show under its name, at the top.", "That doesn’t look like shared quick replies.", "That isn’t a Quick replies backup.", "The Quick replies tab sits on the side of the request window.", "The reporter’s drive", "The situations editors answer most. Each one becomes yours to change.", "Their variables you don’t have yet are added too:", "There is already a folder called “{0}”.", "They paste the code in Share and backup › Add replies. Nothing of theirs is replaced.", "This request", "This week", "Tip", "Tip {0} of {1}", "Tip: {0}", "Tips show here as you write.", "Tips, never rules", "Type { for variables", "Unpin", "Use a reply on a request in WME", "Use this", "Used", "Used once", "Used {0} times", "Values from the request open in WME, in the reporter’s language.", "Variable", "Variable name", "Variables", "Variables, filled in when you pick the reply:", "WME is closed or was reloaded, so changes here can’t be saved. Open this page again from Quick replies in WME.", "We didn’t hear back, so I’m closing this report for now. If it happens again, send a new report from the spot. Thanks!", "What it puts in", "What the reporter sees", "Where it shows", "Words Studio fills in when you use a reply. Type { in a reply to pick one, or write your own below.", "Words that find this folder’s replies when you search, like “roadworks” or “closure”.", "Worth a look", "Write a reply first, then share it here.", "Write a reply here", "Write a request type under Where it shows, and the reply comes first on requests of that type.", "Write my first reply", "Write one", "Write the replies you send again and again once, then pick them in WME.", "Write the replies you send again and again once. Studio fills in the street, the date and a greeting in the reporter’s language each time you use one.", "Write the reply.", "Write your first reply", "Write your own wording, or start from Studio’s and change it", "You and now", "You have all the habits", "You have it", "You have this one", "You haven’t saved a backup yet", "You use “{0}” a lot", "You wrote 1 reply since.", "You wrote {0} replies since.", "Your last backup was {0}", "Your order", "Your own words to drop into replies, like a sign-off or a link to your community. Write the name in braces in a Quick reply, or pick it from the + in the reply box.", "Your own words, like a sign-off or a link to your community.", "Your replies", "Your replies are set up the way that saves the most time.", "Your replies at a glance, and a few habits that make answering requests faster.", "Your reply, with its variables filled in, shows here.", "Your reporters write in", "Your variables", "Your wording", "Your wording (empty: Studio’s)", "Yours · empty uses Studio’s", "choose", "insert", "language answered in", "languages answered in", "last {0}", "name", "of typing saved", "or type { anywhere", "replies used", "reply used", "{0} (copy)", "{0} / 2000", "{0} folders", "{0} found", "{0} isn’t a variable, so it stays as written.", "{0} min", "{0} of {1}", "{0} of {1} done", "{0} ready replies in {1} languages, picked by the reporter’s language. Leave them as they are, or write your own wording next to Studio’s. Yours is used in WME and by the case file’s buttons.", "{0} replies", "{0} replies aren’t in a folder", "{0} replies found.", "{0} selected", "{greeting}! Could you tell us exactly where the problem was? The street name or the junction helps us find it.", "{greeting}! Thanks for the report from {reportdate}. The road is closed for works until Friday, so the app avoids it. {me}", "{greeting}, I fixed the map at {junction}. It shows in the app after the next map update, usually within a few days.", "{greeting}, thanks for the report. The speed limit on {street} matches the signs, so I left it as it is.", "{greeting}, thanks! The roadworks on {street} are added as a closure until they end.", "{greeting}, the app picks the route from live traffic, so it can differ from day to day. The map here is right.", "{{0}} is already one of Studio’s variables. Pick another name.", "{{0}} is there twice.", "“{0}” hasn’t been used in 2 months"];
     const managers = new Map();
@@ -10142,12 +9294,10 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         values: rows, request, limits: { replies: MAX, variables: MINE_MAX },
         coach: guide, usage: usageLog, seen: seenLog, user: (() => { try { return wmeUserName() || ''; } catch (_) { return ''; } })(),
         strings: Object.fromEntries(MANAGER_STRINGS.map(key => [key, tr(key)])),
-        // The page has the reports site's own colors; it follows Studio's light or dark look and its language.
         theme: { scheme: activeTheme() === 'light' ? 'light' : 'dark', lang: ui },
         icon: (() => { try { return String(GM_info?.script?.icon || ''); } catch (_) { return ''; } })()
       };
     }
-    // The flags go to a management page once (4.0.0); every state after that carries only which flag a language has.
     const flagsSent = new Set();
     function postState(token, target, ack) {
       try {
@@ -10161,8 +9311,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       flagsSent.clear(); if (managers.size) notifyManagers();
       for (const state of states.values()) if (!state.panel.hidden && state.view === 'list') paintRows(state);
     });
-    // The management pages I opened are remembered (4.0.0): after WME is reloaded, a page still open in its tab
-    // finds this WME again and its changes are taken, instead of going nowhere.
     const MANAGER_TOKENS_KEY = 'wmeStudio.quickRepliesPages.v1', MANAGER_TOKEN_DAYS = 30;
     let managerTokens = [];
     const tokensReady = Promise.resolve(studioKeep.get(MANAGER_TOKENS_KEY, [])).then(value => {
@@ -10172,7 +9320,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     function rememberToken(token) {
       tokensReady.then(() => {
         managerTokens = [...managerTokens.filter(item => item.t !== token), { t: token, at: Date.now() }].slice(-20);
-        try { Promise.resolve(studioKeep.set(MANAGER_TOKENS_KEY, managerTokens)).catch(() => {}); } catch (_) { /* not kept */ }
+        try { Promise.resolve(studioKeep.set(MANAGER_TOKENS_KEY, managerTokens)).catch(() => {}); } catch (_) {   }
       });
     }
     let notifyTimer = 0;
@@ -10194,8 +9342,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (patch.guide && typeof patch.guide === 'object') { guide = cleanGuide(patch.guide); saveGuide(); }
       for (const state of states.values()) if (!state.panel.hidden && state.view === 'list') paintRows(state);
     }
-    // Cloud Sync (4.1.0) writes replies that came from another device straight into storage: they replace what this
-    // tab holds, the open lists and buttons are drawn again, and an open management page gets them too.
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local' || !loaded) return;
       const has = key => Object.hasOwn(changes, key), value = key => changes[key].newValue;
@@ -10222,7 +9368,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       });
     });
     function openManager(state) {
-      // The page needs this tab's script key: WME only runs scripts that carry it, in pages it makes too.
       const nonce = [...document.querySelectorAll('script')].map(script => script.nonce).find(Boolean) || '';
       const token = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
       const url = URL.createObjectURL(new Blob([MANAGER_HTML.replace('__NONCE__', nonce)], { type: 'text/html' }));
@@ -10233,10 +9378,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (state) close(state);
       return true;
     }
-    // Q opens or closes the list of the request window it was pressed in (3.1.0).
     function toggle(win) { sync(); const state = states.get(win); if (!state) return false; if (urceLeads() && openUrce()) { close(state, false); return true; } if (state.panel.hidden) open(state); else close(state, false); return true; }
-    // For the chat (Waze Chat Plus): my own replies, with their variables filled from the open request. With no
-    // request open, only the ones that don't need one are filled (greeting, me, today, now); the rest stay as written.
     function fillFor(text) {
       const panel = windows().at(-1)?.querySelector('.problem-edit');
       if (panel) return fillVariables(text, panel);
@@ -10249,9 +9391,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     return Object.freeze({ inspect: panel => { if (panel?.matches?.('.problem-edit')) queue(); }, refresh: queue, toggle, windows,
       mine: () => load().then(() => custom.map(item => ({ ...item }))), mineNow: () => custom.length, fillFor, noteUse, openManager: () => openManager(null), notifyManagers: () => { if (managers.size) notifyManagers(); },
-      // For the case file's Close with a note and Remind once: my wording when I changed it, variables filled in.
       readyText: (panel, lang, key, fallback) => { const edit = builtEdits[lang]?.[key]; const text = edit?.text?.trim() ? edit.text : fallback; try { return fillVariables(text, panel); } catch (_) { return text; } },
-      // For the reply box's + menu: every variable with its value for this request, then my own (3.1.0).
       details: panel => {
         const known = values(panel);
         const rows = VARIABLES.filter(([, , group]) => group).map(([name, about, group]) => ({ name, label: tr(about), group, value: String(known[name] ?? '') }));
@@ -10260,9 +9400,6 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       openVariables: win => { sync(); const state = states.get(win); if (!state) return false; load().then(() => { state.panel.hidden = false; state.tab.setAttribute('aria-expanded', 'true'); renderVars(state, () => close(state, false)); place(state); }); return true; } });
   })();
 
-  // The reply box's own tools (3.1.0): translate what I wrote into the reporter's language before sending, and Send &
-  // next, which sends and opens the nearest open update request. And the keys of an update request window:
-  // Q opens Quick replies, T translates the discussion, Ctrl+Enter sends, Ctrl+Shift+Enter sends and goes to the next.
   const replyTools = (() => {
     const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return text; } };
     const states = new Map();
@@ -10303,7 +9440,6 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
     const setText = (node, text) => { const span = node.querySelector('span'); if (span.textContent !== text) span.textContent = text; };
     function paint(state) {
       const text = replyValue(state.panel).trim(), target = state.target;
-      // Translate shows where Chrome can translate and the reporter writes in another language than mine.
       const show = !!(target?.can && (target.language !== target.mine || state.mine != null));
       state.translateButton.hidden = !show;
       if (show) {
@@ -10338,7 +9474,6 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
       else { state.sameUntil = 0; state.translateButton.title = tr('Chrome can’t translate into this language here.'); }
       paint(state);
     }
-    // A quick reply that just went in (4.1.0): only that part is translated, what I had typed before it stays.
     async function autoTranslate(panel, before, added) {
       sync(panel);
       const state = states.get(panel);
@@ -10351,7 +9486,6 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
       clearInterval(ticker);
       if (state.token !== token) return;
       state.busy = false;
-      // Only when the box still holds what Quick replies put there: anything I typed meanwhile is left alone.
       if (result?.text && panel.isConnected && replyValue(panel).trim() === expected.trim()) { state.mine = expected; caseFile.fill(panel, before ? `${before}\n\n${result.text}` : result.text); }
       paint(state);
     }
@@ -10368,7 +9502,6 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
         if (replyValue(panel).trim()) {
           const before = commentCount(panel);
           if (!send(panel)) return;
-          // On once WME has it: the message in the discussion, or the box emptied.
           if (!await wait(() => !panel.isConnected || commentCount(panel) > before || !replyValue(panel).trim(), 6000)) return;
           await new Promise(done => setTimeout(done, 300));
         }
@@ -10383,9 +9516,7 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
         state = { panel, bar: null, mine: null, busy: false, sending: false, target: null, frame: 0 };
         build(state); states.set(panel, state);
         panel.addEventListener('input', event => { if (state.mine != null && event.composedPath().some(node => node?.matches?.('wz-textarea.new-comment-text, .new-comment-form textarea')) && !replyValue(panel).trim()) state.mine = null; paint(state); });
-        // A sent message starts the next reply fresh.
         panel.addEventListener('click', event => { const control = requestMinimizer.sendButton(panel); if (control && event.composedPath().includes(control)) { state.mine = null; setTimeout(() => { if (panel.isConnected) paint(state); }, 400); } }, true);
-        // WME's changes only (the form drawn again after a send, another request in the window), not the bar's own.
         state.observer = new MutationObserver(records => {
           if (records.every(record => state.bar.contains(record.target) || [...record.addedNodes, ...record.removedNodes].every(node => node === state.bar))) return;
           if (!state.frame) state.frame = requestAnimationFrame(() => { state.frame = 0; sync(panel); });
@@ -10399,7 +9530,6 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
     }
     let queued = 0;
     const queue = () => { if (!queued) queued = requestAnimationFrame(() => { queued = 0; for (const panel of document.querySelectorAll('.problem-edit')) sync(panel); for (const panel of [...states.keys()]) if (!panel.isConnected) sync(panel); }); };
-    // The window's keys. Letters only where nothing is being typed, and only while an update request is open.
     addEventListener('keydown', event => {
       if (!settings.enabled || event.defaultPrevented || event.isComposing || event.repeat) return;
       const path = event.composedPath(), panel = path.find(node => node?.matches?.('.problem-edit'));
@@ -10415,8 +9545,7 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
       const origin = path[0];
       if (origin?.isContentEditable || origin?.matches?.('input,textarea,select') || path.some(node => node?.matches?.('input,textarea,select,[contenteditable="true"],.ws-quick-replies'))) return;
       const windows = quickReplies.windows(); if (!windows.length) return;
-      // With something selected on the map, the key stays WME's (Q and T are editing keys there).
-      try { const selection = studioSDK.get()?.Editing?.getSelection?.(); if (selection?.ids?.length) return; } catch (_) { /* no selection to ask about */ }
+      try { const selection = studioSDK.get()?.Editing?.getSelection?.(); if (selection?.ids?.length) return; } catch (_) {   }
       const win = panel?.closest('#ISSUE_WINDOW_UPDATE_REQUEST') || windows.at(-1), target = win.querySelector('.problem-edit');
       if (key === 'q' && quickReplies.toggle(win)) { event.preventDefault(); event.stopImmediatePropagation(); }
       if (key === 't' && target) { caseFile.toggleTranslate(target); event.preventDefault(); event.stopImmediatePropagation(); }
@@ -10424,9 +9553,6 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
     return Object.freeze({ inspect: panel => { if (panel?.matches?.('.problem-edit')) queue(); }, refresh: queue, autoTranslate: (panel, before, added) => autoTranslate(panel, before, added).catch(() => {}) });
   })();
 
-  // URC-E (3.1.0): while it gets ready (an update request opened from a link, say) it lays an empty black mask
-  // over the request and its own tab for a second. In Studio that wait looks like the rest: the window's own colour,
-  // a spinner, and a line saying what it waits for. URC-E's own messages in that mask keep their words.
   GM_addStyle(`html[data-wme-studio="on"] .urceMaskLightbox:not(.text) { background: color-mix(in srgb, var(--ws-window-paint, var(--wme-studio-surface, #292d31)) 78%, transparent) !important; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); animation: ws-urce-in .18s ease both; }
 html[data-wme-studio="on"] .urceMaskLightbox.text { position: relative !important; inset: auto !important; width: auto !important; height: auto !important; display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 12px; max-width: 80%; margin: 0; padding: 0; background: transparent !important; color: var(--wme-studio-text-secondary, #c6ccd2) !important; font: 600 12.5px/1.35 var(--ws-font, system-ui, sans-serif) !important; text-align: center; }
 html[data-wme-studio="on"] .urceMaskLightbox.text::before { content: ""; flex: none; width: 22px; height: 22px; box-sizing: border-box; border: 2.5px solid color-mix(in srgb, var(--wme-studio-accent, #0099ff) 22%, transparent); border-top-color: var(--wme-studio-accent, #0099ff); border-radius: 50%; animation: ws-urce-spin .8s linear infinite; }
@@ -10436,15 +9562,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
 @keyframes ws-urce-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { html[data-wme-studio="on"] .urceMaskLightbox.text::before { animation-duration: 2.4s; } html[data-wme-studio="on"] .urceMaskLightbox:not(.text) { animation: none; } }`);
 
-  // Request details (3.1.0): a small + right after what I'm typing in the reply box. It opens the request's details
-  // with their real values (the street, the report date in the reporter's language, my sign-off…), and a click
-  // puts one where the cursor is.
   const replyDetails = (() => {
     const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return text; } };
     const WINDOW = '#ISSUE_WINDOW_UPDATE_REQUEST', states = new Map();
     let frame = 0;
     const GROUPS = [['request', 'This request'], ['drive', 'The reporter’s drive'], ['conversation', 'Conversation'], ['you', 'You and now'], ['mine', 'Your variables']];
-    // The menu's tabs (3.1.0): one group at a time instead of one long list. It opens on the tab I used last.
     const TABS = [['request', 'Request'], ['drive', 'Drive'], ['conversation', 'Chat'], ['you', 'You'], ['mine', 'Mine']];
     let lastTab = 'request';
     const fold = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -10461,7 +9583,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       if (inner) { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(inner, text); inner.dispatchEvent(new Event('input', { bubbles: true, composed: true })); }
       field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
       field.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-      try { (inner || field).focus({ preventScroll: true }); inner?.setSelectionRange?.(caret, caret); } catch (_) { /* focus is a nicety */ }
+      try { (inner || field).focus({ preventScroll: true }); inner?.setSelectionRange?.(caret, caret); } catch (_) {   }
     }
 
     function build(state) {
@@ -10471,7 +9593,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       Object.assign(state, { host, shadow, plus: shadow.querySelector('.plus'), menu: shadow.querySelector('.menu'), mirror: shadow.querySelector('.mirror'), marksLayer: shadow.querySelector('.marks'), selection: null, query: '', marks: [], prevValue: null, replacing: null });
       const label = tr('Add request details');
       state.plus.title = label; state.plus.setAttribute('aria-label', label); state.menu.setAttribute('aria-label', tr('Request details'));
-      // The + keeps the cursor where it is in the reply.
       for (const type of ['pointerdown', 'mousedown']) state.plus.addEventListener(type, event => { event.preventDefault(); event.stopPropagation(); });
       state.plus.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); if (state.menu.hidden) open(state); else close(state, true); });
       state.plus.addEventListener('pointerenter', () => { state.plusHover = true; showPlus(state); });
@@ -10482,15 +9603,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       });
       for (const type of ['pointerdown', 'mousedown', 'click', 'wheel', 'dblclick']) state.menu.addEventListener(type, event => event.stopPropagation());
     }
-    // The copy wraps its text at the same width as the box (4.0.0): the box's own scrollbar left out. Measured with
-    // it, the copy's lines were longer than the box's, and the + landed on the last word instead of after it.
     function mirrorWidth(mirror, inner, style) {
       mirror.style.wordSpacing = style.wordSpacing; mirror.style.textIndent = style.textIndent; mirror.dir = 'auto';
       mirror.style.boxSizing = 'content-box';
       mirror.style.width = `${Math.max(0, inner.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0))}px`;
     }
-    // Where the reply's text ends, measured on a copy of the box's text: the + goes right after it, so it never
-    // covers a word (a pick still goes where the cursor is).
     function caretPoint(state, inner) {
       const style = getComputedStyle(inner), mirror = state.mirror;
       for (const name of ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'textTransform', 'tabSize', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'boxSizing']) mirror.style[name] = style[name];
@@ -10508,7 +9625,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       if (inner) updateMarks(state, inner);
       renderMarks(state, visible ? inner : null);
       if (!visible) { if (!state.menu.hidden) close(state); return; }
-      // While its menu is open the + stays where it was clicked (the cursor is in the search field meanwhile).
       if (!state.menu.hidden) { placeMenu(state); return; }
       const zoom = state.host.currentCSSZoom || 1, hostRect = state.host.getBoundingClientRect(), box = inner.getBoundingClientRect();
       state.placedHeight = inner.offsetHeight;
@@ -10516,8 +9632,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       const innerZoom = box.width / (inner.offsetWidth || box.width) || 1;
       const padRight = parseFloat(style.paddingRight) || 0, padLeft = parseFloat(style.paddingLeft) || 0, border = parseFloat(style.borderLeftWidth) || 0;
       let left = x + 3, top = y + (line - 18) / 2;
-      // Text that reads from the right ends on the left (4.0.0): the + goes to the left of it, and below at the
-      // right edge when there is no room.
       const lastLine = String(inner.value || '').split('\n').at(-1), strong = /[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u10A0-\u10FF]|[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.exec(lastLine);
       const rtl = !!strong && /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(strong[0]);
       if (rtl) {
@@ -10531,17 +9645,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
         else left = inner.clientWidth + border - 20;
       }
       left -= inner.scrollLeft; top -= inner.scrollTop;
-      // The text's end scrolled out of view: the + waits at the right edge of the box instead of over a word.
       if (top < 0 || top + 18 > inner.offsetHeight - 2) left = inner.clientWidth + border - 20;
       top = Math.max(2, Math.min(inner.offsetHeight - 20, top));
       const vx = box.left + left * innerZoom, vy = box.top + top * innerZoom;
       plus.style.left = `${Math.round((vx - hostRect.left) / zoom)}px`;
-      // Held from the window's bottom edge (3.1.0): the reply box sits at the bottom, so while the window is resized
-      // the + moves with it by itself, with nothing to work out on every frame.
       plus.style.top = 'auto'; plus.style.bottom = `${Math.round((hostRect.bottom - vy) / zoom - 18)}px`;
     }
-    // Details I put in from the menu keep their own colour in the reply (3.1.0), drawn on a copy of the box's text
-    // laid exactly over it. Each is followed through my typing; one I type inside becomes plain text again.
     function updateMarks(state, inner) {
       const value = inner.value, old = state.prevValue ?? value;
       if (value !== old && state.marks.length) {
@@ -10589,7 +9698,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       const zoom = state.host.currentCSSZoom || 1, hostRect = state.host.getBoundingClientRect(), box = inner.getBoundingClientRect();
       const above = (box.top - hostRect.top) / zoom, height = hostRect.height / zoom;
       state.menu.style.bottom = `${Math.round(height - above + 8)}px`;
-      // The same height on every tab, so the menu doesn't jump when I switch.
       const size = Math.round(Math.max(220, Math.min(452, above - 12)));
       state.menu.style.maxHeight = `${size}px`; state.menu.style.height = `${size}px`;
     }
@@ -10598,7 +9706,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       try { list = quickReplies.details(state.panel); } catch (studioError) { reportStudioError('replyDetails values', studioError); }
       return list;
     }
-    // One row per value: two details that hold the same words (the city and the municipality, often) share it.
     function merged(list) {
       const out = [];
       for (const row of list) {
@@ -10627,7 +9734,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       const words = fold(state.query).trim();
       const all = merged(state.rows);
       const match = row => !words || fold(`${row.labels.join(' ')} ${row.flat} ${row.names.join(' ')}`).includes(words);
-      // The tabs say how many details each one holds, or while I search, how many match.
       const tabs = [];
       for (const [group, title] of TABS) {
         const members = all.filter(row => row.group === group);
@@ -10643,13 +9749,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
         tabs.push(tab);
       }
       bar.replaceChildren(...tabs);
-      // In a narrow window the counts go first; if the tabs still don't fit, they scroll, with a fade at the edge.
       bar.classList.remove('tight', 'fade', 'end');
       if (bar.scrollWidth > bar.clientWidth + 1) bar.classList.add('tight');
       const edges = () => { const more = bar.scrollWidth > bar.clientWidth + 1; bar.classList.toggle('fade', more); bar.classList.toggle('end', more && bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 2); };
       bar.onscroll = edges;
       const chosen = bar.querySelector('[aria-selected="true"]');
-      // The chosen tab scrolled into view when the tabs don't all fit.
       if (chosen && bar.scrollWidth > bar.clientWidth) {
         const edge = bar.getBoundingClientRect(), tab = chosen.getBoundingClientRect();
         if (tab.right > edge.right) bar.scrollLeft += tab.right - edge.right + 8;
@@ -10658,7 +9762,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       edges();
       const nodes = [];
       if (words) {
-        // A search looks through every tab, each group under its name.
         for (const [group, title] of GROUPS) {
           const members = all.filter(row => row.group === group && match(row)); if (!members.length) continue;
           const head = document.createElement('div'); head.className = 'group'; head.textContent = tr(title); nodes.push(head);
@@ -10666,7 +9769,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
         }
         if (!nodes.length) { const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = tr('Nothing matches “{0}”.', state.query.trim()); nodes.push(empty); }
       } else {
-        // What this request has first, the empty details after.
         const members = all.filter(row => row.group === state.tab);
         for (const row of [...members.filter(one => one.flat), ...members.filter(one => !one.flat)]) nodes.push(rowButton(state, row));
       }
@@ -10683,7 +9785,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       const inner = textareaOf(state.panel); if (!inner) return;
       const focused = inner.getRootNode()?.activeElement === inner;
       state.replacing = mark;
-      // Esc puts the cursor back where I clicked, not around the whole detail.
       state.restore = mark && Number.isFinite(caret) ? [caret, caret] : null;
       state.selection = mark ? [mark.start, mark.end] : focused ? [inner.selectionStart ?? inner.value.length, inner.selectionEnd ?? inner.value.length] : [inner.value.length, inner.value.length];
       state.rows = rows(state); state.query = '';
@@ -10709,7 +9810,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       if (mark) { placePlusAt(state, mark); renderMarks(state, inner); }
       input.focus({ preventScroll: true });
     }
-    // Changing a detail: the + moves next to it while the menu is open.
     function placePlusAt(state, mark) {
       const inner = textareaOf(state.panel); if (!inner) return;
       const saved = inner.value;
@@ -10727,7 +9827,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     function removeMark(state, mark) {
       const inner = textareaOf(state.panel); if (!inner) return;
       const text = inner.value;
-      // With one space next to it, so no double space is left behind.
       let start = mark.start, end = mark.end;
       if (text[end] === ' ') end++; else if (start > 0 && text[start - 1] === ' ') start--;
       const next = text.slice(0, start) + text.slice(end);
@@ -10742,15 +9841,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       state.menu.hidden = true; state.plus.setAttribute('aria-expanded', 'false'); state.host.removeAttribute('data-menu');
       state.replacing = null;
       const back = state.restore || state.selection; state.restore = null;
-      if (refocus) { const inner = textareaOf(state.panel); if (inner && back) { try { inner.focus({ preventScroll: true }); inner.setSelectionRange(...back); } catch (_) { /* focus is a nicety */ } } }
+      if (refocus) { const inner = textareaOf(state.panel); if (inner && back) { try { inner.focus({ preventScroll: true }); inner.setSelectionRange(...back); } catch (_) {   } } }
       queue();
     }
-    // The value goes where the cursor was, with a space on each side where the words would otherwise run together.
     function pick(state, value, name = '') {
       const inner = textareaOf(state.panel); if (!inner || !value) return;
       const text = inner.value, [start, end] = state.selection || [text.length, text.length];
       const before = text.slice(0, start), after = text.slice(end);
-      // Changing a detail swaps it in place; a new one gets a space where the words would run together.
       const replacing = !!state.replacing;
       const lead = !replacing && before && !/\s$/.test(before) ? ' ' : '', tail = replacing || (after && /^\s/.test(after)) ? '' : ' ';
       const next = before + lead + value + tail + after, caret = (before + lead + value + tail).length;
@@ -10771,7 +9868,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
         return;
       }
       if (event.key === 'Enter' && focused?.matches?.('input')) { event.preventDefault(); buttons[0]?.click(); return; }
-      // ← and → go to the tab before or after, from a row or a tab (in the search field they move the cursor).
       if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && focused?.matches?.('.row, .tab')) {
         event.preventDefault();
         const tabs = [...state.menu.querySelectorAll('.tab')].map(tab => tab.dataset.group);
@@ -10780,9 +9876,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
         if (next) { showTab(state, next); (focused.matches('.tab') ? state.menu.querySelector(`.tab[data-group="${next}"]`) : state.menu.querySelector('.row:not(:disabled)') || state.menu.querySelector(`.tab[data-group="${next}"]`))?.focus({ preventScroll: true }); }
       }
     }
-    // The + shows while the pointer is over the reply box (4.0.0), or over the + itself, and while its menu is open.
-    // A touch screen has no pointer resting anywhere: there it shows while the box has the focus. Going from the box
-    // to the + it stays.
     const coarse = matchMedia('(hover: none)');
     function showPlus(state) {
       clearTimeout(state.showTimer);
@@ -10795,13 +9888,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       if (inner === state.inner) return;
       state.innerCleanup?.(); state.inner = inner;
       if (!inner) return;
-      // The reply follows its own direction (4.0.0): a reply in Arabic, Hebrew or Persian starts from the right.
       if (!inner.hasAttribute('dir')) inner.setAttribute('dir', 'auto');
       if (/^(?:left|-webkit-left)$/.test(getComputedStyle(inner).textAlign)) inner.style.textAlign = 'start';
       const update = () => queue();
       const events = ['input', 'keyup', 'click', 'select', 'focus', 'blur', 'scroll'];
       for (const type of events) inner.addEventListener(type, update);
-      // A click inside a coloured detail opens the menu to change or remove it.
       const pickMark = () => setTimeout(() => {
         if (!state.menu.hidden || inner.selectionStart !== inner.selectionEnd) return;
         updateMarks(state, inner);
@@ -10815,18 +9906,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       field.addEventListener('pointerenter', enter); field.addEventListener('pointerleave', leave);
       inner.addEventListener('focus', focus); inner.addEventListener('blur', blur);
       state.focused = inner.matches(':focus'); state.fieldHover = field.matches(':hover'); showPlus(state);
-      // The box also moves inside the window when things around it change size (the window, the form, the request's
-      // own header and status drawn in): those are watched too, and it's placed again once the window has settled.
       const size = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
       for (const node of [inner, state.panel, state.panel.querySelector('.new-comment-form')]) if (node) size?.observe(node);
-      // While I resize the window (3.1.0) nothing is measured: the + follows the bottom edge on its own, the coloured
-      // details wait hidden, and everything is placed once the window stops changing size.
       const win = state.panel.closest(WINDOW);
       let firstSize = true, typedAt = 0;
       inner.addEventListener('input', () => { typedAt = performance.now(); });
       const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
         if (firstSize) { firstSize = false; return; }
-        if (performance.now() - typedAt < 400) { update(); return; }   // the box grew with my typing
+        if (performance.now() - typedAt < 400) { update(); return; }
         state.resizing = true; state.host.setAttribute('data-resizing', '');
         clearTimeout(state.resizeTimer);
         state.resizeTimer = setTimeout(() => { state.resizing = false; state.host.removeAttribute('data-resizing'); update(); }, 180);
@@ -10842,14 +9929,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     }
     function sync(panel) {
       let state = states.get(panel);
-      // The reply box can come a moment after the window (and goes on a closed request): the window is watched
-      // from the start, and the + shows once there is a box.
       if (!panel.isConnected || !settings.enabled || !isUpdate(panel)) { if (state) clear(panel, state); return; }
       const win = panel.closest(WINDOW);
       if (!state) {
         state = { panel, inner: null };
         build(state); states.set(panel, state);
-        // WME's changes only: the form drawn again after a send, another request in the window.
         state.observer = new MutationObserver(records => { if (records.some(record => [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1 && !node.closest?.('.ws-reply-tools,.ws-dm,.ws-dm-note,.ws-case-tr,.ws-reply-buttons,.ws-suggested')))) queue(); });
         state.observer.observe(panel, { childList: true, subtree: true });
         const onScroll = () => queue();
@@ -10858,10 +9942,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       }
       if (state.host.parentElement !== win) win.append(state.host);
       watch(state);
-      // (4.0.0) While the window changes size the + follows its bottom edge by itself; the reply box made taller or
-      // shorter by its own corner moves away from that edge, so then the + is placed again on every change.
       if (!state.resizing || (state.inner && state.inner.offsetHeight !== state.placedHeight)) placePlus(state);
-      // A box whose text field isn't drawn yet (WME fills it in its own time): looked at again shortly.
       clearTimeout(state.retry);
       if (fieldOf(panel) && !state.inner && (state.tries = (state.tries || 0) + 1) < 40) state.retry = setTimeout(queue, 250);
       else if (state.inner) state.tries = 0;
@@ -10879,15 +9960,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     return Object.freeze({ inspect: panel => { if (panel?.matches?.('.problem-edit')) queue(); }, refresh: queue });
   })();
 
-  // Zoom level (3.1.0): the map's zoom always shows between WME's + and −, and while I zoom in or out a small
-  // scale opens beside the buttons for a moment, so I can see how far I can still go. Off in Settings › Map.
   GM_addStyle(studioPart('part13492'));
   const zoomLevelShow = (() => {
     const win = () => (typeof unsafeWindow === 'undefined' ? window : unsafeWindow);
     const MIN_ZOOM = 4;
     let badge = null, bar = null, scale = null, hideTimer = 0, last = null, hooked = false, watcher = null, region = null, retry = 0;
     let hovering = false, pressing = false, picked = null, editing = null, restTimer = 0, settleTimer = 0;
-    // Always show the scale (4.0.0): it stays beside + and − at rest, faded, and shows fully when pointed at or zooming.
     const always = () => live() && settings.zoomScaleAlways === true;
     function rest() {
       if (!always() || hovering || pressing) return;
@@ -10896,17 +9974,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     }
     addEventListener('resize', () => { if (!always()) return; clearTimeout(restTimer); restTimer = setTimeout(rest, 150); }, { passive: true });
     const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return text; } };
-    // Zooming to a level I picked (4.0.0): through the WME SDK, else WME's own map.
     function zoomTo(level) {
       level = Math.max(MIN_ZOOM, Math.min(topZoom(), Math.round(Number(level))));
       if (!Number.isFinite(level) || level === read()) return;
       const api = studioSDK.get();
-      try { if (api?.Map?.setZoomLevel) { api.Map.setZoomLevel({ zoomLevel: level }); return; } } catch (_) { /* the next way */ }
-      try { if (api?.Map?.setMapCenter && api.Map.getMapCenter) { api.Map.setMapCenter({ lonLat: api.Map.getMapCenter(), zoomLevel: level }); return; } } catch (_) { /* the next way */ }
+      try { if (api?.Map?.setZoomLevel) { api.Map.setZoomLevel({ zoomLevel: level }); return; } } catch (_) {   }
+      try { if (api?.Map?.setMapCenter && api.Map.getMapCenter) { api.Map.setMapCenter({ lonLat: api.Map.getMapCenter(), zoomLevel: level }); return; } } catch (_) {   }
       try { win().W?.map?.getOLMap?.()?.zoomTo?.(level); } catch (error) { reportStudioError('Zooming to a level', error); }
     }
-    // The scale, while it shows, is a control too (4.0.0): pointing at it keeps it open, the level under the pointer
-    // lights up with its number, and a click (or a drag along it) zooms there.
     function stepAt(event) { return event.target?.closest?.('.zs-step') || null; }
     function preview(step) {
       for (const old of scale.querySelectorAll('.zs-step.hover')) { old.classList.remove('hover'); old.querySelector(':scope > b.hb')?.remove(); }
@@ -10922,7 +9997,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       scale.addEventListener('pointerdown', event => {
         if (event.button !== 0) return;
         event.preventDefault(); event.stopPropagation();
-        pressing = true; try { scale.setPointerCapture(event.pointerId); } catch (_) { /* a plain press */ }
+        pressing = true; try { scale.setPointerCapture(event.pointerId); } catch (_) {   }
         preview(stepAt(event));
       });
       const finish = event => {
@@ -10936,7 +10011,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       scale.addEventListener('lostpointercapture', () => { pressing = false; });
       for (const type of ['wheel', 'dblclick', 'click', 'contextmenu']) scale.addEventListener(type, event => event.stopPropagation());
     }
-    // The number between + and − takes a level typed in (4.0.0), from 4 to the deepest zoom.
     function startEditing() {
       if (editing || !badge?.isConnected) return;
       const input = document.createElement('input');
@@ -10967,7 +10041,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       return Number.isFinite(Number(level)) ? Math.round(Number(level)) : null;
     }
     function topZoom() {
-      try { const levels = Number(win().W?.map?.getOLMap?.()?.getNumZoomLevels?.()); if (levels > 10 && levels < 40) return levels - 1; } catch (_) { /* below */ }
+      try { const levels = Number(win().W?.map?.getOLMap?.()?.getNumZoomLevels?.()); if (levels > 10 && levels < 40) return levels - 1; } catch (_) {   }
       return 22;
     }
     function hook() {
@@ -10996,7 +10070,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       paint(false);
       watch();
     }
-    // WME draws its map buttons again now and then: the number goes back in when the zoom bar is redrawn or replaced.
     function watch() {
       const next = document.getElementById('overlay-buttons-region') || bar?.parentElement || null;
       if (next === region && watcher) return;
@@ -11052,8 +10125,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       }
       scale.style.left = `${Math.round(Math.max(6, Math.min(left, innerWidth - size.width - 6)))}px`;
       scale.style.top = `${Math.round(Math.max(6, Math.min(topPx, innerHeight - size.height - 6)))}px`;
-      // The scale stays 1.4 s from the moment it shows: while WME loads the new zoom the frame can come a second late,
-      // and timing from here left it on screen for a blink. WME's own tooltip on + and − would cover it meanwhile.
       requestAnimationFrame(() => {
         if (!scale) return;
         if (quiet) { scale.setAttribute('data-show', ''); if (!hovering && !pressing) scale.setAttribute('data-rest', ''); return; }
@@ -11067,21 +10138,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       clearTimeout(retry);
       if (!live()) { clearTimeout(hideTimer); hideScale(); badge?.remove(); scale?.remove(); watcher?.disconnect(); watcher = null; region = null; bar = null; return; }
       hook(); place();
-      // Placed again whenever settings apply (islands moved, Floating switched, settings that came with Cloud Sync…), so
-      // it follows the zoom bar, and once more after the islands have settled where they go.
       if (always()) { requestAnimationFrame(rest); clearTimeout(settleTimer); settleTimer = setTimeout(() => { rest(); settleTimer = setTimeout(rest, 900); }, 450); }
       else if (scale?.hasAttribute('data-rest')) hideScale();
-      // WME may not be ready yet: I look again until both the zoom bar and the zoom events are there.
       if (!hooked || !bar) retry = setTimeout(refresh, 1500);
     }
     return Object.freeze({ refresh, changed });
   })();
 
-  // WME Place Interface Enhancements (4.0.0): with PIE installed, its photo viewer opens as a Studio panel. In
-  // Floating mode it fits under the header island (or above it, if the header sits at the bottom) and covers the
-  // rail, so nothing hides its first row; the header stays usable for Save. The cards, photos, the zoomed photo, its
-  // settings, the launcher button, the geometry tools and the buttons PIE adds to a place take Studio's colors and
-  // icons, also on colored and gradient islands. PIE keeps doing all the work; Studio only dresses it.
   const pieIcon = body => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`)}")`;
   const PIE_ICONS = {
     photo: pieIcon('<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="m21 15.5-4.8-4.8L7 20"/>'),
@@ -11108,17 +10171,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     const ON = 'html[data-wme-studio="on"][data-wme-studio-addons="on"]';
     const FLOAT = `${ON}[data-wme-studio-compact="on"]`;
     const COLORED = `${FLOAT}[data-wme-studio-island-ink]:not([data-wme-studio-glass-contrast])`;
-    // An <i> from PIE drawn with one of Studio's icons instead of its Font Awesome glyph; currentColor paints it.
     const glyph = (name, size = 16) => `width: ${size}px !important; height: ${size}px !important; font-size: 0 !important; line-height: 0 !important;
   display: inline-block !important; flex: 0 0 auto; vertical-align: middle; background: currentColor !important;
   -webkit-mask: var(--ws-pie-i-${name}) center / contain no-repeat !important; mask: var(--ws-pie-i-${name}) center / contain no-repeat !important;`;
     const noGlyph = '::before { content: none !important; display: none !important; }';
     GM_addStyle(studioPart('part13789', { COLORED, FLOAT, ISLAND_ALIASES, ON, PIE_ICONS, glyph, noGlyph }));
   }
-  // WME Place Harmonizer (WMEPH, 4.1.0): it has a dark look of its own, written for WME's dark mode
-  // ([wz-theme="dark"]). Studio's dark and black themes don't switch WME's dark mode on, so WMEPH stayed light there
-  // and its service icons were dark on dark. WMEPH's own dark rules are copied here for Studio's dark themes, taken
-  // from its stylesheet as it is, so they follow WMEPH's updates. Only style blocks that are WMEPH's are read.
   const wmephSupport = (() => {
     const ID = 'wme-studio-wmeph-dark', THEMES = 'html[data-wme-studio="on"]:is([data-wme-studio-theme="dark"],[data-wme-studio-theme="black"])';
     let timer = 0, watching = null, shown = '';
@@ -11152,7 +10210,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     const soon = () => { if (!timer) timer = setTimeout(build, 600); };
     function refresh() {
       if (!watching && document.head) {
-        // A WMEPH style block coming (or changing) is all that wakes this; other nodes in <head> are skipped at once.
         watching = new MutationObserver(records => { if (records.some(record => [...record.addedNodes].some(node => node.localName === 'style' && node.id !== ID) || (record.target.localName === 'style' && record.target.id !== ID && theirs(record.target)))) soon(); });
         watching.observe(document.head, { childList: true, subtree: true, characterData: true });
       }
@@ -11169,8 +10226,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     let map = null, mapWatch = null, viewerWatch = null, viewer = null, headWatch = null, frame = 0, retry = 0, open = false;
     const live = () => settings.enabled && settings.addons !== false;
     function setVar(name, value) { if (root.style.getPropertyValue(name) !== value) root.style.setProperty(name, value); }
-    // Where the viewer goes: inside the map with a small margin; in Floating mode clear of the header island, and
-    // above the rail and the side panel (just under the header, so Save stays in reach).
     function fit() {
       frame = 0;
       if (!open || !map?.isConnected) return;
@@ -11188,14 +10243,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
         setVar('--ws-pie-layer', String(Number.isFinite(layer) ? layer : 509));
       } else root.style.removeProperty('--ws-pie-layer');
       setVar('--ws-pie-top', `${top}px`); setVar('--ws-pie-bottom', `${bottom}px`); setVar('--ws-pie-side', `${side}px`);
-      // A gradient island color: the bar on top repeats the part of the panel's gradient that is under it.
       requestAnimationFrame(() => {
         const size = `${viewer?.clientWidth}px ${viewer?.clientHeight}px`;
         if (open && viewer && viewer.style.getPropertyValue('--ws-pie-pane') !== size) viewer.style.setProperty('--ws-pie-pane', size);
       });
     }
     const queueFit = () => { if (!frame) frame = requestAnimationFrame(fit); };
-    // PIE builds its bar once: I mark its parts so the styles find them, give the icon buttons names, and add a heading.
     function dress() {
       const bar = viewer?.firstElementChild;
       if (bar && bar.id !== 'showDiv') {
@@ -11263,7 +10316,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       const next = document.getElementById('map');
       if (next !== map) {
         mapWatch?.disconnect(); map = next;
-        // PIE puts the viewer, its settings and the zoomed photo straight into the map.
         if (map) { mapWatch = new MutationObserver(adopt); mapWatch.observe(map, { childList: true }); }
       }
       adopt();
@@ -11272,9 +10324,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     return Object.freeze({ refresh });
   })();
 
-  // Tooltips for the map buttons WME leaves without one (4.0.0): Map layers, Refresh map data and Share location show
-  // what they do when I point at them, beside their island like WME's own tooltips (Ruler, Street View) and in the same
-  // look. The words come from WME, so they follow the editor's language like the others.
   GM_addStyle(`
 #ws-map-tip {
   position: fixed; z-index: 99999; left: 0; top: 0; box-sizing: border-box; max-width: 320px; padding: 6px 10px; border-radius: 4px;
@@ -11301,12 +10350,10 @@ html[data-wme-studio-motion="reduced"] #ws-map-tip { transition: none; }
         const i18n = page().I18n, table = i18n?.translations?.[i18n.currentLocale?.()];
         const text = entry[1].split('.').reduce((node, key) => node?.[key], table);
         if (typeof text === 'string' && text.trim()) return text.trim();
-      } catch (_) { /* Studio's own words below */ }
+      } catch (_) {   }
       try { return globalThis.WMEStudioI18n?.t?.(entry[2]) || entry[2]; } catch (_) { return entry[2]; }
     }
     function hide() { clearTimeout(timer); timer = 0; current = null; tip?.removeAttribute('data-show'); }
-    // Beside the island the button sits in: to the left of an island on the right half of the screen, to the right of
-    // one on the left half, and above or below an island that runs across.
     function place(button) {
       const box = button.getBoundingClientRect();
       if (!box.width || !box.height) { hide(); return; }
@@ -11338,12 +10385,9 @@ html[data-wme-studio-motion="reduced"] #ws-map-tip { transition: none; }
       tip.setAttribute('data-show', '');
     }
     function over(event) {
-      // A finger has no hover (4.0.0): a label opening under it is only in the way, and Safari waits for it to show
-      // before it lets the tap through.
       if (!live() || event.pointerType === 'touch' || event.pointerType === 'pen') return;
       const button = event.target?.closest?.(SELECTOR);
       if (!button || button === current) return;
-      // A button WME gives a tooltip of its own one day keeps WME's.
       if (button.closest('wz-basic-tooltip,wz-rich-tooltip,wz-tooltip-source')) return;
       hide(); current = button;
       timer = setTimeout(() => show(button), 120);
@@ -11367,10 +10411,6 @@ html[data-wme-studio-motion="reduced"] #ws-map-tip { transition: none; }
     }
     return Object.freeze({ refresh, hide });
   })();
-  // Place templates (4.1.0): the website, phone, services and opening hours of a place, kept under a name and put on
-  // other places in one click, so the same chain or the same kind of shop isn't filled in by hand each time. A bar at
-  // the top of a place's "More info" tab; with several places selected, a template goes on all of them. WME's Undo
-  // takes it back like any edit, and nothing is saved until I save in WME.
   const placeTemplates = (() => {
     const KEY = 'wmeStudio.placeTemplates.v1', MAX = 40, FIELDS = ['url', 'phone', 'services', 'openingHours'];
     const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return text; } };
@@ -11395,7 +10435,6 @@ html[data-wme-studio-motion="reduced"] #ws-map-tip { transition: none; }
       try { const selection = sdk()?.Editing?.getSelection?.(); return selection?.objectType === 'venue' ? (selection.ids || []).map(String) : []; } catch (_) { return []; }
     }
     const venue = id => { try { return sdk()?.DataModel?.Venues?.getById?.({ venueId: id }) || null; } catch (_) { return null; } };
-    // A short line for a template: what it sets.
     function summary(item) {
       const parts = [];
       if ('url' in item) parts.push(item.url ? tr('Website') : tr('No website'));
@@ -11407,7 +10446,6 @@ html[data-wme-studio-motion="reduced"] #ws-map-tip { transition: none; }
     function hoursText(hours) {
       if (!hours.length) return tr('No open hours');
       const day = n => { try { return new Intl.DateTimeFormat(uiLocale(), { weekday: 'short' }).format(new Date(2026, 0, 4 + n)); } catch (_) { return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][n]; } };
-      // Days in a row read as one span: Mon–Fri.
       const first = hours[0], runs = [];
       for (const n of first.days) { const last = runs.at(-1); if (last && n === last[1] + 1) last[1] = n; else runs.push([n, n]); }
       const days = runs.map(([from, to]) => (from === to ? day(from) : to === from + 1 ? `${day(from)} ${day(to)}` : `${day(from)}–${day(to)}`)).join(' ');
@@ -11459,7 +10497,6 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
       const changes = {}; for (const field of FIELDS) if (field in item) changes[field] = field === 'openingHours' ? item.openingHours.map(hour => ({ ...hour, days: [...hour.days] })) : Array.isArray(item[field]) ? [...item[field]] : item[field];
       let done = 0, failed = 0, why = '';
       for (const id of ids) {
-        // A place outside my editable area takes the change without a word and keeps what it had: asked first.
         let allowed = true; try { allowed = sdk().DataModel.Venues.hasPermissions?.({ venueId: id }) !== false; } catch (_) { allowed = true; }
         if (!allowed) { failed++; why ||= tr('you can’t edit it here'); continue; }
         try { await sdk().DataModel.Venues.updateVenue({ venueId: id, ...changes }); done++; }
@@ -11539,7 +10576,6 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
       const ids = settings.enabled ? selected() : [];
       if (!form || !ids.length) { bar?.remove(); return; }
       if (!bar || bar.parentElement !== form) { bar?.remove(); bar = build(); form.prepend(bar); }
-      // Saving takes one place; putting a template on works for every place selected.
       bar.wsKeep.disabled = ids.length !== 1;
       bar.wsKeep.title = ids.length === 1 ? tr('Keep this place’s website, phone, services and open hours as a template') : tr('Select one place to save it as a template');
       const label = ids.length > 1 ? tr('Templates · {0} places', ids.length) : tr('Templates');
@@ -11555,9 +10591,6 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     })();
     return Object.freeze({ refresh: queue });
   })();
-  // WME's own menus (wz-menu) open from their button towards the right (4.1.0). In a request window or a panel that
-  // Studio made narrower, the part past its edge was cut off: the reasons under a map suggestion's "?" (Approve,
-  // Reject, Not sure) couldn't all be reached. A menu that would cross the edge is moved back inside, nothing else.
   (() => {
     const FRAMES = '[id^="ISSUE_WINDOW"],[data-testid="floating-window"],#sidebar,#panel-container > *';
     let frame = 0;
@@ -11568,7 +10601,7 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
         const inner = menu.shadowRoot?.querySelector('.wz-menu'); if (!inner) continue;
         if (!menu.hasAttribute('expanded')) { if (inner.style.translate) inner.style.translate = ''; continue; }
         const box = menu.closest(FRAMES); if (!box) continue;
-        inner.style.translate = '';   // measured where WME put it
+        inner.style.translate = '';
         const edge = box.getBoundingClientRect(), own = inner.getBoundingClientRect();
         let dx = 0;
         if (own.right > edge.right - 6) dx = Math.max(edge.left + 6 - own.left, edge.right - 6 - own.right);
@@ -11577,14 +10610,9 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
       }
     }
     const queue = () => { if (!frame) frame = requestAnimationFrame(fit); };
-    // A wz-menu says when it opens with its "expanded" attribute: only that one attribute is watched.
     new MutationObserver(records => { if (records.some(record => record.target.localName === 'wz-menu')) queue(); })
       .observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['expanded'] });
   })();
-  // Waze Chat Plus (3.1.0): when that script is installed, Studio plugs into its chat through its Extension API (v1).
-  // The chat's "+" menu gets Share this request, Share a saved request and My Quick replies, and the editors in an
-  // update request's discussion get a Message button that opens a private chat with them. Without Waze Chat Plus,
-  // with another version of its API, or on WME Beta (where the chat is on another site) nothing changes.
   const chatPlus = (() => {
     const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return text; } };
     const uiLocale = () => { try { return globalThis.WMEStudioI18n?.current?.() || document.documentElement.lang || 'en'; } catch (_) { return 'en'; } };
@@ -11603,7 +10631,6 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     const dateText = time => { try { return new Intl.DateTimeFormat(uiLocale(), { month: 'short', day: 'numeric' }).format(new Date(time)); } catch (_) { return new Date(time).toDateString().slice(4, 10); } };
     const make = (doc, tag, className, text) => { const node = doc.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
 
-    // Inside the chat: lists with the chat's own colours (Studio already gives the chat its theme).
     const CHAT_CSS = `
 .wss-body{padding:0!important;text-align:start}
 .wss-list{display:flex;flex-direction:column;align-items:stretch;box-sizing:border-box;width:100%;padding:4px 0 16px;text-align:start}
@@ -11624,7 +10651,6 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
 .wss-search input::placeholder{color:var(--content_p3)}
 .wss-search input::-webkit-search-cancel-button{filter:grayscale(1)}`;
 
-    // The Message button beside an editor's name in a request's discussion.
     GM_addStyle(`html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm { display: inline-flex !important; align-items: center !important; justify-content: center !important; flex: none !important; width: 20px !important; height: 16px !important; min-width: 0 !important; margin: 0 0 0 2px !important; padding: 0 !important; border: 0 !important; border-radius: 5px !important; background: transparent !important; color: var(--wme-studio-text-muted) !important; box-shadow: none !important; cursor: pointer; vertical-align: middle; transition: opacity .12s ease, color .12s ease, background-color .12s ease; }
 html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm:hover { background: var(--wme-studio-hover) !important; color: var(--wme-studio-accent, #0099ff) !important; }
 html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 1px; }
@@ -11633,13 +10659,12 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > but
 html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws-dm-note.ws-dm-note.ws-dm-note.ws-dm-note { display: block !important; flex: 1 1 100% !important; order: 9; height: auto !important; margin: 2px 0 0 !important; color: var(--ws-change-alert, #e5484d) !important; font: 600 12px/16px var(--ws-font) !important; white-space: normal !important; }
 @keyframes ws-dm-busy { to { opacity: .35; } }`);
 
-    // Studio registers once Waze Chat Plus is there; the two scripts may start in either order.
     const find = () => { try { return pageWindow.WazeChatPlus || null; } catch (_) { return null; } };
     function register(api) {
       if (ctx || asked || !api || typeof api.registerExtension !== 'function') return;
       asked = true;
       if (Number(api.apiVersion) !== API_VERSION) { console.info(`[WME Studio] Waze Chat Plus has Extension API ${api.apiVersion}; this Studio knows ${API_VERSION}, so the chat stays as it is.`); return; }
-      let version = '4.0.0'; try { version = GM_info?.script?.version || version; } catch (_) { /* keeps the default */ }
+      let version = '4.0.0'; try { version = GM_info?.script?.version || version; } catch (_) {   }
       try {
         api.registerExtension({ id: 'wme-studio', name: 'WME Studio', version, minApiVersion: API_VERSION, init(given) { ctx = given; setup(); } });
       } catch (studioError) { asked = false; reportStudioError('chatPlus register', studioError); }
@@ -11652,8 +10677,6 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       try { ctx.injectStyles(CHAT_CSS); } catch (studioError) { reportStudioError('chatPlus styles', studioError); }
       const add = descriptor => { try { return ctx.registerAttachmentAction(descriptor); } catch (studioError) { reportStudioError('chatPlus action', studioError); return null; } };
       add({ id: 'share-request', label: () => tr('Share this request'), nativeIcon: 'share', isAvailable: () => live() && !!openRequest(), run: composer => shareRequest(composer) });
-      // The two lists open as a screen of the chat, so they are offered in a conversation (a screen would replace
-      // "New message" or another script's screen).
       add({ id: 'share-saved', label: () => tr('Share a saved request'), nativeIcon: 'star', isAvailable: composer => live() && composer?.place === 'conversation' && requestMinimizer.savedList().length > 0, run: composer => pickSaved(composer) });
       add({ id: 'quick-replies', label: () => tr('My Quick replies'), nativeIcon: 'chat', isAvailable: composer => live() && composer?.place === 'conversation' && quickReplies.mineNow() > 0, run: composer => pickReply(composer) });
       queue();
@@ -11661,10 +10684,9 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
     function insert(composer, text) {
       let done = false;
       try { done = composer.insertText(text) !== false; } catch (studioError) { reportStudioError('chatPlus insert', studioError); }
-      if (!done) try { ctx.showNotice(tr('I couldn’t add it to your message. Try again in a moment.')); } catch (_) { /* nothing else to say it with */ }
+      if (!done) try { ctx.showNotice(tr('I couldn’t add it to your message. Try again in a moment.')); } catch (_) {   }
     }
 
-    // Share this request: what it is, what the reporter wrote, the last message and a link that opens it.
     function openRequest() {
       const panel = quickReplies.windows().at(-1)?.querySelector('.problem-edit');
       if (!panel) return null;
@@ -11687,7 +10709,6 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       insert(composer, requestText(facts));
     }
 
-    // Share a saved request: the requests behind the header button, by the names and colours I gave them.
     function pickSaved(composer) {
       const list = requestMinimizer.savedList(); if (!list.length) return;
       const screen = ctx.openScreen({
@@ -11712,7 +10733,6 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       });
     }
 
-    // My Quick replies: my own replies, with a search field; the variables are filled from the open request.
     async function pickReply(composer) {
       const replies = await quickReplies.mine(); if (!replies.length) return;
       const doc = ctx.getChatDocument(); if (!doc) return;
@@ -11720,7 +10740,7 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       const search = make(doc, 'label', 'wss-search');
       const input = make(doc, 'input'); input.type = 'search'; input.placeholder = tr('Search replies'); input.spellcheck = false; input.setAttribute('aria-label', tr('Search replies'));
       ctx.setHtml(search, svg(ICON.search)); search.append(input);
-      const pick = item => { screen.close(); insert(composer, quickReplies.fillFor(item.text)); try { quickReplies.noteUse(item.id); } catch (_) { /* counting is a nicety */ } };
+      const pick = item => { screen.close(); insert(composer, quickReplies.fillFor(item.text)); try { quickReplies.noteUse(item.id); } catch (_) {   } };
       const paint = () => {
         if (!target) return;
         const box = make(doc, 'div', 'wss-list'), words = fold(query).trim();
@@ -11747,13 +10767,11 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       const screen = ctx.openScreen({
         title: tr('Quick replies'), subheader: search,
         render(body) { body.classList.add('wss-body'); target = body; paint(); },
-        // Esc first empties the search, then closes.
         onEscape() { if (!input.value) return false; input.value = ''; query = ''; paint(); input.focus(); return true; }
       });
-      setTimeout(() => { try { input.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ } }, 60);
+      setTimeout(() => { try { input.focus({ preventScroll: true }); } catch (_) {   } }, 60);
     }
 
-    // Message: beside each editor's name in a request's discussion (not the reporter, the map team or me).
     const OWN = '.ws-dm, .ws-dm-note';
     function myName() { try { return cleanName(ctx?.getCurrentUserName?.() || wmeUserName() || '').toLowerCase(); } catch (_) { return ''; } }
     function paintNames(panel) {
@@ -11798,7 +10816,6 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
     }
     function watch(panel) {
       if (panels.has(panel)) return;
-      // WME's changes only (a new message, another request in the window), not the buttons themselves.
       const own = node => (node.nodeType === 1 ? node : node.parentElement)?.closest?.(`${OWN}, .ws-reply-tools, .ws-case-tr, .ws-case-head, .ws-case-status, .ws-reply-buttons, .ws-suggested`);
       const observer = new MutationObserver(records => {
         if (records.every(record => [...record.addedNodes, ...record.removedNodes].every(own))) return;
@@ -11833,25 +10850,15 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       left:rect.left - gap, top:rect.top - gap, width:rect.width + 2 * gap, height:rect.height + 2 * gap
     }));
   }
-  // The editor centres the map on a request when you open it or press Next. In the Floating layout a panel can be
-  // lying over that very spot. When it is, the map is moved so the request sits in the middle of the largest area
-  // that nothing covers. A request that is already in the open is left where it is.
   const fumeGuard = (() => {
-    // FUME's options that move or resize the same things the Floating layout does. Everything else in FUME
-    // (aerial shifter, Street View, closures list, tooltips, map behaviour, enlarged handles) is left alone.
     const PAUSE = ['_cbShrinkTopBars','_cbCompressSidebar','_cbCompressLayersMenu','_cbLayersColumns','_cbRestyleReports','_cbNarrowSidePanel',
       '_cbMoveZoomBar','_cbUnfloatButtons','_cbMoveUserInfo','_cbMoveChatIcon','_cbResizeSearchBox','_cbMoveSearchAreaButton','_cbDisableUITransitions',
-      '_cbShowMapBlockers'];                                        // tints the map buttons red: they are a floating rail here, not a blocker
-    // Paused whenever Studio is on, in either layout.
+      '_cbShowMapBlockers'];
     const ALWAYS = ['_cbSwapRoadsGPS'];
     const ALL = [...PAUSE, ...ALWAYS];
-    // FUME's "UI Enhancement controls": the two strength menus are set to None and locked whenever Studio is on, and
-    // the button below them is locked. "values" remembers what the menus were set to.
     const SELECTS = ['_inpUICompression','_inpUIContrast'], BUTTONS = ['_btnKillNode'];
     let values = {};
     const KEY = 'wmeStudio.fumePaused.v1', NOTE = 'Paused by WME Studio while the Floating layout is on. It comes back in the Standard layout.', NOTE_ALWAYS = 'Paused while WME Studio is on. It comes back when Studio is turned off.';
-    // "paused" = options Studio switched off and owes back. It is also kept in storage: FUME saves its settings when
-    // the page closes, and should that ever happen with the options still off, they are owed back on the next load.
     let paused = new Set(), loaded = false, note = null, started = performance.now();
     const boxes = () => ALL.map(id => document.getElementById(id)).filter(box => box instanceof HTMLInputElement && box.type === 'checkbox');
     const store = () => { try { Promise.resolve(studioKeep.set(KEY, { boxes: [...paused], values: { ...values } })).catch(error => reportStudioError('fumeGuard', error)); } catch (error) { reportStudioError('fumeGuard', error); } };
@@ -11861,9 +10868,7 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       loaded = true;
     }).catch(() => { loaded = true; }); } catch (_) { loaded = true; }
     const menus = () => SELECTS.map(id => document.getElementById(id)).filter(menu => menu instanceof HTMLSelectElement);
-    // FUME reacts to "change" on its menus the same way it reacts to a click on its checkboxes.
     function choose(menu, value) { const locked = menu.disabled; menu.disabled = false; menu.value = value; try { menu.dispatchEvent(new Event('change', { bubbles: true })); } catch (error) { reportStudioError('fumeGuard', error); } menu.disabled = locked; }
-    // FUME reacts to a click on its checkbox: it reads the new state and applies or undoes the option itself.
     function flip(box) { const locked = box.disabled; box.disabled = false; try { box.click(); } catch (error) { reportStudioError('fumeGuard', error); } box.disabled = locked; }
     function mark(box, on) {
       if (on) { if (!box.hasAttribute('data-wme-studio-fume-paused')) { box.setAttribute('data-wme-studio-fume-paused', box.title || ''); box.title = PAUSE.includes(box.id) ? NOTE : NOTE_ALWAYS; } box.disabled = true; }
@@ -11885,8 +10890,8 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
     function sync() {
       if (!loaded || !ready) return;
       const list = boxes();
-      if (!list.length) return;                                     // FUME is not running (or not ready yet)
-      if (compactLayoutEditing) return;                             // nothing changes while Arrange is open
+      if (!list.length) return;
+      if (compactLayoutEditing) return;
       const floating = settings.enabled && compactLayoutActive();
       let changed = false;
       for (const box of list) {
@@ -11911,13 +10916,11 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       if (changed) store();
       showNote(list, settings.enabled);
     }
-    // FUME writes its settings from the checkboxes as the page closes: show it the user's own choices, not the pause.
     function beforeLeave() {
       const list = boxes().filter(box => paused.has(box.id) && !box.checked), set = menus().filter(menu => menu.id in values && menu.value !== values[menu.id]);
       if (!list.length && !set.length) return;
       for (const box of list) box.checked = true;
       for (const menu of set) menu.value = values[menu.id];
-      // still here a moment later (the editor asked "leave the page?" and the answer was no): pause again, quietly
       setTimeout(() => {
         for (const box of list) if (box.isConnected && paused.has(box.id) && box.disabled) box.checked = false;
         for (const menu of set) if (menu.isConnected && menu.id in values && menu.disabled) menu.value = '0';
@@ -11925,14 +10928,10 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
     }
     window.addEventListener('beforeunload', beforeLeave, true);
     window.addEventListener('pagehide', beforeLeave, true);
-    // FUME applies its options one second after it has built its tab: looking four times a second gets there first
     (function watch() { try { sync(); } catch (error) { reportStudioError('fumeGuard', error); } setTimeout(watch, performance.now() - started < 180000 ? 250 : 1500); })();
     globalThis.WMEStudioFume = Object.freeze({ paused: () => [...paused], values: () => ({ ...values }), options: () => [...ALL], sync });
     return Object.freeze({ sync });
   })();
-  // Close the request after replying (2.0.5): a press of the reply's send button (or Enter in the field) with text in
-  // it is remembered; once the field has emptied and the reply shows in the discussion, the request is closed. If the
-  // reply never shows up (it failed, or Enter only made a new line), nothing happens.
   const closeAfterReply = (() => {
     const PANEL = '.problem-edit, .place-update-edit';
     let pending = null;
@@ -11974,12 +10973,6 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
     }, true);
     return Object.freeze({ arm });
   })();
-  // Your own online status on the online editors button (2.2.0, suggested by Thynamelessone). The button's number
-  // counts every editor online, you included, so it never told you whether others can see you. Like the status on an
-  // avatar, a small badge sits at the icon's lower corner: a green dot while others can see you, a grey badge with a
-  // crossed-out eye (and a dimmed icon) while you are invisible. Your status is read from the online editors list: its row for you while the list is open
-  // (the eye or "invisible" icon, and the dimmed level badge), and the list's own state otherwise, which WME keeps
-  // even while the list is closed. A click on your eye button changes the button at once; the list confirms it after.
   const onlineSelf = (() => {
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     let predicted = null, predictedUntil = 0, frame = 0, watched = null, watcher = null;
@@ -11992,7 +10985,6 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
     }
     function fromList() {
       try {
-        // The page's own copy of the button: React's notes on it live in the page, not in this script's view of it.
         const bubble = page.document?.querySelector?.('.online-editors-bubble');
         const key = bubble && Object.keys(bubble).find(name => name.startsWith('__reactFiber'));
         for (let fiber = key ? bubble[key] : null, depth = 0; fiber && depth < 14; fiber = fiber.return, depth++) {
@@ -12001,15 +10993,13 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
             if (value && typeof value === 'object' && typeof value.isVisible === 'boolean') return value.isVisible;
           }
         }
-      } catch (_) { /* WME changed how the list is built: nothing is shown */ }
+      } catch (_) {   }
       return null;
     }
     function place(bubble) {
-      // The stroke goes across the icon, wherever the current look puts it.
       const icon = bubble.querySelector('img[slot="left-icon"]');
       const box = bubble.getBoundingClientRect(), rect = icon?.getBoundingClientRect(), zoom = bubble.currentCSSZoom || 1;
       if (!rect?.width || !box.width) return;
-      // The badge's centre: the icon's lower right corner, pulled a little in.
       const size = Math.max(rect.width, rect.height) / zoom;
       const values = [['--ws-me-x', `${Math.round((rect.right - box.left) / zoom - size * .12)}px`], ['--ws-me-y', `${Math.round((rect.bottom - box.top) / zoom - size * .12)}px`], ['--ws-me-icon', `${Math.round(size)}px`]];
       for (const [name, value] of values) if (bubble.style.getPropertyValue(name) !== value) bubble.style.setProperty(name, value);
@@ -12020,7 +11010,6 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       if (!bubble) return;
       watch();
       const known = fromRow() ?? fromList();
-      // Right after your click the list may not have caught up yet: the click's answer stands for a moment.
       if (predicted !== null && performance.now() < predictedUntil && known !== predicted) return;
       predicted = null;
       const state = !settings?.enabled || known === null ? null : known ? 'visible' : 'invisible';
@@ -12036,7 +11025,6 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       else if (bubble.hasAttribute('data-wme-studio-me-title')) { bubble.removeAttribute('title'); bubble.removeAttribute('data-wme-studio-me-title'); }
     }
     const soon = () => { if (!frame) frame = requestAnimationFrame(sync); };
-    // The list re-renders when your status changes, when it opens and when editors come and go.
     function watch() {
       const box = document.getElementById('online-editors');
       if (!box || box === watched) return;
@@ -12054,8 +11042,6 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       }
       setTimeout(soon, 120); setTimeout(soon, 700);
     }, true);
-    // A press anywhere else closes the open list, like any other menu (2.2.0). The list, its button, the chat it can
-    // open and any dialog are left alone; so is Arrange.
     document.addEventListener('pointerdown', event => {
       if (!settings?.enabled || event.button > 0 || document.documentElement.hasAttribute('data-wme-studio-layout-editing')) return;
       const box = document.getElementById('online-editors');
@@ -12065,7 +11051,7 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
       box.querySelector('.online-editors-bubble')?.click();
     }, true);
     addEventListener('resize', soon, { passive: true });
-    setInterval(soon, 1000);   // a change made elsewhere (another tab, the chat window) while the list is closed
+    setInterval(soon, 1000);
     GM_addStyle(`
 html[data-wme-studio="on"]:not([data-wme-studio-compact="on"]) .online-editors-bubble[data-wme-studio-me] { position: relative; }
 html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me] > img[slot="left-icon"] { transition: opacity 240ms ease !important; }
@@ -12099,9 +11085,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   const requestReveal = (() => {
     let timers = [];
     let placePanel = null, placeKey = '', placeSDK = null, placeSDKStop = null;
-    // The map's place on the screen (the SDK's viewport element).
     const mapView = () => studioSDK.value(api => api.Map.getMapViewportElement()?.getBoundingClientRect() || null, null) || document.getElementById('WazeMap')?.getBoundingClientRect() || null;
-    // The middle of an area (its centroid), else of its outline.
     function centroid(ring) {
       let area = 0, x = 0, y = 0;
       for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -12113,7 +11097,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       return [(Math.min(...lons) + Math.max(...lons)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
     }
     function screenPoint(model, view) {
-      // The SDK first: the request's position in degrees, and where that is on the map.
       const fromSDK = studioSDK.value(api => {
         let geometry = null;
         try { geometry = model?.getGeometry?.(); } catch (_) { geometry = null; }
@@ -12131,7 +11114,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       }, null);
       return fromSDK;
     }
-    // Moves the map by dx, dy pixels through the SDK (the centre moved to the point that many pixels away).
     function sdkPanBy(dx, dy) {
       const api = studioSDK.get();
       if (!api) return false;
@@ -12144,7 +11126,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         return true;
       } catch (_) { return false; }
     }
-    // The largest rectangle inside "bounds" that touches none of the obstacles.
     function largestFree(bounds, obstacles) {
       const clip = value => Math.max(bounds.left, Math.min(bounds.right, value)), clipY = value => Math.max(bounds.top, Math.min(bounds.bottom, value));
       const xs = [...new Set([bounds.left, bounds.right, ...obstacles.flatMap(rect => [clip(rect.left), clip(rect.left + rect.width)])])].sort((a, b) => a - b);
@@ -12174,10 +11155,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       ownPanUntil = performance.now() + 600;
       return sdkPanBy(dx, dy) ? `moved ${dx},${dy}` : 'the map could not be moved';
     }
-    // Map problems (and anything else the editor opens without announcing it) are found from their panel: the
-    // editor centres the map on the request as it opens it, so that centre is where the request is. When the
-    // map did not move around the opening, nothing is known about the spot and the map is left alone.
-    // Moves the map so a screen point (a request's marker) is in the clearest area no panel covers.
     function revealScreen(point) {
       if (!ready || !settings.enabled || !compactLayoutActive() || compactLayoutEditing) return 'not in the Floating layout';
       const view = mapView();
@@ -12191,9 +11168,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       ownPanUntil = performance.now() + 600;
       return sdkPanBy(dx, dy) ? `moved ${dx},${dy}` : 'the map could not be moved';
     }
-    // The marker of the request a panel shows: the editor draws the open request's marker enlarged (or marks it
-    // as selected). Only a marker that clearly stands out next to the panel is used; anything less certain is
-    // written to the log (WMEStudioRequestReveal()) and the map is left alone.
     const MARKER_HINT = /update|request|problem|issue|venue|place|suggest|marker|feature|pin/i;
     const MARKER_ACTIVE = /select|active|highlight|current|focus|open/i;
     function requestMarker(panel) {
@@ -12209,7 +11183,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         const text = `${element.getAttribute('class') || ''} ${element.id || ''} ${element.getAttribute('href') || element.getAttribute('xlink:href') || element.getAttribute('src') || ''} ${element.style?.backgroundImage || ''}`;
         if (!MARKER_HINT.test(text)) continue;
         if (found.some(item => item.element.contains(element) || element.contains(item.element))) {
-          // keep the larger of a marker and its parts
           const index = found.findIndex(item => item.element.contains(element) || element.contains(item.element));
           if (rect.width * rect.height > found[index].rect.width * found[index].rect.height) found[index] = { element, rect, text, active: MARKER_ACTIVE.test(text) };
           continue;
@@ -12232,14 +11205,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }, { capture: true, passive: true });
     const moves = [], seenPanels = new WeakSet();
     let movesSDK = false;
-    // The map stopped moving: lon/lat in degrees (from the SDK).
     function mapStopped(lon, lat) {
       if (performance.now() < ownPanUntil) return;
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
       moves.push({ time: performance.now(), lon, lat }); if (moves.length > 8) moves.shift();
-      // "Show on map" (or anything else in a request that moves the map): the editor flies there in several
-      // steps, so nothing is done until the map has been still for a while, and then the request's own
-      // position is used (not the map's centre, which is only where the flight happened to stop).
       if (performance.now() - requestClick < 4000) {
         clearTimeout(showTimer);
         showTimer = setTimeout(() => {
@@ -12257,7 +11226,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (!api?.Events?.on) return;
       try {
         api.Events.on({ eventName: 'wme-map-move-end', eventHandler: () => {
-          try { const center = api.Map.getMapCenter(); mapStopped(center?.lon, center?.lat); } catch (_) { /* the map is still loading */ }
+          try { const center = api.Map.getMapCenter(); mapStopped(center?.lon, center?.lat); } catch (_) {   }
         } });
         movesSDK = true;
       } catch (error) { reportStudioError('requestReveal', error); }
@@ -12269,9 +11238,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const opened = performance.now();
       let handled = false;
       for (const delay of [900, 1700]) setTimeout(() => {
-        if (handled || !panel.isConnected || lastShown >= opened - 2000) return;   // announced by the editor: schedule() has it
+        if (handled || !panel.isConnected || lastShown >= opened - 2000) return;
         if (pressed || requestHeaderDrag) return;
-        // Where the editor centred the map as the panel opened is the surest place; the marker comes next.
         const move = [...moves].reverse().find(item => item.time >= opened - 1500);
         if (move) {
           const id = `panel:${move.lon.toFixed(1)},${move.lat.toFixed(1)}`;
@@ -12293,8 +11261,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         if (result.startsWith('moved')) { done = { id, time: performance.now() }; handled = true; }
       }, delay);
     }
-    // The map is moved once for a request and then left alone: the editor announces the same request again when its
-    // panel is moved or resized, and answering each of those made the map jump back and forth.
     let pressed = false, done = { id: '', time: 0 };
     const log = [], note = (id, what) => { log.push(`${(performance.now() / 1000).toFixed(2)}s ${id || '?'} ${what}`); if (log.length > 60) log.shift(); };
     for (const [type, value] of [['pointerdown', true], ['pointerup', false], ['pointercancel', false]]) window.addEventListener(type, () => { pressed = value; }, { capture: true, passive: true });
@@ -12314,14 +11280,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
           const venue = placeSDK.DataModel?.Venues?.getById?.({venueId:id});
           if (venue) return venue;
         }
-      } catch (_) { /* the venue may still be loading */ }
+      } catch (_) {   }
       try {
         const models = pageWindow.W?.selectionManager?.getSelectedDataModelObjects?.();
         if (models?.length !== 1) return null;
         const model = models[0], modelId = model.getID?.() ?? model.id ?? model.attributes?.id;
         if (id != null && String(id) !== String(modelId)) return null;
         if ((model.type || model.getType?.()) === 'venue' || pageWindow.W?.model?.venues?.getObjectById?.(modelId) === model) return model;
-      } catch (_) { /* no selected venue yet */ }
+      } catch (_) {   }
       return null;
     }
     function schedulePlaceUpdate(freshOpening = false, refresh = false) {
@@ -12333,10 +11299,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const key = `placeUpdateRequest:${id}`;
       if (!freshOpening && !refresh && placeKey === key) return;
       placeKey = key;
-      // A genuine reopen is different from duplicate selection/render events during a drag.
       if (freshOpening && done.id === key) done = {id:'',time:0};
       const panel = placePanel;
-      // An area place is centred on its centroid (screenPoint works it out from the SDK's outline).
       const target = {id:key,getGeometry:()=>venue.geometry || venue.getGeometry?.() || venue.attributes?.geometry};
       schedule(target,() => {
         if (placePanel !== panel || !placePanelVisible()) return false;
@@ -12347,7 +11311,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     function openPlaceUpdate(element) {
       if (!element?.matches?.('.place-update-edit') && !element?.querySelector?.('.place-update-edit')) return;
       const replacedPanel = placePanel !== element;
-      // React can replace a still-open window. That is not a new user opening and must not reset the pan guard.
       const freshOpening = !placePanel || placePanel.isConnected && !placePanelVisible();
       placePanel = element;
       if (freshOpening) placeKey = '';
@@ -12356,7 +11319,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     function closePlaceUpdate(element) {
       if (placePanel !== element) return;
       placePanel = null; placeKey = '';
-      // Cancel only PUR work; closing a PUR must not cancel a newly opened UR's reveal.
       if (timers.kind === 'placeUpdateRequest') { for (const timer of timers) clearTimeout(timer); timers = []; }
     }
     function connectPlaceUpdates(sdk) {
@@ -12377,7 +11339,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         timers = [];
         if (id && done.id === id && performance.now() - done.time < 30000) { note(id, 'announced again: left alone'); return; }
         note(id, 'opened');
-        // after the panel has been placed, and again in case the editor was still moving the map
         timers = [250, 700, 1300].map(delay => setTimeout(() => {
           if (id && done.id === id && performance.now() - done.time < 30000) return;
           if (pressed || requestHeaderDrag) { note(id, 'waiting: a button is held'); return; }
@@ -12483,7 +11444,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     state.bodyLayout = null;
     const mapSuggestion = state.element.id === 'ISSUE_WINDOW_MAP_SUGGESTION' || state.element.getAttribute('data-wme-studio-popup-kind') === 'mapSuggestion';
     for (const card of state.element.querySelectorAll?.('wz-card') || []) {
-      // WME nests a div container inside its review form; history has no footer.
       const containers = mapSuggestion ? card.querySelectorAll('[class*="container--"]') : card.children;
       for (const container of containers) {
         if (!container.matches('[class*="container--"]')) continue;
@@ -12585,12 +11545,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         resetHeaderGuard(state); continue;
       }
       if (state.popupMotion || state.popupClosing) continue;
-      // A request folding into the header or growing out of it moves on its own until it is done (3.1.0).
       if (element.hasAttribute('data-wme-studio-request-folding') || element.hasAttribute('data-wme-studio-request-growing')) continue;
       const rect = element.getBoundingClientRect();
       if (!rect.width || !rect.height) { resetHeaderGuard(state); continue; }
       if (isRequestPopup(element) && !state.popupVisible) queueRequestPopupOpen(state);
-      // Notifications open beside the bell when the bell has moved to another island.
       if (compact && element.matches('.notifications-box-container')) {
         const spot = notificationsBesideBell(rect);
         if (spot) { clearHeaderGuardCap(state); writeRequestPosition(state, rect, spot.left, spot.top); continue; }
@@ -12607,11 +11565,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (newOpeningPoint) state.requestPoint = null;
       if (state.cap == null || rect.height < state.cap - 2) state.naturalHeight = rect.height;
       const suggestionBody = popupKind === 'mapSuggestion' ? requestWindowBody(state) : null;
-      // Account for content arriving after the loading shell was height-limited.
       const suggestionOverflow = suggestionBody ? Math.max(0,suggestionBody.container.scrollHeight - suggestionBody.container.clientHeight) + Math.max(0,suggestionBody.content.scrollHeight - suggestionBody.content.clientHeight) : 0;
       const savedHeight = sizeKey ? Number(panelSizes[sizeKey]?.height) : 0;
       const userHeight = Number.isFinite(savedHeight) && savedHeight > 0 ? savedHeight * (element.currentCSSZoom || 1) : 0;
-      // A previous max-height can still clip rect.height. Fit the saved resize target so the panel can grow again.
       const desiredHeight = userHeight || Math.max(rect.height + suggestionOverflow * (element.currentCSSZoom || 1),state.naturalHeight || rect.height);
       const preferredHeightLimit=popupKind==='mapSuggestion' ? userHeight || 520 : Infinity;
       const preferred = newOpeningPoint
@@ -12619,13 +11575,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (popupKind && !state.requestPoint) state.requestPoint = {left:preferred.left,top:preferred.top};
       if (popupKind && compact && !compactLayoutEditing) {
         const occupied = compactPanelObstacles(element);
-        // The editor's own panels stop at 620 px, unless you sized one yourself (Turn instructions, 3.0.0).
         const wanted = isFlowPanel(element) ? { ...preferred, height: userHeight ? preferred.height : Math.min(preferred.height, 620) } : {...preferred,height:Math.min(preferred.height,preferredHeightLimit)};
         {
           const pillLimits = areaPillLimits({ top: -Infinity, bottom: Infinity }, wanted.left, wanted.width);
           if (wanted.top < pillLimits.top) wanted.top = pillLimits.top;
-          // A window made taller by hand slides up once its bottom reaches the screen's (4.0.2): it used to stop there, so
-          // a window opened low on a short screen couldn't be made tall enough to show a long description.
           const lowest = Math.min(pillLimits.bottom, innerHeight - 12);
           if (userHeight && wanted.top + wanted.height > lowest) wanted.top = Math.max(pillLimits.top, 12, lowest - wanted.height);
           if (wanted.top + wanted.height > pillLimits.bottom) wanted.height = Math.max(200, pillLimits.bottom - wanted.top);
@@ -12663,7 +11616,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const horizontal = standardPanelHorizontalBounds(rect.width, geometry);
       const left = Math.max(horizontal.left, Math.min(preferred.left, horizontal.right));
       const limits = headerPanelLimits(left, rect.width, 12, geometry, rect);
-      // A window made taller by hand slides up rather than stopping at the screen's bottom (4.0.2).
       const anchor = state.requestPoint ? Math.max(limits.top, Math.min(preferred.top, limits.bottom - (userHeight ? Math.min(userHeight, limits.bottom - limits.top) : 200))) : limits.top;
       const available = Math.max(1, Math.min(Math.floor(limits.bottom - anchor), preferredHeightLimit, floatingHeader.position && state.cap != null && !userHeight ? state.cap : Infinity));
       const border = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
@@ -12732,7 +11684,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   function resizableWindow(element) {
     if (element?.id === 'sidebar') return settings.enabled && !standaloneSignin && !editorProfile && !!element.closest('.app.show-sidebar:not(.sidebar-fullscreen)') ? 'sidePanel' : '';
     const kind = element?.getAttribute?.('data-wme-studio-popup-kind');
-    // Turn instructions (3.0.0) is one of the editor's own panels, sized like a request window.
     if (kind === 'panel') return element.matches('.turn-instructions-panel') || element.querySelector(':scope > .turn-instructions-panel, :scope > * > .turn-instructions-panel') ? 'turnInstructions' : '';
     return kind && kind !== 'layers' && !element.hasAttribute('data-wme-studio-panel-preview') ? kind : '';
   }
@@ -12760,9 +11711,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (resizeGrip?.target===element && !windowResize) hideResizeGrip();
     }
   }
-  // Your hub › Your impact opened large (3.0.0). WME marks the app "sidebar-fullscreen" and lays the page over the
-  // whole editor; in Floating mode Studio marks it as a window (data-wme-studio-hub-window), keeps the islands, and
-  // the title bar moves the window. Its spot is kept between sessions; a double-click on the bar centres it again.
   globalThis.WMEStudioHubWindow = (() => {
     const KEY = 'wmeStudio.hubWindow.v1';
     let saved = null, watched = null, drag = null, grip = null;
@@ -12778,7 +11726,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       setElementVariable(sidebar, '--ws-hub-height', saved?.height ? `${saved.height}px` : null);
     }
     const open = () => !!watched?.hasAttribute('data-wme-studio-hub-window');
-    // The edges size the window: a few pixels inside and out, corners take both directions.
     function edgeAt(x, y) {
       if (!open()) return '';
       const rect = document.getElementById('sidebar')?.getBoundingClientRect();
@@ -12865,7 +11812,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const path = event.composedPath();
       const bar = path.find(node => node instanceof Element && node.matches('#sidebar .tab-pane.active > [class*="header--"]'));
       if (!bar) return null;
-      // Its buttons (back, shrink) keep working.
       for (const node of path) { if (node === bar) break; if (node instanceof Element && node.matches('button,a,input,select,textarea,wz-button,[role="button"]')) return null; }
       return bar;
     }
@@ -12889,7 +11835,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const moved = drag.moved;
       drag = null; attr('hub-moving', null);
       if (!moved) return;
-      // Kept inside the window, as the page shows it.
       const rect = document.getElementById('sidebar')?.getBoundingClientRect();
       if (rect) { saved = { ...saved, left: Math.round(rect.left), top: Math.round(rect.top) }; place(); }
       store();
@@ -12899,8 +11844,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     document.addEventListener('dblclick', event => { if (!titleBar(event)) return; saved = null; place(); store(); }, true);
     return Object.freeze({ sync });
   })();
-  // "Sort by" and the page numbers above a list (Review, 3.0.0) share one row: when the panel is too narrow for both,
-  // the row is drawn smaller, text and buttons alike, rather than broken in two. Below 78% of its size it wraps.
   globalThis.WMEStudioFitRows = (() => {
     const rows = new Set(), measured = new WeakMap();
     let frame = 0;
@@ -12908,8 +11851,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     function queue() { if (!frame) frame = requestAnimationFrame(fitAll); }
     function fit(row) {
       const style = getComputedStyle(row);
-      // A column holding the page count (the Events panel: its title, the count, then the events) has nothing side by
-      // side to fit, and must never wrap: a column that wraps put the events in a second column (3.0.4).
       if (!/flex/.test(style.display) || /column/.test(style.flexDirection)) {
         for (const kid of row.children) if (kid.style.zoom) kid.style.zoom = '';
         if (row.getAttribute('data-wme-studio-fit-row') !== 'column') row.setAttribute('data-wme-studio-fit-row', 'column');
@@ -12917,10 +11858,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       }
       const kids = [...row.children].filter(kid => getComputedStyle(kid).display !== 'none');
       if (!kids.length) return;
-      // The row's natural width is measured only when its text changes (a new page count), laid out on one line at full
-      // size: measured as it stands, it read differently drawn small than wrapped, so a long list (UR 109, PUR 33) flipped
-      // between the two again and again (3.0.6).
-      if (!row.clientWidth) return;   // a tab that isn't showing: measured once it shows
+      if (!row.clientWidth) return;
       const key = `${kids.length}|${row.textContent}`;
       let memo = measured.get(row);
       if (!memo || memo.key !== key) {
@@ -12936,8 +11874,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       }
       const room = row.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
       if (!room || !memo.natural) return;
-      // Once wrapped, the row goes back to one line only with a clear margin: a scrollbar coming and going (a few pixels)
-      // cannot flip it.
       const ratio = Math.min(1, room / memo.natural), wrap = ratio < (row.getAttribute('data-wme-studio-fit-row') === 'wrap' ? .84 : .78);
       const value = wrap || ratio >= .995 ? '' : String(Math.floor(ratio * 100) / 100);
       for (const kid of kids) if (kid.style.zoom !== value) kid.style.zoom = value;
@@ -12963,7 +11899,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   function applyWindowSize(element) {
     if (element.id==='sidebar') { syncSidePanelSize(element);if (compactLayoutActive()) syncCompactDocks();return; }
     const size = { ...(panelSizes[resizableWindow(element)] || {}) }, state = headerGuardWindows.get(element);
-    // "Fits the messages" (3.1.0): no fixed height; the discussion shows every message and the window grows with it.
     if (size.fit) delete size.height;
     if (!!size.fit !== element.hasAttribute('data-wme-studio-fit-messages')) { if (size.fit) element.setAttribute('data-wme-studio-fit-messages', 'on'); else element.removeAttribute('data-wme-studio-fit-messages'); }
     if (resizableWindow(element) === 'turnInstructions' && size.width && size.width < 344) size.width = 344;
@@ -12974,7 +11909,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const sized = !!(size.width || size.height);
     const turnPanel = resizableWindow(element) === 'turnInstructions';
     const body = !turnPanel && state && requestWindowBody(state);
-    // Turn instructions (3.0.0) is a card too: its box fills the window, the fields scroll, the rest stays put.
     const card = turnPanel ? element.querySelector('wz-card.turn-instructions-panel, .turn-instructions-panel') : body?.card || element.querySelector('wz-card');
     if (turnPanel) {
       const content = card?.querySelector('.panel-content'), container = content?.parentElement;
@@ -13058,10 +11992,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       saving = saving.then(() => studioKeep.set(key, snapshot)).catch((studioError) => { reportStudioError("show",studioError);});
       active.set(element, { kind, doc, timer: setTimeout(() => dismiss(element), 11000) });
     }
-    // prune() runs from the clean-up that follows every removal on the page. Asking whether a panel is
-    // visible there made the browser lay the whole page out again in the middle of the change (measured:
-    // most of the time spent rebuilding a panel while a hint was showing). What can be answered without
-    // layout is answered at once; the visibility check waits for the next frame.
     let pruneFrame = 0;
     function prune() {
       if (!active.size) return;
@@ -13097,9 +12027,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       else if (resizeGrip && !resizeGrip.hidden && point.target !== resizeGrip) hideResizeGrip();
     });
   }
-  // A menu or a list open over a panel's edge (a closure's ⋮ menu reaching past the side panel, say) keeps the pointer:
-  // the edge only takes over where nothing is drawn on top of it (3.0.0).
-  // The Quick replies and Translate tabs sit right on a request's edge: a finger on them is a tap, not a resize (4.0.0).
   const POPUP_OVER_EDGE = '.options-wrapper,.options-container,[role="menu"],[role="listbox"],[role="dialog"]:not(#sidebar),wz-menu-item,.tippy-box,.dropdown-menu,.select2-drop,[popover]:popover-open,wz-dialog,.ws-quick-replies';
   function pointOverPopup(x, y) {
     let node = document.elementsFromPoint(x, y).find(element => element !== resizeGrip && element.id !== 'wme-studio-hub-grip');
@@ -13109,13 +12036,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       node = inner;
     }
     for (; node && node !== document.body && node !== document.documentElement; node = node.parentElement || node.getRootNode?.().host) {
-      // Reached the panel or window itself first: nothing lies on top of its edge.
       if (node.id === 'sidebar' || headerGuardWindows.has(node)) return false;
       if (node.matches?.(POPUP_OVER_EDGE)) return true;
     }
     return false;
   }
-  // slack: a finger gets a wider edge than a mouse (touch screens have no hover to show the grip first).
   function windowEdgeAt(x, y, slack = 0) {
     if (!settings.enabled || compactLayoutEditing || requestHeaderDrag) return null;
     for (const element of [...headerGuardWindows.keys(),document.getElementById('sidebar')].filter(Boolean)) {
@@ -13126,12 +12051,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (element.checkVisibility && !element.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true })) continue;
       const inSpan = x >= rect.left + 12 && x <= rect.right - 12, inColumn = y >= rect.top + 14 && y <= rect.bottom - 12;
       const dockedSide = element.id==='sidebar' && !compactLayoutActive();
-      // A floating side panel moves by its top edge.
       const inner = slack / 2;
       if (floatingSide && inSpan && y >= rect.top - 6 - slack && y <= rect.top + 9 + inner) return { element, edge: 'move', rect };
       if (!dockedSide && inSpan && y >= rect.bottom - 6 - inner && y <= rect.bottom + 7 + slack) return { element, edge: 'bottom', rect };
       if (inColumn && x >= rect.right - 4 - inner && x <= rect.right + 7 + slack) return { element, edge: 'right', rect };
-      // Turn instructions keeps its left edge where the layout puts it: it grows to the right and down.
       if (!dockedSide && inColumn && x <= rect.left + 4 + inner && x >= rect.left - 7 - slack && resizableWindow(element) !== 'turnInstructions') return { element, edge: 'left', rect };
     }
     return null;
@@ -13173,8 +12096,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     cancelAnimationFrame(resizeHoverFrame); resizeHoverFrame = 0; resizeHoverPoint = null;
     panelResizeHints.dismiss(element);
     const rect = element.getBoundingClientRect(), zoom = element.currentCSSZoom || 1, kind = resizableWindow(element);
-    // A press that does not move (a tap on a finger, a click with the mouse) changes nothing: the panel only follows the
-    // pointer once it has gone a few pixels, and a tap on a touch screen reaches what is under it.
     windowResize = { element, edge, kind, zoom, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, rect, width: rect.width / zoom, height: rect.height / zoom, frame: 0, x: event.clientX, y: event.clientY,
       touch: event.pointerType !== 'mouse', moved: false };
     if (kind === 'sidePanel') {
@@ -13187,16 +12108,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       drag.viewportHeight = innerHeight;
       drag.obstacles = drag.floating ? [...compactIslandSpecs.filter(spec => !spec.popup).map(queryCompactIsland),...customIslandElements(),dockedStreetView()].filter(node => node !== element).map(compactVisibleRect).filter(Boolean) : [];
       drag.previewRect = rect;
-      // Keep resize writes on the sidebar; the map and other islands settle once on release.
       drag.originalVariables = new Map(['--ws-sidebar','--ws-dock-panel-left','--ws-dock-panel-right','--ws-dock-panel-top','--ws-dock-panel-bottom','--ws-dock-panel-css-height']
         .map(name => [name,[element.style.getPropertyValue(name),element.style.getPropertyPriority(name)]]));
     }
     try { resizeGrip.setPointerCapture(event.pointerId); } catch (_) { reportStudioError("startWindowResize",_);}
   }
   window.addEventListener('blur', () => { if (windowResize) endWindowResize(); });
-  // A finger or a pen (2.3.0). Nothing hovers on a touch screen, so the grip that moves and sizes a panel never
-  // showed: a finger put down on a panel's edge (a little wider than for a mouse) takes the edge at once, and the
-  // browser neither scrolls nor hands the touch to the map while the panel is moved or sized.
   let touchGrab = null;
   document.addEventListener('pointerdown', event => {
     touchGrab = null;
@@ -13209,8 +12126,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (windowResize) touchGrab = event.pointerId;
   }, true);
   const holdTouch = event => {
-    // Only the touch that holds a panel's edge or a window's header: any other finger (scrolling a list, say) is left
-    // alone, even should a drag not have ended properly.
     const grabbing = touchGrab !== null && windowResize;
     const header = requestHeaderDrag && !requestHeaderDrag.finishing && event.composedPath().includes(requestHeaderDrag.handle);
     if (!grabbing && !header) return;
@@ -13239,7 +12154,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   }
   function applyWindowResize(drag) {
     if (drag.kind === 'sidePanel' && drag.edge === 'move') {
-      // Free over the map and the islands while it moves; on release the dock puts it on a clear spot.
       const start = drag.rect, width = start.width, height = start.height;
       const left = Math.round(Math.max(12, Math.min(drag.viewportWidth - width - 12, start.left + drag.x - drag.startX)));
       const top = Math.round(Math.max(12, Math.min(Math.max(12, drag.bottom - height), start.top + drag.y - drag.startY)));
@@ -13283,7 +12197,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (drag.edge === 'bottom') size.height = Math.round(Math.max(220, Math.min((innerHeight - 24) / drag.zoom, drag.height + (drag.y - drag.startY) / drag.zoom)));
     else {
       const delta = (drag.x - drag.startX) * (drag.edge === 'left' ? -1 : 1);
-      // Turn instructions keeps room for its own 320 px form, or the form would overflow and scroll sideways.
       size.width = Math.round(Math.min(640,Math.max(drag.kind === 'turnInstructions' ? 344 : 300, drag.width + delta / drag.zoom)));
       if (drag.edge === 'left') {
         const guard = headerGuardWindows.get(drag.element);
@@ -13306,7 +12219,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     cancelAnimationFrame(drag.frame); drag.frame = 0;
     windowResize = null;
     if (!drag.moved) {
-      // Only pressed: nothing was sized, so nothing is kept. A tap on a touch screen goes on to what is under the finger.
       drag.element.removeAttribute('data-wme-studio-panel-moving');
       try { if (resizeGrip.hasPointerCapture(drag.pointerId)) resizeGrip.releasePointerCapture(drag.pointerId); } catch (_) { reportStudioError("endWindowResize",_);}
       hideResizeGrip();
@@ -13315,12 +12227,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     if (drag.kind === 'sidePanel') {
       drag.element.removeAttribute('data-wme-studio-panel-moving');
-      // A moved panel keeps the height it had (a panel that never had one set would take the default size).
       if (drag.edge === 'move' && drag.floating && !Number(drag.size.height)) drag.size.height = Math.round(drag.rect.height / drag.zoom);
       panelSizes.sidePanel = drag.size;
       if (drag.floating && drag.element.isConnected && drag.element.closest('.app.show-sidebar:not(.sidebar-fullscreen)')) {
         const rect = drag.previewRect;
-        // Update the anchor before removing the preview so there is no snap back on release.
         void storeCompactIslandLayout({...compactIslandLayout,sidePanel:{x:rect.left/innerWidth,y:rect.top/innerHeight,anchor:'viewport'}}).catch((studioError)=>{ reportStudioError("endWindowResize",studioError);});
       }
       for (const [name,[value,priority]] of drag.originalVariables) {
@@ -13335,7 +12245,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (hit) showResizeGrip(hit); else hideResizeGrip();
   }
   function tapThrough(x, y) {
-    // The touch that took the edge was held from the browser, so its click never came: send it to what is under it.
     let target = document.elementFromPoint(x, y);
     for (let depth = 0; target?.shadowRoot && depth < 6; depth++) { const inner = target.shadowRoot.elementFromPoint(x, y); if (!inner || inner === target) break; target = inner; }
     if (!target || target === resizeGrip) return;
@@ -13344,7 +12253,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   }
   function resetWindowSize(event) {
     const element = resizeGrip?.target, kind = element && resizableWindow(element);
-    // Double-click the top edge: the side panel goes back to where panels open by default.
     if (kind === 'sidePanel' && resizeGrip.edge === 'move') {
       event.preventDefault(); event.stopImmediatePropagation();
       if (compactIslandLayout?.sidePanel) { const { sidePanel, ...rest } = compactIslandLayout; void storeCompactIslandLayout(rest).then(() => syncCompactDocks()).catch(studioError => reportStudioError('resetWindowSize', studioError)); }
@@ -13355,8 +12263,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     delete panelSizes[kind]; applyWindowSize(element); storePanelSizes(); queueHeaderGuardWindows(); hideResizeGrip();
   }
   globalThis.WMEStudioPanelSizes = Object.freeze({
-    // Changing "Visible discussion messages" (2.3.0): request windows give up the height dragged for them, so the new
-    // number shows straight away. The width dragged is kept; dragging the bottom edge again makes them taller.
     forgetRequestHeights() {
       let changed = false;
       for (const kind of ['updateRequest', 'mapUpdateRequest', 'placeUpdateRequest', 'mapProblem', 'mapSuggestion']) {
@@ -13461,8 +12367,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         if (mapLayerWindows.get(element)?.drag) return;
         if (requestHeaderDrag?.element === element) return;
       }
-      // Native keyboard dragging and native position resets change left/top/transform.
-      // Honour those moves rather than snapping the helper back to its last pointer drag.
       if (aiHelper && records.some(record => record.attributeName === 'style')) {
         const next = nativePosition();
         if (next !== lastNativePosition) { lastNativePosition = next; state.requestPoint = null; }
@@ -13480,8 +12384,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (nativeWindow) trackHeaderGuardWindow(nativeWindow);
     else if (panel.previousElementSibling?.matches('[aria-roledescription="draggable"]')) trackHeaderGuardWindow(panel.parentElement);
     if (panel.matches('.place-update-edit')) requestReveal.openPlaceUpdate(nativeWindow || panel.parentElement);
-    // Every request panel also gets the fallback: the place of a place request is found from its selected
-    // place when the editor selects one, and from where the editor centred the map when it does not.
     requestReveal.openProblem(panel);
   }
   window.addEventListener('resize', queueHeaderGuardWindows, { passive: true });
@@ -13500,7 +12402,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (compactIslandSpec(kind)?.popup) {
         const point={x:Math.min(1,Math.max(0,drag.previous.left/innerWidth)),y:Math.min(1,Math.max(0,drag.previous.top/innerHeight)),anchor:'viewport'};
         compactIslandLayout={...compactIslandLayout,[kind]:point};
-        drag.state.appliedPopupPoint=`viewport,${point.x},${point.y}`;   // already applied: the panel is there
+        drag.state.appliedPopupPoint=`viewport,${point.x},${point.y}`;
         try { Promise.resolve(studioKeep.set(COMPACT_LAYOUT_KEY,compactIslandLayout)).catch((studioError)=>{ reportStudioError("releaseRequestHeaderDrag",studioError);}); } catch (_) { reportStudioError("releaseRequestHeaderDrag",_);}
       }
     }
@@ -13527,7 +12429,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const previous = {...drag.previous,width,height};
       const viewport = {width:drag.geometry.width,height:limits.bottom + 12};
       const origin = compactRectClear(previous,drag.obstacles) ? previous : compactFreePosition(previous,drag.obstacles,viewport);
-      // no clear spot to slide from (everything is taken): move freely inside the limits rather than not at all
       const placed = origin ? compactSlidePosition({left,top,width,height},origin,drag.obstacles,viewport) : {left,top};
       if (placed) {
         writeRequestPosition(drag.state,rect,placed.left,placed.top,drag.zoom);
@@ -13689,7 +12590,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const view = {width:geometry.width,height:bottom + gap};
     let placed = compactHeaderPlacement({left,top,width:bounds.width,height:bounds.height}, previous, bounds.obstacles || compactHeaderObstacles(), view);
     if (!placed) return;
-    // Let go over a panel: the nearest spot clear of the panels and the islands, else back where the drag began.
     if (bounds.settle && bounds.panels?.length && !compactRectClear(placed, bounds.panels)) {
       const all = [...(bounds.obstacles || []), ...bounds.panels];
       const free = compactHeaderSpansViewport(bounds.width) ? compactHeaderPlacement(placed, {left:placed.left,top:placed.top}, all, view)
@@ -13826,8 +12726,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     return floatingHeader.bookmarkPinProxy;
   }
-  // Both scripts keep their own controls in the native topbar. Mirror only their visible state here:
-  // USGB replaces its ZIP/county nodes on each fetch, and GIS Buttons updates its links in place.
   function headerAddonOriginal(id) {
     return floatingHeader.locationSource?.querySelector(`#${id}`) || document.getElementById(id);
   }
@@ -13970,9 +12868,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     syncHeaderAddonPlacement();
   }
-  // The editor's location line, as words and tags (4.1.0). Other scripts add their own tags to it (one shows the
-  // editable area: "permanent access (managed area) · driven 70 d ago"); read as plain text they ran into the place
-  // name. A part with a background of its own is a tag and stays one in the pill, in its own colours.
   function headerLocationParts() {
     const box = floatingHeader.locationSource?.querySelector('.location-info');
     const words = [], tags = [];
@@ -14014,11 +12909,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       floatingHeader.header.append(label);
       floatingHeader.locationLabel = label;
     }
-    // With the Area managers layer on, the editor lists them in the same bar the location comes from. That bar is
-    // hidden in Floating mode, so they join the location in the pill: "Place | AMs: names".
     const managers = headerAreaManagers();
-    // Bookmarks keeps its real button in the hidden topbar. The visible pin forwards to that button,
-    // preserving Bookmarks' own click handler without relocating its DOM node on map updates.
     const hasBookmarkPin = !!document.getElementById('addNodeButton');
     if (hasBookmarkPin) label.removeAttribute('aria-hidden');
     else if (label.getAttribute('aria-hidden') !== 'true') label.setAttribute('aria-hidden', 'true');
@@ -14049,17 +12940,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (locationChanged || !floatingHeader.locationLayoutObserver) watchHeaderLocationLayout();
     else if (addonSignature !== floatingHeader.addonSignature) queueHeaderLocationLayout();
   }
-  // The names behind "Multiple managers". The editor shows them only in its own hover bubble, on the bar that Floating
-  // mode hides, so Studio shows a bubble of its own under the pill. The names are read from the editor's element when
-  // they are there (an attribute, a tooltip part, a shadow root); otherwise Studio hovers the hidden original for a
-  // moment, with the editor's bubble kept invisible, and reads the names from the bubble it opens.
   const areaManagerTip = { node: null, anchor: null, names: '', key: '', probing: false, last: null };
   const AREA_MANAGER_BUBBLES = '.tooltip,.tooltip-inner,[role="tooltip"],wz-tooltip-content,.tippy-box,.tippy-content,[data-popper-placement]';
   function areaManagerRegion() {
     return floatingHeader.locationSource?.querySelector('.area-managers-region,[class*="area-managers" i],[class*="areaManagers" i],[class*="area_managers" i]') || null;
   }
-  // The editor's own bubble is a wz-tooltip-content element added to the page body while the original is hovered,
-  // holding one .topbar-am-name per manager ("name," with a trailing comma on all but the last).
   function areaManagerNamesListed() {
     const names = [];
     for (const item of document.querySelectorAll('.topbar-am-name')) {
@@ -14084,15 +12969,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         if (element.shadowRoot) walk(element.shadowRoot);
       }
     };
-    try { walk(region); } catch (error) { /* a closed or odd tree: fall back to hovering the original */ }
+    try { walk(region); } catch (error) {   }
     return found.join(', ');
   }
   function probeAreaManagerNames(region, shown, done) {
     if (areaManagerTip.probing) return;
     areaManagerTip.probing = true;
     const before = new Set(document.querySelectorAll(AREA_MANAGER_BUBBLES));
-    // Enter and leave events do not bubble, and the editor's tooltip may listen on any wrapper, also inside a
-    // shadow root: every element of the original gets them. The bubbling ones go to the text-bearing leaves.
     const found = new Set([region]), trees = [region];
     for (let index = 0; index < trees.length; index++) for (const element of trees[index].querySelectorAll('*')) { found.add(element); if (element.shadowRoot && !trees.includes(element.shadowRoot)) trees.push(element.shadowRoot); }
     const targets = [...found].reverse();
@@ -14103,7 +12986,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         for (const type of types) {
           const bubbles = !/enter$|leave$/.test(type);
           if (bubbles && !leaf) continue;
-          try { element.dispatchEvent(type.startsWith('pointer') ? new PointerEvent(type, { ...at, bubbles, pointerType: 'mouse' }) : type.startsWith('focus') ? new FocusEvent(type, { bubbles }) : new MouseEvent(type, { ...at, bubbles })); } catch (error) { /* an event type this browser lacks */ }
+          try { element.dispatchEvent(type.startsWith('pointer') ? new PointerEvent(type, { ...at, bubbles, pointerType: 'mouse' }) : type.startsWith('focus') ? new FocusEvent(type, { bubbles }) : new MouseEvent(type, { ...at, bubbles })); } catch (error) {   }
         }
       }
     };
@@ -14142,8 +13025,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const shown = anchor.textContent || '';
     areaManagerTip.anchor = anchor;
     if (!areaManagerTip.node) { areaManagerTip.node = document.createElement('div'); areaManagerTip.node.className = 'wme-studio-am-tip'; areaManagerTip.node.setAttribute('role', 'tooltip'); }
-    // Read again on every hover: "Multiple managers" reads the same over a different area with different people.
-    // What is already in the page shows at once; the original is then hovered so the editor writes the current list.
     const direct = areaManagerNamesFrom(region, shown);
     areaManagerTip.key = shown; areaManagerTip.names = direct;
     areaManagerTip.last = { shown, how: direct ? 'read from the page' : 'hovering the original' };
@@ -14156,7 +13037,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     });
   }
   function hideAreaManagerTip() { areaManagerTip.anchor = null; areaManagerTip.node?.remove(); }
-  // For bug reports: what the pill found the last time the managers were hovered.
   globalThis.WMEStudioAreaManagers = () => ({ ...(areaManagerTip.last || {}), names: areaManagerTip.names, html: (areaManagerRegion()?.outerHTML || '').slice(0, 1500) });
   function headerAreaManagers() {
     const none = { text: '', names: '' };
@@ -14166,7 +13046,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const copy = region.cloneNode(true), names = [];
       for (const tip of copy.querySelectorAll('wz-tooltip-content,[role="tooltip"],[slot="content"],.tooltip,.tooltip-inner,script,style')) { const value = tip.textContent.replace(/\s+/g, ' ').trim(); if (value) names.push(value); tip.remove(); }
       const text = copy.textContent.replace(/\s+/g, ' ').trim().replace(/^([^:]{1,24}):\s*/, '$1: ');
-      if (!text || /^[^:]{1,24}:$/.test(text)) return none;   // only the "AMs:" title, nobody listed
+      if (!text || /^[^:]{1,24}:$/.test(text)) return none;
       return { text: text.length > 90 ? text.slice(0, 89).trimEnd() + '…' : text, names: names.join(', ').slice(0, 600) };
     } catch (error) { return none; }
   }
@@ -14256,7 +13136,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     event.preventDefault(); event.stopImmediatePropagation();
     if (drag.moved && event.type === 'pointerup') { drag.settle = true; positionHeader(drag.left + event.clientX - drag.startX,drag.top + event.clientY - drag.startY,drag); }
     else if (drag.moved && floatingHeader.position && drag.panels?.length && !compactRectClear({left:floatingHeader.position.x,top:floatingHeader.position.y,width:drag.width,height:drag.height}, drag.panels)) {
-      drag.settle = true; positionHeader(floatingHeader.position.x, floatingHeader.position.y, drag);   // cancelled over a panel
+      drag.settle = true; positionHeader(floatingHeader.position.x, floatingHeader.position.y, drag);
     }
     const reset = event.type === 'pointerup' && !drag.moved;
     floatingHeader.suppressUntil = performance.now() + 500;
@@ -14267,8 +13147,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (compactLayoutActive()) syncCompactDocks();
     }
   }
-  // A header dragged into place stays there after a reload: the spot is kept with the layout, the way Arrange
-  // keeps it (and workspaces save it with the layout too). Clicking the handle puts it back to the default.
   function saveDraggedHeader() {
     const position = floatingHeader.position;
     if (!position || !compactLayoutActive() || compactLayoutEditing) return;
@@ -14322,8 +13200,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   mapLayerViewport.addEventListener('change', () => syncFloatingHeader(true));
   window.addEventListener('blur', finishHeaderDrag);
   const mapLayerWindows = new Map();
-  // Map Layers uses CSS modules in both editor builds. Resolve its stable region/test-id
-  // roots and semantic class prefixes; never depend on a particular build's hash.
   const betaMapLayers = (() => {
     const selector = '#layer-switcher-region,[data-testid="layer-switcher"]';
     const menuSelector = '[data-testid="layer-switcher-menu"],[data-wme-studio-beta-layers="on"]';
@@ -14556,15 +13432,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   });
   window.addEventListener('blur', () => { for (const state of mapLayerWindows.values()) finishMapLayerDrag(state); });
 
-  // ---- Custom islands ------------------------------------------------------------------------------------------
-  // In Floating mode a control can leave its island: it can be hidden, moved into another island or given an
-  // island of its own. WME keeps owning its controls, so they never leave their place in WME's page. A moved
-  // control is only drawn somewhere else (fixed in place over the map), and a new island is a glass backdrop
-  // that Studio draws behind the controls it holds. Taking the layout away puts every control back as it was.
   const ISLAND_CONTROLS_KEY = 'wmeStudio.islandControls.v1';
   const ISLAND_HOME_LABELS = Object.freeze({ header: 'Header', navigation: 'Navigation', tools: 'Map tools', online: 'Online Editors', tile: 'Tile Update', links: 'Custom links', create: 'Create' });
-  // Islands whose own controls Studio may lay out (reorder, rotate, receive controls from other islands). The
-  // header also holds the logo, the address and add-on pills, so it only lends controls and takes its own back.
   const ISLAND_MANAGEABLE = Object.freeze(['navigation', 'tools']);
   const ISLAND_PAD = 6, ISLAND_GAP = 4, ISLAND_EMPTY = Object.freeze({ width: 168, height: 52 });
   const islandControlSources = Object.freeze({
@@ -14591,14 +13460,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   const VOLATILE_CLASS = /(?:^|[-_])(?:active|selected|open|opened|closed|hover|hovered|focus|focused|disabled|hidden|visible|show|shown|expanded|collapsed|loading|pressed|checked|unread|new|badge)(?:$|[-_])|^ws-|wme-studio|^ng-|^jsx-|^css-|^sc-/i;
   function emptyIslandControls() { return { custom: [], managed: {}, hidden: [], links: [], next: 1 }; }
   function islandControlsEmpty(model) { return !model || (!model.custom.length && !Object.keys(model.managed).length && !model.hidden.length && !model.links?.length); }
-  // A web address for a custom link: http or https only, "https://" added when it is left out.
   function safeLinkUrl(text) {
     let value = typeof text === 'string' ? text.trim() : '';
     if (!value || value.length > 2000) return null;
     if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) value = `https://${value.replace(/^\/+/, '')}`;
     try {
       const url = new URL(value);
-      // A real host name: letters, digits, dots and dashes, with a dot in it (or localhost, or an IPv6 address).
       const host = url.hostname;
       const valid = /^\[[0-9a-f:.]+\]$/i.test(host) || host === 'localhost' || (/^[a-z0-9.-]+$/i.test(host) && /[a-z0-9]\.[a-z0-9]/i.test(host));
       return /^https?:$/.test(url.protocol) && valid ? url.href : null;
@@ -14620,7 +13487,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         ...(ISLAND_MANAGEABLE.includes(island.home) && !out.custom.some(other => other.home === island.home) ? { home: island.home } : {})
       });
     }
-    // Layouts from the first 2.0 builds laid WME's own rail out in place; that island is now drawn by Studio.
     for (const id of ISLAND_MANAGEABLE) {
       const managed = value.managed?.[id];
       if (!managed || typeof managed !== 'object' || out.custom.some(island => island.home === id)) continue;
@@ -14647,8 +13513,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   let islandControls = emptyIslandControls(), islandControlsDraft = null;
   const islandModel = () => islandControlsDraft || islandControls;
 
-  // A popup a control opens (WME's share popup with its copy buttons): never part of the control's name or size.
-  // Menus are left out on purpose: many header buttons are a menu wrapped around their button.
   const CONTROL_ICON_SKIP = '[role="dialog"],[role="tooltip"],wz-tooltip-content,.tippy-box,[class*="pop-up"],[class*="popup"],[class*="Popup"],[class*="popover"]';
   function controlIconName(element) {
     const icon = element.matches?.('wz-icon,i[class*="w-icon-"]') ? element
@@ -14684,9 +13548,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     return (text || 'Control').replace(/\s+/g, ' ').trim().slice(0, 40);
   }
-  // Pieces of a rail no known selector claims: a button a script added to the rail, or a control WME draws apart
-  // from the others (Street View's figure). Left behind they would float where the rail used to be, so they are
-  // found as controls of their own. Only control-sized pieces with something to show count, never menus or panels.
   const ISLAND_ORPHAN_SKIP = 'style,script,template,link,slot,meta,[class*="separation--"],[data-wme-studio-header-gap],.ws-custom-island,[role="menu"],[role="dialog"],[role="tooltip"],[role="listbox"],wz-menu,.menu,.tippy-box,[data-tippy-root],.layer-switcher-menu,[class*="pop-up"],[class*="popup"],[class*="Popup"],[class*="popover"]';
   function islandOrphans(root, known) {
     const out = [];
@@ -14705,7 +13566,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         const sized = rect.width >= 12 && rect.height >= 12 && rect.width <= 120 && rect.height <= 120 && parseFloat(style.opacity) > 0;
         const shows = child.shadowRoot || child.matches('button,wz-button,a[href],[role="button"],img,svg,wz-icon') || style.backgroundImage !== 'none' ||
           child.querySelector('svg,img,i,wz-icon,button,wz-button,[role="button"],[class*="icon"]');
-        // A wrapper with no size of its own (the figure inside is positioned) is looked into instead.
         if (sized && shows) out.push(child); else visit(child, depth + 1);
       }
     };
@@ -14713,18 +13573,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     return out;
   }
   const ISLAND_ORPHAN_ROOTS = Object.freeze({ navigation: () => document.getElementById('drawer'), tools: () => document.getElementById('overlay-buttons') });
-  // Typing in an Arrange field (an island name, a custom link) never reaches WME's keyboard shortcuts, which would
-  // otherwise take the letters for themselves. Registered as early as the script runs, so it comes first.
   for (const type of ['keydown', 'keypress', 'keyup']) window.addEventListener(type, event => {
-    if (event.key === 'Escape' || event.key === 'Enter' || event.key === 'Tab') return;   // Arrange handles these
+    if (event.key === 'Escape' || event.key === 'Enter' || event.key === 'Tab') return;
     const field = event.composedPath()[0];
     if (!field?.matches?.('input:not([type="checkbox"],[type="radio"],[type="range"],[type="button"],[type="submit"]),textarea')) return;
     if (field.getRootNode()?.host?.id !== 'wme-studio-compact-layout-editor') return;
     event.stopImmediatePropagation();
   }, true);
-  // Custom links: buttons Studio makes for addresses the user saved. They wait out of sight until an island holds
-  // them, and open their address in a new tab.
-  const linkElements = new Map();   // link id -> element
+  const linkElements = new Map();
   const LINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.1 1.1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.1-1.1"/></svg>';
   function linkIconSources(url) {
     try {
@@ -14737,7 +13593,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const wanted = new Set(links.map(link => link.id));
     for (const [id, element] of linkElements) if (!wanted.has(id)) { releaseControl(element); element.remove(); linkElements.delete(id); }
     if (!links.length) return;
-    // Beside the islands Studio draws, so a placed link shares their layer and shows above its island.
     let dock = document.getElementById('ws-link-dock');
     if (!dock) { dock = document.createElement('div'); dock.id = 'ws-link-dock'; }
     const host = document.querySelector('.app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) .edit-area-main') || document.querySelector('.app') || document.body || document.documentElement;
@@ -14754,8 +13609,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         element.setAttribute('href', link.url);
         const icon = new Image();
         icon.alt = ''; icon.referrerPolicy = 'no-referrer'; icon.decoding = 'async';
-        // The site's own icon: from Google's favicon service first (sharp, and it knows sites whose icon is not at
-        // /favicon.ico), then from the site itself. The link glyph shows until one loads, and when none does.
         const sources = linkIconSources(link.url);
         const next = () => { const source = sources.shift(); if (source) icon.src = source; };
         icon.addEventListener('load', () => {
@@ -14771,18 +13624,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (element.parentElement !== dock) dock.append(element);
     }
   }
-  // Create shortcuts: a button for each item of WME's + menu (Roads, Place and its categories, House number…), to
-  // place in any island. Studio reads the menu from the editor, so the names and icons are WME's own, in the
-  // editor's language. A shortcut opens the menu out of sight and picks its item, as a click on it would.
   const CREATE_KEY = 'wmeStudio.createMenu.v1';
   const CREATE_ITEM = 'wz-menu-item,wz-menu-sub-menu,[role="menuitem"]';
   const CREATE_MENU = 'wz-menu,[role="menu"]';
   const CREATE_SKIP = `${CONTROL_ICON_SKIP},wz-tooltip,wz-basic-tooltip,wz-rich-tooltip,wz-tooltip-source,wz-tooltip-target`;
-  let createCatalog = [];   // [{id, steps, labels, icon, sub, disabled}] in menu order
+  let createCatalog = [];
   let createCatalogLoaded = false, createRunning = false, createProbed = false;
-  const createElements = new Map();   // id -> button
-  // The menu as WME has it in English, so the buttons are there before the menu is first read. Reading the menu
-  // later takes these over by name (their ids stay, so placed buttons keep their place).
+  const createElements = new Map();
   const CREATE_DEFAULTS = [
     ['Roads', [['Roads'], ['Pedestrian Path'], ['Roundabout'], ['Junction Box']]],
     ['Place', [['Car Services', []], ['Transportation'], ['Professional and Public'], ['Shopping / Services'], ['Food and drink'], ['Culture / Entertainment'], ['Other'], ['Lodging'],
@@ -14790,7 +13638,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     ['Hazard', [['Traffic lights & signs', []], ['Cameras', []], ['Railroad crossing'], ['School zone'], ['Sharp curve'], ['Complex intersection'], ['Multiple lanes merging'], ['Speed bump'],
       ['Tollbooth'], ['Raised crosswalk'], ['Crosswalk: High-speed crossing'], ['Narrow bridge'], ['Lane end (abrupt)'], ['Shoulder end (abrupt)']]],
     ['House number'], ['Restricted area'], ['Community schedule']];
-  // Map notes are left out of the buttons: the + menu's Note, in the languages WME and Studio share.
   const CREATE_LEFT_OUT = new Set(['note', 'σημείωση', 'nota', 'notiz', 'notitie', 'notatka', 'заметка', 'not']);
   const createLeftOut = labels => labels.length === 1 && CREATE_LEFT_OUT.has(String(labels[0]).trim().toLowerCase());
   let createSeeded = false;
@@ -14802,13 +13649,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     try { locale = String(page.I18n?.currentLocale?.() || page.I18n?.locale || document.documentElement.lang || ''); } catch (_) { locale = ''; }
     if (!locale) return;
     createSeeded = true;
-    if (!/^en\b/i.test(locale)) return;   // the names below are WME's English ones
+    if (!/^en\b/i.test(locale)) return;
     let changed = false;
     const add = (items, parent) => {
       for (const [label, children] of items) {
         const labels = [...parent, label];
         if (!createCatalog.some(entry => createSameLabels(entry.labels, labels))) {
-          // After the entries of its parent, so the list keeps the menu's order.
           let at = createCatalog.length;
           if (parent.length) for (let index = createCatalog.length - 1; index >= 0; index--) if (createSameLabels(createCatalog[index].labels.slice(0, parent.length), parent)) { at = index + 1; break; }
           createCatalog.splice(at, 0, { id: `b:${labels.join('>')}`.slice(0, 280), steps: labels.map(item => `t:${item.toLowerCase()}`), labels, icon: null, sub: !!children, disabled: false,
@@ -14821,7 +13667,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     add(CREATE_DEFAULTS, []);
     if (changed) saveCreateCatalog();
   }
-  // WME's own icon for an item, from the Resources library, by its English name.
   function createBundledIcon(entry) {
     const icons = globalThis.WMEStudioResources?.createIcons;
     if (!icons) return '';
@@ -14840,7 +13685,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       await new Promise(done => requestAnimationFrame(done));
     }
   }
-  // Every element under root, including inside open shadow roots, that matches the selector.
   function createDeepAll(root, selector) {
     const out = [];
     const walk = node => { for (const element of node.querySelectorAll('*')) { if (element.matches(selector)) out.push(element); if (element.shadowRoot) walk(element.shadowRoot); } };
@@ -14854,8 +13698,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     return null;
   }
   const createShown = node => { const rect = node.getBoundingClientRect(); return rect.width > 2 && rect.height > 2; };
-  // The + button: the rail's control that holds a menu (WME keeps the menu inside it), or one whose button says it
-  // opens one.
   function createTrigger() {
     const entries = [...islandRegistry.values()].filter(entry => entry.island === 'navigation');
     const drawer = document.getElementById('drawer');
@@ -14870,33 +13712,16 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     return null;
   }
-  // "Open the + menu on click" (2.0.5, like FUME's option): WME opens the + menu as soon as the pointer passes over
-  // the + control. With the setting on, the pointer's arrival at the control is kept from WME, so only a click
-  // opens it. Moving inside an open menu is left alone (its submenus open on hover as usual), and so is Studio
-  // itself opening the menu for a + menu shortcut.
-  // The + button sits inside WME's own wz-menu element, so "inside the menu" means inside a menu that is open
-  // (expanded), never just inside the wz-menu element. A menu that still opens without a click (WME changing how
-  // it listens, say) is closed again at once.
   let createHoverHost = null, createHoverMenu = null, createHoverButton = null, createHoverLookedAt = -1e9, createHoverObserver = null, createHoverMissing = false;
   const createMenuOpen = node => node?.nodeType === 1 && node.matches?.(CREATE_MENU)
     && (node.localName === 'wz-menu' ? node.hasAttribute('expanded') : createShown(node));
-  // The + menu itself: the outermost wz-menu of the + control that holds the menu's items. It can sit inside other
-  // components' shadow roots, so it is looked for there too.
   function findCreateMenu(host) {
     const menus = [host.matches?.('wz-menu') ? host : null, ...createDeepAll(host, 'wz-menu')].filter(Boolean);
     const outer = menus.filter(menu => !menus.some(other => other !== menu && other.contains(menu)));
     return outer.find(menu => menu.querySelector(CREATE_ITEM) || createDeepAll(menu, CREATE_ITEM).length) || outer[0] || null;
   }
-  // Is this click on + itself? The + button is the one Studio's + menu shortcuts press (it can sit inside the
-  // menu element or next to it); failing that, anything of the + control that is not the open list or an item.
-  // When the + control itself was not found, the side panel's whole tab rail stands in for it (createHoverTarget), and
-  // every click on that rail (a script's tab, say) counted as a click on +, which opened the + menu (2.2.0). So the
-  // rail never counts: only the + button, the + control, or the + menu itself; another tab never does.
   function isCreateButtonClick(path) {
     if (createHoverButton?.isConnected && path.includes(createHoverButton)) return true;
-    // The + button itself (its + icon), sitting next to the menu: a few boxes up from it is the box that holds the
-    // menu too. Recognised even before the + control is known.
-    // The map's zoom-in button and the other map controls carry a + icon too: they never count.
     const plus = path.find(node => node?.nodeType === 1 && node.matches?.('wz-button,button') && node.querySelector?.('.w-icon-plus')
       && !node.closest?.('.zoom-bar-container,#overlay-buttons,.overlay-buttons-container,#map,.olMap,#wme-studio-userscript-ui'));
     if (plus && createHoverMenu?.isConnected && !createHoverMenu.contains(plus)) {
@@ -14909,14 +13734,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const list = createHoverMenu?.shadowRoot?.querySelector('.options-container');
     return !(list && path.includes(list)) && !path.some(node => node?.nodeType === 1 && node.matches?.(CREATE_ITEM));
   }
-  // Studio decides when the list shows: WME keeps opening the menu by itself on hover, and fighting that made a
-  // click close it again. So WME is left alone, and the list is simply out of sight unless + was clicked
-  // (data-wme-studio-create-open). The rule lives in the menu's own shadow root, only while the setting is on.
   const CREATE_CLICK_CSS = ':host(:not([data-wme-studio-create-open])) .options-container { display: none !important; }';
-  // A touch screen has no hover, so there + always opens on a tap (3.0.0), whatever the setting says.
   const createClickMode = () => !!(settings.enabled && (settings.createMenuClick || touchScreen));
-  // A tap on iPad and iPhone ends with the pointer "leaving" +, and WME closes its menu on that: the menu flashed open
-  // and shut, and a second tap was needed. For a moment after a tap opens it, the menu stays open through that.
   let createTapGuardUntil = 0, createLastPointer = 'mouse';
   document.addEventListener('pointerdown', event => { createLastPointer = event.pointerType || 'mouse'; }, { capture: true, passive: true });
   function syncCreateClickStyle() {
@@ -14926,27 +13745,23 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const on = createClickMode();
     if (on && !style) { style = document.createElement('style'); style.setAttribute('data-wme-studio-create-click', ''); style.textContent = CREATE_CLICK_CSS; root.append(style); }
     else if (!on && style) style.remove();
-    else if (on && style !== root.lastElementChild) root.append(style);   // stays last, so nothing added later wins over it
+    else if (on && style !== root.lastElementChild) root.append(style);
   }
   function createHoverTarget() {
     if (createHoverHost?.isConnected && createHoverMenu?.isConnected) {
-      // The menu can be found before the + control around it is (the side panel's rail stands in for it then): until
-      // the + control itself is known, look for it again now and then, or a click on + is never recognised. That is
-      // what made the setting work only after a reload when it was switched on later (2.3.0).
       const drawer = document.getElementById('drawer');
       if ((createHoverHost === drawer || !createHoverButton?.isConnected) && performance.now() - createHoverLookedAt >= 1500) {
         createHoverLookedAt = performance.now();
         const trigger = createTrigger();
         if (trigger?.element) {
           createHoverHost = trigger.element; createHoverButton = trigger.button || null;
-          // The + control found now may hold a different menu from the one found first: that one is the + menu.
           const menu = findCreateMenu(trigger.element);
           if (menu && menu !== createHoverMenu) adoptCreateMenu(menu);
         }
       }
       syncCreateClickStyle(); return createHoverHost;
     }
-    if (performance.now() - createHoverLookedAt < 1500) return null;   // not found a moment ago: look again later
+    if (performance.now() - createHoverLookedAt < 1500) return null;
     createHoverLookedAt = performance.now();
     createHoverMenu?.removeAttribute('data-wme-studio-create-host');
     const trigger = createTrigger();
@@ -14973,11 +13788,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     menu.setAttribute('data-wme-studio-create-host', '');
     syncCreateClickStyle();
     if (typeof MutationObserver === 'function') {
-      // When WME closes the menu (an item picked, a click elsewhere, Escape), the click that opened it is over.
       createHoverObserver = new MutationObserver(() => {
         if (!createHoverMenu || createHoverMenu.hasAttribute('expanded')) return;
         if (createHoverMenu.hasAttribute('data-wme-studio-create-open') && performance.now() < createTapGuardUntil) {
-          try { if ('expanded' in createHoverMenu) createHoverMenu.expanded = true; else createHoverMenu.setAttribute('expanded', ''); } catch (_) { /* left closed */ }
+          try { if ('expanded' in createHoverMenu) createHoverMenu.expanded = true; else createHoverMenu.setAttribute('expanded', ''); } catch (_) {   }
           return;
         }
         createHoverMenu.removeAttribute('data-wme-studio-create-open');
@@ -14985,11 +13799,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       createHoverObserver.observe(menu, { attributes: true, attributeFilter: ['expanded'] });
     }
   }
-  // A click on + opens the list, a second click closes it. WME's own click on + may have toggled its menu either
-  // way (it was often already open from the hover), so once WME is done the menu is set to match.
   function onCreateClick(event) {
     if (!createClickMode()) return;
-    // Look for the + control now, but only for a click in the side rail where it lives (not on every click on the map).
     const drawer = document.getElementById('drawer');
     if ((createHoverHost === drawer || !createHoverButton?.isConnected) && drawer && event.composedPath().includes(drawer)) createHoverLookedAt = -1e9;
     if (!createHoverTarget()) return;
@@ -15013,16 +13824,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }, 0);
   }
   window.addEventListener('click', onCreateClick, { capture: true, passive: true });
-  // The menu is found and marked as soon as it exists (looked for every few seconds for the first minutes), so the
-  // rule is in place before the pointer first passes over +. Turning the setting off takes the rule away at once.
   (() => { let tries = 0; const look = () => { if (createHoverTarget() || ++tries > 60) return; setTimeout(look, 3000); }; setTimeout(look, 2500); })();
   try {
     chrome.storage.onChanged.addListener(changes => {
       if (changes['wmeStudio.createMenuClick'] || changes['wmeStudio.enabled']) setTimeout(() => { if (createHoverMenu?.isConnected) syncCreateClickStyle(); else createHoverTarget(); }, 0);
     });
-  } catch (_) { /* checked again the next time + is clicked */ }
-  // The menu's items on screen now: inside the + control, and, while the menu is open, in a menu WME draws
-  // elsewhere on the page (never another menu that happens to be open, a header menu say).
+  } catch (_) {   }
   let createSession = null, createClickedAt = -1e9;
   function createVisibleItems(trigger = createTrigger()) {
     if (!trigger) return [];
@@ -15042,7 +13849,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const walk = node => {
       for (const child of node.childNodes) {
         if (child.nodeType === 3) text += child.textContent;
-        // Buttons inside an item (WME's point and area buttons) are not part of its name.
         else if (child.nodeType === 1 && !child.matches(CREATE_SKIP) && !child.matches(CREATE_ITEM) && !child.matches(CREATE_MENU) && !child.matches('wz-button,button,[role="button"]')) {
           if (child.localName === 'slot') child.assignedNodes({ flatten: true }).forEach(assigned => assigned.nodeType === 3 ? text += assigned.textContent : walk({ childNodes: [assigned] }));
           else walk(child);
@@ -15053,8 +13859,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (!text.trim() && item.shadowRoot) walk(item.shadowRoot);
     return text.replace(/\s+/g, ' ').trim().slice(0, 60);
   }
-  // The item's own picture: the first image, icon or painted box in it that is not part of a tooltip, a nested
-  // item, or the arrow of a submenu.
   function createIconNode(item) {
     const own = node => { for (let up = createUp(node); up && up !== item; up = createUp(up)) if (up.matches?.(`${CREATE_SKIP},${CREATE_ITEM},${CREATE_MENU}`)) return false; return true; };
     const nodes = createDeepAll(item, '*').filter(node => own(node) && !node.matches(CREATE_SKIP));
@@ -15080,7 +13884,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (named) return `n:${named.slice(0, 60)}`;
     return `t:${createItemLabel(item).toLowerCase()}`;
   }
-  // A copy of the icon with the look it has in the menu written onto it, so it shows the same anywhere.
   const CREATE_ICON_PROPS = ['color', 'background-color', 'background-image', 'background-size', 'background-position', 'background-repeat', 'border-radius', 'width', 'height', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
     'mask-image', 'mask-size', 'mask-position', 'mask-repeat', '-webkit-mask-image', '-webkit-mask-size', '-webkit-mask-position', '-webkit-mask-repeat', 'font-family', 'font-size', 'line-height', 'display', 'box-sizing', 'padding', 'object-fit'];
   function createIconSnapshot(icon) {
@@ -15103,9 +13906,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   const createDisabled = item => item.hasAttribute('disabled') || item.getAttribute('aria-disabled') === 'true' || item.matches(':disabled') || /(?:^|\s)disabled(?:\s|$)/.test(item.getAttribute('class') || '');
   const createLooksSub = item => item.localName === 'wz-menu-sub-menu' || item.hasAttribute('aria-haspopup') || item.hasAttribute('aria-expanded') ||
     !!item.querySelector(CREATE_ITEM) || createDeepAll(item, 'wz-icon[name],i[class*="w-icon"],svg').some(node => /chevron|arrow-right|caret|right/i.test(`${node.getAttribute('name') || ''} ${node.getAttribute('class') || ''}`));
-  // Reads items into the list. An item's place in the menu comes from the item that holds it, or from the item that
-  // was opened to show it (a submenu WME draws apart from its parent).
-  const createItemIds = new WeakMap();   // menu item element -> list id
+  const createItemIds = new WeakMap();
   function createRecord(items, parentSteps = [], parentLabels = []) {
     let changed = false;
     for (const item of items) {
@@ -15124,12 +13925,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const sub = createLooksSub(item), disabled = createDisabled(item);
       let entry = createCatalog.find(other => other.id === id);
       if (!entry) {
-        // An item known by name (from the list Studio starts with, or read before WME changed its icon) keeps its id.
         entry = createCatalog.find(other => createSameLabels(other.labels, labels));
         if (entry) { if (entry.steps.join('>') !== steps.join('>')) { entry.steps = steps; changed = true; } }
         else {
           entry = { id, steps, labels, icon: null, sub, disabled };
-          // After its parent and the siblings read before it, so the list keeps the menu's order.
           const parent = labels.slice(0, -1);
           let at = createCatalog.length;
           if (parent.length) for (let index = createCatalog.length - 1; index >= 0; index--) if (createSameLabels(createCatalog[index].labels.slice(0, parent.length), parent)) { at = index + 1; break; }
@@ -15137,8 +13936,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         }
       }
       createItemIds.set(item, entry.id);
-      // The icon is copied once, from the menu at rest: pointing at items changes how they look, and copying it
-      // again on every move would rebuild the islands under the open menu.
       const snapshot = !entry.icon && !createBundledIcon({ labels }) && createShown(item) ? createIconSnapshot(icon) : null;
       if (JSON.stringify(entry.labels) !== JSON.stringify(labels)) { entry.labels = labels; changed = true; }
       if (snapshot) { entry.icon = snapshot; changed = true; }
@@ -15154,8 +13951,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       try { Promise.resolve(studioKeep.set(CREATE_KEY, { v: 1, items: createCatalog.slice(0, 120) })).catch(error => reportStudioError('saveCreateCatalog', error)); }
       catch (error) { reportStudioError('saveCreateCatalog', error); }
     }, 300);
-    // New buttons are only listed until placed; while the menu is open the islands are left alone (laying them out
-    // moves the + button, and WME moves its open menu with it).
     if (syncCreateElements()) {
       if (!createSession) { scheduleIslandControls(); return; }
       if (!createLayoutPending) {
@@ -15179,7 +13974,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (createCatalog.length) scheduleIslandControls();
   }).catch(error => { createCatalogLoaded = true; reportStudioError('loadCreateCatalog', error); });
 
-  // Whenever the menu is open, what it shows is read: a submenu opened by pointing at an item belongs to that item.
   let createPointed = null, createWatchFrame = 0;
   function createWatch() {
     if (createWatchFrame || createRunning) return;
@@ -15193,7 +13987,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       }
       const free = items.filter(item => !createParentItem(item));
       if (!createSession) {
-        // The menu has just opened: what shows now is its first level.
         createSession = { top: new Set(free) };
         createRecord(free);
       } else {
@@ -15201,7 +13994,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
           const id = createItemIds.get(item), known = id && createCatalog.find(entry => entry.id === id);
           if (known) { createRecord([item], known.steps.slice(0, -1), known.labels.slice(0, -1)); continue; }
           if (createSession.top.has(item)) { createRecord([item]); continue; }
-          // New on screen since the menu opened: the submenu of the item last pointed at.
           const pointedId = createPointed && createItemIds.get(createPointed), parent = pointedId && createCatalog.find(entry => entry.id === pointedId);
           if (parent?.sub) createRecord([item], parent.steps, parent.labels);
         }
@@ -15237,14 +14029,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
   }
   function createCloseMenu(trigger) {
-    // Escape is sent to an element: WME's own key handler reads the target as an element (target.matches) and threw
-    // "t.matches is not a function" when it was sent to the document itself.
     const focused = document.activeElement?.nodeType === 1 ? document.activeElement : null;
     for (const target of new Set([focused, document.body].filter(Boolean))) target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, composed: true }));
     if (trigger && createVisibleItems(trigger).length) createPress(trigger.button, trigger);
   }
-  // Opens the menu and each submenu on the way to an item. Returns the item, or null. A step WME has turned off
-  // (Hazard, until the map is zoomed in far enough) is returned itself, so its reason can be shown.
   let createReached = null;
   async function createReach(trigger, steps, labels) {
     createReached = null;
@@ -15268,8 +14056,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     return null;
   }
-  // The point and area buttons WME shows on an item that can be either (a note, most place categories), first
-  // point, then area. Found by pointing at the item, as WME only shows them then.
   function createShapeButtons(item, shownOnly = true) {
     const own = node => { for (let up = createUp(node); up && up !== item; up = createUp(up)) if (up.matches?.(`${CREATE_SKIP},${CREATE_ITEM},${CREATE_MENU}`)) return false; return true; };
     return createDeepAll(item, 'wz-button,button,[role="button"]').filter(node => own(node) && !node.matches(CREATE_SKIP) && (!shownOnly || createShown(node)))
@@ -15279,7 +14065,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const entry = createCatalog.find(item => item.id === id);
     const trigger = createTrigger();
     if (!entry || !trigger || createRunning) return;
-    // Point or area: asked first when the item is known to need it, so the menu opens only once.
     if (!shape && entry.shapes && !entry.sub && !entry.disabled) { openCreateShapePicker(entry, anchor); return; }
     createRunning = true;
     const html = document.documentElement, hide = !entry.sub;
@@ -15289,24 +14074,16 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const item = await createReach(trigger, entry.steps, entry.labels);
       if (!item) {
         console.warn('[WME Studio] Create shortcut: could not find', entry.labels.join(' › '), 'in the + menu', createReached ? `(reached ${createItemLabel(createReached)})` : '(the menu did not open)');
-        // Not found where it was read (WME changed its menu, or the language): the menu is left open where it got
-        // to, so the item can still be picked by hand.
         if (createVisibleItems(trigger).length) { html.removeAttribute('data-wme-studio-create-run'); if (createReached) createHover(createReached); done = true; }
         return;
       }
       if (entry.sub) { createHover(item); if (!createVisibleItems(trigger).some(other => createParentItem(other) === item)) createPress(item); done = true; return; }
       if (createDisabled(item)) {
-        // A whole group switched off in Map layers (Hazard, while its layer is off): Studio says so beside the
-        // button and offers to turn the layer on, then makes the item.
         const off = createToggledOffGroup(item);
         if (off) { createCloseMenu(trigger); done = true; queueMicrotask(() => openCreateOffNotice(entry, anchor, off, shape)); return; }
-        // Any other reason: the menu is shown with the item, as if it had been opened by hand, and WME's own note
-        // on why is brought up.
         html.removeAttribute('data-wme-studio-create-run'); createHover(item); createShowReason(item); done = true; return;
       }
       createHover(item);
-      // Only an item that has point and area buttons at all (shown on hover) is waited for; anything else (a road,
-      // a traffic light) is pressed at once, which made every such button about a third of a second slower.
       const shapes = createShapeButtons(item, false).length >= 2
         ? await createUntil(() => createShapeButtons(item).length >= 2 ? createShapeButtons(item) : null, shape ? 700 : 300) : null;
       if (shapes) {
@@ -15324,8 +14101,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       requestAnimationFrame(() => requestAnimationFrame(() => { html.removeAttribute('data-wme-studio-create-run'); createRunning = false; }));
     }
   }
-  // WME marks a + menu group whose layer is off in Map layers with a "toggled off" note (Hazard has one while the
-  // Hazards layer is off, and every hazard in it is greyed out). The matching switch is found in Map layers.
   function createToggledOffGroup(item) {
     if (!item.querySelector('[data-testid="toggled-off-group-info"]')) return null;
     const title = item.getAttribute('sub-menu-title') || createItemLabel(item);
@@ -15376,7 +14151,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     document.addEventListener('keydown', createShapeKey, true);
     notice.querySelector('button')?.focus({ preventScroll: true });
   }
-  // Beside the button, on the side with room, and never off screen.
   function placeCreateBubble(bubble, rect) {
     const own = bubble.getBoundingClientRect(), gap = 8;
     let left = rect.right + gap, top = rect.top + rect.height / 2 - own.height / 2;
@@ -15385,7 +14159,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     top = Math.max(8, Math.min(innerHeight - own.height - 8, top));
     bubble.style.left = `${Math.round(left)}px`; bubble.style.top = `${Math.round(top)}px`;
   }
-  // A small choice beside the button: Point or Area, as WME asks for it in its menu.
   let createShapePicker = null;
   const CREATE_SHAPE_ICONS = {
     point: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.2" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="12" r="3.3" fill="currentColor"/></svg>',
@@ -15425,18 +14198,15 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     document.addEventListener('keydown', createShapeKey, true);
     picker.querySelector('button')?.focus({ preventScroll: true });
   }
-  // Reads the whole menu, submenus included, with the menu out of sight (Arrange's Controls list asks for it).
   async function probeCreateMenu() {
     const trigger = createTrigger();
     if (!trigger || createRunning) return false;
     createRunning = true; createProbed = true;
     const html = document.documentElement;
     html.setAttribute('data-wme-studio-create-run', '');
-    // Arrange makes the editor inert, which would keep the menu from opening: lifted while the menu is read.
     const inert = [];
     for (let node = trigger.element; node; node = createUp(node)) if (node.hasAttribute?.('inert')) { inert.push([node, node.getAttribute('inert')]); node.removeAttribute('inert'); }
     try {
-      // Items WME keeps in the page while the menu is closed are read as they are.
       const resting = createDeepAll(trigger.element, CREATE_ITEM);
       if (resting.length) createRecord(resting);
       let top = createVisibleItems(trigger).filter(item => !createParentItem(item));
@@ -15490,11 +14260,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (!box.firstChild) box.textContent = (entry.labels.at(-1) || '?').slice(0, 1).toUpperCase();
     return box;
   }
-  // Returns whether buttons came or went (only then do the islands need laying out again).
   function syncCreateElements() {
     let changedSet = false;
-    // A submenu (Place, Hazard › Traffic lights & signs) only opens a list in WME's menu: it is not a button of
-    // its own, so it is not offered as a control. Its items are.
     const wanted = new Set(createCatalog.filter(entry => !entry.sub).map(entry => entry.id));
     for (const [id, element] of createElements) if (!wanted.has(id)) { releaseControl(element); element.remove(); createElements.delete(id); changedSet = true; }
     if (!createCatalog.length) return changedSet;
@@ -15518,7 +14285,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       setToggle(element, 'data-ws-disabled', entry.disabled);
       if (element.parentElement !== dock) dock.append(element);
     }
-    // In the menu's order, so the Controls list shows them as the menu does.
     const order = createCatalog.filter(entry => wanted.has(entry.id)).map(entry => entry.id);
     if ([...createElements.keys()].some((id, index) => id !== order[index])) {
       const sorted = new Map(order.filter(id => createElements.has(id)).map(id => [id, createElements.get(id)]));
@@ -15527,10 +14293,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     return changedSet;
   }
-  // Every control Studio can move, found again on each pass, so a control WME redraws is picked up by its key.
   let islandRegistry = new Map();
-  const islandKnownElements = new WeakSet();   // every control element found so far
-  const islandPlaced = new Map();   // element -> {props: Map(name -> [value, priority]), left, top, scale}
+  const islandKnownElements = new WeakSet();
+  const islandPlaced = new Map();
   function discoverIslandControls() {
     const registry = new Map(), seen = new Set();
     for (const [island, source] of Object.entries(islandControlSources)) {
@@ -15539,19 +14304,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (ISLAND_ORPHAN_ROOTS[island]) {
         try {
           const orphans = islandOrphans(ISLAND_ORPHAN_ROOTS[island](), list);
-          // After the known controls, so the keys of those (and every saved layout) stay the same.
           if (orphans.length) list = [...list, ...orphans];
         } catch (studioError) { reportStudioError('discoverIslandControls', studioError); }
       }
-      // A popup a button opens (WME's share popup) is not a control of its own, wherever WME puts it.
       list = [...new Set(list)].filter(element => element.isConnected && !seen.has(element) && !element.closest('.ws-custom-island') && !element.matches?.(CONTROL_ICON_SKIP) &&
         (element.id === 'wme-studio-launcher-host' || (!String(element.className || '').includes('wme-studio') && !/^wme-studio/.test(element.id || ''))));
       list = list.filter(element => !list.some(other => other !== element && element.contains(other)));
-      // WME opens the share popup by putting a new share button inside an empty <div> of its own. That wrapper
-      // has no size; the button inside it is the control (and has the same key as the button it replaces).
       list = list.map(element => {
-        // A bare wrapper (no id, no class) around a single map button: the button is the control. WME's share
-        // button sits in one while its popup is open, and must keep its own key (and so its place).
         if (!element.id && !String(element.className || '').trim() && element.localName === 'div') {
           const buttons = [...element.children].filter(child => child.matches('.overlay-button,wz-button,button') && !child.matches(CONTROL_ICON_SKIP));
           if (buttons.length === 1) {
@@ -15570,13 +14329,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       });
       const counts = new Map();
       for (const element of list) {
-        // A control WME has hidden (the share button while its popup is open) gives its key up to the one showing
-        // now; a control hidden in Arrange keeps its own.
         if (!element.hasAttribute('data-wme-studio-control-hidden')) {
           const rect = element.getBoundingClientRect();
           if (rect.width < 6 || rect.height < 6) {
-            // Not sized yet (WME's replacement share button, a moment before its styles apply): kept when its place
-            // was laid out moments ago, so it takes that place at once instead of staying hidden until it is sized.
             const memory = islandSlotMemory.get(controlKeyBase(island, element));
             const fresh = memory?.size && performance.now() - Math.max(memory.at || 0, memory.lostAt || 0) < ISLAND_HOLD_MS;
             if (!fresh || getComputedStyle(element).display === 'none') continue;
@@ -15596,19 +14351,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     islandRegistry = registry;
     return registry;
   }
-  // WME sometimes shows a button as another element for a while: the share button, while its popup is open, is
-  // hidden and an active copy is shown elsewhere in the rail. That copy has a key of its own, so it would land at
-  // the end of the island it came from. A control that was laid out at the last pass and is gone now, while a
-  // control nobody placed has just appeared in the same rail, is taken to be that control and keeps its place.
-  let islandLastKeys = new Set();       // keys laid out at the last pass
-  let islandLastSeen = new Set();       // every key found at the last pass
-  const islandSwaps = new Map();        // key of the copy WME shows -> key of the control it stands in for
+  let islandLastKeys = new Set();
+  let islandLastSeen = new Set();
+  const islandSwaps = new Map();
   function adoptSwappedControls(registry) {
     const model = islandModel();
     const placedKeys = new Set([...model.custom.flatMap(island => island.items), ...Object.values(model.managed).flatMap(managed => managed.items)]);
     const known = new Set([...placedKeys, ...model.hidden]);
     const iconOf = key => (key.match(/~([^#]+)/) || [])[1] || '';
-    // A swap lasts while the copy is there and the control it stands in for is not.
     for (const [copy, lost] of islandSwaps) if (!registry.has(copy) || registry.has(lost) || !placedKeys.has(lost)) islandSwaps.delete(copy);
     for (const island of ['header', 'navigation', 'tools']) {
       const standing = new Set(islandSwaps.values());
@@ -15632,8 +14382,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     islandLastSeen = new Set([...registry.values()].map(entry => entry.swappedFrom || entry.key));
   }
-  const islandLabels = new Map();       // key -> label at the last pass
-  // Where each known control should show: {kind:'custom'|'managed'|'hidden'|'native', island}.
+  const islandLabels = new Map();
   function islandAssignments(model, registry) {
     const assigned = new Map();
     for (const key of model.hidden) assigned.set(key, { kind: 'hidden' });
@@ -15642,7 +14391,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const taken = new Map(model.custom.filter(island => island.home).map(island => [island.home, island.id]));
     for (const [key, entry] of registry) {
       if (assigned.has(key)) continue;
-      // A control of a taken-over island that its saved order does not know yet (a script added it) joins at the end.
       if (taken.has(entry.island)) assigned.set(key, { kind: 'custom', island: taken.get(entry.island), appended: true });
       else assigned.set(key, model.managed[entry.island] ? { kind: 'managed', island: entry.island, appended: true } : { kind: 'native', island: entry.island });
     }
@@ -15660,18 +14408,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   islandControlStyle.textContent = studioPart('part18384');
   (document.head || root).append(islandControlStyle);
 
-  // Hovering a control lights up the island it is shown in. Moved controls still sit inside their own island in
-  // WME's page, so that island is told not to light up for them.
   const islandOfControl = new WeakMap();
   function hoverHostFor(element) {
     const id = islandOfControl.get(element);
     if (!id || !islandPlaced.has(element)) return null;
     return id.startsWith('custom:') ? islandGlass.get(id.slice(7)) : queryCompactIsland(compactIslandSpec(id));
   }
-  // WME swaps some controls for new ones while they are under the pointer (the share button when it opens or closes
-  // its popup). The old button never gets a "pointer left" and the new one no "pointer came in" until the mouse moves,
-  // so following each button's own enter/leave left the island lit or dark at random. The page's pointer is followed
-  // instead, and checked again whenever a control is placed or let go.
   let islandHoverLit = null, islandPointer = null, islandHoverCheck = 0;
   function islandControlAt(node) {
     for (let n = node; n; n = n.parentNode || n.host) if (n.nodeType === 1 && islandPlaced.has(n)) return n;
@@ -15686,8 +14428,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   function islandHoverFrom(node) {
     const control = islandControlAt(node);
     if (control) return lightIsland(hoverHostFor(control));
-    // A button being swapped is briefly not placed (or not there at all): the island stays lit while the pointer is
-    // still over it.
     const lit = islandPointer && islandHoverLit?.isConnected && islandHoverLit.getBoundingClientRect();
     if (lit && islandPointer.x >= lit.left && islandPointer.x <= lit.right && islandPointer.y >= lit.top && islandPointer.y <= lit.bottom) return;
     lightIsland(null);
@@ -15712,14 +14452,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     for (const [name, value] of Object.entries(values)) if (element.style.getPropertyValue(name) !== value || element.style.getPropertyPriority(name) !== 'important') element.style.setProperty(name, value, 'important');
     if (element.getAttribute('data-wme-studio-island-control') !== 'on') element.setAttribute('data-wme-studio-island-control', 'on');
   }
-  // WME sets a button's whole style attribute again when it redraws it (the share button when it is clicked, say),
-  // which wipes the place Studio gave it: for a moment it shows where WME keeps it. The place goes straight back,
-  // before the browser draws anything.
   const islandStyleWatch = new MutationObserver(records => {
     for (const record of records) {
       const element = record.target, state = islandPlaced.get(element);
       if (!state?.values) continue;
-      // Only a wiped place is put back (Studio's own writes, moving a control, always keep it fixed).
       const wiped = element.style.getPropertyValue('position') !== 'fixed' || element.style.getPropertyPriority('position') !== 'important';
       if (!wiped) { if (element.getAttribute('data-wme-studio-island-control') !== 'on') element.setAttribute('data-wme-studio-island-control', 'on'); continue; }
       writePlacedValues(element, state.values);
@@ -15754,7 +14490,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     islandPlaced.delete(element);
     recheckIslandHover();
   }
-  const managedSizes = new Map();   // native island element -> previous inline width/height
+  const managedSizes = new Map();
   function sizeNativeIsland(element, width, height) {
     if (!managedSizes.has(element)) managedSizes.set(element, ['width', 'height', 'min-height', 'max-height'].map(name => [name, element.style.getPropertyValue(name), element.style.getPropertyPriority(name)]));
     const zoom = element.currentCSSZoom || 1;
@@ -15768,12 +14504,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     for (const [name, value, priority] of previous) { if (value) element.style.setProperty(name, value, priority); else element.style.removeProperty(name); }
     managedSizes.delete(element);
   }
-  const islandGlass = new Map();   // custom island id -> element
-  // A control moved out of the header that stretched to fill it leaves a stretch of its own (see renderIslandControls).
-  const headerGaps = new Map();    // control element -> spacer
-  // A control moved out of the header leaves no hole: its neighbours close up. The header keeps the width it had
-  // with every control in it, so it does not shrink and shift everything else.
-  let headerKeptWidth = null;   // [element, previous inline min-width, priority]
+  const islandGlass = new Map();
+  const headerGaps = new Map();
+  let headerKeptWidth = null;
   function clearHeaderGaps() {
     for (const gap of headerGaps.values()) gap.remove(); headerGaps.clear();
     if (headerKeptWidth) {
@@ -15811,19 +14544,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     islandLayout = { islands: new Map(), controls: new Map() };
   }
-  // The last layout drawn, for Arrange: island rectangles and where each control sits.
   let islandLayout = { islands: new Map(), controls: new Map() };
-  // The HUD size as it is drawn right now: while its slider moves, the live value is ahead of the saved one.
   function islandScale() {
     const live = parseFloat(root.style.getPropertyValue('--ws-hud-zoom'));
     return Number.isFinite(live) && live > 0 ? live : hudZoomOf(settings.hudScale);
   }
-  // bare: a control standing on its own has no island around it, so no padding and no minimum size either.
   function islandSlots(items, orient, natural, bare = false) {
     const zoom = islandScale(), pad = bare ? 0 : ISLAND_PAD * zoom, gap = ISLAND_GAP * zoom;
     if (!items.length) return { width: ISLAND_EMPTY.width * zoom, height: ISLAND_EMPTY.height * zoom, slots: [] };
-    // Every control gets at least a button-sized cell and sits in its middle, so a small control (the profile
-    // picture) makes an island as thick as the others instead of a smaller, rounder one.
     const cell = bare ? 0 : 38 * zoom;
     const sizes = items.map(key => natural.get(key) || { width: cell, height: cell });
     const cross = Math.max(cell, ...sizes.map(size => orient === 'h' ? size.height : size.width));
@@ -15839,10 +14567,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     along += pad - gap;
     return orient === 'h' ? { width: along, height: cross + 2 * pad, slots } : { width: cross + 2 * pad, height: along, slots };
   }
-  // The width Studio's islands are spread over: the whole window, or only the map's half while Street View is docked
-  // beside it, so islands on the right move next to the split instead of covering the panorama.
   let islandSpaceDocked = '';
-  // The part of the window beside a docked Street View pane, whichever side the pane is on.
   function islandSpace() {
     const pane = dockedStreetView(), rect = pane?.getBoundingClientRect();
     if (!rect || rect.width < 40 || rect.width > innerWidth - 200) return { left: 0, width: innerWidth, pane: null };
@@ -15865,14 +14590,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const space = islandSpace(), spanX = Math.max(1, space.width - 2 * inset - size.width), spanY = Math.max(1, height - 2 * inset - size.height);
     return { x: Math.min(1, Math.max(0, (left - space.left - inset) / spanX)), y: Math.min(1, Math.max(0, (top - inset) / spanY)) };
   }
-  // WME redraws some controls now and then (saving redraws the map tools): for a moment a control is gone, and its
-  // island would shrink and its other controls jump up, then everything would jump back. A control that was there
-  // a moment ago keeps its place for a few seconds, so the island stays as it is while WME draws it again.
   const ISLAND_HOLD_MS = 3000;
-  const islandSlotMemory = new Map();   // key -> {size, at, lostAt}
+  const islandSlotMemory = new Map();
   let islandHeldFrames = 0;
-  // While WME rebuilds its controls (saving does), the same key can briefly point at another button. The islands
-  // are only laid out again once the controls have stayed the same for a moment, so nothing swaps places.
   const islandElementIds = new WeakMap();
   let islandElementNext = 1, islandSettledSignature = '', islandPendingSignature = '', islandSettleTries = 0, islandLaidOutAt = 0;
   function islandSignature(model, registry) {
@@ -15887,8 +14607,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   }
   function renderIslandControls() {
     islandRenderFrame = 0;
-    // Nothing of this shows while WME is loading, and measuring the page then only slows its loading down: the
-    // islands are laid out once, when loading ends.
     if (document.documentElement.getAttribute('data-wme-studio-loading') === 'on') return islandLayout;
     const model = islandModel();
     if (!compactLayoutActive() || document.querySelector('.app.sidebar-fullscreen:not([data-wme-studio-hub-window])') || (islandControlsEmpty(model) && !compactLayoutEditing)) {
@@ -15898,18 +14616,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     if (!compactLayoutEditing && islandLayout.controls.size) {
       const signature = islandSignature(model, discoverIslandControls());
-      // The same controls, one of them drawn again by WME (a button that turns active when clicked): nothing is
-      // still arriving, so it is placed at once rather than after the wait meant for the editor's loading.
       const redrawn = signature.replace(/=\d+/g, '') === islandSettledSignature.replace(/=\d+/g, '');
-      // Waiting for the set of controls to settle is for the editor starting up (scripts adding their buttons one
-      // by one). Later, a change is WME swapping a button (the share button while its popup is open): no waiting.
       const starting = !islandLaidOutAt || performance.now() - islandLaidOutAt < 20000;
       if (signature !== islandSettledSignature && !redrawn && starting && islandSettleTries < 8) {
         if (signature !== islandPendingSignature) { islandPendingSignature = signature; islandSettleTries += 1; scheduleIslandControls(250); return islandLayout; }
       }
       islandPendingSignature = ''; islandSettleTries = 0;
     }
-    // 1. Every control back in its own island, to read its natural size.
     clearHeaderGaps();
     for (const element of [...islandPlaced.keys()]) releaseControl(element);
     for (const element of [...managedSizes.keys()]) releaseNativeIsland(element);
@@ -15938,30 +14651,21 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (place.kind === 'custom' || place.kind === 'managed') islandOfControl.set(entry.element, place.kind === 'custom' ? `custom:${place.island}` : place.island);
       else islandOfControl.delete(entry.element);
     }
-    // A map tool sits in a tooltip box that can be taller than its button. The button is what is laid out, so
-    // the gaps around it match those of the other islands.
     const natural = new Map();
     let unsized = 0, borrowed = 0;
     for (const entry of placed) {
       const rect = entry.element.getBoundingClientRect();
       if (rect.width < 6 || rect.height < 6) {
-        // WME draws a replacement button (the share button while its popup is open) a moment before it is styled
-        // and sized. Its place was laid out a frame ago, so it is placed at that size right away instead of
-        // staying hidden until the real size arrives; the next frame measures it for real.
         const memory = islandSlotMemory.get(entry.key);
         if (memory?.size && performance.now() - memory.at < ISLAND_HOLD_MS) { natural.set(entry.key, memory.size); borrowed += 1; }
         else unsized += 1;
         continue;
       }
       let visible = rect;
-      // The profile is laid out by its picture: the rest of its box (name, score) only shows in its menu.
       const avatar = entry.element.localName === 'wz-user-box' ? entry.element.querySelector(':scope > [slot="avatar"], wz-user-box-avatar') : null;
       const avatarRect = avatar?.getBoundingClientRect();
-      // A control inside a wrapper (a tooltip box, a toolbar group, a script's menu) is laid out by its button(s):
-      // the wrapper's padding and margins would only make the island wider.
       let partNodes = [];
       if (!(avatarRect?.width > 4 && avatarRect.height > 4) && entry.element.id !== 'search-autocomplete') {
-        // Buttons of a popup the control has open (the copy buttons of WME's share popup) are not the control.
         const ownPart = node => { const box = node.parentElement?.closest(CONTROL_ICON_SKIP); return !box || box === entry.element || !entry.element.contains(box); };
         partNodes = [...entry.element.querySelectorAll('.overlay-button,.zoom-button,wz-button,button,[role="button"]')].filter(node => { const part = node.getBoundingClientRect(); return part.width > 4 && part.height > 4 && ownPart(node); });
         partNodes = partNodes.filter(node => !partNodes.some(other => other !== node && other.contains(node)));
@@ -15974,9 +14678,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
           visible = { left, top, width: Math.max(...parts.map(part => part.right)) - left, height: Math.max(...parts.map(part => part.bottom)) - top };
         }
       }
-      // The shape of the visible part, for the backdrop of a control that stands on its own.
-      // A rail row stretches across the whole rail with its icon in the middle. Its own square is what is laid
-      // out, so an island of rail items is as narrow as the rail and the row is sized to that square.
       let outerWidth = rect.width, outerHeight = rect.height;
       if (entry.island === 'navigation' && visible === rect && rect.width > rect.height + 4) {
         visible = { left: rect.left + (rect.width - rect.height) / 2, top: rect.top, width: rect.height, height: rect.height };
@@ -15996,15 +14697,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const zoom = head.currentCSSZoom || 1;
       headerKeptWidth = [head, head.style.getPropertyValue('min-width'), head.style.getPropertyPriority('min-width')];
       head.style.setProperty('min-width', `${head.getBoundingClientRect().width / zoom}px`, 'important');
-      // A control that stretched to fill the header (the search box) held the controls after it in place. Taken out,
-      // an empty space of its size takes its place, so they stay where they were instead of sliding left.
       for (const entry of placed) {
         if (entry.island !== 'header' || !natural.has(entry.key) || !head.contains(entry.element)) continue;
         const place = assigned.get(entry.key);
         if (!(place.kind === 'custom' || (place.kind === 'managed' && place.island !== 'header'))) continue;
         const look = getComputedStyle(entry.element);
         if (!(parseFloat(look.flexGrow) > 0) || !entry.element.parentElement) continue;
-        // Exactly the room it took, so nothing else in the header moves at all.
         const width = entry.element.getBoundingClientRect().width / (entry.element.parentElement.currentCSSZoom || 1);
         const gap = document.createElement('div');
         gap.setAttribute('data-wme-studio-header-gap', '');
@@ -16014,9 +14712,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         headerGaps.set(entry.element, gap);
       }
     }
-    // 2. Lay out every island Studio draws.
-    // The Online Editors and Tile Update bubbles are bigger than a button. Among other controls they shrink to a
-    // button's size, so they do not make their island wider than a rail; on their own they keep their size.
     const fitScale = new Map(), held = new Set(), customItems = new Map(), now = performance.now();
     for (const island of model.custom) {
       const present = islandItems(model, registry, assigned, 'custom', island.id).filter(key => natural.has(key));
@@ -16050,19 +14745,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
           outerWidth: size.outerWidth * scale, outerHeight: size.outerHeight * scale, radius: size.radius * scale, zoom: (size.zoom || 1) * scale });
       }
     }
-    // Among other controls these two lose their own round backdrop: the island is their backdrop then.
     for (const [key, entry] of registry) if (['online', 'tile'].includes(entry.island)) setToggle(entry.element, 'data-wme-studio-island-fit', inBar.has(key));
     const layout = { islands: new Map(), controls: new Map() }, writes = [];
     const visibleCustom = new Set();
-    // Saved spots are relative to the room left around each island, so islands placed edge to edge (a split) can
-    // end up on top of each other once their sizes change: a reload before every control is drawn, a new HUD size.
-    // Drawn on top of another one, an island takes the nearest free spot instead (it is not saved there).
     const drawnCustom = [], customSpace = islandSpace(), dragging = !!compactLayoutEditor?.dragging?.();
     for (const island of model.custom) {
       const items = customItems.get(island.id);
       if (!items.length && !island.fresh) continue;
-      // One button on its own is drawn bare, on its own backdrop. One control made of several buttons (the zoom
-      // bar's + and −) is an island like any other, as wide as the island it came from.
       const single = items.length === 1 && !(natural.get(items[0])?.parts > 1);
       const size = islandSlots(items, island.orient, natural, single);
       let position = customIslandPixels(island, size);
@@ -16076,13 +14765,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       drawnCustom.push({ left: position.left, top: position.top, width: size.width, height: size.height });
       const element = customIslandElement(island.id);
       setToggle(element, 'data-single', single);
-      // The profile picture is its own round image: alone, it needs no backdrop at all.
-      // The profile picture, and a link with its site's icon, need no backdrop when they stand alone.
       const lone = single ? registry.get(items[0])?.element : null;
       const bare = !!lone && (lone.localName === 'wz-user-box' || (lone.dataset.wsLink && !!lone.querySelector('img[data-loaded]')));
       setToggle(element, 'data-bare', bare);
       for (const key of items) { const control = registry.get(key)?.element; if (control?.dataset.wsLink) setToggle(control, 'data-wme-studio-alone', bare); }
-      // An island holding rail items turns solid while their panel is open, as the rail itself does.
       setToggle(element, 'data-rail', items.some(key => registry.get(key)?.island === 'navigation'));
       const radius = single ? `${Math.round(natural.get(items[0])?.radius || 0)}px` : '';
       if (element.style.borderRadius !== radius) element.style.borderRadius = radius;
@@ -16099,15 +14785,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         writes.push({ key: slot.key, x: rect.left + slot.x, y: rect.top + slot.y, width: slot.width, height: slot.height, island: `custom:${island.id}` });
       }
     }
-    // Look again once the held places run out: a control that did not come back gives its place up then.
     if (held.size || borrowed) {
-      // When the first held place runs out (counted from when its control went missing).
       if (held.size) { const ends = [...held].map(key => (islandSlotMemory.get(key)?.lostAt ?? now) + ISLAND_HOLD_MS - now); scheduleIslandControls(Math.max(16, Math.min(...ends) + 50)); }
       if (islandHeldFrames++ < 40) requestAnimationFrame(() => scheduleIslandControls());
     } else islandHeldFrames = 0;
     for (const [id, element] of [...islandGlass]) if (!visibleCustom.has(id)) { element.remove(); islandGlass.delete(id); }
-    // WME's own rail draws itself until Studio's island for it is actually there: while WME is still filling the
-    // rail in, the rail shows as usual instead of leaving its buttons bare on the map.
     for (const id of ['header', 'navigation', 'tools']) {
       const taken = model.custom.find(island => island.home === id);
       setToggle(queryCompactIsland(compactIslandSpec(id)), 'data-wme-studio-island-absorbed', !!taken && visibleCustom.has(taken.id));
@@ -16121,8 +14803,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       sizeNativeIsland(element, size.width, size.height);
       layout.islands.set(id, { kind: 'managed', id, name: ISLAND_HOME_LABELS[id], orient: model.managed[id].orient, element, items, slots: size.slots, rect: null });
     }
-    // 3. Lift the controls out of the flow, then read where each landed to aim it at its slot. A control's
-    // island may scale it (HUD size) or offset fixed children (a moved header), so both are measured.
     const outer = key => { const size = natural.get(key); return { width: size?.outerWidth, height: size?.outerHeight }; };
     for (const write of writes) placeIslandWrite(registry.get(write.key).element, outer(write.key), fitScale.get(write.key));
     const managedWrites = [];
@@ -16142,7 +14822,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (!state) return;
       const scale = element.currentCSSZoom || natural.get(write.key)?.zoom || 1, size = natural.get(write.key);
       const originX = rect.left - state.left * scale, originY = rect.top - state.top * scale;
-      // The slot is for the visible button; its box is put where that leaves the button in the slot.
       const boxX = write.x - (size?.offX || 0), boxY = write.y - (size?.offY || 0);
       state.scale = scale;
       state.left = (boxX - originX) / scale; state.top = (boxY - originY) / scale;
@@ -16155,23 +14834,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     for (const [key, entry] of registry) islandLabels.set(key, entry.label);
     islandRenderBasis = islandBasis();
     islandHeaderOrigin = null; shiftHeaderControls();
-    // A control WME has not drawn yet (the rail while the editor loads) is looked at again shortly, so its island
-    // fills in as soon as it can instead of waiting for the next check.
     if (unsized && islandRetries < 16) { islandRetries += 1; scheduleIslandControls(250); }
     else if (!unsized) islandRetries = 0;
-    // Read the same way the next pass reads it: with the controls in their islands.
     if (!compactLayoutEditing) islandSettledSignature = islandSignature(model, discoverIslandControls());
     if (!islandLaidOutAt && layout.controls.size) islandLaidOutAt = performance.now();
-    // Panels open from the island that now holds the rail items.
     if (layout.islands.size) { try { syncCompactDocks(); } catch (studioError) { reportStudioError('renderIslandControls', studioError); } }
     queueCompactAuxiliaryPlacement();
     return layout;
   }
-  // Controls taken out of the header still live inside it in WME's page, and the header is what places them
-  // (it is moved with a transform). When the header moves (dragged, in Arrange, a preset), they are moved back
-  // by as much, so they stay in their islands instead of travelling with the header.
-  // Where each control taken out of the header was put on screen at the last layout; when it is found anywhere
-  // else (the header moved, or started placing it) it is put back.
   let islandHeaderOrigin = null;
   function shiftHeaderControls() {
     const head = document.getElementById('app-head');
@@ -16211,8 +14881,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     element.style.setProperty('left', `${state.left}px`, 'important');
     element.style.setProperty('top', `${state.top}px`, 'important');
   }
-  // Moves a drawn island and its controls without laying anything out again (Arrange drags). A custom island
-  // moves its glass too; one of WME's own islands moves itself.
   function shiftIsland(layoutId, left, top) {
     const island = islandLayout.islands.get(layoutId);
     if (!island?.rect) return;
@@ -16233,8 +14901,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
   }
   let islandRenderFrame = 0, islandRenderTimer = 0, islandRetries = 0;
-  // The room the last island layout was made for (see applyCompactLayoutVariables): the window, the part of it
-  // beside a docked Street View, the map's footer and the HUD size.
   let islandRenderBasis = '';
   function islandBasis() {
     const space = islandSpace(), footer = compactVisibleRect(document.querySelector('.wz-map-ol-footer'));
@@ -16247,9 +14913,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       compactLayoutEditor?.refreshIslands?.();
     });
   }
-  // WME redraws parts of its islands now and then; a redrawn control is found again by its key.
-  // Churn inside a control (typing in Search, its suggestions, a menu, a tooltip or a notification list opening)
-  // never adds or removes a control, so it is not a reason to lay the islands out again.
   const ISLAND_WATCH_INSIDE = '#search-autocomplete,wz-menu,.menu,[role="menu"],[role="listbox"],[role="dialog"],[role="tooltip"],wz-tooltip-content,.tippy-box,[data-tippy-root],.notifications-box-container,wz-user-box,.online-editors-list-wrapper,.tile-build-status-card';
   const islandWatch = new MutationObserver(records => {
     if (islandControlsEmpty(islandModel()) && !compactLayoutEditing) return;
@@ -16260,12 +14923,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     for (const record of records) {
       if (record.target.closest?.(ISLAND_WATCH_INSIDE)) continue;
       if (record.type === 'attributes') {
-        // WME can show another button in the same element by changing its icon: the control is a different one now.
-        // And it hides and shows buttons by their style (the share button while its popup is open).
         const target = record.target, name = record.attributeName;
         if (name === 'name' ? target.localName === 'wz-icon' && target.getAttribute('name') !== record.oldValue
           : name === 'class' ? (target.localName === 'i' && iconName(target.getAttribute('class')) !== iconName(record.oldValue))
-            // A map button WME has just added gets its size when its component finishes drawing (it marks itself then).
             || (!islandPlaced.has(target) && !islandKnownElements.has(target) && target.matches?.('.overlay-buttons-container > *, .overlay-buttons-container > div:not([class]) > *'))
           : name === 'style' && !islandPlaced.has(target) && /display|visibility/.test(`${record.oldValue || ''} ${target.getAttribute('style') || ''}`)
             && /none|hidden/.test(`${record.oldValue || ''} ${target.getAttribute('style') || ''}`)) changed = added = true;
@@ -16274,19 +14934,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       for (const node of record.addedNodes) if (counts(node)) { changed = added = true; break; }
       if (!changed) for (const node of record.removedNodes) if (counts(node)) { changed = true; break; }
     }
-    // A control WME has just drawn again is put in its island before the next picture (a frame late it shows
-    // for a moment where WME keeps it, in the island it came from); a removal alone can wait for the burst.
     if (!changed) return;
     if ((added || islandSwaps.size || islandPlaced.size) && islandPlaced.size && !compactLayoutEditing) {
       try { renderIslandControls(); } catch (studioError) { reportStudioError('renderIslandControls', studioError); }
     } else scheduleIslandControls(120);
   });
   const islandWatched = new WeakSet();
-  // Any change of size (HUD size, header width, WME redrawing a rail) lays the moved controls out again.
   const islandResize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (islandPlaced.size || islandGlass.size) scheduleIslandControls(); }) : null;
-  // WME's full-page panels (Your hub › Your impact, opened large) put "sidebar-fullscreen" on the app: the islands
-  // step aside for them and are laid out again the moment the page closes. They used to wait for a check that only
-  // looked at controls already placed, and with none placed (all let go for the page) they never came back.
   const islandAppWatch = new MutationObserver(records => {
     const full = value => /(?:^|\s)sidebar-fullscreen(?:\s|$)/.test(value || '');
     if (records.some(record => full(record.oldValue) !== full(record.target.className))) scheduleIslandControls();
@@ -16300,14 +14954,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (element && !islandWatched.has(element)) { islandWatched.add(element); islandWatch.observe(element, { childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['name', 'class', 'style'] }); islandResize?.observe(element); }
     }
   }
-  // Looked at right after a frame has been drawn (4.0.0), when the page's layout is already worked out: read in the
-  // middle of a map move, the positions made the browser lay the page out an extra time.
   const checkIslandDrift = () => {
     if (document.hidden || document.documentElement.getAttribute('data-wme-studio-loading') === 'on' || (islandControlsEmpty(islandModel()) && !islandPlaced.size)) return;
     if (!compactLayoutActive() || document.querySelector('.app.sidebar-fullscreen:not([data-wme-studio-hub-window])')) { if (islandPlaced.size || islandGlass.size) scheduleIslandControls(); return; }
     watchIslandSources();
     if (!islandLayout.controls.size && !islandLayout.islands.size) { scheduleIslandControls(); return; }
-    // A control that drifted (its island moved or WME redrew it) is put back on its slot.
     for (const [key, control] of islandLayout.controls) {
       const element = islandRegistry.get(key)?.element;
       if (!element?.isConnected) { scheduleIslandControls(); return; }
@@ -16316,10 +14967,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
   };
   setInterval(() => { if (!document.hidden) requestAnimationFrame(() => setTimeout(checkIslandDrift, 0)); }, 1500);
-  // Studio's own "the map changed size" notices (a side panel opening) leave the window as it was: the islands
-  // are laid out for the window, so only a real resize lays them out again.
   window.addEventListener('resize', () => { if (!notifyingMapResize) scheduleIslandControls(80); });
-  // A touch screen turned: the islands take the size that fits the new shape.
   if (touchScreen) addEventListener('resize', () => {
     const zoom = String(hudZoomOf(settings.hudScale));
     if (ready && settings.enabled && root.style.getPropertyValue('--ws-hud-zoom') !== zoom) apply(new Set(['hudScale']));
@@ -16399,17 +15047,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const chatAppearance = new Map();
     const selectedPanels = new Set(), panelPreviews = new Map(), previewRestores = new Map();
     const panelRows = new Map();
-    // ---- Arrange: controls, custom islands, undo ----------------------------------------------------------------
     const library = q('.library'), libraryBody = q('[data-id="lib-body"]'), ctxBar = q('[data-id="ctx"]');
     const replaceMenu = q('[data-id="replace-menu"]');
     const ghost = q('.ghost'), dropMarker = q('.marker'), dropRing = q('.drop-ring'), controlRing = q('.control-ring'), newSpot = q('.newspot');
     const undoStack = [], redoStack = [];
     let selection = { target: null, control: null }, controlDrag = null, controlFrame = 0, libraryOpen = false, libraryQuery = '';
-    // The Controls list's search: every word typed has to appear in the control's name, the menu path of a + menu
-    // item, the island it sits in or its group, ignoring case and accents ("cafe" finds "Café", "σταθμος" finds
-    // "Σταθμός").
     const searchFold = text => String(text || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-    // Islands picked together with Ctrl (or Cmd) + click: they move as one and can be lined up with each other.
     const group = new Set();
     const customSpecs = new Map();
     const tr = text => globalThis.WMEStudioI18n?.translate?.(text) || text;
@@ -16452,7 +15095,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       for (const managed of Object.values(model.managed)) managed.items = managed.items.filter(item => item !== key);
       model.hidden = model.hidden.filter(item => item !== key);
     }
-    // The keys a native island shows by itself, top to bottom (or left to right).
     function nativeOrder(id, model = islandControlsDraft) {
       const assigned = islandAssignments(model, islandRegistry);
       return [...islandRegistry.values()].filter(entry => entry.island === id && assigned.get(entry.key)?.kind === 'native')
@@ -16463,9 +15105,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       model.custom = model.custom.filter(island => island.items.length || island.fresh);
       for (const [id, managed] of Object.entries(model.managed)) if (!managed?.items.length) delete model.managed[id];
     }
-    // An island can show controls its saved order does not list (WME or a script added them after the layout was
-    // saved, or they were found on the page): they are drawn at its end. Before an edit they are written into the
-    // order where they are drawn, so splitting, dropping or replacing works on what is on screen.
     function settleShownControls(model) {
       const listed = new Set([...model.hidden, ...model.custom.flatMap(island => island.items), ...Object.values(model.managed).flatMap(managed => managed?.items || [])]);
       const settle = (items, id) => {
@@ -16486,7 +15125,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       renderIslandControls();
       if (selection.target && !islandTargetInfo(selection.target)) selection = { target: null, control: null };
       collectTargets(); renderLibrary(); renderCtx(); invalidateLabels();
-      // An island that grew (a control dropped in, a rotation) moves off any island it now covers.
       if (selection.target?.startsWith('custom:')) keepIslandClear(selection.target);
       if (status) statusLine.textContent = status;
     }
@@ -16501,8 +15139,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       previewPoint(item, rect.left, rect.top, geometry, true);
       finishDrag();
     }
-    // Changing WME's rail or map tools (rotate, split, replace, drop a control in) hands the island to Studio:
-    // it is drawn where it stood, with its controls in their order, and WME's own island stays empty and unseen.
     function adoptNative(model, id) {
       let island = model.custom.find(entry => entry.home === id);
       if (island) return island;
@@ -16520,7 +15156,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       model.custom.push(island);
       return island;
     }
-    // What an Arrange target is, for the island toolbar and drops: a custom island, or one of WME's own.
     function islandTargetInfo(targetId) {
       if (!targetId) return null;
       const model = islandControlsDraft || emptyIslandControls();
@@ -16574,8 +15209,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       }
       if (entry.island === 'create') {
         const shortcut = createCatalog.find(item => `create@${item.id}` === entry.key);
-        // Styled here too: the list lives in Arrange's own shadow root, where the page's rules for these icons do not
-        // reach, and an image left inline sits on the text baseline instead of in the middle.
         if (shortcut) {
           const icon = createIconElement(shortcut);
           icon.style.cssText = 'display:grid;place-items:center;width:20px;height:20px;line-height:1;font-size:12px;overflow:hidden';
@@ -16587,11 +15220,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         }
         return box;
       }
-      // The icon is taken from the button you see, not from a menu hidden inside the control (the rail's + button
-      // holds its menu, whose first icon is something else). A filled button (that + is blue) keeps its fill.
       const inMenu = node => node !== element && !!node.parentElement?.closest('wz-menu,wz-menu-item,[role="menu"],[role="menuitem"]');
       const visible = node => { const rect = node.getBoundingClientRect(); return rect.width > 4 && rect.height > 4; };
-      // A hidden control is measured by what is not part of a menu; a shown one by what is on screen.
       const shown = node => !inMenu(node) && (element.hasAttribute('data-wme-studio-control-hidden') || visible(node));
       const button = [element, ...element.querySelectorAll('wz-button,button,[role="button"]')].find(node => node.matches('wz-button,button,[role="button"]') && shown(node));
       const scope = button || element;
@@ -16624,7 +15254,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       else box.textContent = (entry.label || '?').slice(0, 1).toUpperCase();
       return box;
     }
-    let linkForm = null;   // {id: link being edited or null for a new one, name, url, error, focus}
+    let linkForm = null;
     function openLinkForm(id) {
       const link = id && (islandControlsDraft?.links || []).find(item => item.id === id);
       linkForm = { id: link ? id : null, name: link?.name || '', url: link?.url || '', error: '', focus: true };
@@ -16678,7 +15308,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         const number = model.links.reduce((top, link) => Math.max(top, Number(link.id.slice(1))), 0) + 1;
         const id = `l${number}`, key = `links@${id}`;
         model.links.push({ id, name, url });
-        // Into the island picked on the map, or an island of its own in the middle of the screen.
         const picked = selection.target?.startsWith('custom:') && model.custom.find(island => `custom:${island.id}` === selection.target);
         if (picked) { picked.items.push(key); delete picked.fresh; placeId = null; selection = { target: `custom:${picked.id}`, control: key }; }
         else {
@@ -16709,7 +15338,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (!libraryOpen || controlDrag) return;
       const model = islandControlsDraft || emptyIslandControls();
       const groups = [['header', 'Header'], ['navigation', 'Navigation'], ['tools', 'Map tools'], ['status', 'Status'], ['create', 'Create menu'], ['links', 'Custom links']];
-      // The + menu's items are read from WME the first time this list opens, out of sight.
       if (!createProbed && createCatalogLoaded && createTrigger()) probeCreateMenu().then(() => { if (libraryOpen) renderLibrary(); });
       const rows = [];
       let shown = 0, hiddenCount = 0, matches = 0;
@@ -16731,7 +15359,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         rows.push(heading);
         for (const entry of entries) {
           const hidden = model.hidden.includes(entry.key) && !entry.required;
-          // The + menu's submenus are shown as the headings their items sit under, not as controls.
           const parents = !words.length && shortcutOf(entry)?.labels.slice(0, -1) || [];
           let same = 0;
           while (same < parents.length && same < menuPath.length && parents[same] === menuPath[same]) same++;
@@ -16751,7 +15378,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
             row.title = shortcut.labels.join(' › ');
           }
           const label = document.createElement('span'); label.className = 'lbl'; label.textContent = tr(entry.label);
-          // Found by a search, a + menu item shows the menus it sits in under its name (Place › Car Services).
           if (shortcut && words.length && shortcut.labels.length > 1) label.append(Object.assign(document.createElement('span'), { className: 'lib-path', textContent: shortcut.labels.slice(0, -1).join(' › ') }));
           const where = document.createElement('span'); where.className = 'where'; where.textContent = controlWhere(entry.key);
           const eye = document.createElement('button');
@@ -16781,7 +15407,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
           rows.push(again);
         }
       }
-      // Custom links: a button that opens an address of your own, placed like any other control.
       if (words.length && !matches) {
         const none = document.createElement('p'); none.className = 'lib-none';
         none.textContent = tr('No controls match your search.');
@@ -16837,7 +15462,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       button.addEventListener('click', action);
       return button;
     }
-    // Custom islands can be named: from the island toolbar, or by double-clicking the island's name tag.
     let renaming = null;
     function startRename(targetId) {
       if (!targetId?.startsWith('custom:')) return;
@@ -16863,7 +15487,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const rows = [title];
       for (const entry of islandRegistry.values()) {
         if (entry.key === key) continue;
-        // Save must stay visible, so it never trades places with a hidden control.
         if (source.required && model.hidden.includes(entry.key)) continue;
         const row = document.createElement('button');
         row.type = 'button'; row.className = 'replace-row'; row.setAttribute('role', 'menuitem');
@@ -16883,8 +15506,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       replaceMenu.style.left = `${Math.round(left)}px`; replaceMenu.style.top = `${Math.round(top)}px`;
       replaceMenu.querySelector('.replace-row')?.focus({ preventScroll: true });
     }
-    // The chosen control takes this control's place, and this one takes the chosen one's old place (or goes
-    // back to its own island when that place is in the header, which only holds its own controls).
     function replaceControl(key, other) {
       const a = islandRegistry.get(key), b = islandRegistry.get(other);
       if (!a || !b) return;
@@ -16922,14 +15543,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const right = Math.max(...rects.map(rect => rect.left + rect.width)), bottom = Math.max(...rects.map(rect => rect.top + rect.height));
       return { left, top, width: right - left, height: bottom - top };
     }
-    // Picked islands only move together: no toolbar while several are picked.
     function renderGroupCtx() { ctxBar.hidden = true; controlRing.hidden = true; }
     function renderCtx() {
       if (group.size > 1) { closeReplaceMenu(); renderGroupCtx(); return; }
       if (!replaceMenu.hidden && replaceMenu.dataset.key !== selection.control) closeReplaceMenu();
       const info = islandTargetInfo(selection.target);
       const hideRing = () => { controlRing.hidden = true; };
-      // A panel preview (an update request, Messages…) isn't an island: no controls go in it, so it gets no island bar.
       if (!open || !info || info.spec?.popup || drag?.active || controlDrag?.moved) { ctxBar.hidden = true; hideRing(); closeReplaceMenu(); return; }
       const parts = [], key = selection.control && info.items.includes(selection.control) ? selection.control : null;
       const entry = key && islandRegistry.get(key);
@@ -16958,7 +15577,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
           parts.push(swap);
         }
         parts.push(ctxButton(tr('Hide'), 'M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.2A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3 4.1M6.1 6.2A13 13 0 0 0 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.3-1', () => toggleHidden(key), { disabled: entry.required, title: entry.required ? tr('Save always stays visible') : '' }));
-        // A control away from the island it came from can go straight back there.
         if (entry.island === 'links') {
           const id = key.slice('links@'.length);
           parts.push(ctxButton(tr('Edit link'), 'M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4', () => openLinkForm(id)));
@@ -16999,9 +15617,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       controlRing.hidden = !ring;
       if (ring) Object.assign(controlRing.style, { left: `${ring.left - 3}px`, top: `${ring.top - 3}px`, width: `${ring.width + 6}px`, height: `${ring.height + 6}px` });
     }
-    // The header search box's width (2.0.5, like FUME's "Expand search box"): a slider in the toolbar of the
-    // selected Search control. It previews as it moves and is saved when it rests; "Default width" goes back to
-    // Studio's own width. The box still gives way when the header has no room for it.
     function searchWidthControls(key) {
       const wrap = document.createElement('label'); wrap.className = 'ctx-width';
       const caption = document.createElement('span'); caption.textContent = tr('Search width');
@@ -17009,7 +15624,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const output = document.createElement('output');
       const current = settings.searchWidth || Math.round(controlRect(key)?.width || 220);
       range.value = String(Math.min(900, Math.max(160, current)));
-      // The box gives way when the header is full, so the label shows the width it really got, and says why.
       const show = () => {
         output.title = ''; output.classList.remove('capped');
         if (!settings.searchWidth && !range.dataset.moved) { output.textContent = tr('Default'); return; }
@@ -17027,8 +15641,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       };
       const ring = () => requestAnimationFrame(ringNow);
       range.setAttribute('aria-label', tr('Search width'));
-      // A drag sends many input events per frame: only the last one of each frame is applied, and the label and
-      // ring are measured once, after it.
       let frame = 0;
       range.addEventListener('input', () => {
         range.dataset.moved = '1';
@@ -17045,9 +15657,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       }, { disabled: !settings.searchWidth });
       return [wrap, reset];
     }
-    // The header's width (3.1.0): the same slider as Settings › Layout › Header width, in the toolbar of the selected
-    // header island. It previews as it moves and is saved when it rests; "Default width" goes back to the header's
-    // own width.
     let headerSliding = false;
     function headerWidthControls() {
       const wrap = document.createElement('label'); wrap.className = 'ctx-width';
@@ -17057,7 +15666,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       range.value = String(settings.compactHeaderFullWidth ? settings.compactHeaderWidth : 0);
       const show = () => { const value = Number(range.value); output.textContent = value ? `${value}%` : tr('Default'); };
       range.setAttribute('aria-label', tr('Header width'));
-      // While the slider moves, the islands are redrawn under it, but this toolbar is left alone so the drag goes on.
       const release = () => { headerSliding = false; };
       range.addEventListener('pointerdown', () => { headerSliding = true; window.addEventListener('pointerup', release, { once: true, capture: true }); });
       let frame = 0;
@@ -17095,9 +15703,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         if (taken) { selectTarget(`custom:${taken.id}`); placeClear(taken.id); }
       }
     }
-    // One of WME's islands that changed shape is kept on screen, as if it had been nudged into place. With
-    // pin, it is also fixed where it stands: an island WME centres by itself would otherwise slide (as it
-    // shrinks after a split) into the half that was just placed next to it.
     function fitNative(id, pin = false) {
       const item = targets.find(target => target.spec.id === id);
       if (!item || drag) return;
@@ -17110,7 +15715,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     function splitIsland(targetId, key) {
       let adopted = false;
       if (!targetId.startsWith('custom:')) {
-        // Take the WME island over first, then split the Studio island that replaced it (one undo step).
         commitIslands(model => { adoptNative(model, targetId); });
         const taken = islandControlsDraft?.custom.find(island => island.home === targetId);
         if (!taken) return;
@@ -17133,11 +15737,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         selection = { target: `custom:${island.id}`, control: null };
       }, tr('Island split in two'));
       if (adopted) { undoStack.pop(); syncHistory(); }
-      // The first half shrank: put the second half beside it (or below it), in the nearest free spot.
       const fresh = selection.target?.startsWith('custom:') ? selection.target.slice(7) : null, first = islandTargetInfo(targetId);
       if (fresh && first) placeClear(fresh, info.orient === 'h' ? { left: first.rect.left + first.rect.width + 16, top: first.rect.top } : { left: first.rect.left, top: first.rect.top + first.rect.height + 16 });
     }
-    // Puts a new island in the nearest free spot, with room around it, so it never lands on another island.
     function placeClear(customId, preferred) {
       const id = `custom:${customId}`, drawn = islandLayout.islands.get(id);
       const island = islandControlsDraft?.custom.find(entry => entry.id === customId);
@@ -17170,8 +15772,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         model.custom = model.custom.filter(island => island.home !== targetId);
         for (const entry of islandRegistry.values()) if (entry.island === targetId) removeControlKey(model, entry.key);
       }, `${tr(ISLAND_HOME_LABELS[targetId] || '')}: ${tr('controls restored')}`);
-      // A rail Studio drew had no target of its own while it was taken over: it has one again now, and goes back
-      // to its default place, sized for everything it holds again.
       collectTargets();
       const native = item || targets.find(target => target.spec.id === targetId);
       if (native && draft[targetId]) resetIsland(native);
@@ -17179,7 +15779,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       selectTarget(targets.some(target => target.spec.id === targetId) ? targetId : null);
       requestAnimationFrame(() => { if (!open) return; scheduleDefaultSideIslandCenters(true); applyCompactLayoutVariables(); syncCompactAuxiliaryPlacement(true); collectTargets(); invalidateLabels(); renderCtx(); });
     }
-    // Puts one control back in the island it came from, at its own place among that island's controls.
     function returnControl(key) {
       const entry = islandRegistry.get(key);
       if (!entry) return;
@@ -17210,7 +15809,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (!libraryOpen) setLibraryOpen(true);
       if (selection.target?.startsWith('custom:')) placeClear(selection.target.slice(7));
     }
-    // Dragging one control: onto an island, onto the map for an island of its own, or onto Controls to hide it.
     function beginControlDrag(event, key, origin, capture) {
       if (!islandRegistry.has(key)) return;
       controlDrag = { key, origin, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, moved: false, capture, target: null };
@@ -17239,7 +15837,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const ids = [...islandLayout.islands.keys(), ...['header', 'navigation', 'tools'].filter(id => !islandLayout.islands.has(id) && !takenHomes.has(id))];
       const candidates = ids.map(id => islandTargetInfo(id)).filter(Boolean)
         .filter(info => {
-          // Small islands get a wider catch area, so a drop next to a lone control joins it instead of landing on it.
           const reach = Math.max(10, (Math.min(info.rect.width, info.rect.height) < 64 ? 26 : 12) * islandScale());
           return x >= info.rect.left - reach && x <= info.rect.left + info.rect.width + reach && y >= info.rect.top - reach && y <= info.rect.top + info.rect.height + reach;
         })
@@ -17316,7 +15913,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         const taken = islandControlsDraft?.custom.find(island => island.home === selected);
         if (taken) selected = `custom:${taken.id}`;
       }
-      // An island of its own never lands on top of another island: it moves to the nearest free spot.
       if (target.kind === 'new' && selected?.startsWith('custom:')) placeClear(selected.slice(7));
       if (selected) selectTarget(selected, target.kind === 'hide' ? null : key);
     }
@@ -17334,7 +15930,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const rect = dockDrag?.size || dock.getBoundingClientRect();
       const bar = dockDrag?.barSize || toolbar.getBoundingClientRect();
       const lead = Math.max(0,rect.height - bar.height), offset = (rect.width - bar.width) / 2;
-      // Store the toolbar's position, so flipping or hiding its hint never moves the grab point.
       const below = point.top < Math.max(80,12 + lead);
       dock.setAttribute('data-hint-placement',below ? 'below' : 'above');
       let left = Math.max(12,Math.min(innerWidth - rect.width - 12,point.left - offset));
@@ -17372,8 +15967,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     function placePanelPicker() {
       if (panelPicker.hidden) return;
-      // Above the bar of an update request's size too, when it shows (4.0.0): it covered the last panels in the list.
-      // The list scrolls when the room above isn't enough for all of it.
       const button = panelPickerToggle.getBoundingClientRect(), sizeBar = q('.size-bar'), bar = sizeBar && !sizeBar.hidden ? sizeBar.getBoundingClientRect() : null;
       const ceiling = bar?.height ? Math.min(button.top, bar.top) : button.top, list = q('[data-id="panel-list"]');
       if (list) {
@@ -17461,20 +16054,15 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       Object.assign(element.style,{left:`${placed.left / zoom}px`,top:`${placed.top / zoom}px`,width:`${size.width / zoom}px`,height:`${size.height / zoom}px`});
       if (own) requestHomes.set(element, { left: placed.left, top: placed.top });
     }
-    // An update request in Arrange (3.1.0) looks like the real window, at the size every update request will open
-    // at. The bar under it sets that size: a fixed width, a fixed height, or automatic. Kept with Save layout.
     const REQUEST_PREVIEWS = new Set(['updateRequest', 'mapUpdateRequest']);
     const REQUEST_LIMITS = { minWidth: 300, maxWidth: 640, minHeight: 220, autoWidth: 330, autoHeight: 640 };
     let requestSize = null, sizeFrame = 0;
-    // Where the preview was put (its top left corner on screen, 4.0.0). A new width or height starts from there, so
-    // making it taller and then shorter again brings it back to that spot instead of leaving it higher up.
     const requestHomes = new WeakMap();
     const savedRequestSize = () => ({ width: Number(panelSizes.updateRequest?.width) || 0, height: panelSizes.updateRequest?.fit ? 0 : Number(panelSizes.updateRequest?.height) || 0, fit: !!panelSizes.updateRequest?.fit });
     const currentRequestSize = () => requestSize || savedRequestSize();
     const maxRequestHeight = () => Math.max(REQUEST_LIMITS.minHeight, Math.floor(innerHeight - 24));
     function requestPreviewSize() {
       const size = currentRequestSize();
-      // Fitting its messages, the window is shown with a longer discussion, as tall as the screen allows.
       const auto = size.fit ? Math.min(innerHeight - 200, 760) : Math.min(REQUEST_LIMITS.autoHeight, innerHeight - 200);
       return { width: Math.min(innerWidth - 48, size.width || REQUEST_LIMITS.autoWidth), height: Math.min(maxRequestHeight(), size.height || auto) };
     }
@@ -17521,10 +16109,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const tag = element?.querySelector?.('.wsp-size'); if (!tag) return;
       const size = currentRequestSize(), f = (text, ...values) => globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text);
       tag.textContent = `${size.width ? `${size.width}` : f('Auto')} × ${size.fit ? f('Fits the messages') : size.height ? `${size.height}` : f('Auto')}`;
-      // More messages in the preview while it fits them.
       element.querySelector('.wsp-msgs')?.toggleAttribute('data-fit', !!size.fit);
     }
-    // The bar under the preview: Width and Height, each from automatic to a fixed size in px.
     const sizeBar = document.createElement('div'); sizeBar.className = 'ctx size-bar'; sizeBar.setAttribute('role', 'toolbar'); sizeBar.hidden = true;
     shadow.append(sizeBar);
     const sizeStyle = document.createElement('style'); sizeStyle.textContent = `.size-bar{z-index:27}.size-bar .ctx-width input{width:120px}.size-bar .ctx-width output{min-width:52px}.size-bar .ctx-name{max-width:220px;overflow:hidden;text-overflow:ellipsis}.size-bar .ctx-action[data-on]{background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 22%,transparent);color:var(--wme-studio-accent,#0099ff)}`; shadow.append(sizeStyle);
@@ -17536,17 +16122,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         if (!requestHomes.has(element)) requestHomes.set(element, { left: rect.left, top: rect.top });
         const home = requestHomes.get(element), width = size.width * zoom;
         const left = Math.max(12, Math.min(home.left, innerWidth - 12 - width));
-        // The room it has: clear of this bar and the toolbar at the bottom, and below the header when the header is
-        // right above it.
-        // The size tag hangs 34 px under the window (clear of its outline), so the room ends that much higher.
         const floor = Math.min(innerHeight - 12, (sizeBar.hidden ? toolbar : sizeBar).getBoundingClientRect().top - 14) - 36;
         const head = document.getElementById('app-head')?.getBoundingClientRect();
         const under = !!head && head.width > 0 && head.bottom < innerHeight / 2 && head.left < left + width && head.right > left;
         const ceiling = under ? Math.round(head.bottom) + 10 : 12;
-        // Its top stays where it was put while the size changes (4.0.0): it grows and shrinks downwards only, so it no
-        // longer jumps up as it gets taller and back down as it gets shorter. Taller than the room under it, it shows
-        // as tall as that room (its size tag still says the size every update request opens at, and a real one opened
-        // there is held to the screen the same way). It moves up only when there is less room than the smallest size.
         const minimum = REQUEST_LIMITS.minHeight * zoom;
         const top = Math.max(ceiling, Math.min(home.top, floor - minimum));
         const height = Math.max(Math.min(minimum, floor - ceiling), Math.min(size.height * zoom, floor - top));
@@ -17555,7 +16134,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         const item = targets.find(target => target.element === element);
         if (item) Object.assign(item.shield.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
       }
-      invalidateLabels();   // its outline and name tag follow the new size
+      invalidateLabels();
     }
     function sizeControl(label, value, min, max, autoAt, onInput) {
       const wrap = document.createElement('label'); wrap.className = 'ctx-width';
@@ -17584,7 +16163,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       };
       const width = sizeControl('Width', size.width, REQUEST_LIMITS.minWidth, REQUEST_LIMITS.maxWidth, REQUEST_LIMITS.minWidth - 10, value => changed({ width: value }));
       const height = sizeControl('Height', size.height, REQUEST_LIMITS.minHeight, maxRequestHeight(), REQUEST_LIMITS.minHeight - 10, value => { changed({ height: value, fit: false }); paintFit(); });
-      // Or no fixed height at all: the window grows with its discussion, showing every message.
       const fit = ctxButton(tr('Fit the messages'), 'M5 6h14M5 10h14M5 14h9M5 18h6M18 13v7M15 17l3 3 3-3', () => {
         const on = !currentRequestSize().fit;
         changed({ fit: on, height: on ? 0 : currentRequestSize().height });
@@ -17603,7 +16181,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       paintFit();
       sizeBar.hidden = false; placeSizeBar(); resizeRequestPreviews();
     }
-    // Right above the Arrange toolbar, in place of its hint line, so it never covers the header or the preview's top.
     function placeSizeBar() {
       const element = requestPreviewElement(), hint = q('.dock .hint');
       if (!open || !element || sizeBar.hidden) { if (hint) hint.style.removeProperty('visibility'); return; }
@@ -17743,7 +16320,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         const rect = element.getRootNode() !== document ? element.getBoundingClientRect() : compactVisibleRect(element);
         if (rect) geometry.obstacles.push(rect);
       }
-      // The size tag under an update request preview: its name tag goes elsewhere.
       for (const element of panelPreviews.values()) { const tag = element.isConnected && element.querySelector?.('.wsp-size'); if (tag) geometry.obstacles.push(tag.getBoundingClientRect()); }
       for (const [item, rect] of positions) positionLabel(item, rect, geometry);
     }
@@ -17904,7 +16480,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const id = item.spec.id;
       const obstacles = [...geometry.rects].filter(([other]) => other !== id).map(([,rect]) => rect);
       for (const obstacle of geometry.obstacles) {
-        // The temporary Arrange controls must not displace a panel's saved opening position.
         if (geometry.labelObstacles.includes(obstacle)) continue;
         if (obstacle === geometry.sidebarRect && ['header','navigation','sidePanel'].includes(id)) continue;
         obstacles.push(obstacle);
@@ -17941,8 +16516,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         top:Math.max(12,Math.min(desired.top,viewport.height - desired.height - 12))
       };
     }
-    // `exact` places the island where it is asked to, without snapping or making room: used to move several
-    // islands as one, where the group has already been snapped and each island keeps its place in it.
     function previewPoint(item, left, top, geometry, settle = false, exact = false) {
       const rect = geometry.rects.get(item.spec.id), gap = 12;
       const expandedHeader = item.spec.id === 'header' && compactHeaderSpansViewport(rect.width, geometry.width);
@@ -17969,8 +16542,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       }
       nextLeft = Math.round(nextLeft); nextTop = Math.round(nextTop);
       const desired = { left: nextLeft, top: nextTop, width: rect.width, height: rect.height };
-      // Follow the pointer across other islands; find the nearest clear location only on release.
-      // On release an island never stays on another one: it moves to the nearest spot 2px clear of the others.
       const placed = settle && !exact ? settleArrangePoint(item,desired,geometry) : desired;
       centerX = centerX && placed.left === nextLeft; centerY = centerY && placed.top === nextTop;
       if (placed.left !== nextLeft) guideX = null;
@@ -17982,7 +16553,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         verticalGuide.classList.toggle('show', centerX || guideX != null); horizontalGuide.classList.toggle('show', centerY || guideY != null);
       }
       if (item.spec.custom) {
-        // A custom island moves itself and its controls; its spot is kept relative to the free space.
         shiftIsland(item.spec.id, nextLeft, nextTop);
         const island = islandControlsDraft?.custom.find(entry => entry.id === item.spec.customId);
         if (island) Object.assign(island, customIslandPoint(nextLeft, nextTop, rect));
@@ -18037,8 +16607,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       }
       positionLabel(item, placed, {...geometry,obstacles:[...geometry.obstacles,...geometry.labelObstacles]});
     }
-    // Moves the picked islands together by (dx, dy) from where they started. The group is snapped as one box: to
-    // the screen edges, the screen centre and the islands outside the group.
     function previewGroup(dx, dy, settle = false) {
       const members = drag.group, geometry = drag.geometry, gap = 12, threshold = 22;
       const box = drag.groupBox;
@@ -18169,7 +16737,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       item.shield.focus({ preventScroll: true });
       if ((event.ctrlKey || event.metaKey) && !path.includes(item.label)) { toggleGroup(item); return; }
       const hit = !path.includes(item.label) && controlAtPoint(item, event.clientX, event.clientY);
-      // Pressing an island moves the whole island. A control moves on its own only after it was clicked once.
       if (hit && selection.target === item.spec.id && selection.control === hit.key) { beginControlDrag(event, hit.key, item, item.shield); return; }
       const geometry = dragGeometry(item), rect = geometry.rects.get(item.spec.id);
       drag = { item, geometry, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, clientX: event.clientX, clientY: event.clientY, left: rect.left, top: rect.top, pending: false, active: false, before: arrangeSnapshot(), clickControl: hit ? hit.key : null };
@@ -18279,7 +16846,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (drag?.pointerId === event.pointerId) finishDrag();
     }
     function blockControlEvent(event) {
-      if (!open || fromToolbar(event) || (createRunning && !event.isTrusted)) return;   // Studio reading the + menu
+      if (!open || fromToolbar(event) || (createRunning && !event.isTrusted)) return;
       if (event.type === 'dblclick') {
         const item = targetFromEvent(event);
         if (item?.spec.custom) { selectTarget(item.spec.id); startRename(item.spec.id); }
@@ -18307,22 +16874,19 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       }
     }
     function onKeydown(event) {
-      if (createRunning && !event.isTrusted) return;   // Studio closing the + menu it read
+      if (createRunning && !event.isTrusted) return;
       if (!open) return;
       if (saving) { if (!event.ctrlKey && !event.metaKey) { event.preventDefault(); event.stopImmediatePropagation(); } return; }
       if (shadow.activeElement?.closest?.('.lib-link-form')) {
         if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeLinkForm(); }
-        // Enter saves straight away, whatever the page does with the key afterwards.
         else if (event.key === 'Enter' && shadow.activeElement.matches('input')) { event.preventDefault(); event.stopImmediatePropagation(); saveLinkForm(); }
         return;
       }
-      // Arrow keys on the search or header width slider move the slider, not the selected control.
       if (shadow.activeElement?.closest?.('.ctx-width')) {
         if (event.key === 'Escape') { event.preventDefault(); shadow.activeElement.blur(); }
         event.stopImmediatePropagation();
         return;
       }
-      // Typing in the Controls search stays in the search: the editor's own shortcuts never see the keys.
       if (shadow.activeElement === librarySearch) {
         if (event.key === 'Escape') { event.preventDefault(); if (librarySearch.value) setLibraryQuery(''); else librarySearch.blur(); }
         event.stopImmediatePropagation();
@@ -18402,12 +16966,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const button = q('[data-id="save"]'); button.disabled = true;
       const patch = { compactIslandOpacity: opacity, compactSnapEdges: snapEdges, compactSnapCenter: snapCenter };
       for (const [id, element] of panelPreviews) {
-        if (!draft[id]) continue; // Keep Reset / automatic opening positions automatic.
+        if (!draft[id]) continue;
         const rect = element.getBoundingClientRect();
         draft[id] = { x: rect.left / innerWidth, y: rect.top / innerHeight, anchor: 'viewport', w: rect.width / innerWidth, h: rect.height / innerHeight };
       }
       const savedLayout = sanitizeCompactIslandLayout(draft);
-      // The size every update request opens at (3.1.0): the same size Studio keeps when a window is resized by hand.
       if (requestSize) {
         for (const kind of REQUEST_PREVIEWS) {
           const size = { ...(panelSizes[kind] || {}) }; delete size.extra;
@@ -18441,7 +17004,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         const toggle = document.querySelector('#product-icon .w-icon-hamburger-menu')?.closest('wz-button,button');
         (toggle || selected).click();
       }
-      // An edit panel closes with the selection (SDK); WME's own call only if the panel is still open after that.
       studioSDK.value(api => { if (api.Editing.getSelection()) api.Editing.clearSelection(); return true; }, null);
       requestAnimationFrame(() => { if (document.querySelector('.app.show-sidebar')) pageWindow.W?.app?.closeSidePanel?.(); });
     }
@@ -18568,7 +17130,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     q('[data-id="reset"]').addEventListener('click', () => {
       const before = arrangeSnapshot();
       finishControlDrag(false); finishDrag(); releasePanelPreviews(); clearTargetMarks();
-      // The links themselves stay: they go back to the Controls list, ready to be placed again.
       islandControlsDraft = { ...emptyIslandControls(), links: structuredClone(islandControlsDraft?.links || []) }; selection = { target: null, control: null };
       renderIslandControls();
       for (const spec of compactIslandSpecs) if (spec.arrange !== false || spec.popup) delete draft[spec.id];
@@ -18647,11 +17208,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const preset = layoutPresets.find(item=>item.id === id);
       if (!preset || compactLayoutEditing || !settings.enabled) throw new Error('Layout preset unavailable');
       const previous = await captureLayoutSettings();
-      // An island Studio draws in place of WME's rail or map tools (Arrange) moves with the preset too, to where
-      // the preset puts that rail; the default layout keeps navigation on the left and the map tools on the right.
       const homes = { navigation:{x:0,y:.5}, tools:{x:1,y:.5}, ...(preset.layout || {}) };
       const current = storedIslandControls(islandControls);
-      // An island built in Arrange out of the rail's buttons counts as the rail: the one holding most of them.
       const homeOf = new Map();
       for (const id of ISLAND_MANAGEABLE) {
         const owner = current.custom?.find(island => island.home === id) || (current.custom || []).filter(island => !island.home)
@@ -18682,10 +17240,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   }
   const upgradeNotifications = new WeakSet();
   function excluded(node) { return node.nodeType !== 1 || node.matches(ignored) || !!node.closest('.olMapViewport, .olLayerDiv, #render-root,.ws-restriction-select,.ws-restriction-select-menu,#wme-studio-command-palette,.ws-script-tabs'); }
-  // Layout-reading work that inspect() triggers is postponed until the discovery pass that triggered it has
-  // finished, so styles are resolved once for everything the pass touched instead of once per element (a
-  // read in the middle of a pass also styles components before their sheet is attached, and again after).
-  // Outside a pass the work runs at once.
   let discoverDepth = 0;
   const afterDiscoverQueue = [];
   function afterDiscover(task) {
@@ -18918,7 +17472,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (!settings.enabled || !form.isConnected || !panel) return;
     const boundary=panel.closest(REQUEST_WINDOW_SELECTOR) || panel.closest('#panel-container > *') || panel;
     if (!['updateRequest','mapUpdateRequest'].includes(requestPopupKind(boundary))) return;
-    // Follow the initial discussion/layout only. User interaction immediately takes over.
     const opening=state.opening={boundary,frame:0,timer:0,observer:null,resize:null,observed:new Set(),positions:new Map(),schedule:null,stop:null,onScroll:null};
     opening.stop=()=>stopRequestOpeningScroll(state);
     opening.schedule=()=>{
@@ -18951,7 +17504,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     boundary.addEventListener('load',opening.schedule,true);
     boundary.addEventListener('scroll',opening.onScroll,{capture:true,passive:true});
     for (const type of ['wheel','touchstart','pointerdown','keydown','focusin']) boundary.addEventListener(type,opening.stop,{capture:true,passive:true});
-    // No idle polling or ongoing scroll lock after the opening window.
     opening.timer=setTimeout(opening.stop,5000);
     opening.schedule();
   }
@@ -18979,7 +17531,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       caretOffset=marker.getBoundingClientRect().top-mirror.getBoundingClientRect().top;
       mirror.textContent='';marker.textContent='';return caretOffset;
     };
-    // Scroll only the request's own containers. Never scroll the page or reposition the panel.
     for (let node=field.parentElement;node;node=node.assignedSlot || node.parentElement || node.getRootNode()?.host) {
       const style=getComputedStyle(node);
       if (node.scrollHeight>node.clientHeight+1 && /^(auto|scroll)$/.test(style.overflowY) && node.clientHeight) {
@@ -18992,7 +17543,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
           const fieldStyle=getComputedStyle(field),fieldZoom=field.currentCSSZoom || 1;
           targetTop=rect.top+(field.clientTop+caret(fieldStyle)-field.scrollTop)*fieldZoom;
           targetBottom=targetTop+(parseFloat(fieldStyle.lineHeight) || 20)*fieldZoom;
-          // Keep Send beneath the current line when both fit in a short panel.
           if (sendRect?.height && sendRect.width && sendRect.bottom-targetTop<=bottom-top) targetBottom=Math.max(targetBottom,sendRect.bottom);
         }
         const delta=targetBottom>bottom ? targetBottom-bottom : targetTop<top ? targetTop-top : 0;
@@ -19001,7 +17551,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (node===panel) break;
     }
   }
-  // Programmatic add-on input events are not necessarily composed across the textarea's shadow root.
   const requestReplyFieldEvents = ['input','change','select'];
   function trackRequestReply(form) {
     if (!form?.matches('.new-comment-form') || !form.closest('.problem-edit,.place-update-edit')) return;
@@ -19207,7 +17756,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   function tileBuildSnapshot(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
     if (!Object.hasOwn(data,'current_build')) {
-      // Waze omits current_build between builds and publishes the previous/next build instead.
       const keys=['previous_build','next_build'];
       if (!keys.some(key=>Object.hasOwn(data,key)) || keys.some(key=>Object.hasOwn(data,key) &&
           data[key] !== null && (typeof data[key] !== 'object' || Array.isArray(data[key])))) return null;
@@ -19259,7 +17807,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       tileBuildFeed.failures = 0; tileBuildFeed.nextAt = Date.now() + TILE_BUILD_REFRESH_MS;
       scheduleTileBuildStates();
     } catch (studioError) {
-      // Hiding the page or changing regions intentionally cancels the previous request.
       if (generation !== tileBuildFeed.generation || tileBuildFeed.controller !== controller) return;
       reportStudioError("syncTileBuildFeed",studioError);
       if (generation === tileBuildFeed.generation && tileBuildFeed.controller === controller) {
@@ -19567,8 +18114,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   document.addEventListener('pointerover', event => {
     const bubble = event.target?.closest?.('wz-button.online-editors-bubble');
     if (!bubble) return;
-    // Beside the bubble, towards the middle of the screen; when the header (or the screen edge) is on that side,
-    // the other side, and when both are taken, under it (over it near the bottom).
     const rect = bubble.getBoundingClientRect(), label = bubble.querySelector(':scope > .text');
     const width = (label?.scrollWidth || 140) * (bubble.currentCSSZoom || 1), gap = 8;
     const head = compactVisibleRect(document.getElementById('app-head'));
@@ -19577,7 +18122,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const sides = rect.left + rect.width / 2 > innerWidth / 2 ? ['left', 'right'] : ['right', 'left'];
     let side = sides.find(name => name === 'right' ? free(rect.right + gap, rect.right + gap + width) : free(rect.left - gap - width, rect.left - gap));
     if (!side) side = rect.top + rect.height / 2 > innerHeight / 2 ? 'above' : 'below';
-    // In an island the label is a tab the island grows, as thick as the island (like Tile Update's).
     const own = bubble.hasAttribute('data-wme-studio-island-fit') ? movedControlIsland(bubble)?.rect : null;
     const zoom = bubble.currentCSSZoom || 1, flat = own && own.width > own.height;
     const edge = (value, always) => own && value > 0 && (always || value < 12) ? Math.round(value / zoom * 100) / 100 : 0;
@@ -19776,8 +18320,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (!streetViewWindow.active || typeof sdk?.Map?.getLonLatFromPixel !== 'function') return null;
     const pin = document.querySelector('.street-view-layer .pin.pano-available:not(.dragging)');
     if (!pin?.isConnected || pin.hidden || pin.getAttribute('aria-hidden') === 'true' || pin.checkVisibility?.({checkVisibilityCSS:true}) === false) return null;
-    // WME's zero-size pin is anchored at the live camera location, not the map center.
-    // Google's address control is disabled by WME, so a Maps link need not exist in the panorama DOM.
     try {
       const style = getComputedStyle(pin);
       if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return null;
@@ -19794,7 +18336,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   async function openStreetViewWindow() {
     const state = streetViewWindow, links = state.container?.querySelectorAll('.panorama a[href]') || [];
     let url = null;
-    // Google's own live Maps link contains the panorama/viewpoint, including historical imagery.
     for (const link of links) {
       try {
         const candidate = new URL(link.href);
@@ -19828,13 +18369,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const opening = !popup || popup.closed;
       if (opening) popup = window.open('about:blank','WMEStudioStreetView','popup=yes,width=1000,height=700,resizable=yes,scrollbars=yes');
       if (!popup) { message('Allow pop-ups for WME to open Street View in a separate window.'); return; }
-      // Sever opener before navigating; never copy the editor session or reconstruct a Google API key.
       state.popup = popup;
       if (opening) { try { popup.opener = null; } catch (studioError) { reportStudioError("openStreetViewWindow",studioError);} }
       popup.location.href = url; popup.focus(); state.popup = popup;
       if (notice) notice.hidden = true;
     } catch (studioError) { reportStudioError("openStreetViewWindow",studioError);
-      // A previously opened cross-origin window can still be navigated without reading its location.
       try { state.popup.location.href = url; state.popup.focus(); if (notice) notice.hidden = true; }
       catch (studioError) { reportStudioError("openStreetViewWindow",studioError); message('Allow pop-ups for WME to open Street View in a separate window.'); }
     }
@@ -19879,8 +18418,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   }
   function placeDockedStreetViewToolbar() {
     const state = streetViewWindow, toolbar = state.toolbar, pane = state.container.getBoundingClientRect(), limits = streetViewWindowLimits();
-    // Studio controls take the viewport's right rail; map tools stay left of the split.
-    // Neither the Google panorama nor WME's native chevron/splitter is reparented.
     const tools = document.getElementById('overlay-buttons');
     if (state.dockTools?.element !== tools) clearDockedStreetViewTools();
     if (tools && !state.dockTools) {
@@ -19898,7 +18435,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (compactLayoutEditing) clearDockedStreetViewTools();
       return;
     }
-    // Cap the rail to available space, never to its last (possibly clipped) height.
     const zoom = tools.currentCSSZoom || 1, availableHeight = Math.max(1,limits.bottom-limits.top);
     setElementVariable(tools,'--ws-street-tools-height',`${availableHeight/zoom}px`);
     if (!tools.hasAttribute('data-wme-studio-street-tools')) tools.setAttribute('data-wme-studio-street-tools','on');
@@ -19938,8 +18474,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     if (sdkCheck !== state.sdkCheck) return;
     if (container !== document.getElementById('street-view-container')) { queueStreetViewWindow(); return; }
-    // Said ahead of time: the page's style floats Street View, and keeps the map full width, from the moment WME
-    // switches it on, before this function hears about it a frame or two later.
     const floatingReady = !!(container && map && ready && settings.enabled && !standaloneSignin && !editorProfile && !state.docked);
     if (floatingReady) {
       if (root.getAttribute('data-wme-studio-street-view-pref') !== 'floating') root.setAttribute('data-wme-studio-street-view-pref','floating');
@@ -19961,7 +18495,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       root.removeAttribute('data-wme-studio-street-view'); container?.removeAttribute('data-wme-studio-street-view');
       if (container) {
         for (const element of container.querySelectorAll(':scope > .ws-street-view-toolbar,:scope > .ws-street-view-grip,:scope > .ws-street-view-notice')) element.remove();
-        // The window's place stays on it while floating is the choice, ready for the next time it opens.
         if (!floatingReady) for (const axis of ['left','top','width','height']) container.style.removeProperty(`--ws-street-view-${axis}`);
       }
       state.toolbar = null; state.rect = null; if (wasActive) resizeMap(true);
@@ -20118,8 +18651,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     return {left,top,right:left+(view?.width || innerWidth),bottom:top+(view?.height || innerHeight)};
   };
   const restrictionClamp = (value, low, high) => Math.max(low,Math.min(value,Math.max(low,high)));
-  // Restrictions, the school zone schedule and a place's opening hours: moved by their title, and made larger or smaller as a whole (one scale,
-  // so the form keeps its shape) with the grip in the bottom right corner.
   function writeRestrictionPanel(state) {
     state.host.style.setProperty('--ws-restriction-x',`${Math.round(state.x)}px`);
     state.host.style.setProperty('--ws-restriction-y',`${Math.round(state.y)}px`);
@@ -20147,8 +18678,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       state.x = drag.x + restrictionClamp(drag.rect.left+dx,view.left+gap,view.right-drag.rect.width-gap)-drag.rect.left;
       state.y = drag.y + restrictionClamp(drag.rect.top+dy,view.top+gap,view.bottom-drag.rect.height-gap)-drag.rect.top;
     } else {
-      // One scale for both directions: the whole panel grows or shrinks as it is, keeping its shape, so the form never
-      // reflows while it is resized. The top left corner stays put.
       const width = drag.rect.width/drag.scale, height = drag.rect.height/drag.scale;
       const view = restrictionViewport(), gap = 12;
       const limit = Math.max(.4,Math.min(1.6,(view.right-drag.rect.left-gap)/width,(view.bottom-drag.rect.top-gap)/height));
@@ -20170,7 +18699,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     window.removeEventListener('pointercancel',state.onEnd,true);
     const handle = drag.mode === 'move' ? state.header : drag.handle;
     if (handle?.hasPointerCapture?.(drag.pointerId)) {
-      try { handle.releasePointerCapture(drag.pointerId); } catch (_) { /* already released by WME */ }
+      try { handle.releasePointerCapture(drag.pointerId); } catch (_) {   }
     }
     if (state.surface?.isConnected && compactLayoutActive()) { constrainRestrictionPanel(state); rememberRestrictionPanel(state); }
   }
@@ -20183,7 +18712,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       clientX:event.clientX,clientY:event.clientY,rect,x:state.x,y:state.y,scale:state.scale,handle:event.currentTarget};
     if (mode === 'move') state.host.setAttribute('data-wme-studio-restriction-moving','');
     event.preventDefault(); event.stopPropagation();
-    try { (mode === 'move' ? state.header : event.currentTarget).setPointerCapture(event.pointerId); } catch (_) { /* window listeners also finish the gesture */ }
+    try { (mode === 'move' ? state.header : event.currentTarget).setPointerCapture(event.pointerId); } catch (_) {   }
     window.addEventListener('pointermove',state.onMove,true);
     window.addEventListener('pointerup',state.onEnd,true);
     window.addEventListener('pointercancel',state.onEnd,true);
@@ -20256,7 +18785,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     writeRestrictionPanel(state);
     const previous=lastRestrictionPanelPlacement.get(state.kind);
     if (previous) {
-      // The size it had last time, as far as the screen allows now.
       const natural=surface.getBoundingClientRect(), view=restrictionViewport(), gap=12;
       const desiredLeft=restrictionClamp(previous.left,view.left+gap,view.right-natural.width*.65-gap);
       const desiredTop=restrictionClamp(previous.top,view.top+gap,view.bottom-natural.height*.65-gap);
@@ -20272,7 +18800,6 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     grip.type='button'; grip.className='ws-restriction-resize'; grip.title=tip; grip.setAttribute('aria-label',tip);
     grip.addEventListener('pointerdown',event=>beginRestrictionGesture(state,'resize',event));
     grip.addEventListener('click',event=>event.stopPropagation());
-    // Back to the dialog's own size (it scales from its top left corner, so that corner stays where it was).
     grip.addEventListener('dblclick',event=>{
       event.stopPropagation();
       state.scale=1; writeRestrictionPanel(state); constrainRestrictionPanel(state); rememberRestrictionPanel(state);
@@ -20288,21 +18815,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     });
     state.handle=grip; surface.append(grip);
   }
-  // A city's panel (4.0.0): its header (how many cities are selected, the name and the pencil) kept WME's light grey
-  // band in every theme, so in the dark ones its light text was hard to read. It takes the theme's raised surface now
-  // (on colored and gradient islands, a veil of the island's ink over the panel's color) with a hairline under it, so
-  // the band still shows in Full black, the theme's text, and the accent color on the pencil.
   GM_addStyle(`html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header { background-color: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; box-shadow: inset 0 -1px 0 var(--wme-studio-border); }
 html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header .selection { color: var(--wme-studio-text-secondary) !important; }
 html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header .text { color: var(--wme-studio-text-secondary) !important; }
 html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header .city-name { color: var(--wme-studio-text) !important; }
 html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header .edit-button,
 html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header .edit-button i { color: var(--wme-studio-accent) !important; }`);
-  // A map comment (3.1.0): its comment list kept WME's light border in the dark themes, next to a description card
-  // with a dim one. Both now have the theme's border and corners.
   GM_addStyle(`html[data-wme-studio="on"] .map-comment-feature-editor :is(.map-comment-name-editor, .conversation-view > wz-list.comment-list) { border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius, 10px) !important; background: transparent !important; }`);
-  // The search results' width and side (3.1.0), measured whenever the search field is used: as wide as 520 px or the
-  // field, whichever is wider, kept on the screen.
   function placeSearchResults(field) {
     if (!field?.isConnected) return;
     const rect = field.getBoundingClientRect(); if (!rect.width) return;
@@ -20318,8 +18837,6 @@ html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-head
     const field = event.composedPath?.().find(node => node?.id === 'search-autocomplete');
     if (field) placeSearchResults(field);
   }, true);
-  // A place's "Add open hours" window (3.1.0): moved by its title like Restrictions in Floating mode. Its time row was
-  // floated, so the line under it ran through the labels; it's one centred row now.
   function openingHoursDialog(host) {
     if (host?.localName !== 'wz-dialog' || host.classList.contains('restrictions-modal')) return false;
     if (host.querySelector('form.add-opening-hour')) return true;
@@ -20375,7 +18892,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   window.addEventListener('blur',()=>{for (const state of restrictionPanels.values()) finishRestrictionGesture(state);});
   window.addEventListener('resize',()=>{for (const state of restrictionPanels.values()) constrainRestrictionPanel(state);},{passive:true});
   window.visualViewport?.addEventListener('resize',()=>{for (const state of restrictionPanels.values()) constrainRestrictionPanel(state);},{passive:true});
-  // Enhance only the legacy selects in Restrictions; the native field remains WME's source of truth.
   const restrictionSelects = (() => {
     const states = new Map(); let popup = null, sequence = 0, frame = 0;
     const enabled = () => ready && settings.enabled;
@@ -20547,18 +19063,13 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     return Object.freeze({inspect,refresh,prune:()=>{for(const state of [...states.values()])if(!state.select.isConnected)release(state);}});
   })();
 
-  // inspect() runs for every element the editor adds, so the checks below read the id, tag and classes
-  // once and only fall back to selector matching where a plain comparison cannot express the test. Each
-  // check accepts exactly the elements its former matches() call did.
   const scriptTabPicker = (() => {
     const KEY='wmeStudio.scriptTabPins.v1', DEFAULT_PINS=3, states=new Map();
     const gridIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>';
     const pinIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l-1 6 3 4v2H6v-2l3-4-1-6Z"/><path d="M12 15v6"/></svg>';
-    // Canonical names for tabs that expose only abbreviations or status controls. No icon assets.
     const scriptNames=[{"id":"jb","name":"WME - JB Geometry","aliases":["JB Geometry","gr.wme.jb-pretty"],"sourceId":"579540"},{"id":"chat","name":"Waze Chat Plus","aliases":["waze-chat-plus","wcp"],"sourceId":"598466"},{"id":"street","name":"WME E85 Simplify Street Geometry","aliases":["Street Geometry","E85","wme-e85"],"sourceId":"456490"},{"id":"speed","name":"WME Speed Display","aliases":["Speed Display","wme-speed-display"],"sourceId":"526702"},{"id":"bookmarks","name":"WME Bookmarks","aliases":["Bookmarks","wmebookmarks","bkm"],"sourceId":"4515"},{"id":"jai","name":"WME Junction Angle Info","aliases":["JAI","Junction Angle Info","Toggle Junction Angles","wme-junction-angle-info","wme-jai"],"sourceId":"35547"},{"id":"speeds","name":"WME Speeds","aliases":["wme-speedlimits","wme-speeds"],"sourceId":"12402"},{"id":"lanetools","name":"WME LaneTools","aliases":["LT","LaneTools","wme-lane-tools"],"sourceId":"537219"},{"id":"speedhelper","name":"WME Speedhelper","aliases":["Speedhelper","Speed Helper","Speed Helper Settings","wme-speedhelper"],"sourceId":"13774"},{"id":"dualize","name":"Dualize Road Tool","aliases":["Dualize","wme-dualize","dualize-road-tool","Dualize selected two-way roads and remove originals","Dualize selected two-way roads and remove original segments"]},{"id":"tracking","name":"WME UR-MP Tracking","aliases":["UR-MP Tracking","UR/MP Tracking","URMP Tracking","wme-urmpt","urmpt"],"sourceId":"368141"},{"id":"quickreplies","name":"WME Quick Replies","aliases":["Quick Replies","wme-quick-replies","Respuestas rápidas","Réponses rapides","Respostas rápidas","Schnellantworten","💬 Quick Replies","💬 Respuestas rápidas","💬 Réponses rapides","💬 Respostas rápidas","💬 Schnellantworten"],"sourceId":"583881"}];
     const closeIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
     const gripIcon='<svg viewBox="0 0 8 14" aria-hidden="true"><circle cx="2" cy="2" r="1.3"/><circle cx="6" cy="2" r="1.3"/><circle cx="2" cy="7" r="1.3"/><circle cx="6" cy="7" r="1.3"/><circle cx="2" cy="12" r="1.3"/><circle cx="6" cy="12" r="1.3"/></svg>';
-    // Bar geometry in CSS pixels; it mirrors the stylesheet below so the bar can be planned without measuring it.
     const BAR_CHROME=49, TAB_STEP=34, PILL_MIN=116, WIDE_MIN=240;
     const SOURCES='#sidebar :is(.userscripts-drawer-tabs,#user-tabs) > .nav-tabs';
     let preferences=null, loaded=false, saving=Promise.resolve(), popup=null, positionFrame=0, serial=0;
@@ -20589,7 +19100,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         try {
           const url=new URL(value,document.baseURI);if(!/(^|\.)greasyfork\.org$/i.test(url.hostname))continue;
           const match=url.pathname.match(/\/scripts\/(\d+)(?:[-/]|$)/);if(match)return metadataSource(match[1]);
-        } catch (_) { /* A tab without an identifiable public source uses initials. */ }
+        } catch (_) {   }
       }
       return '';
     }
@@ -20598,18 +19109,16 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       try {
         const url=new URL(value.trim(),base);
         if(['https:','http:','blob:'].includes(url.protocol) || url.protocol==='data:' && /^data:image\//i.test(value.trim()))return url.href;
-      } catch (_) { /* Invalid image URLs use initials. */ }
+      } catch (_) {   }
       return '';
     }
     function headerIcon(code,source) {
       if(typeof code!=='string')return null;
       const text=code.slice(0,HEADER_LIMIT), block=text.match(/^\uFEFF?[\t ]*\/\/\s*==UserScript==([\s\S]*?)^[\t ]*\/\/\s*==\/UserScript==/m);
       if(!block)return null;
-      // @icon is the userscript-header alias of @iconURL. No script body is evaluated.
       const explicit=block[1].match(/^\s*\/\/\s*@iconURL\s+([^\r\n]+)$/im), alias=block[1].match(/^\s*\/\/\s*@icon\s+([^\r\n]+)$/im);
       return {iconURL:safeIconURL((explicit || alias)?.[1] || '',source)};
     }
-    // The icon of a script by its Greasy Fork id, for the URC-E tab on request windows (4.0.2).
     globalThis.WMEStudioScriptIcon=id=>iconCache.get(metadataSource(String(id)))?.iconURL || '';
     const iconCacheRead=Promise.resolve(studioKeep.get(ICON_CACHE_KEY,{})).then(saved=>{
       const now=Date.now();
@@ -20681,7 +19190,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
             const name=sourceNames.get(match[1]);if(name)return {label:name,pane,pending:false};
             if(usableName(link.textContent))return {label:text(link.textContent),pane,pending:false};
             if(match[2]) {const slug=decodeURIComponent(match[2]).replace(/-/g,' ');if(usableName(slug))return {label:slug,pane,pending:false};}
-          } catch (_) { /* Invalid script links cannot provide a name. */ }
+          } catch (_) {   }
         }
         for (const heading of pane.querySelectorAll('h1,h2,h3,h4,[data-script-name]')) if(usableName(heading.textContent))return {label:text(heading.textContent),pane,pending:false};
       }
@@ -20689,7 +19198,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if(usableName(descriptive) && !/^[a-f\d-]{20,}$/i.test(id))return {label:descriptive,pane,pending:false};
       return {label:'Script',pane,pending:true};
     }
-    // "WME " and "Waze " open most script names; the list dims them and the bar leaves them out.
     const prefixLength=label=>{const match=label.match(/^(?:WME(?:\s*[-–—:]\s*|\s+)|Waze\s+)/i);return match && match[0].length<label.length ? match[0].length : 0;};
     const shortName=label=>label.slice(prefixLength(label));
     function matchRange(label,query) {
@@ -20726,8 +19234,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (!state.frame) state.frame=requestAnimationFrame(()=>{state.frame=0;sync(state);});
     }
     function refresh() { for (const state of states.values()) queue(state); }
-    // The list is rebuilt from change notices. Should one ever be missed (the editor re-creating its tab list, a
-    // script adding its tab in an unusual way), this compares the list with the editor's own every two seconds.
     const fingerprint=source=>{let mark=`${source.children.length}:`;for (const row of source.children) mark+=row.hidden || row.style.display==='none' ? '0' : '1';return mark;};
     function reconcile() {
       if (!enabled() || document.hidden) return;
@@ -20761,9 +19267,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         editorScriptApi:api,lists,panes:{count:panes.length,withoutTab:panes.filter(pane=>!pane.hasTab)},
         customTabs:[...document.querySelectorAll('#sidebar wz-tab,#sidebar wz-navigation-item')].map(node=>short(node.getAttribute('label') || node.textContent)).slice(0,30)};
     }
-    // What is saved ("stored") names each pinned script: "name:wmelanetools". What the bar and the list work with
-    // (preferences.pins) are the tab ids of this page load. pinIndex() translates between the two; a script that has
-    // not shown its name yet, or shares it with another tab, is kept under its tab id until it can be named.
     let stored=[];
     const pinOrigin=new Map();
     function pinIndex() {
@@ -20790,8 +19293,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       saving=saving.catch(error=>reportStudioError('Saving script tab pins',error)).then(()=>chrome.storage.local.set({[KEY]:snapshot}));
       saving.catch(error=>reportStudioError('Saving script tab pins',error));
     }
-    // Called on every refresh of the list: follows scripts whose tab id changed, and re-saves pins by name once the
-    // script's name is known.
     function rekeyPins() {
       if (!preferences) return;
       resolvePins();
@@ -20884,20 +19385,12 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       userChoseScript=true;
       close(state);item.anchor.click();queue(state);
     }
-    // Scripts add their tabs one after another for a while after the page loads. Until the user picks a script
-    // themselves, the earliest pinned script that is there gets opened; a pin that comes earlier in the bar and
-    // arrives later takes over. After half a minute the choice is left alone.
     let userChoseScript=false, autoOpenedRank=Infinity, autoOpenSince=0;
-    // A script opened for the user from elsewhere (URC-E from a request window, 4.0.2) counts as their choice, so the
-    // first pinned script doesn't take its place a moment later.
     globalThis.WMEStudioScriptChosen=()=>{ userChoseScript=true; };
     document.addEventListener('click',event=>{
       if (!event.isTrusted) return;
       for (const state of states.values()) if (event.composedPath().includes(state.source)) { userChoseScript=true;return; }
     },true);
-    // A script's tab is only switched while the Scripts section is the one on screen. Switched while another
-    // section was showing, the script's page appeared inside that section. So this waits until the script bar is
-    // visible, which also means it runs the first time the Scripts section is opened.
     const autoOpenWatch=typeof ResizeObserver==='function' ? new ResizeObserver(()=>{ if (!userChoseScript) refresh(); }) : null, autoOpenWatched=new WeakSet();
     function openFirstPinned(state) {
       if (userChoseScript || !preferences?.pins.length) return;
@@ -20913,7 +19406,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         return;
       }
     }
-    // The row that should stay where it is when "key" moves to the other list: the next one, or the one before.
     function pinAnchor(state,key) {
       const rows=visibleRows(state), index=rows.indexOf(state.entries.get(key)?.row), row=index<0 ? null : rows[index+1] || rows[index-1];
       return row ? {anchor:row.dataset.key,anchorTop:row.getBoundingClientRect().top} : {};
@@ -20969,7 +19461,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     function clearSearch(state) {
       state.search.value='';filter(state);state.search.focus({preventScroll:true});
     }
-    // Prefer an explicitly exposed iconURL; otherwise read the public userscript's header.
     function tabIconURL(anchor,row) {
       for (const node of [anchor,row,...anchor.querySelectorAll('[data-icon-url],[data-iconurl],[iconurl]')]) {
         let value;
@@ -21016,7 +19507,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const pinned=preferences.pins.map(key=>state.items.find(item=>item.key===key)).filter(Boolean);
       const shown=[...pinned];
       if (!shown.some(item=>item.key===selected.key)) shown.push(selected);
-      // Every pinned script stays visible: tabs that do not fit on the first row continue on the next one.
       if (!state.width) state.width=state.host.clientWidth;
       const tucked=[], visible=shown;
       const wide=!pinned.length && !(state.width>0 && state.width<WIDE_MIN);
@@ -21075,7 +19565,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       place(state.pinnedList,pinnedRows);place(state.otherList,otherRows);
       filter(state);
       if (state.refocus) {
-        // Moving a row between the two lists drops its focus; hand it back to the same control.
         const entry=state.entries.get(state.refocus.key), part=state.refocus.part, stay=state.entries.get(state.refocus.anchor), stayTop=state.refocus.anchorTop;state.refocus=null;
         if (state.open && stay && !stay.row.hidden) {
           state.results.scrollTop+=stay.row.getBoundingClientRect().top-stayTop;
@@ -21101,11 +19590,10 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         results:find('.results'),pinnedHead:find('.pinned-head'),pinnedCount:find('.pinned-count'),unpin:find('.unpin'),pinnedList:find('.pinned-list'),hint:find('.hint'),
         otherHead:find('.other-head'),otherCount:find('.other-count'),otherList:find('.other-list'),missing:find('.missing'),missingText:find('.missing span'),empty:find('.empty'),emptyTitle:find('.empty strong'),count:find('.count')};
       states.set(source,state);source.before(host);
-      // Names of the icon-only tabs. The note sits in the top layer, so the sidebar cannot clip it.
       let tipTimer=0, tipTarget=null;
       state.hideTip=()=>{
         clearTimeout(tipTimer);tipTimer=0;tipTarget=null;
-        try { if (state.tip.matches(':popover-open')) state.tip.hidePopover(); } catch (_) { /* Browsers without popovers never showed it. */ }
+        try { if (state.tip.matches(':popover-open')) state.tip.hidePopover(); } catch (_) {   }
       };
       function showTip(target) {
         tipTimer=0;
@@ -21144,7 +19632,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           return;
         }
         const inMenu=state.menu.contains(event.target);
-        if (inMenu) event.stopPropagation();   // keys used in the list must not reach the editor's own shortcuts
+        if (inMenu) event.stopPropagation();
         if (event.target===state.search) {
           if (event.key==='ArrowDown' || event.key==='Enter') {
             event.preventDefault();const row=visibleRows(state).find(row=>!row.querySelector('.choose').disabled);
@@ -21159,7 +19647,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           if (event.key==='ArrowDown' || event.key==='ArrowUp') {
             event.preventDefault();const step=event.key==='ArrowDown' ? 1 : -1;
             if (event.altKey) {
-              // Alt + arrows move a pinned script along the bar.
               const pins=preferences?.pins || [], present=pins.filter(pin=>state.entries.has(pin)), from=present.indexOf(key), target=present[from+step];
               if (from>=0 && target && !state.search.value) {state.refocus={key,part};movePin(key,target,step>0);}
               return;
@@ -21174,7 +19661,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           } else if (plain && !event.shiftKey && (event.key==='p' || event.key==='P')) {
             event.preventDefault();state.refocus={key,part,...pinAnchor(state,key)};togglePin(key);
           } else if (plain && (event.key==='Backspace' || event.key.length===1 && event.key!==' ')) {
-            state.search.focus({preventScroll:true});   // any other character is typed into the search field
+            state.search.focus({preventScroll:true});
           }
           return;
         }
@@ -21196,7 +19683,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       state.tabs.addEventListener('dragover',event=>{if(state.dragKey && event.target.closest('.tab')?.draggable) {event.preventDefault();event.dataTransfer.dropEffect='move';}});
       state.tabs.addEventListener('drop',event=>{const key=event.target.closest('.tab')?.dataset.key;if(state.dragKey && key) {event.preventDefault();reorder(state.dragKey,key);}state.dragKey=null;});
       state.tabs.addEventListener('dragend',()=>{state.dragKey=null;});
-      // Pinned rows can be dragged into a new order; the line shows where the row will land.
       const clearDrop=()=>{for (const row of state.pinnedList.querySelectorAll('[data-drop]')) row.removeAttribute('data-drop');};
       state.pinnedList.addEventListener('dragstart',event=>{
         const row=event.target.closest?.('.entry');if (!row?.draggable) return;
@@ -21230,7 +19716,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     document.addEventListener('pointerdown',event=>{if(popup && !event.composedPath().includes(popup.host))close();},{capture:true,passive:true});
     document.addEventListener('focusin',event=>{if(popup && !event.composedPath().includes(popup.host))close();});
-    // Is the bar still fully inside everything that clips it (the scrolling side panel)?
     function barInView(state) {
       const rect=state.host.getBoundingClientRect();
       for (let node=state.host.parentElement;node && node!==document.documentElement;node=node.parentElement) {
@@ -21251,15 +19736,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       prune(){for(const state of [...states.values()]) {if(!state.source.isConnected)release(state);else if(!state.host.isConnected) {state.source.before(state.host);queue(state);}}}
     });
   })();
-  // Marks for a few rules about WME's own boxes (4.0.0). A rule such as '[class*="attributesList--"] > *' names no
-  // id, class or tag for the element it styles, so whenever any element's class changed the browser restyled
-  // everything below it: the side panel opening changes a class on the whole editor, so the map and every panel were
-  // restyled each time, and the map changes classes on itself as it moves. Each of those rules now also asks for a
-  // mark that Studio puts on exactly the elements the rule is about (data-ws-c: a child of one of these boxes); the
-  // rest of each rule is unchanged, so nothing matches differently, and a class change only restyles what it can
-  // change. data-ws-username and data-ws-changes-tip stand for '[class*="issuePanelHeader--"] [class*="username--"]'
-  // and '[class*="changesLog--"] [class*="tooltipContent--"]' in the two rules where those were in front, and
-  // data-ws-issues-tabs for 'wz-tabs[class*="issuesTrackerTabs--"]' inside the components' ':host-context()'.
   const KEPT_BOXES = ['attributesList--', 'sourceInfo--', 'collapsibleContainer--', 'mteListView--'];
   function keptBox(element) {
     const names = element.getAttribute('class') || '';
@@ -21299,14 +19775,11 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     const id = typeof host.id === 'string' ? host.id : '';
     const idAttribute = id || host.getAttribute('id') || '';
     const testId = host.getAttribute('data-testid');
-    // CSS-module class names ("container--Yf_"): the only ones the substring tests below can match.
     const moduleClass = classes.length ? host.getAttribute('class') || '' : '';
     const modular = moduleClass.includes('--');
     betaMapLayers.inspect(host);
     if (modular && moduleClass.includes('pagination--') && host.parentElement) globalThis.WMEStudioFitRows?.track(host.parentElement);
     if (testId === 'search-this-area-button') trackSearchAreaButton(host);
-    // Newer WME builds dropped the test id from "Search this area" (a container--… box holding an iconContainer--…
-    // with the search icon): it is put back, so the button keeps its theme colors and its spot (3.0.0).
     else if (modular && moduleClass.includes('searchIcon--')) {
       const button = host.parentElement?.parentElement;
       if (button && !button.hasAttribute('data-testid') && /(^|\s)container--/.test(button.getAttribute('class') || '') && /iconContainer--/.test(host.parentElement.getAttribute('class') || '')) {
@@ -21357,7 +19830,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     if (classes.contains('menu') && host.parentElement?.classList.contains('layer-switcher')) trackMapLayerWindow(host);
     tagOnlineEditorsPanel(host);
     if (tag === 'wz-user-box') trackUserBox(host);
-    // Lets the motion rules for the notification button find it by an attribute of its own (see the page sheet).
     if (id === 'notification-button' && !host.hasAttribute('data-wme-studio-notification-button')) host.setAttribute('data-wme-studio-notification-button', 'on');
     if (id === 'tile-build-status') trackTileBuildStatus(host);
     if (id === 'filter-panel-region') {
@@ -21558,11 +20030,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       });
     }
   }
-  // The map redraws its vector layers by replacing thousands of <svg> children at a time. The two
-  // document-wide observers used to be handed a record for each of them, only to discard it. They now watch
-  // the document *around* those <svg> roots: every ancestor of a vector root is watched for its own children,
-  // every other branch as a whole. Records from outside a vector root arrive exactly as before; a vector root
-  // that appears, moves or goes away re-plans the watch. With no vector root the whole document is watched.
   const studioVectorWatch = (() => {
     const SVG = 'http://www.w3.org/2000/svg', VECTORS = '.olMapViewport svg,.olLayerDiv svg,#render-root svg';
     const clients = [], seen = new WeakSet();
@@ -21659,20 +20126,13 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       scheduleLaneSizing();
     }
   });
-  // ---- The author's switch (2.3.0) ------------------------------------------------------------------------------
-  // The WME Studio website can pause Studio for everyone (or only for versions up to one it names), or only Screen
-  // displays, when a change to WME breaks them. Studio asks when it starts and every 15 minutes, and keeps the last
-  // answer, so a paused Studio does not flash on at the next start. Without an answer (no connection, the site down)
-  // Studio runs as it is. Nothing of the person's own settings changes: they are simply not used while paused, and
-  // "Run anyway" lifts the pause in this tab until the author changes the switch again.
   const REMOTE_SWITCH_KEY = 'wmeStudio.remoteSwitch.v1', REMOTE_OVERRIDE_KEY = 'wmeStudio.remoteSwitchOverride', REMOTE_SEEN_KEY = 'wmeStudio.remoteSwitchSeen';
   let realSettings = settings;
   const remoteSwitch = { state: null, timer: 0, checked: 0, host: null };
   const sessionValue = (key, value) => {
-    try { if (value === undefined) return sessionStorage.getItem(key) || ''; sessionStorage.setItem(key, value); } catch (_) { /* no storage: the default */ }
+    try { if (value === undefined) return sessionStorage.getItem(key) || ''; sessionStorage.setItem(key, value); } catch (_) {   }
     return '';
   };
-  // a <= b, where "2.2.4-beta.1" comes before "2.2.4" (and after "2.2.3").
   function versionAtMost(a, b) {
     const parse = value => {
       const [base, pre] = String(value || '').trim().split('-');
@@ -21687,7 +20147,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     if (y.pre === null) return true;
     return x.pre <= y.pre;
   }
-  // What identifies one pause: the time it was changed, or (without one) the whole answer.
   const remoteStamp = state => state.changed_at || JSON.stringify({ studio: state.studio, screenDisplays: state.screenDisplays });
   function remoteRules() {
     const state = remoteSwitch.state;
@@ -21719,22 +20178,17 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     const state = {
       studio: { off: data?.studio?.off === true, upTo: text(data?.studio?.upTo, 40), message: text(data?.studio?.message, 500) },
       screenDisplays: { off: data?.screenDisplays?.off === true, message: text(data?.screenDisplays?.message, 500) },
-      // "Push update" on the reports site (3.1.0): the version the author wants people on, a few words why, and when.
       update: { on: data?.update?.on === true, version: text(data?.update?.version, 40), message: text(data?.update?.message, 300), pushed_at: text(data?.update?.pushed_at, 40) },
-      // Studio's Discord server (4.0.0): the invite comes with this answer, so I can change it without an update.
       discord: { invite: discordInvite(data?.discord?.invite) },
       changed_at: text(data?.changed_at, 40)
     };
     remoteSwitch.state = state;
     setDiscordInvite(state.discord.invite);
-    globalThis.WMEStudioPushedUpdate = state.update;   // read by the update note when it starts after this answer
+    globalThis.WMEStudioPushedUpdate = state.update;
     try { globalThis.WMEStudioUpdates?.push(state.update, state.update.pushed_at); } catch (studioError) { reportStudioError('update push', studioError); }
-    // Kept with the time it was fetched (every check), so a pause kept from long ago is not used when the site no
-    // longer answers.
-    try { Promise.resolve(studioKeep.set(REMOTE_SWITCH_KEY, { ...state, fetched: Date.now() })).catch(() => {}); } catch (_) { /* kept for this tab only */ }
+    try { Promise.resolve(studioKeep.set(REMOTE_SWITCH_KEY, { ...state, fetched: Date.now() })).catch(() => {}); } catch (_) {   }
     refreshRemoteSwitch();
   }
-  // Only a real Discord invite link is used: discord.gg/… or discord.com/invite/….
   function discordInvite(value) {
     const link = String(value || '').trim();
     return /^https:\/\/(?:discord\.gg|discord\.com\/invite)\/[A-Za-z0-9-]{2,40}$/.test(link) ? link : '';
@@ -21742,19 +20196,18 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   function setDiscordInvite(invite) {
     if ((globalThis.WMEStudioDiscord?.invite || '') === invite) return;
     globalThis.WMEStudioDiscord = { invite };
-    try { document.dispatchEvent(new CustomEvent('wme-studio-discord')); } catch (_) { /* nothing is listening yet */ }
+    try { document.dispatchEvent(new CustomEvent('wme-studio-discord')); } catch (_) {   }
   }
   function checkRemoteSwitch() {
     if (standaloneSignin || editorProfile) return;
     remoteSwitch.checked = Date.now();
     const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/status?v=${encodeURIComponent(USERSCRIPT_VERSION)}`;
-    const done = body => { let data = null; try { data = JSON.parse(body); } catch (_) { /* not an answer */ } if (data?.ok) setRemoteSwitch(data); };
+    const done = body => { let data = null; try { data = JSON.parse(body); } catch (_) {   } if (data?.ok) setRemoteSwitch(data); };
     try {
       if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, timeout: 10000, anonymous: true, onload: response => { if (response.status === 200) done(response.responseText || ''); } });
       else fetch(url, { mode: 'cors', cache: 'no-store' }).then(response => (response.ok ? response.text() : '')).then(done).catch(() => {});
-    } catch (_) { /* Studio runs as it is */ }
+    } catch (_) {   }
   }
-  // A small card at the bottom of the editor while something is paused, until it is closed in this tab.
   function showRemoteNotice() {
     const state = remoteSwitch.state, rules = remoteRules();
     const kind = rules.studio && realSettings.enabled ? 'studio' : rules.sd && !rules.studio && realSettings.enabled && realSettings.screenDisplays ? 'sd' : '';
@@ -21803,7 +20256,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     const take = value => {
       if (!value || typeof value !== 'object' || remoteSwitch.state) return;
       const paused = value.studio?.off === true || value.screenDisplays?.off === true;
-      if (paused && !(Number(value.fetched) > Date.now() - 2 * 86400000)) return;   // too old to trust: wait for the site
+      if (paused && !(Number(value.fetched) > Date.now() - 2 * 86400000)) return;
       remoteSwitch.state = { studio: { off: value.studio?.off === true, upTo: String(value.studio?.upTo || ''), message: String(value.studio?.message || '') },
         screenDisplays: { off: value.screenDisplays?.off === true, message: String(value.screenDisplays?.message || '') }, changed_at: String(value.changed_at || '') };
       setDiscordInvite(discordInvite(value.discord?.invite));
@@ -21811,7 +20264,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     };
     const cached = studioKeep.get(REMOTE_SWITCH_KEY, null);
     if (cached && typeof cached.then === 'function') cached.then(take, () => {}); else take(cached);
-  } catch (_) { /* no answer kept: Studio runs as it is until the first check */ }
+  } catch (_) {   }
   checkRemoteSwitch();
   remoteSwitch.timer = setInterval(checkRemoteSwitch, 15 * 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - remoteSwitch.checked > 5 * 60000) checkRemoteSwitch(); });
@@ -21829,7 +20282,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     const next = effectiveSettings(realSettings);
     const workspaceChanged = beginWorkspaceSwitch(next);
     settings = next; ready = true;
-    // Two-column Map Layers turned on or off in Settings sets the panel's columns too (4.0.0).
     if (items['wmeStudio.layerColumns'] && !items[LAYER_VIEW_KEY]) {
       layerColumnsView = settings.layerColumns === 'two' ? 'two' : 'one';
       try { Promise.resolve(studioKeep.set(LAYER_VIEW_KEY, layerColumnsView)).catch(error => reportStudioError('layerColumnsView', error)); } catch (error) { reportStudioError('layerColumnsView', error); }
@@ -21838,17 +20290,12 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     if (workspaceChanged) {
       finishWorkspaceSwitch();
     }
-    // The Map Layers panel's own one/two columns button (Cloud Sync brings it from another device, 4.0.0).
     if (items[LAYER_VIEW_KEY]) {
       const view = items[LAYER_VIEW_KEY].newValue === 'one' ? 'one' : 'two';
       if (view !== layerColumnsView) { layerColumnsView = view; try { syncLayerColumns(); } catch (studioError) { reportStudioError('layerColumnsView', studioError); } }
     }
   });
   reducedMotion.addEventListener('change', () => apply(new Set(['motion'])));
-  // ---- Cloud Sync (4.0.0) -------------------------------------------------------------------------------------------
-  // It lives in the WME Studio Cloud Sync library. Studio hands it its storage (settings that arrive go through the
-  // same path as a change made in Settings, so they apply at once), the save hook, and the way to my Worker. Until the
-  // person turns Cloud Sync on it does nothing at all.
   if (!standaloneSignin && !editorProfile && window.top === window.self && globalThis.WMEStudioCloudSync) {
     try {
       globalThis.WMEStudioCloudSync.init({
@@ -21864,8 +20311,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       });
     } catch (studioError) { reportStudioError('Cloud Sync', studioError); }
   }
-  // WME shows a loading screen while it starts. Studio's floating islands sit above it, so they stay hidden until
-  // the loading screen is gone (or, as a safety net, for at most 45 seconds).
   (function watchLoading() {
     if (standaloneSignin || editorProfile) return;
     const started = performance.now();
@@ -21875,7 +20320,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (screen) {
         if (screen.classList.contains('hide') || screen.hidden) return false;
         const style = getComputedStyle(screen);
-        // Over once the loading screen is fading out or no longer covers the editor: the rails come in with the map.
         if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) <= .5) return false;
         const rect = screen.getBoundingClientRect();
         if (rect.width < innerWidth * .6 || rect.height < innerHeight * .6) return false;
@@ -21883,7 +20327,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         const top = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
         return !top || screen === top || screen.contains(top);
       }
-      // no loading screen yet and no map yet: still starting (the SDK says so first, when it is there)
       return studioSDK.value(api => (api.State.isInitialized() ? false : null), () => !document.querySelector('#WazeMap .olMapViewport'));
     };
     (function poll() {
@@ -21898,8 +20341,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     rootStyle('--ws-eye-saver-opacity', String(strength * 0.65 / 100));
     attr('eye-saver', strength > 0 ? 'on' : null);
   }
-  // Theme and eye saver schedules: check the clock twice a minute, and straight away when the tab comes back.
-  // A new theme repaints like a theme change; the eye saver only moves its overlay, so a fade costs nothing.
   function tickSchedule() {
     if (!ready || !settings.enabled || ((settings.theme !== 'light' || settings.themeSchedule === 'off') && settings.eyeSaverSchedule === 'off')) return;
     if (previewOverride && settings === previewOverride) return;
@@ -21922,10 +20363,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       queueHeaderGuardWindows(); unscrollMapContainers();
     }, delay));
   }
-  // Nothing that holds the map is meant to scroll. A panel reaching past the bottom of a smaller window could still
-  // get scrolled into view, which slid the map out from under the floating panels.
   function unscrollMapContainers() {
-    // only in the editor itself: the profile page and the sign-in page are ordinary pages that must scroll
     if (!ready || !settings.enabled || standaloneSignin || editorProfile || document.documentElement.getAttribute('data-wme-studio-page') !== 'editor') return;
     const map = document.getElementById('WazeMap');
     if (!map) return;
@@ -21942,7 +20380,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   }, { capture: true, passive: true });
   window.addEventListener('resize', () => {
     if (notifyingMapResize) {
-      // Studio's own "the map changed size" notices are skipped, unless the window really did change size
       if (resizeSettleSize === `${innerWidth}x${innerHeight}`) return;
     }
     resizeSettleSize = `${innerWidth}x${innerHeight}`;
@@ -21966,7 +20403,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   ]).then(async ([value, migrated]) => {
     let layout = sanitizeCompactIslandLayout(value);
     if (!migrated) {
-      // The sanitizer already removes legacy defaults; keep custom saved positions.
       await studioKeep.set(SIDE_RAIL_CENTER_MIGRATION_KEY, true);
     }
     compactIslandLayout = layout;
@@ -21985,7 +20421,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     await studioKeep.set(GLASS_OPACITY_UPDATE_KEY, true);
     await config.write({ compactIslandOpacity: 60 });
   }).catch((studioError) => { reportStudioError("Studio initialization",studioError);});
-  // On-demand workspace tools: no editor scans, timers or background profile polling.
   globalThis.WMEStudioWorkspaces = (() => {
     const KEY = 'wmeStudio.workspaceProfiles.v1', MAX = 12, LIMIT = 262144;
     const layoutKeys = ['hudScale','panelScale','compactSnapEdges','compactSnapCenter','layerColumns'];
@@ -22000,14 +20435,10 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     function preferences(value, keys) {
       if (!record(value)) error('Backup settings are missing.');
-      // Each setting as Studio would store it: a value out of range or from an older version is put right (or given
-      // its default), instead of failing the whole backup over one setting.
       const clean = config.sanitize(value), out = {};
       for (const key of keys) out[key] = clean[key];
       return out;
     }
-    // Panel sizes: the panels Studio knows, each kept within sensible limits. A panel this version doesn't size (from
-    // a newer or older Studio) or a size that makes no sense is left out, so the rest of the backup still works.
     function sizes(value) {
       const out = {};
       if (!record(value)) return out;
@@ -22034,7 +20465,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       workspace.layout = sanitizeCompactIslandLayout(source.layout);
       if (source.chatPosition !== null && !record(source.chatPosition)) error('Backup Messages position is invalid.');
       workspace.chatPosition = source.chatPosition === null ? null : {x:bounded(source.chatPosition.x,-10000,10000),y:bounded(source.chatPosition.y,-10000,10000)};
-      // Workspaces and backups from before custom islands have none: switching to one keeps the current controls.
       workspace.islands = record(source.islands) ? storedIslandControls(source.islands) : null;
       const view = value.streetView;
       if (!record(view) || typeof view.docked !== 'boolean') error('Backup Street View layout is invalid.');
@@ -22106,9 +20536,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (!Array.isArray(value.profiles) || value.profiles.length > MAX) error('A backup can contain up to 12 workspaces.');
       const profiles = value.profiles.map(profile);
       if (new Set(profiles.map(item=>item.id)).size !== profiles.length) error('Backup workspace IDs must be unique.');
-      // A backup from an older version lacks the settings added since: they get their defaults.
       const prefs = preferences(record(value.settings) ? { ...config.defaults, ...value.settings } : value.settings,Object.keys(config.defaults)), layout = validateSnapshot(value.layout);
-      // The settings are the ones that count where the two copies differ (an edited file, an older version).
       for (const key of layoutKeys) layout.layoutSettings[key] = prefs[key];
       for (const key of ['compactMode','compactHeaderFullWidth','compactHeaderWidth']) layout.workspace[key] = prefs[key];
       const scriptTabs=Object.hasOwn(value,'scriptTabs') ? scriptTabPicker.validate(value.scriptTabs) : null;
@@ -22167,9 +20595,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   });
 })();
 
-  // Shared by Quick replies (in the editor's scope) and the changelog (in the settings' scope), so it lives out here.
-  // A row of chips that scrolls sideways with no scrollbar (3.1.0): pointing near either end scrolls it, the wheel
-  // scrolls it too, a fade shows there's more, and a chip I pick slides to the middle.
   function studioChipStrip(strip) {
     if (strip.wsStrip) return strip.wsStrip;
     let raf = 0, speed = 0;
@@ -22218,7 +20643,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
 
 
 
-  // a <= b for release numbers (the changelog's "what's new since"): "2.3.0" <= "3.0.0".
   function versionAtMost(a, b) {
     const parts = value => String(value || '').trim().split('-')[0].split('.').map(part => parseInt(part, 10) || 0);
     const x = parts(a), y = parts(b);
@@ -22239,17 +20663,13 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     return /(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname) || /^(?:\/[^/]+)?\/signin\/?$/i.test(location.pathname);
   }
 
-  // Miniature editors for the Layout page, drawn from the real layouts at one tenth of a 1920 px window: satellite
-  // ground with WME road colours, and Studio's header, rails and circles where each mode and preset puts them.
   function layoutThumb(kind) {
     const road = (d, color, width) => `<path d="${d}" stroke="#141a14" stroke-opacity=".55" stroke-width="${width + 1}"/><path d="${d}" stroke="${color}" stroke-width="${width}"/>`;
-    // A plain, quiet ground: the islands and panels are what the picture is about.
     const map = `<rect class="t-bg" width="192" height="108"/><path class="t-grid" d="M0 27h192M0 54h192M0 81h192M48 0v108M96 0v108M144 0v108"/>`;
     const island = (x, y, w, h, r) => `<rect class="t-sh" x="${x}" y="${y + .9}" width="${w}" height="${h}" rx="${r}"/><rect class="t-ui" x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/>`;
     const bar = (x, y, w, cls = 't-ink', h = 1.2) => `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}"/>`;
     const dot = (x, y, r = 1.05, cls = 't-ink') => `<circle class="${cls}" cx="${x}" cy="${y}" r="${r}"/>`;
     const plus = (x, y, s) => `<rect class="t-acc" x="${x}" y="${y}" width="${s}" height="${s}" rx="${s * .28}"/><path class="t-plus" d="M${x + s / 2} ${y + s * .27}v${s * .46}M${x + s * .27} ${y + s / 2}h${s * .46}"/>`;
-    // header contents: menu, wordmark, search, then delete/undo/redo, Save, alerts/chat/apps and the avatar
     const headParts = (x, y, w, h, standard) => { const m = y + h / 2, r = x + w, a = standard ? 7 : 5.8;
       return bar(x + 2.4, m - 1.5, 2.6, 't-strong', .6) + bar(x + 2.4, m - .3, 2.6, 't-strong', .6) + bar(x + 2.4, m + .9, 2.6, 't-strong', .6) + bar(x + a, m - .95, standard ? 15.4 : 11.5, 't-strong', 1.9)
         + (standard ? `<rect class="t-soft" x="24" y="${m - 2.3}" width="45" height="4.6" rx="1.5"/>` + dot(26.6, m, .9) + bar(28.4, m - .55, 8.7, 't-ink', 1.1) : dot(x + 20.6, m, .9) + bar(x + 22.4, m - .55, 8.7, 't-ink', 1.1))
@@ -22266,8 +20686,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       + `<rect class="t-soft" x="${x + 3}" y="${y + 37.4}" width="11.2" height="4" rx="1.2"/><rect class="t-acc" x="${x + 15.8}" y="${y + 37.4}" width="11.2" height="4" rx="1.2"/>`;
     const chat = (x, y) => island(x, y, 27, 34, 2.6) + bar(x + 3, y + 3, 10, 't-strong', 1.6) + dot(x + 23.4, y + 3.8, .8)
       + `<rect class="t-soft" x="${x + 3}" y="${y + 8}" width="14" height="4.4" rx="1.8"/><rect class="t-acc" x="${x + 10}" y="${y + 14}" width="14" height="4.4" rx="1.8"/><rect class="t-soft" x="${x + 3}" y="${y + 20}" width="17" height="4.4" rx="1.8"/><rect class="t-soft" x="${x + 3}" y="${y + 27.4}" width="21" height="3.8" rx="1.9"/>`;
-    // Drawn to scale, the islands of a 1920 × 1080 editor are a few pixels wide in a card: each one is drawn 1.6 times
-    // larger, from the edge it is pinned to, so the layouts read at a glance (3.0.0).
     const K = 1.6, Z = (content, ax, ay) => `<g transform="translate(${ax} ${ay}) scale(${K}) translate(${-ax} ${-ay})">${content}</g>`;
     let ui;
     if (kind === 'standard') {
@@ -22292,7 +20710,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     return `<svg class="thumb" viewBox="0 0 192 108" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">${map}${ui}</svg>`;
   }
 
-  // The editor's own user name, for bug reports and the update tour: from the SDK, else from what the page shows.
   function wmeUserName() {
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const text = value => (typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '').replace(/\s+/g, ' ').trim();
@@ -22300,7 +20717,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       () => studioSDK.value(api => api.State.getUserInfo()?.userName, null),
       () => { try { return page.getWmeSdk?.({ scriptId: 'wme-studio', scriptName: 'WME Studio' })?.State?.getUserInfo?.()?.userName; } catch (_) { return null; } },
       () => { const box = document.querySelector('wz-user-box'); return box && (box.getAttribute('user-name') || box.getAttribute('username') || box.getAttribute('name') || box.querySelector('[slot="label"], [slot="name"]')?.textContent || box.shadowRoot?.querySelector('.user-name, .username, [class*="userName"], [class*="user-name"]')?.textContent); },
-      // Never the reporter's Username line in a request window (4.0.2), which has the same class names.
       () => [...document.querySelectorAll('#user-info .user-name, .user-info .user-name, [class*="userName--"], [class*="username--"]')].find(node => !node.closest('.problem-edit, [id^="ISSUE_WINDOW"], [data-testid="floating-window"]'))?.textContent
     ];
     for (const attempt of tries) {
@@ -22310,13 +20726,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     return '';
   }
-  // ---- Changelog ------------------------------------------------------------------------------------------------
-  // Newest first. STUDIO_BUILD changes with every build that is posted, even when the version number stays the same,
-  // so "What's changed" shows once after each update. The texts are translated like the rest of Studio's own words.
   const STUDIO_BUILD = '4.1.0-2026-10-28';
   const STUDIO_CHANGELOG = Object.freeze([
-    // A release can sort its changes into groups ({ title, items }); older releases are a plain list.
-    // quiet (4.0.1): no card of its own; the 4.0 welcome lists it under "Also in this update", and the changelog keeps it.
     { version: '4.1.0', groups: [
       { title: 'Update requests', items: [
         "Quick replies come with ready replies for each type of request, and the ones for the request in front of you come first.",
@@ -22509,7 +20920,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         "Everything responds sooner, most of all the side panel when you open it from the rail: when WME changes something on the page, like opening a panel or moving the map, the browser no longer restyles the whole page."
       ] }
     ] },
-    // quiet (3.0.6): fixes only, no announcement card.
     { version: '3.0.6', quiet: true, groups: [
       { title: 'Fixes', items: [
         "Opening another minimized request works again while one is open: Studio closes the open one first.",
@@ -22518,7 +20928,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         "Messages opens where you left it after a reload, also in the bottom right."
       ] }
     ] },
-    // quiet (3.0.5): no announcement card for this update; its lines stay in Settings › What's new.
     { version: '3.0.5', quiet: true, groups: [
       { title: 'Fixes', items: [
         "Settings, the update news and the changelog take your island color or gradient, with the same thin scrollbar everywhere.",
@@ -22717,7 +21126,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   ]);
   const CHANGELOG_KEY = 'wmeStudio.changelog.v1';
   let changelogStarted = false;
-  // Whatever waits for the update news to be closed (a poll, 3.0.1) goes on as soon as it is.
   const newsWaiters = new Set();
   function afterNews(go) { newsWaiters.add(go); }
   function markChangelogSeen() {
@@ -22725,16 +21133,9 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     if (waiting.length) setTimeout(() => waiting.forEach(go => { try { go(); } catch (studioError) { reportStudioError('after news', studioError); } }), 450);
     try { Promise.resolve(studioKeep.set(CHANGELOG_KEY, STUDIO_BUILD)).catch(studioError => reportStudioError('markChangelogSeen', studioError)); } catch (studioError) { reportStudioError('markChangelogSeen', studioError); }
   }
-  // ---- Studio as a file to download (2.3.0) -------------------------------------------------------------------------
-  // The free Userscripts app for Safari installs a .user.js file saved in its folder. The buttons for it (the iPhone
-  // and iPad news, Settings › Screen displays) save WME Studio as WME-Studio.user.js. Since 4.0.0 that is the file I
-  // put on my site (it sends the browser on to Greasy Fork when there is none), unless the copy the manager runs here
-  // is newer; then that copy. Greasy Fork's is the last resort, when my site can't be reached.
   const STUDIO_USER_FILE_URL = 'https://update.greasyfork.org/scripts/599569/WME%20Studio.user.js';
   const STUDIO_SITE_FILE_URL = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/studio/WME-Studio.user.js`;
   let studioUserFilePromise = null;
-  // Asked for once and kept: pointing at or focusing a download button starts it, so the click itself can save at
-  // once (Safari only allows a download straight after the tap).
   function studioUserFileReady() {
     if (!studioUserFilePromise) studioUserFilePromise = studioUserFileText().catch(error => { studioUserFilePromise = null; throw error; });
     return studioUserFilePromise;
@@ -22763,7 +21164,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   }
   async function downloadStudioUserFile(event) {
     const button = event?.currentTarget;
-    if (button?.dataset.direct) return;   // the file could not be fetched before: the link opens it from my site
+    if (button?.dataset.direct) return;
     event?.preventDefault?.();
     if (button?.dataset.busy) return;
     if (button) { button.dataset.busy = '1'; button.style.opacity = '.6'; }
@@ -22777,16 +21178,12 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (error) {
       reportStudioError('download the .user.js file', error);
-      // A new window opened this late would be blocked: the next tap follows the link to my site's file instead.
       if (button) { button.dataset.direct = '1'; button.setAttribute('target', '_blank'); button.setAttribute('rel', 'noopener'); button.removeAttribute('download'); }
     } finally { if (button) { delete button.dataset.busy; button.style.opacity = ''; } }
   }
-  // ---- iPhone and iPad: the news (2.3.0) --------------------------------------------------------------------------
-  // Shown once, just before the What's changed card of the update that brings Studio to iPhone and iPad: what it is,
-  // and that it is a first beta. Closing it (Continue, Escape or a click beside it) lets the card come up.
   const MOBILE_NEWS_KEY = 'wmeStudio.mobileNews.v1';
   function markMobileNewsSeen() {
-    try { Promise.resolve(studioKeep.set(MOBILE_NEWS_KEY, true)).catch(() => {}); } catch (_) { /* shown again next time */ }
+    try { Promise.resolve(studioKeep.set(MOBILE_NEWS_KEY, true)).catch(() => {}); } catch (_) {   }
   }
   async function maybeShowMobileNews() {
     let seen = false;
@@ -22795,8 +21192,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     await new Promise(done => { try { showMobileNews(done); } catch (error) { reportStudioError('mobile news', error); done(); } });
     markMobileNewsSeen();
   }
-  const MOBILE_NEWS_IPHONE = studioPart('MOBILE_NEWS_IPHONE');   // the iPhone frame, its screen left clear
-  // A real picture of WME for each screen (JPEG, base64); without one the screens show a drawn map.
+  const MOBILE_NEWS_IPHONE = studioPart('MOBILE_NEWS_IPHONE');
   const MOBILE_NEWS_SHOT_TALL = '', MOBILE_NEWS_SHOT_WIDE = '';
   function showMobileNews(done) {
     const say = text => globalThis.WMEStudioI18n?.translate?.(text) || text;
@@ -22825,8 +21221,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     button.firstElementChild.textContent = say('Continue');
     let closed = false;
     const opener = document.activeElement;
-    // Keys belong to the news only while focus is in it (or nowhere): another Studio window opened on top of it (the
-    // command palette, Settings) keeps its own keys. Tab stays inside the card; Enter closes it unless a link has focus.
     const keys = event => {
       const inside = event.composedPath().includes(host) || document.activeElement === document.body || document.activeElement === host;
       if (!inside) return;
@@ -22843,7 +21237,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (closed) return;
       closed = true;
       document.removeEventListener('keydown', keys, true);
-      const finish = () => { removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); host.remove(); try { opener?.focus?.({ preventScroll: true }); } catch (_) { /* gone */ } done(); };
+      const finish = () => { removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); host.remove(); try { opener?.focus?.({ preventScroll: true }); } catch (_) {   } done(); };
       if (host.hasAttribute('data-still')) { finish(); return; }
       host.classList.add('closing');
       setTimeout(finish, 200);
@@ -22851,8 +21245,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     button.addEventListener('click', close);
     $('.veil').addEventListener('click', close);
     document.addEventListener('keydown', keys, true);
-    // On an iPhone the page is laid out wider than the screen and shrunk to fit, which would shrink the card too: it
-    // is zoomed back to its own size there.
     const fit = () => {
       const view = window.visualViewport, shown = view ? view.width * view.scale : innerWidth;
       host.style.setProperty('--fit', String(Math.round(Math.min(3, Math.max(1, innerWidth / Math.max(1, shown))) * 100) / 100));
@@ -22861,34 +21253,27 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     (document.body || root).append(host);
     requestAnimationFrame(() => button.focus({ preventScroll: true, focusVisible: false }));
   }
-  // Once the setup and tour state are known: a fresh install gets the setup, and every update this card, once.
   async function maybeShowChangelog() {
     if (changelogStarted || setupSeen === null || tourSeen === null || !uiRouteAllowed() || window.top !== window.self) return;
     changelogStarted = true;
     const seen = await Promise.resolve(studioKeep.get(CHANGELOG_KEY, '')).catch(() => STUDIO_BUILD);
     if (seen === STUDIO_BUILD) return;
     if (setupSeen === false) { markChangelogSeen(); markMobileNewsSeen(); return; }
-    // An update whose news is all quiet (3.0.5) shows no card: it only counts as seen (and the polls waiting for the
-    // news go ahead).
     const seenVersion = String(seen || '').split('-')[0], parts = v => String(v).split('.').map(n => parseInt(n, 10) || 0);
     const newer = v => { const a = parts(v), b = parts(seenVersion); for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); return false; };
     const unseen = seenVersion ? STUDIO_CHANGELOG.filter(entry => newer(entry.version)) : [];
-    if (seenVersion && unseen.every(entry => entry.quiet)) { markChangelogSeen(); return; }   // a new build of the same version counts too
+    if (seenVersion && unseen.every(entry => entry.quiet)) { markChangelogSeen(); return; }
     await new Promise(ok => { const go = () => setTimeout(ok, 3500); if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true }); });
     if (document.visibilityState !== 'visible') await new Promise(ok => document.addEventListener('visibilitychange', function shown() { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', shown); ok(); } }));
     const value = await globalThis.WMEStudioSettings.read().catch(() => null);
-    // Not while Studio is off, paused from the website, or busy with the setup, the tour or Arrange (checked again
-    // after the news, which may have been open for a while).
     const blocked = async () => {
       const now = await globalThis.WMEStudioSettings.read().catch(() => null);
       return !now?.enabled || document.documentElement.getAttribute('data-wme-studio') !== 'on' || studioSetup?.isOpen?.() || studioTour?.isOpen?.()
         || document.documentElement.hasAttribute('data-wme-studio-layout-editing') || studioPanelOpen;
     };
     if (!value || await blocked()) { changelogStarted = false; return; }
-    await maybeShowMobileNews();   // the iPhone and iPad news comes first, once
+    await maybeShowMobileNews();
     if (await blocked()) { changelogStarted = false; return; }
-    // Built first, shown a moment later: building the settings dialog is heavy, and a card that starts its
-    // entrance during that work stutters.
     const ui = buildStudioUI();
     if (!ui) return;
     await new Promise(ok => (window.requestIdleCallback || setTimeout)(() => ok(), { timeout: 600 }));
@@ -22901,10 +21286,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     host.id = UI_HOST_ID;
     host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483646;contain:layout style paint;';
     const shadow = host.attachShadow({ mode: 'open' });
-    // Keep editor-wide wheel shortcuts out of the settings dialog without blocking native scrolling.
     host.addEventListener('wheel', event => event.stopPropagation(), { passive: true });
     queueMicrotask(() => globalThis.WMEStudioI18n?.localize(shadow));
-    // The URC-E row (4.0.2) goes in from here, so the Interface library stays as it is.
     shadow.innerHTML = studioPart('part26206', { USERSCRIPT_VERSION, layoutThumb, studioButtonMotionCSS, studioControlsCSS, studioIcon, studioRangeCSS, studioStripCSS })
       .replace('<span class="value" data-id="requestQuietDays-value">7</span></div>', '<span class="value" data-id="requestQuietDays-value">7</span></div>'
         + '<label class="srow togrow" data-row="urceHandoff"><span class="srow-text"><strong>Leave replies and reminders to URC-E</strong>'
@@ -22912,7 +21295,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         + '<span class="small"><span>Source: URC-E (URComments-Enhanced) by dBsooner, based on rickzabel\'s URComments.</span> <a href="https://greasyfork.org/scripts/375430" target="_blank" rel="noopener noreferrer">Greasy Fork</a></span>'
         + '<span class="small" data-id="urceHandoff-missing" hidden>URC-E isn\'t installed in this editor.</span></span>'
         + '<span class="switch"><input data-id="urceHandoff" type="checkbox"><i></i></span></label>')
-      // Verify on Discord (4.0.3): the code from #verify, under "Studio on Discord".
       .replace('<div class="srow" data-row="bugFixes" hidden>', '<div class="srow" data-row="discordVerify"><div class="srow-text"><strong>Verify on Discord</strong>'
         + '<span class="small">Press Verify in #verify on the WME Studio Discord and open the link it gives you, or type the code here. Studio sends your WME name, rank, country and manager status, and keeps your Discord roles up to date.</span>'
         + '<span class="small ws-verify-say" data-id="verify-status" data-ws-keep hidden></span></div>'
@@ -22926,8 +21308,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
 
     const q = sel => shadow.querySelector(sel);
     const qa = sel => [...shadow.querySelectorAll(sel)];
-    // "+" drawn as WME's + button (see [data-ws-plus] in the styles). The copy is rebuilt whenever the words change
-    // (another language), so it always says what the original says.
     const PLUS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg>';
     function drawPlus(original) {
       let copy = original.nextElementSibling?.classList.contains('ws-plus-rich') ? original.nextElementSibling : null;
@@ -22954,12 +21334,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     const status = q('[data-id="status"]');
     const config = globalThis.WMEStudioSettings;
     let current = { ...config.defaults };
-    let pickerKey = 'accent';   // which color the picker is changing: the accent or one of the island colors (3.0.0)
-    // Until the saved settings are read, "current" holds the defaults: the dialog built without being opened (for a
-    // "report fixed" note or the changelog) used to set the language from them, back to Automatic, for the session.
+    let pickerKey = 'accent';
     let currentRead = false;
-    // What the controls last showed: a window built before the saved settings arrived showed the defaults, and opening
-    // it then skipped drawing again because the settings read had not changed since (3.0.0).
     let renderedSettings = '';
     config.read().then(value => { if (!currentRead) { current = value; currentRead = true; } }).catch(() => {});
     let activePage = 'home';
@@ -23001,7 +21377,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     let rangeDrag = null;
     const pages = { home: 'Home', look: 'Appearance', layout: 'Layout', map: 'Map', panels: 'Panels', screens: 'Touch & iPad', studio: 'General', sync: 'Cloud Sync', bug: 'Report a bug', reports: 'My reports', developers: 'Developers', search: 'Search' };
     const pageSubtitles = { home: 'The settings you change most, and the way to everything else.', sync: 'Your Studio, the same on every computer and iPad you edit on.', layout: 'Mode, size and where the islands go.', look: 'Theme, colors, islands and text size.', map: 'Brightness, eye saver, GPS points and menus.', panels: 'Requests, size and columns.', screens: 'Finger tools for iPad, iPhone and touch screens.', studio: 'Language, backups and defaults.', bug: 'Tell me what went wrong.', developers: 'For script developers.', reports: 'Everything you sent, and where it stands.' };
-    // Earlier page names, so older callers still land on the right section.
     const pageAliases = { workspace: 'layout', presets: 'layout', appearance: 'look', addons: 'look', requests: 'panels', help: 'studio', touch: 'screens', general: 'studio' };
 
     for (const item of qa('.nav-item')) item.title = item.querySelector('span')?.textContent || '';
@@ -23024,7 +21399,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (name === 'reports') loadMyReportsIfOld();
       if (name !== 'search' && searchInput.value) { searchInput.value = ''; searchClear.hidden = true; }
     }
-    // Home (3.0.0): what Studio is set to, in one line, and the settings people change most.
     function paintHome() {
       const t = text => globalThis.WMEStudioI18n?.t?.(text) ?? text;
       const state = q('[data-id="home-state"]'), summary = q('[data-id="home-summary"]'), toggle = q('[data-id="enabled-home"]');
@@ -23037,8 +21411,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (summary.textContent !== line) { summary.setAttribute('data-ws-keep', ''); summary.textContent = line; }
       q('[data-id="home-island-note"]').textContent = current.compactMode ? 'For the floating islands.' : 'Switch to Floating to use it.';
     }
-    // Search (3.0.0): typing in the sidebar lists every setting whose name, description or section matches, from every
-    // page and in the language Studio is shown in. Enter or a click opens the setting's page and points it out.
     const searchInput = q('[data-id="settings-search"]'), searchClear = q('[data-id="settings-search-clear"]'), searchList = q('[data-id="search-results"]');
     let searchReturn = 'home', searchHits = [], searchPick = 0;
     const fold = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -23062,7 +21434,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
             if (!title) continue;
             entries.push({ title, desc, section, page: id, pageName, el: row, hay: fold([title, desc, section, pageName].join(' ')), name: fold(title) });
           }
-          // The section itself, found by its name (and, for a section of cards without rows, by the cards' words).
           if (section) entries.push({ title: section, desc: '', section: '', page: id, pageName, el: group, hay: fold([section, pageName, rows.length ? '' : group.textContent].join(' ')), name: fold(section), isSection: true, group });
         }
       }
@@ -23072,7 +21443,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const query = fold(searchInput.value), words = query.split(' ').filter(Boolean);
       const rank = entry => (entry.name.startsWith(query) ? 0 : words.every(word => entry.name.includes(word)) ? 1 : 3) + (entry.isSection ? 1 : 0);
       const found = words.length ? settingIndex().filter(entry => words.every(word => entry.hay.includes(word))) : [];
-      // A section is listed only when none of its own settings is.
       searchHits = found.filter(entry => !entry.isSection || !found.some(other => !other.isSection && entry.group.contains(other.el))).sort((a, b) => rank(a) - rank(b)).slice(0, 40);
       searchPick = 0;
       searchList.replaceChildren();
@@ -23113,7 +21483,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (activePage !== 'search') { searchReturn = activePage; selectPage('search'); }
       runSearch();
     });
-    // The window keeps the keys for itself (modalKeydown), so the field gets them from there.
     searchInput.wsValueKeydown = event => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -23125,7 +21494,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     searchClear.addEventListener('click', () => { searchInput.value = ''; searchClear.hidden = true; selectPage(searchReturn); searchInput.focus({ preventScroll: true }); });
     searchList.addEventListener('click', event => { const button = event.target.closest('.result'); if (button) openHit(Number(button.dataset.index)); });
     q('[data-id="search-commands"]').addEventListener('click', () => { close(); openStudioCommands(); });
-    // Home's tiles and links.
     q('[data-page="home"]').addEventListener('click', event => {
       const go = event.target.closest('[data-go]');
       if (go) { selectPage(go.dataset.go); if (go.dataset.reveal) reveal(go.dataset.reveal); return; }
@@ -23133,7 +21501,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (link) q(`[data-id="${link.dataset.home}"]`)?.click();
     });
     q('[data-id="enabled-home"]').addEventListener('change', event => change({ enabled: event.target.checked }, true));
-    // Settings › Screen displays › Status: what the library reports (an iPad has no console to ask).
     function renderScreenStatus() {
       const box = q('[data-id="sd-status"]');
       if (!box) return;
@@ -23142,8 +21509,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const info = api.status(), yes = value => (value ? 'yes' : 'no');
       box.textContent = [`Library build: ${info.build}`, `Switched on: ${yes(info.on)}`, `Finger control: ${info.fingers ? 'Studio' : info.wmeMobile ? 'left to WME Mobile' : 'off'}`, `Map found: ${yes(info.map)}`, `Connected to the editor: ${info.editor || 'not yet'}`, `Pressed: ${['multi', 'road', 'shape', 'draw'].filter(kind => info[kind]).join(', ') || 'none'}`, `Selected: ${info.selected?.type || 'nothing'} ${info.selected?.ids?.length ? `[${info.selected.ids.join(', ')}]` : ''}`, '', ...(info.log.length ? info.log.slice(-25) : ['(nothing happened yet)'])].join('\n');
     }
-    // Section chips: one per section of the page, under its title. A click scrolls to the section; the chip of
-    // the section at the top of the view is marked as the page scrolls.
     const chips = q('[data-id="chips"]'), body = q('.body');
     let chipTargets = [], chipFrame = 0, chipLock = -1, chipLockTimer = 0;
     function renderChips(name) {
@@ -23165,8 +21530,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
       markChip(0); chipEdges();
     }
-    // More chips than fit (the Developers page, say): the strip fades out at the side that has more, and the chip of
-    // the section in view is scrolled into the strip.
     function chipEdges() {
       const more = [chips.scrollLeft > 1 ? 'start' : '', chips.scrollLeft + chips.clientWidth < chips.scrollWidth - 1 ? 'end' : ''].filter(Boolean).join(' ');
       if (more) chips.dataset.more = more; else delete chips.dataset.more;
@@ -23185,7 +21548,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (chipFrame || chips.hidden) return;
       chipFrame = requestAnimationFrame(() => {
         chipFrame = 0;
-        if (chipLock >= 0) { markChip(chipLock); return; }   // a chip was clicked: it stays lit while the page scrolls to it
+        if (chipLock >= 0) { markChip(chipLock); return; }
         const edge = body.getBoundingClientRect().top + 40;
         let index = 0;
         chipTargets.forEach((entry, position) => { if (entry.group.getBoundingClientRect().top <= edge) index = position; });
@@ -23336,7 +21699,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (event.composedPath().includes(colorPlane) && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) { adjustPickerPlane(event); return; }
       if (event.key === 'Enter' && event.composedPath().includes(q('[data-id="picker-hex"]'))) { event.preventDefault(); readPickerHex(); return; }
       const valueField = event.composedPath().find(node => node?.wsValueKeydown);
-      if (valueField) { valueField.wsValueKeydown(event); return; }   // a slider value being typed (keys stop here, so the field gets them this way)
+      if (valueField) { valueField.wsValueKeydown(event); return; }
       if (event.key === 'Escape') {
         event.preventDefault();
         if (q('[data-id="color-picker"]').matches(':popover-open')) closeColorPicker();
@@ -23346,7 +21709,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         else close();
         return;
       }
-      if (!q('[data-id="bug-backdrop"]').hidden) { bug.category.keydown(event); return; }   // the dialog's own fields take the keys
+      if (!q('[data-id="bug-backdrop"]').hidden) { bug.category.keydown(event); return; }
       const tab = event.composedPath().find(node => node?.dataset?.pageTarget);
       if (tab && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End'].includes(event.key)) {
         event.preventDefault();
@@ -23369,7 +21732,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
     }
 
-    // Each language with its flag (4.0.0), once the flags are here.
     function languageFlag(node, code) {
       node.querySelector(':scope > .flag')?.remove();
       const flag = studioFlags.img(studioFlags.forLanguage(code), 'flag'); if (flag) node.prepend(flag);
@@ -23443,8 +21805,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         const min = Number(input.min) || 0, max = Number(input.max) || 100, value = Number(input.value) || 0;
         input.style.setProperty('--range-fill', `${Math.max(0, Math.min(100, (value - min) * 100 / Math.max(1, max - min)))}%`);
       });
-      // Island colors of your own (in Floating mode) stand in for the theme (3.0.0): no theme shows as chosen then, and
-      // picking one goes back to the theme's colors.
       const ownColors = current.compactMode && current.islandFill !== 'theme';
       qa('[data-setting]').forEach(button => button.setAttribute('aria-pressed', String(String(current[button.dataset.setting]) === button.dataset.value && !(ownColors && button.dataset.setting === 'theme'))));
       qa('[data-island-gradient]').forEach(button => button.setAttribute('aria-pressed', String(current.islandFill === 'gradient' && button.dataset.islandGradient === `${current.islandColor},${current.islandColor2}`)));
@@ -23453,7 +21813,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       note.textContent = ownColors ? `${current.islandFill === 'gradient' ? 'Your gradient' : 'Your color'} is in use. Pick a theme to go back.` : status.hidden ? '' : status.textContent; note.hidden = !note.textContent;
       paintChanged();
     }
-    // A row whose setting differs from the default shows a dot and a Reset link.
     const SETTING_ROW_SKIP = new Set(['enabled', 'commandShortcut', 'language']);
     function rowSettingKeys(row) {
       const keys = new Set();
@@ -23465,14 +21824,12 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       return [...keys];
     }
     function paintChanged() {
-      // Touch & iPad tools are on or off as each person needs them: there is no "default" to go back to there.
       for (const row of qa('.srow:not([data-page="screens"] .srow)')) {
         const keys = rowSettingKeys(row);
         const changed = keys.some(key => JSON.stringify(current[key]) !== JSON.stringify(config.defaults[key]));
         row.toggleAttribute('data-changed', changed);
         let reset = row.querySelector(':scope > .srow-text .row-reset');
         if (changed && !reset && keys.length) {
-          // Beside the setting's name, so a changed row keeps its height (3.0.0).
           const text = row.querySelector(':scope > .srow-text > strong:not([data-ws-plus])') || row.querySelector(':scope > .srow-text');
           if (!text) continue;
           reset = document.createElement('button'); reset.type = 'button'; reset.className = 'row-reset'; reset.textContent = 'Reset to default';
@@ -23485,9 +21842,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         if (reset) reset.hidden = !changed;
       }
     }
-    // Scheduling an eye saver set to Off gives it a strength to use.
     function settingPatch(key, value) {
-      // Buttons carry text: a number or a yes/no setting gets its own type back (Home's text size and workspace).
       const kind = typeof config.defaults[key];
       if (kind === 'number') value = Number(value); else if (kind === 'boolean') value = value === 'true';
       const patch = { [key]: value };
@@ -23523,7 +21878,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     const colorPicker = q('[data-id="color-picker"]'), colorPlane = q('[data-id="picker-plane"]');
     let pickerHSV = {h:204,s:1,v:1}, pickerHex = '', pickerDrag = null, pickerTimer = 0;
-    // The picker serves the accent and the two island colors (3.0.0): which one it is changing, from which button.
     const PICKER_TARGETS = { accent: { opener: 'accent-picker-open', title: 'Custom accent', reset: '#0099ff', resetLabel: 'Waze blue' }, islandColor: { opener: 'island-color-open', title: 'Island color', reset: '#1e3a5f', resetLabel: 'Default' }, islandColor2: { opener: 'island-color2-open', title: 'Second island color', reset: '#6d28d9', resetLabel: 'Default' } };
     const pickerOpener = () => q(`[data-id="${PICKER_TARGETS[pickerKey].opener}"]`);
     function colorRGB(hex) { return [1,3,5].map(index => parseInt(hex.slice(index,index + 2),16)); }
@@ -23670,10 +22024,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
     }
     function rangePatch(key, value) {
-      // HUD size carries Panel size with it, so one slider makes the whole floating workspace smaller. Panel size keeps its own slider for a different value.
       return key === 'compactHeaderWidth' ? { compactHeaderWidth:value, compactHeaderFullWidth:value > 0 } : key === 'hudScale' ? { hudScale:value, panelScale:value } : { [key]:value };
     }
-    // The value beside a slider can be typed: click it, type a number, Enter. Esc puts the old value back.
     for (const output of qa('.value[data-id$="-value"]')) {
       const key = output.dataset.id.replace(/-value$/, ''), input = q(`[data-id="${key}"]`);
       if (!input || input.type !== 'range') continue;
@@ -23711,13 +22063,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       input.style.setProperty('--range-fill',`${(value - Number(input.min)) * 100 / (Number(input.max) - Number(input.min))}%`);
       if (!(quickRangeKeys.has(key) && globalThis.WMEStudioPreview?.quick(key,value))) writeRange(key,value);
       clearTimeout(sliderTimers.get(key));
-      // Sliders shown live (above) are saved once they have rested a little longer: saving restyles the whole editor, and
-      // a short pause mid-drag made it stutter. Letting go saves at once (the change event).
       sliderTimers.set(key,setTimeout(()=>{sliderTimers.delete(key);change(rangePatch(key,current[key]));},quickRangeKeys.has(key) && !['hudScale','compactHeaderWidth'].includes(key) ? 450 : 100));
     }
-    // A moving slider used to reach the editor only once it had rested for 100 ms. Its value is now written
-    // straight away, at most once per frame and never while the previous write is still on its way; the 100 ms
-    // timer above only finishes the job (status line, full re-render) once the slider rests.
     const quickRangeKeys = new Set(['hudScale','compactHeaderWidth','compactIslandOpacity','islandIntensity','eyeSaver','viewportBrightness','satelliteBrightness']);
     const sliderWrites = new Map();
     function writeRange(key,value) {
@@ -23729,18 +22076,13 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const send = () => {
         state.dirty = false;const started = performance.now();
         return Promise.resolve(config.write(rangePatch(key,state.value))).catch(error => reportStudioError('writeRange',error))
-          // (4.0.0) The frame that shows the new value is timed too: most of the work (restyling the editor) happens
-          // there, after the write itself has finished, so it was never counted and every step went out at once.
           .then(() => new Promise(resolve => { const timer = setTimeout(() => resolve(0),160); requestAnimationFrame(first => requestAnimationFrame(next => { clearTimeout(timer); resolve(next - first); })); }))
-          // Scaling the interface re-lays-out the whole editor. When one update takes longer than two frames, the
-          // slider gets the same time to itself before the next one, so its handle keeps following the pointer.
           .then(frame => { const cost = Math.max(performance.now() - started, frame || 0); if (cost > 32) return new Promise(resolve => setTimeout(resolve,Math.min(120,cost))); })
           .then(() => { if (state.dirty) return send(); state.busy = false; });
       };
       send();
     }
     const liveRangeKeys = () => { const keys = new Set(); for (const [key,state] of sliderWrites) if (state.busy || sliderTimers.has(key)) for (const name of Object.keys(rangePatch(key,state.value))) keys.add(name); return keys; };
-    // Sliders whose effect shows in the editor behind the window; dragging one hides everything but its own row.
     const peekKeys = new Set(['compactHeaderWidth','compactIslandOpacity','islandIntensity','eyeSaver','satelliteBrightness','viewportBrightness','gpsOpacity','hudScale','panelScale','fontScale']);
     function setPeek(input) {
       qa('[data-peek-row]').forEach(node=>node.removeAttribute('data-peek-row'));
@@ -23790,7 +22132,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       document.addEventListener('keydown', modalKeydown, true);
       setLauncherActive(true);
       panel.focus({ preventScroll: true });
-      if (currentRead) render();   // at once, with the values already known; again below once the stored ones are read
+      if (currentRead) render();
       config.read().then(v => { const same = currentRead && JSON.stringify(v) === renderedSettings; current = v; currentRead = true; if (!same) render(); savedStatus(); }).catch((studioError) => { reportStudioError("open",studioError); return setStatus('Could not load preferences.', 'error'); });
       refreshProfiles();
     }
@@ -23822,14 +22164,13 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       catch (_) {
         const range = document.createRange(); range.selectNodeContents(button.parentElement.querySelector('pre'));
         const selection = shadow.getSelection ? shadow.getSelection() : getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
-        try { document.execCommand('copy'); } catch (__) { /* the code stays selected for a manual copy */ }
+        try { document.execCommand('copy'); } catch (__) {   }
       }
       button.textContent = 'Copied'; setTimeout(() => { button.textContent = 'Copy'; }, 1400);
     });
     qa('[data-preset]').forEach(button=>button.addEventListener('click',()=>usePreset(button.dataset.preset)));
     q('[data-id="preset-undo"]').addEventListener('click',undoPreset);
     arrangeViewport.addEventListener('change',()=>{if(studioPanelOpen)render();});
-    // An island color picked from the quick colors brings a matching accent with it (3.0.0), as an idea of what goes together.
     qa('[data-setting]').forEach(button => button.addEventListener('click', () => change({ ...settingPatch(button.dataset.setting, button.dataset.value), ...(button.dataset.accent ? { accent: button.dataset.accent } : {}) }, true)));
     qa('[data-island-gradient]').forEach(button => button.addEventListener('click', () => { const [islandColor, islandColor2] = button.dataset.islandGradient.split(','); change({ islandFill: 'gradient', islandColor, islandColor2, ...(button.dataset.accent ? { accent: button.dataset.accent } : {}) }, true); }));
     for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
@@ -23853,7 +22194,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         close();requestAnimationFrame(()=>requestAnimationFrame(()=>globalThis.WMEStudioCompactLayout.open()));
       } catch (studioError) { reportStudioError("buildStudioUI",studioError);setStatus('Could not save preferences.','error');}
     }));
-    // What's new: this version's changes (the tour still opens by itself after a feature release).
     const showWhatsNew = event => { event.preventDefault(); close(); requestAnimationFrame(() => showChangelog('new')); };
     q('[data-id="tour"]').addEventListener('click', showWhatsNew);
     q('[data-id="whats-new"]').addEventListener('click', showWhatsNew);
@@ -23862,15 +22202,12 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       change({ ...config.defaults });
     });
     q('[data-id="resetPanelSizes"]').addEventListener('click', () => globalThis.WMEStudioPanelSizes?.reset());
-    // Screen displays › All tools (2.3.0): everything on, or everything off, at once.
     const screenTools = on => ({ screenDisplays: on, screenRoadButton: on, screenShapeButton: on, screenDrawButton: on, screenLongPress: on });
     q('[data-id="sd-userjs"]').href = STUDIO_SITE_FILE_URL;
     q('[data-id="sd-userjs"]').addEventListener('click', downloadStudioUserFile);
     for (const type of ['pointerenter', 'touchstart', 'focus']) q('[data-id="sd-userjs"]').addEventListener(type, prefetchStudioUserFile, { once: true, passive: true });
     q('[data-id="sd-all-on"]').addEventListener('click', () => change(screenTools(true), true));
     q('[data-id="sd-all-off"]').addEventListener('click', () => change(screenTools(false), true));
-    // Report a bug: a plain-text summary of this setup for the feedback page. It holds no account details, no
-    // edits and no addresses of custom links; it is only copied, and only when asked.
     function bugReport() {
       const html = document.documentElement, settingsNow = { ...current };
       const islands = globalThis.WMEStudioIslands?.snapshot?.() || {};
@@ -23919,7 +22256,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       return done;
     }
     q('[data-id="bug-copy"]').addEventListener('click', () => { copyBugReport(); });
-    // Studio on Discord (4.0.0): shown only once /api/status has given an invite.
     const showDiscord = () => {
       const invite = globalThis.WMEStudioDiscord?.invite || '';
       for (const el of [q('[data-row="discord"]'), q('[data-id="home-discord"]')]) if (el) el.hidden = !invite;
@@ -23929,8 +22265,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     q('[data-id="home-discord"]')?.addEventListener('click', openDiscord);
     document.addEventListener('wme-studio-discord', showDiscord);
     showDiscord();
-    // Verify on Discord (4.0.3): the code from #verify goes to my Worker with who you are in the editor (your WME name,
-    // rank and user id, from the signed-in editor itself), and the Discord bot gives you the roles.
     {
       const field = q('[data-id="verify-code"]'), send = q('[data-id="verify-send"]'), status = q('[data-id="verify-status"]');
       const vt = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? text; } catch (_) { return text; } };
@@ -23947,7 +22281,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           const user = (typeof unsafeWindow === 'undefined' ? window : unsafeWindow).W?.loginManager?.user, a = user?.attributes || {};
           const id = Number(a.id ?? user?.getID?.()), name = String(a.userName ?? user?.getUsername?.() ?? '').trim(), rank = Number(a.rank ?? user?.getRank?.());
           if (!Number.isSafeInteger(id) || id <= 0 || !name || !Number.isFinite(rank)) return null;
-          return { id, name, rank: rank + 1, editor: a.isEditor !== false && !a.mapEditingBanned };   // WME counts ranks from 0
+          return { id, name, rank: rank + 1, editor: a.isEditor !== false && !a.mapEditingBanned };
         } catch (_) { return null; }
       };
       let sending = false;
@@ -23961,7 +22295,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         sending = true; send.disabled = true; tell(vt('Checking…'));
         const done = (status, text) => {
           sending = false; send.disabled = false;
-          let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+          let data = null; try { data = JSON.parse(text); } catch (_) {   }
           if (status >= 200 && status < 300 && data?.ok) { field.value = ''; tell(vt('Done! You’re verified on Discord as {0} (L{1}). The roles come in a few seconds.', data.wme_name || who.name, Math.min(6, who.rank)), 'ok'); return; }
           if (data?.code === 'taken') { tell(vt('{0} is already linked to another Discord account. Ask a moderator if that isn’t you.', who.name), 'error'); return; }
           tell(PROBLEMS[data?.code] ? vt(PROBLEMS[data.code]) : vt(status ? 'The server answered' : 'Could not reach the server') + (status ? ` ${status}` : ''), 'error');
@@ -23972,9 +22306,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       field?.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); verify(); } });
       field?.addEventListener('input', () => { if (status.dataset.tone === 'error') tell(''); });
     }
-    // ---- Report a bug: the dialog ------------------------------------------------------------------------------
-    // The Title field (4.1.0) comes with the Interface library. With an older copy of it (the userscript manager updates
-    // libraries on its own time), Studio adds the field itself, so the dialog still opens.
     function bugTitleField() {
       const what = q('[data-id="bug-what"]')?.closest('label'); if (!what) return document.createElement('input');
       const label = document.createElement('label'); label.className = 'bug-field';
@@ -23991,17 +22322,12 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       thumbs: q('[data-id="bug-thumbs"]'), shots: [], pending: 0, clip: null, clipUrl: '',
       screenshot: null, sending: false, opener: null
     };
-    // The editor account's user name: the author can then tell the person, inside the editor, when a report is fixed.
-    // "Where": Studio's own dropdown, drawn like the Language one (a native <select> list cannot be themed).
     bug.category = (() => {
       const button = q('[data-id="bug-category"]'), menu = q('[data-id="bug-category-menu"]'), label = q('[data-id="bug-category-value"]');
       const options = () => [...menu.querySelectorAll('.bug-option')];
-      // Nothing is chosen at first: a report filed under a default nobody picked said nothing about where it was.
       let value = '';
       const setOpen = open => {
         if (open) {
-          // Drawn over the dialog (fixed), so its scrolling body never cuts the list off: below the button when
-          // there is room, above it when there is more room there, and scrolling when neither fits it all.
           menu.hidden = false;
           const box = button.getBoundingClientRect(), want = Math.min(menu.scrollHeight, 248);
           const below = innerHeight - box.bottom - 18, above = box.top - 18;
@@ -24022,7 +22348,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       };
       button.addEventListener('click', () => setOpen(menu.hidden));
       menu.addEventListener('click', event => { const option = event.target.closest('.bug-option'); if (!option) return; choose(option.dataset.value); setOpen(false); button.focus({ preventScroll: true }); });
-      // Keys reach it through the settings panel's own key handler (which keeps them from the editor).
       const keydown = event => {
         const path = event.composedPath();
         if (path.includes(button) && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) { event.preventDefault(); setOpen(true); return true; }
@@ -24040,12 +22365,10 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       return { get value() { return value; }, set value(next) { choose(next); }, get open() { return !menu.hidden; }, close() { setOpen(false); button.focus({ preventScroll: true }); }, focus() { button.focus({ preventScroll: true }); }, keydown };
     })();
     const endpointReady = /^https:\/\/[^/\s]+/.test(BUG_REPORT_ENDPOINT);
-    // The settings panel is localized from its DOM (see WMEStudioI18n.localize), so text is set in English here.
     const translate = text => text;
     const CATEGORY_LABELS = { layout: 'Floating mode and islands', arrange: 'Arrange', theme: 'Theme and colors', panels: 'Panels and windows', menu: 'Right-click menu', addons: 'Another script', speed: 'Speed', mobile: 'Mobile', feature: 'Feature request', other: 'Something else' };
     function bugText() {
       const what = bug.what.value.trim(), steps = bug.steps.value.trim(), name = bug.name.value.replace(/\s+/g, ' ').trim();
-      // A title of its own (4.1.0): what the report is called in My reports and on the reports site.
       const title = `**Title:** ${name || '(not filled in)'}\n`;
       if (bug.mode === 'feature') return bugReport()
         .replace('### WME Studio bug report', '### WME Studio feature request')
@@ -24061,7 +22384,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     function refreshBugDiag() { bug.diag.textContent = bugReport().split('\n---\n')[1] || ''; }
     function showBugError(text) { bug.error.textContent = text || ''; bug.error.hidden = !text; }
-    // The same dialog takes a bug or an idea (3.0.0): an idea has no "where", and its words change with it.
     const BUG_WORDS = {
       bug: { title: 'Report a bug', nameHint: 'For example: The + menu opens under the header', what: 'What happened?', whatHint: 'For example: after I moved the zoom buttons to the left, the + menu opens under the header.', steps: 'Steps to see it again', stepsHint: '1. Open Arrange  2. …', send: 'Send report' },
       feature: { title: 'Suggest a feature', nameHint: 'For example: A button that hides every island', what: 'What would you like?', whatHint: 'For example: a button that hides every island at once.', steps: 'How would it help?', stepsHint: 'For example: I review requests on a small laptop screen.', send: 'Send idea' }
@@ -24095,9 +22417,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       bug.name.value = ''; bug.what.value = ''; bug.steps.value = ''; bug.contact.value = ''; bug.category.value = '';
       clearScreenshot();
     }
-    // Attachments (2.0.5): up to BUG_IMAGES_MAX images and one MP4 video. Images are shrunk in the browser (at most
-    // 1600px, about 300 KB each) and go with the report; the video is uploaded on its own afterwards, so a slow upload
-    // never holds the report back.
     const BUG_IMAGES_MAX = 4, BUG_VIDEO_MAX = 25 * 1024 * 1024;
     const isBugVideo = file => Boolean(file) && (file.type === 'video/mp4' || (!file.type && /\.mp4$/i.test(file.name || '')));
     function renderAttachments() {
@@ -24116,7 +22435,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (bug.clip) {
         const figure = document.createElement('figure'); figure.className = 'bug-thumb video';
         const video = document.createElement('video'); video.muted = true; video.playsInline = true; video.preload = 'metadata';
-        video.onerror = () => video.remove();   // no preview (a page policy may block it); the file still goes
+        video.onerror = () => video.remove();
         if (bug.clipUrl) video.src = bug.clipUrl;
         const tag = document.createElement('span'); tag.className = 'bug-thumb-tag'; tag.textContent = `MP4 · ${(bug.clip.size / 1048576).toFixed(1)} MB`;
         figure.append(video, tag, remove(translate('Remove'), () => { clearVideo(); renderAttachments(); }));
@@ -24134,14 +22453,14 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       bug.clip = null;
       if (bug.clipUrl) { URL.revokeObjectURL(bug.clipUrl); bug.clipUrl = ''; }
     }
-    function clearScreenshot() {   // every attachment
+    function clearScreenshot() {
       bug.shots = []; bug.file.value = '';
       clearVideo();
       renderAttachments();
     }
     function loadVideo(file) {
       if (file.size > BUG_VIDEO_MAX) { showBugError(translate('Videos must be MP4 files of up to 25 MB.')); return; }
-      clearVideo();   // one video: a new one takes the place of the old
+      clearVideo();
       bug.clip = file;
       try { bug.clipUrl = URL.createObjectURL(file); } catch (_) { bug.clipUrl = ''; }
       renderAttachments();
@@ -24163,7 +22482,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         image.src = url;
       });
     }
-    // Files picked, pasted or dropped, several at once: images up to the limit, and a video.
     async function loadScreenshot(files) {
       const list = (files?.length !== undefined ? [...files] : [files]).filter(Boolean);
       let refused = false;
@@ -24182,17 +22500,15 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (refused) showBugError(translate('Up to 4 images can be attached.'));
       bug.file.value = '';
     }
-    // Every request carries this installation's private reporter key (2.2.1): only it reads the reports back.
     async function bugApi(method, path, payload) {
       const key = await studioReporterKey();
       return new Promise((resolve, reject) => {
         const body = payload ? JSON.stringify(payload) : undefined, url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`;
         const headers = { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(key ? { 'X-Reporter-Token': key } : {}) };
-        // Whatever the script manager does, the dialog never stays on "Sending…" for good.
         const guard = setTimeout(() => reject(new Error(translate('The server took too long'))), 25000);
         const finish = (status, text) => {
           clearTimeout(guard);
-          let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+          let data = null; try { data = JSON.parse(text); } catch (_) {   }
           if (status >= 200 && status < 300 && data?.ok) resolve(data);
           else reject(new Error(data?.error || (status ? `${translate('The server answered')} ${status}` : translate('No answer from the server'))));
         };
@@ -24206,20 +22522,19 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         }
       });
     }
-    // The video goes as raw MP4 bytes to the report it belongs to: POST /api/report/<id>/video.
     function bugUploadVideo(id, file, path = `/api/report/${encodeURIComponent(id)}/video`, key = '') {
       return new Promise((resolve, reject) => {
         const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`;
-        const limit = Math.max(60000, Math.min(600000, 30000 + file.size / 50));   // about 50 KB/s at worst, 1 to 10 minutes
+        const limit = Math.max(60000, Math.min(600000, 30000 + file.size / 50));
         const guard = setTimeout(() => reject(new Error(translate('The server took too long'))), limit + 5000);
         const finish = (status, text) => {
           clearTimeout(guard);
-          let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+          let data = null; try { data = JSON.parse(text); } catch (_) {   }
           if (status >= 200 && status < 300 && data?.ok) resolve(data);
           else reject(new Error(data?.error || (status ? `${translate('The server answered')} ${status}` : translate('No answer from the server'))));
         };
         const headers = { 'Content-Type': 'video/mp4', 'X-File-Name': encodeURIComponent(file.name || 'video.mp4') };
-        if (key) headers['X-Reporter-Token'] = key;   // a message's video (4.1.0) goes with the reporter key
+        if (key) headers['X-Reporter-Token'] = key;
         if (typeof GM_xmlhttpRequest === 'function') {
           GM_xmlhttpRequest({ method: 'POST', url, data: file, headers, timeout: limit, anonymous: true,
             onload: response => finish(response.status, response.responseText || ''),
@@ -24276,20 +22591,18 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         area.remove(); return done;
       }
     }
-    // ---- Fixed reports: a note inside the editor when the author marks a report of this person as fixed --------
     const BUG_FIXES_KEY = 'wmeStudio.bugFixes.v1', BUG_CHECK_EVERY = 6 * 3600 * 1000;
     const fix = { box: q('[data-id="fix-notice"]'), list: q('[data-id="fix-list"]'), update: q('[data-id="fix-update"]'), ok: q('[data-id="fix-ok"]'), title: q('[data-id="fix-title"]'), icon: q('[data-id="fix-icon"]'), items: [], working: [], user: '' };
     const fixesRow = q('[data-row="bugFixes"]'), fixesText = q('[data-id="bug-fixes-text"]');
     fixesRow.hidden = !endpointReady;
     const versionParts = text => String(text || '').split(/[.-]/).map(part => parseInt(part, 10) || 0);
-    function versionNewer(a, b) {   // a > b, numerically by part
+    function versionNewer(a, b) {
       const x = versionParts(a), y = versionParts(b);
       for (let i = 0; i < Math.max(x.length, y.length); i += 1) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); }
       return false;
     }
     async function readFixState() {
       const saved = await Promise.resolve(studioKeep.get(BUG_FIXES_KEY, null)).catch(() => null);
-      // seenWorking holds "id@time" keys: a report put under construction again later is news again.
       return saved && typeof saved === 'object' ? { checked: saved.checked || 0, seen: Array.isArray(saved.seen) ? saved.seen.slice(-200) : [], seenWorking: Array.isArray(saved.seenWorking) ? saved.seenWorking.slice(-200) : [], seenMessages: Array.isArray(saved.seenMessages) ? saved.seenMessages.slice(-300) : [], seenRejected: Array.isArray(saved.seenRejected) ? saved.seenRejected.slice(-200) : [] } : { checked: 0, seen: [], seenWorking: [], seenMessages: [], seenRejected: [] };
     }
     function setBugBadge(count) {
@@ -24298,14 +22611,11 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     const workingKey = item => `${item.id}@${item.working_at || ''}`;
     const FIX_ICONS = { fixed: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', working: '<path d="M10 3h4l5 16H5z"/><path d="M8 11h8M6.8 15h10.4M3 21h18"/>', message: '<path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>', rejected: '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>' };
-    // One card for both kinds of news (2.0.4): reports that were fixed, and reports the author has started on
-    // ("under construction").
     function showFixNotice(items, user, working = [], messages = [], rejected = []) {
       fix.items = items; fix.working = working; fix.messages = messages; fix.rejected = rejected; fix.user = user;
       setBugBadge(items.length + working.length + messages.length + rejected.length);
       const kinds = [items.length, working.length, messages.length, rejected.length].filter(Boolean).length;
       const ideas = [...items, ...working, ...rejected].length > 0 && [...items, ...working, ...rejected].every(item => item.category === 'feature') && !messages.length;
-      // A fix still on its way (3.0.4): the version that will bring it is named, and nothing says it is fixed yet.
       const upcoming = items.length > 0 && items.every(item => item.upcoming);
       if (ideas) fix.title.textContent = translate(kinds > 1 ? 'News about your ideas'
         : items.length ? (upcoming ? (items.length > 1 ? 'Your ideas are coming in an update' : 'Your idea is coming in an update') : items.length > 1 ? 'Your ideas are in Studio now' : 'Your idea is in Studio now')
@@ -24318,7 +22628,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         : 'I sent you a message');
       fix.icon.querySelector('svg').innerHTML = items.length ? FIX_ICONS.fixed : working.length ? FIX_ICONS.working : rejected.length ? FIX_ICONS.rejected : FIX_ICONS.message;
       fix.list.textContent = '';
-      // Reports the author will not fix (2.2.1): not a bug, or another script's, with the reason.
       for (const item of rejected) {
         const row = document.createElement('div'); row.className = 'fix-item';
         const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.id).slice(0, 120);
@@ -24327,7 +22636,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         if (item.note) { const note = document.createElement('span'); note.className = 'fix-note'; note.setAttribute('data-ws-keep', ''); note.textContent = item.note.slice(0, 300); row.append(note); }
         fix.list.append(row);
       }
-      // The author's messages (2.2.1), each with a button to answer in My reports.
       for (const item of messages) {
         const row = document.createElement('div'); row.className = 'fix-item';
         const quote = document.createElement('q'); quote.textContent = (item.summary || translate('Report') + ' #' + item.report_id).slice(0, 120);
@@ -24367,8 +22675,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       state.seenWorking = [...new Set([...state.seenWorking, ...fix.working.map(workingKey)])].slice(-200);
       state.seenMessages = [...new Set([...state.seenMessages, ...messages])].slice(-300);
       state.seenRejected = [...new Set([...state.seenRejected, ...(fix.rejected || []).map(item => `${item.id}@${item.rejected_at || ''}`)])].slice(-200);
-      try { await Promise.resolve(studioKeep.set(BUG_FIXES_KEY, state)); } catch (_) { /* the server keeps the mark too */ }
-      bugApi('POST', '/api/updates/ack', { user: fix.user, ids, working, messages, rejected }).catch(() => { /* told next time */ });
+      try { await Promise.resolve(studioKeep.set(BUG_FIXES_KEY, state)); } catch (_) {   }
+      bugApi('POST', '/api/updates/ack', { user: fix.user, ids, working, messages, rejected }).catch(() => {   });
       fix.items = []; fix.working = []; fix.messages = []; fix.rejected = [];
     }
     async function checkBugFixes(manual = false, force = false) {
@@ -24382,7 +22690,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       try { data = await bugApi('GET', `/api/updates?user=${encodeURIComponent(user)}&v=${encodeURIComponent(USERSCRIPT_VERSION)}`); }
       catch (error) { if (manual) setStatus(`${translate('Could not check')}: ${error.message}`, 'error'); return; }
       state.checked = Date.now();
-      try { await Promise.resolve(studioKeep.set(BUG_FIXES_KEY, state)); } catch (_) { /* checked again next time */ }
+      try { await Promise.resolve(studioKeep.set(BUG_FIXES_KEY, state)); } catch (_) {   }
       const fixed = Array.isArray(data?.fixed) ? data.fixed.filter(item => item && Number.isInteger(item.id)) : [];
       const fresh = fixed.filter(item => !state.seen.includes(item.id));
       const working = Array.isArray(data?.working) ? data.working.filter(item => item && Number.isInteger(item.id)) : [];
@@ -24401,13 +22709,9 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     fix.update.addEventListener('click', () => { window.open('https://greasyfork.org/scripts/599569', '_blank', 'noopener'); dismissFixNotice(); });
     q('[data-id="bug-check"]').addEventListener('click', () => { checkBugFixes(true); });
     studioUIFixes = { check: checkBugFixes };
-    // Newer versions (3.1.0). Greasy Fork has a release the moment it's posted, but a script manager looks for it only
-    // about once a day. Studio reads the version on Greasy Fork itself every few hours and, when a newer one is out,
-    // offers it: "Update now" opens the script file, and the script manager shows its update page.
     const UPDATE_KEY = 'wmeStudio.updateCheck.v1', UPDATE_META_URL = 'https://update.greasyfork.org/scripts/599569/WME%20Studio.meta.js';
     const UPDATE_EVERY = 3 * 3600e3, UPDATE_LATER = 24 * 3600e3;
     const upd = { box: q('[data-id="update-notice"]'), title: q('[data-id="update-title"]'), text: q('[data-id="update-text"]'), later: q('[data-id="update-later"]'), now: q('[data-id="update-now"]'), latest: '', push: '' };
-    // "3.1.2" > "3.1.0", and "4.0.0" > "4.0.0-beta.3".
     function compareVersions(a, b) {
       const parse = value => { const [main, pre = ''] = String(value || '').trim().split('-', 2); return { parts: main.split('.').map(part => parseInt(part, 10) || 0), pre }; };
       const x = parse(a), y = parse(b);
@@ -24417,7 +22721,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       return x.pre.localeCompare(y.pre, undefined, { numeric: true }) > 0 ? 1 : -1;
     }
     const readUpdateState = async () => { try { const value = await Promise.resolve(studioKeep.get(UPDATE_KEY, null)); return value && typeof value === 'object' ? value : {}; } catch (_) { return {}; } };
-    const writeUpdateState = state => { try { Promise.resolve(studioKeep.set(UPDATE_KEY, state)).catch(() => { /* asked again next time */ }); } catch (_) { /* asked again next time */ } };
+    const writeUpdateState = state => { try { Promise.resolve(studioKeep.set(UPDATE_KEY, state)).catch(() => {   }); } catch (_) {   } };
     function latestVersion() {
       return new Promise(resolve => {
         if (typeof GM_xmlhttpRequest !== 'function') { resolve(''); return; }
@@ -24429,15 +22733,12 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       });
     }
     function showUpdateNotice(version, message = '', push = '') {
-      // Never on top of another note: the changelog or a bug report answer goes first, and this one waits.
       if (!fix.box.hidden || !q('[data-id="log-notice"]').hidden || !q('[data-id="log-backdrop"]')?.hidden) { setTimeout(() => showUpdateNotice(version, message, push), 60000); return; }
       upd.latest = version; upd.push = push;
       upd.title.textContent = translate('WME Studio {0} is out').replace('{0}', version);
       upd.text.textContent = message || translate('You have {0}. The update brings the latest fixes and features.').replace('{0}', USERSCRIPT_VERSION);
       upd.box.hidden = false;
     }
-    // Sent from the reports site ("Push update"): shown at once, with the author's words, to everyone on an
-    // older version. "Not now" puts it off for a day; pushing it again from the site shows it again.
     async function pushUpdate(update, stamp) {
       if (!update?.on || !update.version || compareVersions(update.version, USERSCRIPT_VERSION) <= 0) return;
       if (document.documentElement.getAttribute('data-wme-studio') !== 'on' || !upd.box.hidden) return;
@@ -24472,8 +22773,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     });
     setTimeout(() => { checkForUpdate().catch(error => reportStudioError('update check', error)); }, 20000);
     setInterval(() => { if (!document.hidden) checkForUpdate().catch(error => reportStudioError('update check', error)); }, 30 * 60e3);
-    // "My reports" (2.0.4): every report this editor account sent, with where it stands, from GET /api/mine.
-    // My reports (3.0.0): a page of its own, Settings › My reports, with every report and idea, open and closed.
     const mine = { backdrop: q('[data-id="mine-backdrop"]'), body: q('[data-id="reports-body"]'), sub: q('[data-id="reports-sub"]'), opener: null, loading: false, focus: null, reports: null, user: '', loadedAt: 0, filter: 'all', kind: 'all' };
     q('[data-row="bugMine"]').hidden = !endpointReady;
     const mineDate = iso => { const date = new Date(iso); if (Number.isNaN(date.getTime())) return ''; try { return date.toLocaleDateString(document.documentElement.lang || undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch (_) { return date.toISOString().slice(0, 10); } };
@@ -24481,7 +22780,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     function mineState(report) {
       const idea = report.category === 'feature';
       if (report.status === 'fixed') return translate(report.fixed_upcoming ? (idea ? 'Coming in {0}' : 'Will be fixed in {0}') : idea ? 'Added in {0}' : 'Fixed in {0}').replace('{0}', report.fixed_version || '?');
-      // Removed from my list (3.0.0): still shown here, so nothing a person sent disappears; one that had been fixed says so.
       if (report.status === 'deleted') return report.fixed_before ? `${translate('Removed')} · ${translate(idea ? 'Added in {0}' : 'Fixed in {0}').replace('{0}', report.fixed_before)}` : translate('Removed');
       return translate({ new: 'Sent', seen: 'Seen', working: idea ? 'in the works' : 'under construction', rejected: idea ? 'Will not be added' : 'Will not be fixed', closed: 'Closed' }[report.status] || 'Sent');
     }
@@ -24526,10 +22824,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           const kind = document.createElement('span'); kind.className = 'mine-kind'; kind.dataset.k = report.category === 'feature' ? 'idea' : 'bug';
           kind.textContent = report.category === 'feature' ? translate('Idea') : translate(CATEGORY_LABELS[report.category] || 'Bug');
           top.append(state, kind, when);
-          // What you wrote in full (4.0.2), from a Worker that sends it; the summary stops at 200 characters.
           const summary = document.createElement('div'); summary.className = 'mine-sum'; summary.setAttribute('data-ws-keep', ''); summary.style.whiteSpace = 'pre-line'; summary.style.overflowWrap = 'anywhere';
           summary.textContent = String(report.text || report.summary || `${translate('Report')} #${report.id}`);
-          // Its title (4.1.0), above what you wrote.
           if (report.title) { const title = document.createElement('div'); title.className = 'mine-sum'; title.setAttribute('data-ws-keep', ''); title.style.fontWeight = '700'; title.style.overflowWrap = 'anywhere'; title.textContent = String(report.title); item.append(top, title, summary); }
           else item.append(top, summary);
           if (report.more) {
@@ -24574,10 +22870,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     q('[data-id="reports-reload"]').addEventListener('click', () => loadMyReports());
     q('[data-id="reports-new-bug"]').addEventListener('click', () => openBugDialog('bug'));
     q('[data-id="reports-new-idea"]').addEventListener('click', () => openBugDialog('feature'));
-    // What was attached to a report (4.0.2): its screenshots and video, behind a chip so nothing loads until asked.
-    // They come with the reporter key, like the rest of My reports, and stay for the visit once loaded.
     const mineMediaCache = new Map();
-    // Pictures come back as data: addresses (the editor's page lets those show everywhere); a video as a blob: one.
     const asDataUrl = blob => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || '')); reader.onerror = () => reject(reader.error || new Error('read')); reader.readAsDataURL(blob); });
     function bugBlob(path, asData = false) {
       if (mineMediaCache.has(path)) return mineMediaCache.get(path);
@@ -24616,7 +22909,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const root = mine.body.getRootNode();
       const light = document.createElement('div'); light.className = 'mine-light'; light.setAttribute('role', 'dialog'); light.setAttribute('aria-modal', 'true');
       const close = document.createElement('button'); close.type = 'button'; close.className = 'mine-light-close'; close.setAttribute('aria-label', translate('Close')); close.textContent = '×';
-      // Esc closes the picture first, not Settings (caught before the panel's own Esc does).
       const escape = event => { if (event.key !== 'Escape' || !light.isConnected) return; event.preventDefault(); event.stopImmediatePropagation(); done(); };
       const done = () => { light.remove(); window.removeEventListener('keydown', escape, true); if (node.tagName === 'VIDEO') node.pause(); };
       window.addEventListener('keydown', escape, true);
@@ -24634,7 +22926,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'mine-media-chip'; chip.setAttribute('aria-expanded', 'false');
       const parts = [images.length === 1 ? translate('1 screenshot') : images.length ? translate('{0} screenshots').replace('{0}', String(images.length)) : '', video ? translate('Video') : ''].filter(Boolean);
       chip.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.3 3.3 0 0 1 4.7 4.7L10.2 17a1.7 1.7 0 0 1-2.4-2.4L15.5 7"/></svg>';
-      // One text per part, so the panel's own translation finds each ("2 screenshots", "Video").
       parts.forEach((part, index) => { if (index) chip.append(' · '); chip.append(Object.assign(document.createElement('span'), { textContent: part })); });
       const row = document.createElement('div'); row.className = 'mine-media-row'; row.hidden = true;
       const query = `?user=${encodeURIComponent(user || '')}`;
@@ -24666,7 +22957,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       box.append(chip, row);
       return box;
     }
-    // Pictures and a video sent with a message (4.1.0): small pictures right in the bubble, the video behind a button.
     function mineMessageFiles(report, message, user) {
       const files = Array.isArray(message.files) ? message.files : [];
       if (!files.length || !Number.isInteger(message.id)) return null;
@@ -24698,8 +22988,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const root = mine.body.getRootNode();
       if (root && !root.querySelector?.('style[data-mine-media]')) { const style = document.createElement('style'); style.setAttribute('data-mine-media', ''); style.textContent = MINE_MEDIA_CSS; (root.host ? root : document.head).append(style); }
     }
-    // Answering the author (2.2.1): a button that opens a box under the report. Pictures and an MP4 video can go
-    // with it (4.1.0), like with a report: picked, pasted or dropped.
     function mineReply(report, answered) {
       const box = document.createElement('div');
       const open = document.createElement('button'); open.type = 'button'; open.className = 'reset mine-reply-open'; open.textContent = translate(answered ? 'Answer' : 'Message me');
@@ -24776,14 +23064,9 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     q('[data-id="mine-reload"]').addEventListener('click', loadMyReports);
     for (const id of ['mine-close', 'mine-done']) q(`[data-id="${id}"]`).addEventListener('click', closeMyReports);
     mine.backdrop.addEventListener('pointerdown', event => { if (event.target === mine.backdrop) closeMyReports(); });
-    // Changelog: the card after an update (this version's changes) and the full list from Settings › Studio.
     const log = { box: q('[data-id="log-notice"]'), list: q('[data-id="log-list"]'), version: q('[data-id="log-version"]'), backdrop: q('[data-id="log-backdrop"]'), body: q('[data-id="log-body"]'), rail: q('[data-id="log-rail"]'), opener: null, pick: { version: '', group: '' } };
-    // The changelog is translated here, line by line, so its words can carry some formatting (3.1.0). What it draws
-    // is marked to be left alone by the panel's own translation.
     const logT = (text, ...values) => { let out = text; try { out = globalThis.WMEStudioI18n?.translate?.(text) ?? text; } catch (_) { out = text; } values.forEach((value, index) => { out = out.split(`{${index}}`).join(value); }); return out; };
     const logEl = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
-    // A short lead before a colon in bold, Settings › Panels as a path, {variables} as code and keys as keys. A path
-    // is made of the names of Studio's own places, in English and in the language shown.
     const LOG_PLACES = ['Settings', 'Appearance', 'Islands', 'General', 'Language', 'Map', 'Menus', 'Panels', 'Case file', 'Requests', 'Screen displays', 'Studio', "What's new", 'Place', 'Crisis location', 'Update request', 'hub', 'Your impact'];
     let logPattern = null, logPatternLang = '';
     function richPattern() {
@@ -24816,7 +23099,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     function changelogItems(list, items) {
       list.replaceChildren(...items.map(text => { const item = logEl('li', 'log-li'); item.setAttribute('data-ws-keep', ''); return richLine(item, logT(text)); }));
     }
-    // A release's changes: under a small heading per group when the release has groups, else one list.
     function changelogRelease(release) {
       const groups = release.groups || [{ title: '', items: release.items || [] }];
       return groups.map(group => {
@@ -24831,8 +23113,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         return box;
       });
     }
-    // The full changelog (3.1.0): the versions in a rail on the left, the chosen one on the right, its areas as chips
-    // that show one area at a time.
     const LOG_ICONS = { 'Saved requests': '<path d="M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z"/>', 'Case file': '<path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>',
       'Waze Chat Plus': '<path d="M5 5h14v10H10l-5 4z"/>', 'Quick replies': '<path d="M13 3 5 14h6l-1 7 8-11h-6z"/>', 'Places': '<path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
       'Layout': '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
@@ -24849,7 +23129,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     function paintChangelog(focusRail = false) {
       const release = STUDIO_CHANGELOG.find(entry => entry.version === log.pick.version) || STUDIO_CHANGELOG[0];
       const current = STUDIO_CHANGELOG[0].version === USERSCRIPT_VERSION ? STUDIO_CHANGELOG[0].version : '';
-      // The rail
       const rail = [logEl('h6', '', logT('Versions'))];
       for (const entry of STUDIO_CHANGELOG) {
         const button = logEl('button', 'log-ver'); button.type = 'button'; button.setAttribute('role', 'tab');
@@ -24866,7 +23145,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       studioChipStrip(log.rail).edges();
       const keepLeft = log.body.querySelector('.log-chips')?.scrollLeft || 0, sameVersion = log.shown === release.version;
       log.shown = release.version;
-      // The chosen version
       const groups = logGroups(release), count = logCount(release);
       const top = logEl('div', 'log-top'); top.append(logEl('b', '', release.version));
       if (release.version === current) top.append(logEl('span', 'log-this', logT('This version')));
@@ -24898,14 +23176,11 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       log.body.replaceChildren(...nodes);
       log.body.setAttribute('data-ws-keep', '');
       log.body.scrollTop = 0;
-      // The chips scroll sideways like the Quick replies ones: pointing near an end scrolls them, and the chosen one
-      // slides to the middle (from where they were, when the version stays the same).
       const strip = log.body.querySelector('.log-chips');
       if (strip) { const api = studioChipStrip(strip); if (sameVersion) strip.scrollLeft = keepLeft; api.centre(strip.querySelector('[aria-pressed="true"]'), sameVersion); }
       if (focusRail) log.rail.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true });
       log.rail.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
-    // ↑ ↓ (and ← → on a phone, where the rail runs across) move through the versions.
     function railKey(event) {
       const keys = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
       if (!(event.key in keys) && event.key !== 'Home' && event.key !== 'End') return;
@@ -24915,20 +23190,17 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (next !== at) { log.pick = { version: versions[next], group: '' }; paintChangelog(true); }
     }
     { const logo = q('[data-id="log-logo"]'); logo.src = STUDIO_LOGO_DATA_URI; logo.hidden = false; }
-    // Centred down the screen on a whole pixel (offsetHeight ignores the entrance's scale).
     function placeChangelog() {
       if (log.box.hidden) { removeEventListener('resize', placeChangelog); return; }
       log.box.style.top = `${Math.max(16, Math.floor((innerHeight - log.box.offsetHeight) / 2))}px`;
       addEventListener('resize', placeChangelog);
     }
-    // The 3.0 welcome (3.0.0): shown in place of the "What's changed" note for this release.
     const release = { backdrop: q('[data-id="release-backdrop"]'), stage: q('[data-id="release-stage"]'), opener: null };
     function releaseKey(event) {
       if (release.backdrop.hidden) { document.removeEventListener('keydown', releaseKey, true); return; }
       if (event.key === 'Escape') { event.preventDefault(); closeRelease(); }
       if (!event.ctrlKey && !event.metaKey) event.stopImmediatePropagation();
     }
-    // The 3.0 welcome, with what the 3.0.x updates after it added (3.0.1).
     function showRelease() {
       const extra = STUDIO_CHANGELOG.filter(entry => /^4\.0\.\d+$/.test(entry.version) && entry.version !== '4.0.0' && versionAtMost(entry.version, USERSCRIPT_VERSION));
       const more = q('[data-id="release-more"]');
@@ -24948,7 +23220,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       release.backdrop.hidden = true; markChangelogSeen();
       release.opener?.focus?.({ preventScroll: true }); release.opener = null;
     }
-    // The scene leans a little towards the pointer.
     release.stage.addEventListener('pointermove', event => {
       const box = release.stage.getBoundingClientRect(), x = (event.clientX - box.left) / box.width - .5, y = (event.clientY - box.top) / box.height - .5;
       const scene = release.stage.querySelector('.rs-scene');
@@ -24960,11 +23231,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     q('[data-id="release-all"]').addEventListener('click', () => { closeRelease(); showChangelog('all'); });
     release.backdrop.addEventListener('pointerdown', event => { if (event.target === release.backdrop) closeRelease(); });
     function showChangelog(mode = 'new', since = '') {
-      // Every 4.0.x update (and "Show what's new") opens the 4.0 welcome, with the later fixes under it (4.0.0).
       if (mode === 'new' && /^4\.0\./.test(USERSCRIPT_VERSION) && (!since || (/^\d+(?:\.\d+)+$/.test(since) && !versionAtMost(USERSCRIPT_VERSION, since)))) { log.box.hidden = true; showRelease(); return; }
       if (mode === 'new') {
-        // Every release since the version last seen (3.0.0 and 2.3.0 for someone coming from 2.2.2), newest first; a
-        // version number heads each one when there is more than one.
         const fresh = /^\d+(?:\.\d+)+$/.test(since) ? STUDIO_CHANGELOG.filter(entry => !versionAtMost(entry.version, since)).slice(0, 4) : [];
         const releases = fresh.length ? fresh : [STUDIO_CHANGELOG[0]];
         log.version.textContent = `WME Studio ${USERSCRIPT_VERSION}`;
@@ -24986,13 +23254,11 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       requestAnimationFrame(() => q('[data-id="log-done"]').focus({ preventScroll: true }));
       markChangelogSeen();
     }
-    // Escape closes the list (also when the settings are not open), and keys stay out of the editor meanwhile.
     function changelogKey(event) {
       if (log.backdrop.hidden) { document.removeEventListener('keydown', changelogKey, true); return; }
       if (event.key === 'Escape') { event.preventDefault(); closeChangelog(); }
       else if (log.rail.contains(shadow.activeElement)) railKey(event);
       else if (shadow.activeElement?.classList?.contains('log-chip') && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-        // ← and → on the chips pick the area before or after.
         event.preventDefault();
         const chips = [...log.body.querySelectorAll('.log-chip')], next = chips[chips.indexOf(shadow.activeElement) + (event.key === 'ArrowRight' ? 1 : -1)];
         if (next) next.click();
@@ -25010,12 +23276,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     for (const id of ['log-close', 'log-done']) q(`[data-id="${id}"]`).addEventListener('click', closeChangelog);
     log.backdrop.addEventListener('pointerdown', event => { if (event.target === log.backdrop) closeChangelog(); });
     q('[data-id="changelog"]').addEventListener('click', () => showChangelog('all'));
-    // Polls (3.0.0): questions the author asks from the reports site. One at a time, once the editor is up. A "Review
-    // look" poll shows each choice as a small preview and switches the list behind to it while it is picked; Vote keeps
-    // it. Not now (or closing) puts things back and asks again another time, three times at most per poll.
     const POLL_STORE = 'wmeStudio.polls.v2';
-    // A Review look poll shows each choice as a small preview of the list; voting only votes, nothing changes in the
-    // editor (the looks aren't a setting yet).
     const poll = { backdrop: q('[data-id="poll-backdrop"]'), vote: q('[data-id="poll-vote"]'), note: q('[data-id="poll-note"]'), list: q('[data-id="poll-options"]'), current: null, choice: '', sending: false, opener: null };
     async function pollState() {
       const all = await Promise.resolve(studioKeep.get(POLL_STORE, {})).catch(() => ({}));
@@ -25026,8 +23287,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       all[id] = { ...(all[id] || {}), ...patch };
       try { await Promise.resolve(studioKeep.set(POLL_STORE, all)); } catch (studioError) { reportStudioError('poll', studioError); }
     }
-    // The poll's buttons act on a click, or on the press itself when no click follows: something else on the page (a
-    // script or an add-on) can catch clicks before they get here, and then the poll could not be answered (3.0.0).
     function pollPress(button, act) {
       let pressed = false, timer = 0;
       button.addEventListener('pointerdown', event => { pressed = event.button === 0; });
@@ -25070,8 +23329,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       poll.backdrop.hidden = true; poll.current = null;
       poll.opener?.focus?.({ preventScroll: true }); poll.opener = null;
     }
-    // The pictures come from the reports site and are drawn from data (the editor's page may not load pictures from
-    // elsewhere): each one is fetched once and kept for the session.
     const pollImages = new Map();
     function pollImage(id, slot, hash) {
       const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/polls/${encodeURIComponent(id)}/image/${encodeURIComponent(slot)}?h=${encodeURIComponent(hash)}`;
@@ -25089,7 +23346,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     function showPoll(item) {
       if (!item?.options?.length || !poll.backdrop.hidden) return;
-      // Not over the "What's changed" note, the settings or another of Studio's windows: asked a little later.
       if (!log.box.hidden || !release.backdrop.hidden) { afterNews(() => showPoll(item)); return; }
       if (studioPanelOpen || !bug.backdrop.hidden || !log.backdrop.hidden) { setTimeout(() => showPoll(item), 5000); return; }
       savePoll(item.id, { lastAsked: Date.now() });
@@ -25117,7 +23373,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       poll.opener = shadow.activeElement || document.activeElement;
       poll.backdrop.hidden = false;
       document.addEventListener('keydown', pollKey, true);
-      // The window takes the keyboard (Tab reaches the choices) without showing one of them as picked.
       requestAnimationFrame(() => q('.poll-dialog')?.focus({ preventScroll: true }));
     }
     async function laterPoll() {
@@ -25128,12 +23383,11 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       await savePoll(item.id, { later: (Number(state.later) || 0) + 1 });
     }
     const sendPollVote = (id, choice) => bugApi('POST', `/api/polls/${encodeURIComponent(id)}/vote`, { choice, version: USERSCRIPT_VERSION, user: wmeUserName() || '' });
-    // A vote that did not get through is sent again the next time the editor opens.
     async function retryPolls() {
       const all = await pollState();
       for (const [id, state] of Object.entries(all)) {
         if (!state?.pending) continue;
-        try { await sendPollVote(id, state.pending); await savePoll(id, { pending: null }); } catch (_) { /* tried again next time */ }
+        try { await sendPollVote(id, state.pending); await savePoll(id, { pending: null }); } catch (_) {   }
       }
     }
     pollPress(q('[data-id="poll-later"]'), laterPoll);
@@ -25153,7 +23407,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
       setTimeout(() => { poll.sending = false; hidePoll(); }, 1600);
     });
-    // The count of reports still waiting, shown on the Report a bug page, is refreshed now and then from here.
     if (endpointReady) setTimeout(() => { checkBugFixes(false).catch(error => reportStudioError('bug fixes check', error)); }, 12000);
     function bugDialogSending() { return !!bug.sending; }
     function hideBugDialog() { if (!bug.backdrop.hidden) bug.backdrop.hidden = true; }
@@ -25192,7 +23445,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const activeRange = rangeDrag && {key:rangeDrag.key,value:Number(rangeDrag.input.value)};
       current = config.changes(current, changes);
       if (activeRange) current = config.sanitize({...current,...rangePatch(activeRange.key,activeRange.value)});
-      // A slider that is still moving keeps its newest value; an echo of one of its own writes changes nothing here.
       const live = liveRangeKeys();
       for (const [key,state] of sliderWrites) if (state.busy || sliderTimers.has(key)) current = config.sanitize({...current,...rangePatch(key,state.value)});
       if (pendingWorkspaceMode !== null) current.compactMode = pendingWorkspaceMode;
@@ -25201,7 +23453,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (changes[workspaces.key]) refreshProfiles();
     });
 
-    // Scrolls one setting into view and outlines it briefly; used by the command palette's search results.
     function reveal(id) {
       const target = q(`[data-row="${id}"]`) || q(`[data-id="${id}"]`);if (!target) return;
       revealElement(target);
@@ -25213,7 +23464,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         setTimeout(()=>row.removeAttribute('data-flash'),1400);
       });
     }
-    // Wraps every button's bare text in a span.tx (see .tx), now and whenever a label is replaced later.
     const LABELLED = '.reset,.primary,.ghost,.seg button,.picker-done,.picker-reset,.code-copy,.sec-chip,.bug-option,.language-option,.fix-actions>button,.mine-state,.mine-kind';
     function trimLabels(root) {
       for (const button of root.querySelectorAll ? [root, ...root.querySelectorAll(LABELLED)].filter(node => node.matches?.(LABELLED)) : []) {
@@ -25225,8 +23475,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
     }
     trimLabels(shadow);
-    // Text boxes can't be trimmed like labels: the browser centres the whole line, and where the capitals land in it
-    // depends on the font the system picks. Measure that font and even it out with the top or bottom padding.
     let inputMetrics = null;
     function centerInputs() {
       const inputs = shadow.querySelectorAll('.search-field input,.bug-field input');
@@ -25237,7 +23485,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           const context = (inputMetrics?.context) || document.createElement('canvas').getContext('2d');
           context.font = font;
           const line = context.measureText('Hg'), cap = context.measureText('H').actualBoundingBoxAscent;
-          // The capitals' middle sits this far below the middle of the line (above it when negative).
           const low = (line.fontBoundingBoxAscent - line.fontBoundingBoxDescent - cap) / 2;
           inputMetrics = { font, context, shift: Number.isFinite(low) ? Math.round(low * 8) / 4 : 0 };
         } catch (_) { inputMetrics = { font, shift: 0 }; }
@@ -25259,12 +23506,10 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
     }).observe(shadow, { childList: true, subtree: true });
     studioUI = { host, shadow, open, close, reveal, showChangelog, searchIndex: settingIndex, revealElement, selectPage: name => selectPage(name), poll: { show: showPoll, retry: retryPolls, state: pollState }, refreshChips: () => { if (activePage === 'sync') renderChips('sync'); } };
-    // Cloud Sync's page is drawn once now too, so Search finds its settings.
     try { globalThis.WMEStudioCloudSync?.render(q('[data-id="sync-root"]')); } catch (studioError) { reportStudioError('Cloud Sync page', studioError); }
     return studioUI;
   }
 
-  // Settings are built ahead, while the editor is idle, so the first open is as quick as every other (3.0.0).
   if (window.top === window.self && uiRouteAllowed()) {
     const prebuild = () => { if (!studioUI) { try { buildStudioUI(); } catch (studioError) { reportStudioError('Building settings ahead', studioError); } } };
     setTimeout(() => { if (typeof requestIdleCallback === 'function') requestIdleCallback(prebuild, { timeout: 15000 }); else prebuild(); }, 8000);
@@ -25322,7 +23567,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     function keys(event) {
       if (host.hidden) return;
-      // Leave browser/input defaults intact, but never let search typing reach editor shortcuts.
       event.stopImmediatePropagation();
       if (event.isComposing) return;
       if (event.key === 'Escape') {event.preventDefault();event.stopImmediatePropagation();close();return;}
@@ -25366,7 +23610,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           {label:'Inspect an element',category:'Troubleshooting',keywords:'report element colour color theme not themed wrong style describe pick',run:()=>{setTimeout(inspectStudioElement,150);}},
           {label:translate(prefs.enabled ? 'Pause Studio' : 'Enable Studio'),category:'Settings',keywords:'toggle disable enable',run:()=>cfg.write({enabled:!prefs.enabled})},
           ...profiles.map(item=>({label:item.name,category:'Saved workspaces',keywords:'workspace profile layout '+item.name,disabled:!prefs.enabled,run:async()=>{previousLayout = await api.apply(item.id);}}))];
-        // Every other setting in the window, found by its name and description as shown there (3.0.0).
         const listed = new Set(commands.map(item => item.label));
         for (const entry of buildStudioUI()?.searchIndex?.() || []) {
           if (entry.isSection || listed.has(entry.title)) continue;
@@ -25381,8 +23624,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     shadow.querySelector('.close').addEventListener('click',close);shadow.querySelector('.shade').addEventListener('click',close);
     studioCommands = {open,close};studioUI?.close();open();
   }
-  // The command palette shortcut (Shift+P unless changed in Settings > Studio). It is read before the editor's own
-  // shortcuts, and left alone while typing in a field or recording a new shortcut.
   let commandShortcut = globalThis.WMEStudioSettings.defaults.commandShortcut;
   globalThis.WMEStudioSettings.read().then(value=>{commandShortcut = value.commandShortcut;}).catch(error=>reportStudioError('Reading the command palette shortcut',error));
   chrome.storage.onChanged.addListener(changes=>{
@@ -25398,9 +23639,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     event.preventDefault();event.stopImmediatePropagation();openStudioCommands();
   },true);
 
-  // Studio's own right-click menu for the map. It opens on a right-click on the map surface while Studio is on and
-  // the "Right-click menu" setting is on; Shift + right-click still opens the browser's menu. When the
-  // RightClick Functions script is installed too, this menu takes its place (see takeOverOtherMenu below).
   const studioContextMenu = (() => {
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const HOST_ID = 'wme-studio-context-menu';
@@ -25467,7 +23705,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     function lonLatAt(clientX, clientY) {
       const api = getSDK() || studioSDK.get();
       if (typeof api?.Map?.getLonLatFromPixel === 'function') {
-        // The SDK counts pixels from the map's own viewport.
         const box = (attempt(() => api.Map.getMapViewportElement?.()) || document.querySelector('#WazeMap, #map'))?.getBoundingClientRect();
         const point = attempt(() => api.Map.getLonLatFromPixel({ x: clientX - (box?.left || 0), y: clientY - (box?.top || 0) }));
         if (point && Number.isFinite(point.lon) && Number.isFinite(point.lat)) return { lon: point.lon, lat: point.lat };
@@ -25529,7 +23766,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (typeof api?.Editing?.clearSelection === 'function' && attempt(() => (api.Editing.clearSelection(), true))) return;
       attempt(() => page.W?.selectionManager?.unselectAll?.());
     }
-    // The segment drawn under the cursor, if any: the closest one within a few pixels of the click.
     function segmentAt(clientX, clientY) {
       const api = getSDK() || studioSDK.get();
       let here = null, resolution = 0, best = null, bestDistance = 0;
@@ -25541,7 +23777,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           if (distance < bestDistance) { bestDistance = distance; best = String(id); }
         }
       };
-      // The SDK first: the point under the cursor, the map's scale and the loaded segments, all from it.
       const segments = attempt(() => api?.DataModel?.Segments?.getAll?.(), []);
       const point = Array.isArray(segments) && segments.length ? lonLatAt(clientX, clientY) : null;
       const sdkResolution = point ? attempt(() => api.Map.getMapResolution()) : null;
@@ -25563,7 +23798,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const model = attempt(() => page.W?.model?.segments?.getObjectById?.(number));
       return !!(model && attempt(() => (page.W.selectionManager.setSelectedModels([model]), true), false));
     }
-    // Street names of the selected segments, or the names of the selected places.
     function names(picked) {
       const api = getSDK(), out = [];
       const add = name => { if (typeof name === 'string' && name.trim() && !out.includes(name.trim())) out.push(name.trim()); };
@@ -25597,7 +23831,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       return typeof api?.DataModel?.refreshData === 'function' ? () => api.DataModel.refreshData() : null;
     }
     async function copy(text) {
-      try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* the clipboard API needs focus; try the older way */ }
+      try { await navigator.clipboard.writeText(text); return true; } catch (_) {   }
       const area = document.createElement('textarea');
       area.value = text; area.setAttribute('readonly', ''); area.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
       (document.body || document.documentElement).append(area); area.select();
@@ -25645,7 +23879,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     function outside(event) {
       if (!menu) return;
       if (event.composedPath().includes(host)) return;
-      if (event.type === 'pointerdown' && event.button === 2 && wanted(event)) return;   // a new right-click on the map reopens the menu there
+      if (event.type === 'pointerdown' && event.button === 2 && wanted(event)) return;
       close();
     }
     function keys(event) {
@@ -25665,7 +23899,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const point = lonLatAt(clientX, clientY);
       let picked = mode === 'map' ? null : selection();
       if (mode !== 'map') {
-        // A right-click on a segment selects it first, unless it is already part of the selection.
         const hit = segmentAt(clientX, clientY);
         if (hit && !(picked?.type === 'segment' && picked.ids.includes(hit)) && selectSegment(hit)) picked = { type: 'segment', ids: [hit] };
       }
@@ -25692,8 +23925,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         if (picked.type === 'segment') item('street', labels.length > 1 ? 'Copy street names' : 'Copy street name', () => copied(labels.join(', '), 'Street name copied'), { disabled: !labels.length });
         if (picked.type === 'venue') item('street', labels.length > 1 ? 'Copy names' : 'Copy name', () => copied(labels.join(', '), 'Name copied'), { disabled: !labels.length });
         item('link', 'Copy permalink', () => copied(permalink(middle || null, picked), 'Permalink copied'));
-        // The spot that was right-clicked, also with something selected (2.0.5), so there is no need to deselect
-        // first or go through Map options here.
         item('copy', 'Copy coordinates', () => copied(`${fmt(point.lat)}, ${fmt(point.lon)}`, 'Coordinates copied'), { disabled: !point });
         sep();
         item('focus', 'Zoom to selection', () => { if (!zoomToSelection(picked)) toast(t('Selection is not loaded'), at.x, at.y, true); }, { disabled: !area });
@@ -25707,8 +23938,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         item('gmaps', 'Open in Google Maps', () => window.open(`https://www.google.com/maps/search/?api=1&query=${fmt(point.lat)},${fmt(point.lon)}`, '_blank', 'noopener'), { disabled: !point });
         item('newTab', 'Open here in a new tab', () => window.open(permalink(point, null, false), '_blank', 'noopener'), { disabled: !point });
       }
-      // The same view in the other editor: WME Beta from WME, and WME from WME Beta. With unsaved edits here it
-      // opens in a new tab, so this tab (and the edits) stay as they are.
       const onBeta = /^beta\./i.test(location.hostname);
       const otherEditor = () => {
         const box = document.getElementById('WazeMap')?.getBoundingClientRect();
@@ -25834,7 +24063,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       window.addEventListener('blur', close);
     }
 
-    // Only the map surface itself: not Studio's islands, WME's controls, panels or anything you can type in.
     function onMap(event) {
       const path = event.composedPath();
       const target = path[0];
@@ -25848,18 +24076,14 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         /(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname) && onMap(event);
     }
 
-    // RightClick Functions opens its own menu from the same right-click. When it gets the event first, it stops it
-    // before Studio sees it, so Studio closes that menu and opens its own at the same spot.
     function takeOverOtherMenu() {
       const other = document.querySelector('.wmeRcMenu');
       if (!other) return false;
-      try { document.documentElement.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: -100, clientY: -100 })); } catch (_) { /* fall through */ }
+      try { document.documentElement.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: -100, clientY: -100 })); } catch (_) {   }
       for (const element of document.querySelectorAll('.wmeRcMenu')) element.remove();
       return true;
     }
 
-    // While a right-click on the map is being handled, the other script's menu is kept invisible so it does not
-    // flash before Studio replaces it.
     const pendingStyle = document.createElement('style');
     pendingStyle.textContent = 'html[data-wme-studio-context-pending] .wmeRcMenu { visibility: hidden !important; }';
     (document.head || document.documentElement).append(pendingStyle);
@@ -25880,11 +24104,11 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (event.button !== 2) return;
       gesture = wanted(event) ? { x: event.clientX, y: event.clientY, handled: false } : null;
       pending(!!gesture);
-      if (gesture) setTimeout(check, 40, gesture);   // macOS and Linux send the menu event on press
+      if (gesture) setTimeout(check, 40, gesture);
     }, true);
     window.addEventListener('pointerup', event => {
       if (event.button !== 2 || !gesture) return;
-      setTimeout(check, 40, gesture, true);          // Windows sends it on release
+      setTimeout(check, 40, gesture, true);
     }, true);
     function check(state, last = false) {
       if (state !== gesture || state.handled) return;
@@ -25905,9 +24129,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     return document.documentElement.hasAttribute('data-wme-studio-fume') ||
       !!document.querySelector('#abAlerts,#WMEFUzoom,#WMEFUPC,#FUME_DSA,#_cbShrinkTopBars,#sidepanel-FixUI,[id^="WMEFU"]');
   }
-  // The "WME Dark Mode" userscript (Greasy Fork 526924) recolors the editor through the same palette variables
-  // Studio's themes set. It is recognised by the controls it adds to the profile menu and the Settings tab, and
-  // by the opening comment of the stylesheet it injects, which is there from the moment it starts.
   const checkedForDarkMode = new WeakSet();
   function detectDarkModeScript() {
     if (document.querySelector('#wme-dark-mode_switch,.settings__form-group.dark-mode .theme-select,#button_dark_theme,#button_auto_theme')) return true;
@@ -25923,7 +24144,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     if (fromSDK !== null) return fromSDK;
     return !!document.querySelector(':is(html,body,.app,#wz-app):is(.compact-density,.compact-mode,.is-compact,[data-density="compact"],[density="compact"])');
   }
-  // Shared shell of the setup and the update tour: the dialog, its copy column, buttons and the miniature editor.
   function studioSetupShellCSS() {
     return studioPart('part30269');
   }
@@ -25957,7 +24177,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         pill.hidden = false;
         if (pill.dataset.kind !== kind) { pill.dataset.kind = kind; pill.textContent = on ? onText : offText; }
       };
-      // FUME is supported: its row is information, never a warning
       { const text = states.fume ? 'Running now' : 'Not running'; fume.hidden = false; if (fume.dataset.kind !== 'ok') fume.dataset.kind = 'ok'; if (fume.textContent !== text) fume.textContent = text; }
       show(dark, states.dark, 'Running now', 'Not running');
       show(compact, states.compact, 'Turned on', 'Turned off');
@@ -26051,8 +24270,6 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   function openStudioSetup() {
     buildStudioSetup()?.open();
   }
-  // The update tour: the setup dialog's shell with one stop per 2.0.0 feature and a miniature editor that acts
-  // each one out. Shown once per version to editors who already ran the setup; new installs see the setup only.
   const TOUR_KEY = 'wmeStudio.tour.v1', TOUR_HOST_ID = 'wme-studio-tour';
   const TOUR_CURSOR = '<div class="cursor"><svg viewBox="0 0 18 22" aria-hidden="true"><path d="M2 1.5 16.2 12.6l-6.3.9 3.4 6.6-2.9 1.4-3.3-6.6L2 19.4z" fill="#fff" stroke="#1c2024" stroke-width="1.4" stroke-linejoin="round"/></svg></div>';
   let studioTour = null, tourSeen = null, tourStarted = false;
@@ -26166,17 +24383,13 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     buildStudioTour()?.open();
   }
   globalThis.WMEStudioTour = Object.freeze({ open: openStudioTour });
-  // The tour is opened from Settings; updates show the What's changed card instead (see maybeStartTour).
   const tourParts = value => String(value || '').split('.').map(part => parseInt(part, 10) || 0);
-  function tourDue() {   // the installed version is newer than the one last toured (a reinstall of an older one shows nothing)
+  function tourDue() {
     if (tourSeen === null) return false;
-    // By feature release (2.0, 2.1…): a fix release such as 2.0.1 does not bring the same tour back.
     const now = tourParts(USERSCRIPT_VERSION).slice(0, 2), seen = tourParts(tourSeen).slice(0, 2);
     for (let i = 0; i < Math.max(now.length, seen.length); i += 1) { if ((now[i] || 0) !== (seen[i] || 0)) return (now[i] || 0) > (seen[i] || 0); }
     return false;
   }
-  // An update no longer opens the tour by itself (2.1.0): the What's changed card tells what is new, and the tour
-  // stays in Settings for anyone who wants it. The version is only marked as toured.
   function maybeStartTour() {
     if (tourStarted || !tourDue() || setupSeen !== true) return;
     tourStarted = true;
@@ -26372,8 +24585,6 @@ ${studioControlsCSS()}
     return studioLauncher;
   }
 
-  // Only the launcher button is mounted up front; buildStudioUI() runs on first use (launcher, menu command
-  // or command palette), so a session that never opens the settings never pays for the dialog.
   function mountStudioLauncher() {
     if (!uiRouteAllowed() || window.top !== window.self) return;
     if (createStudioLauncher()) {
@@ -26391,13 +24602,7 @@ ${studioControlsCSS()}
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountStudioLauncher, { once: true });
   else mountStudioLauncher();
 
-  // "Was my report fixed?" is asked every time the editor loads (and every half hour while it stays open), without
-  // opening Studio's settings: one small request with the editor's user name. Only when there is news is the
-  // settings dialog built, to show the note; it used to be asked only from inside the settings, at most every six
-  // hours, so a fix could go unnoticed for days.
   const BUG_FIXES_STORE = 'wmeStudio.bugFixes.v1', BUG_RECHECK_EVERY = 30 * 60 * 1000;
-  // This installation's private reporter key (2.2.1): random, made once and kept with Studio's data. It goes with
-  // every report and every check, and only it reads the reports back: a user name alone shows nothing to anyone.
   const REPORTER_KEY_STORE = 'wmeStudio.reporterKey.v1';
   let reporterKeyPromise = null;
   function studioReporterKey() {
@@ -26405,16 +24610,11 @@ ${studioControlsCSS()}
       let key = await Promise.resolve(studioKeep.get(REPORTER_KEY_STORE, '')).catch(() => '');
       if (!/^[a-f0-9]{48}$/.test(key || '')) {
         key = [...crypto.getRandomValues(new Uint8Array(24))].map(byte => byte.toString(16).padStart(2, '0')).join('');
-        try { await Promise.resolve(studioKeep.set(REPORTER_KEY_STORE, key)); } catch (_) { /* used for this session only */ }
+        try { await Promise.resolve(studioKeep.set(REPORTER_KEY_STORE, key)); } catch (_) {   }
       }
       return key;
     })();
   }
-  // ---- Discord: verify and stay in sync (4.1.0) -------------------------------------------------------------------
-  // Verifying sends who you are in the editor: WME name, user id, rank, whether you can edit, whether you're an Area
-  // or Country Manager (and the areas' names), and the country the map is in. With it goes this Studio's private
-  // reporter key, so later this same Studio can say again who you are (at most every 6 hours, a few seconds after the
-  // editor opens) and the Discord roles follow a new rank, a new name, a manager role or the country you edit in most.
   const studioDiscord = (() => {
     const STORE = 'wmeStudio.discord.v1', EVERY = 6 * 3600000;
     const vt = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? text; } catch (_) { return text; } };
@@ -26430,7 +24630,7 @@ ${studioControlsCSS()}
         if (!country) { try { country = studioSDK.get()?.DataModel?.Countries?.getTopCountry?.() || null; } catch (_) { country = null; } }
         const managed = (Array.isArray(info?.managedAreas) ? info.managedAreas : []).map(area => String(area?.name || '').trim()).filter(Boolean).slice(0, 12);
         return {
-          wme_id: id, wme_name: name, rank: rank + 1,   // WME counts ranks from 0
+          wme_id: id, wme_name: name, rank: rank + 1,
           editor: a.isEditor !== false && !a.mapEditingBanned,
           area_manager: info?.isAreaManager === true || a.isAreaManager === true || managed.length > 0,
           country_manager: info?.isCountryManager === true || a.isCountryManager === true,
@@ -26442,7 +24642,7 @@ ${studioControlsCSS()}
       const key = await studioReporterKey().catch(() => '');
       const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`, headers = { 'Content-Type': 'application/json', ...(key ? { 'X-Reporter-Token': key } : {}) }, data = JSON.stringify(body);
       return new Promise(resolve => {
-        const done = (status, text) => { let json = null; try { json = JSON.parse(text); } catch (_) { /* not JSON */ } resolve({ status, data: json, text }); };
+        const done = (status, text) => { let json = null; try { json = JSON.parse(text); } catch (_) {   } resolve({ status, data: json, text }); };
         try {
           if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'POST', url, headers, data, anonymous: true, timeout: 20000, onload: r => done(r.status, r.responseText || ''), onerror: () => done(0, ''), ontimeout: () => done(0, '') });
           else fetch(url, { method: 'POST', headers, body: data, mode: 'cors' }).then(async r => done(r.status, await r.text())).catch(() => done(0, ''));
@@ -26465,7 +24665,6 @@ ${studioControlsCSS()}
       const answer = await post('/api/verify/sync', me);
       if (answer.status === 200 && answer.data?.ok) await remember(answer.data.linked === false ? null : { wme_id: me.wme_id, at: Date.now() });
     }
-    // The little window the link opens: one question, one click. Nothing is sent before the click.
     function offer(link) {
       const me = who();
       if (!me || document.getElementById('wme-studio-verify-offer')) return;
@@ -26487,7 +24686,6 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
 <div class="row"><button type="button" class="later"></button><button type="button" class="go"></button></div></div>`;
       const $ = selector => shadow.querySelector(selector);
       $('#t').textContent = vt('Verify on Discord');
-      // The question with your name in bold, wherever the language puts it.
       const [before, after = ''] = vt('Link your Discord account to {0}?', '\u0000').split('\u0000');
       const name = document.createElement('span'); name.className = 'who'; name.textContent = `${me.wme_name} (L${Math.min(6, me.rank)})`;
       $('.q').append(before, name, after);
@@ -26522,7 +24720,6 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
       'slow-down': 'Too many tries. Wait a few minutes and get a new code.',
       'no-editor': 'Sign in to the editor first, then try again.'
     };
-    // Once the editor knows who you are: the link's question (if a link opened this tab), then the check-in.
     (() => {
       if (window.top !== window.self) return;
       let tries = 0;
@@ -26541,7 +24738,7 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
     return new Promise((resolve, reject) => {
       const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/updates?user=${encodeURIComponent(user)}&v=${encodeURIComponent(USERSCRIPT_VERSION)}`;
       const headers = key ? { 'X-Reporter-Token': key } : {};
-      const done = (status, text) => { let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ } (status >= 200 && status < 300 && data?.ok ? resolve : reject)(data); };
+      const done = (status, text) => { let data = null; try { data = JSON.parse(text); } catch (_) {   } (status >= 200 && status < 300 && data?.ok ? resolve : reject)(data); };
       if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, headers, timeout: 20000, anonymous: true, onload: response => done(response.status, response.responseText || ''), onerror: reject, ontimeout: reject });
       else fetch(url, { mode: 'cors', headers }).then(async response => done(response.status, await response.text())).catch(reject);
     });
@@ -26566,27 +24763,22 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
         await new Promise(ok => (window.requestIdleCallback || setTimeout)(() => ok(), { timeout: 600 }));
         await studioUIFixes?.check(false, true);
       }
-    } catch (_) { /* asked again next time */ } finally { bugFixesChecking = false; }
+    } catch (_) {   } finally { bugFixesChecking = false; }
     return true;
   }
   (() => {
     let tries = 0;
-    // The editor's user name shows up a little after the page: asked for again until it does (about a minute).
     const first = async () => { if (await autoCheckBugFixes() === false && ++tries < 30) setTimeout(first, 2000); };
     setTimeout(first, 5000);
     setInterval(() => { autoCheckBugFixes(); }, BUG_RECHECK_EVERY);
   })();
 
-  // Polls (3.0.0): the open polls are asked for 2 seconds after the editor is up (3.0.1), or, when the update news is
-  // due, right after it is closed. The first one this person hasn't answered is shown: the server knows their reporter
-  // key and, since 3.0.1, their editor name, so a name that has voted is never asked again, from any computer. Never
-  // more than once in six hours per poll, and no more after "Not now" three times.
   async function fetchLivePolls() {
     const key = await studioReporterKey();
     return new Promise((resolve, reject) => {
       const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/polls/live?v=${encodeURIComponent(USERSCRIPT_VERSION)}&u=${encodeURIComponent(wmeUserName() || '')}`;
       const headers = key ? { 'X-Reporter-Token': key } : {};
-      const done = (status, text) => { let data = null; try { data = JSON.parse(text); } catch (_) { /* not JSON */ } (status >= 200 && status < 300 && data?.ok ? resolve : reject)(data); };
+      const done = (status, text) => { let data = null; try { data = JSON.parse(text); } catch (_) {   } (status >= 200 && status < 300 && data?.ok ? resolve : reject)(data); };
       if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, headers, timeout: 20000, anonymous: true, onload: response => done(response.status, response.responseText || ''), onerror: reject, ontimeout: reject });
       else fetch(url, { mode: 'cors', headers }).then(async response => done(response.status, await response.text())).catch(reject);
     });
@@ -26596,7 +24788,6 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
     const ask = async () => {
       if (!/^https:\/\/[^/\s]+/.test(BUG_REPORT_ENDPOINT) || !uiRouteAllowed() || window.top !== window.self || document.documentElement.getAttribute('data-wme-studio') !== 'on') return;
       if (setupSeen !== true || document.hidden || studioPanelOpen || !wmeUserName()) { if (++tries < 150) setTimeout(ask, 2000); return; }
-      // The update news comes first: the poll follows when it is closed.
       const seen = await Promise.resolve(studioKeep.get(CHANGELOG_KEY, STUDIO_BUILD)).catch(() => STUDIO_BUILD);
       if (seen !== STUDIO_BUILD && !waitedForNews) { waitedForNews = true; afterNews(ask); setTimeout(() => { if (newsWaiters.delete(ask)) ask(); }, 120000); return; }
       let data;
@@ -26621,9 +24812,6 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
     if (setupSeen === true && !tourStarted) maybeStartTour();
   };
 
-  // "WME Studio: Record performance" (extension menu). Watches a few seconds of normal use and shows a short
-  // report to copy: how smooth the frames were, and which scripts kept the page busy. It only listens while
-  // recording, and reports timings, script names and Studio's own settings; nothing from the map or the page.
   let performanceRecording = false;
   function showScriptTabsReport() {
     if (window.top !== window.self) return;
@@ -26644,7 +24832,7 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
     try { area.value = JSON.stringify(globalThis.WMEStudioScriptTabsReport(), null, 1); } catch (error) { area.value = `The report could not be built: ${error?.message || error}`; }
     shadow.querySelector('.close').addEventListener('click', () => host.remove());
     shadow.querySelector('.copy').addEventListener('click', async event => {
-      try { await navigator.clipboard.writeText(area.value); } catch (_) { area.select(); try { document.execCommand('copy'); } catch (__) { /* the text stays selected for a manual copy */ } }
+      try { await navigator.clipboard.writeText(area.value); } catch (_) { area.select(); try { document.execCommand('copy'); } catch (__) {   } }
       event.currentTarget.textContent = 'Copied';
     });
     (document.body || document.documentElement).append(host);
@@ -26667,13 +24855,11 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
     const area = shadow.querySelector('textarea'); area.value = text;
     shadow.querySelector('.close').addEventListener('click', () => host.remove());
     shadow.querySelector('.copy').addEventListener('click', async event => {
-      try { await navigator.clipboard.writeText(area.value); } catch (_) { area.select(); try { document.execCommand('copy'); } catch (__) { /* the text stays selected for a manual copy */ } }
+      try { await navigator.clipboard.writeText(area.value); } catch (_) { area.select(); try { document.execCommand('copy'); } catch (__) {   } }
       event.currentTarget.textContent = 'Copied';
     });
     (document.body || document.documentElement).append(host);
   }
-  // Command palette > "Inspect an element". The next click is not passed on to the editor; it is described instead:
-  // what the element and its parents are, what is inside the component it belongs to, and the colours in use.
   let studioInspecting = false;
   function inspectStudioElement() {
     if (studioInspecting || window.top !== window.self) return;
@@ -26803,7 +24989,7 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
       const area = box.querySelector('textarea'); area.value = JSON.stringify(report, null, 1);
       box.querySelector('.close').addEventListener('click', () => host.remove());
       box.querySelector('.copy').addEventListener('click', async event => {
-        try { await navigator.clipboard.writeText(area.value); } catch (_) { area.select(); try { document.execCommand('copy'); } catch (__) { /* the text stays selected for a manual copy */ } }
+        try { await navigator.clipboard.writeText(area.value); } catch (_) { area.select(); try { document.execCommand('copy'); } catch (__) {   } }
         event.currentTarget.textContent = 'Copied';
       });
       performanceRecording = false;
@@ -26823,22 +25009,15 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
     const LIST = '.problem-edit .comment-list';
     const settingsApi = globalThis.WMEStudioSettings;
     let visible = settingsApi?.defaults?.discussionVisible ?? 2;
-    // The messages' list is whatever element holds the messages (2.0.5): WME's class names for the list and for a
-    // message are not relied on. A message is a .comment or a wz-list-item of the request's discussion; the element
-    // holding them is the list. Each list found is marked, and the stylesheet limits marked lists.
     const COMMENT_ITEM = '.comment, wz-list-item';
     const commentItems = list => [...list.children].filter(node => node.matches?.(COMMENT_ITEM));
     let commentListMissing = false;
-    // When the messages get less room (the reply box growing as you type), the newest messages stay in view: the list
-    // keeps its bottom where it was instead of its top, so the box pushes the messages up rather than covering them.
     const listHeights = new WeakMap();
     const listKeeper = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
       for (const { target } of entries) {
         const before = listHeights.get(target), now = target.clientHeight;
         if (before && now < before) target.scrollTop += before - now;
         listHeights.set(target, now);
-        // The scrollbar's width (3.1.0): the case file moves the list out by that much, so the scrollbar sits in the
-        // window's side padding and the messages keep reaching the same edges as the rest of the window.
         const style = getComputedStyle(target);
         const bar = Math.max(0, Math.round(target.offsetWidth - target.clientWidth - (parseFloat(style.borderLeftWidth) || 0) - (parseFloat(style.borderRightWidth) || 0)));
         const value = bar ? bar + 'px' : '';
@@ -26855,8 +25034,6 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
           if (!list || list.matches(COMMENT_ITEM) || list.closest('.new-comment-form')) continue;
           lists.add(list);
         }
-        // Said once in the console when a discussion with messages shows but no list was found, with the shape of the
-        // discussion, so the cause can be seen from a report.
         const section = panel.querySelector('.conversation, .conversation-view');
         if (!found.length && section && !commentListMissing && section.textContent.trim().length > 40) {
           commentListMissing = true;
@@ -26873,26 +25050,16 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
     const fit = list => {
       try {
         const items = commentItems(list);
-        // The limit is written on the list itself (2.0.5), so no stylesheet rule can switch it off: a rule for request
-        // windows sized by hand did exactly that, and it also works whichever Resources library is loaded.
-        // The height of the first messages is read from the page's layout (2.3.0), not from where they show on screen:
-        // read while the window was still sliding or growing in, or in a browser that does not say how much a panel is
-        // zoomed, the screen gave a smaller height, and the discussion showed fewer messages than asked for.
         const span = count => { const last = items[count - 1]; return last.offsetTop + last.offsetHeight - items[0].offsetTop; };
         const setVar = (name, value) => { if (list.style.getPropertyValue(name) !== value) list.style.setProperty(name, value); };
-        // The list is never kept taller than the messages it may show: one short message used to show with an empty
-        // strip under it, or with part of the next one.
         const shown = Math.min(visible, items.length), least = shown ? span(shown) : 0;
         if (least > 0) setVar('--ws-ur-list-min', least + 'px');
         const clear = () => {
           for (const name of ['--ws-ur-list-max', 'max-height', 'overflow-y', 'overscroll-behavior']) if (list.style.getPropertyValue(name)) list.style.removeProperty(name);
           if (list.hasAttribute('data-wme-studio-touch-scroll')) list.removeAttribute('data-wme-studio-touch-scroll');
         };
-        // A window set to fit its messages (Arrange, 3.1.0) shows them all; the window grows with them, up to the screen.
         if (list.closest('[data-wme-studio-fit-messages]')) { clear(); return; }
         if (items.length <= visible) { clear(); return; }
-        // A request window made taller by hand (2.3.0): the messages take all the room it has and scroll inside it, so
-        // no empty space is left under a discussion cut down to "Visible discussion messages".
         if (list.closest('[data-wme-studio-popup-kind][data-wme-studio-user-height="on"]')) {
           for (const name of ['--ws-ur-list-max', 'max-height']) if (list.style.getPropertyValue(name)) list.style.removeProperty(name);
           if (list.style.getPropertyValue('overflow-y') !== 'auto') list.style.setProperty('overflow-y', 'auto', 'important');
@@ -26906,13 +25073,10 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
         setVar('--ws-ur-list-max', value);
         if (list.style.getPropertyValue('max-height') !== value || list.style.getPropertyPriority('max-height') !== 'important') list.style.setProperty('max-height', value, 'important');
         if (list.style.getPropertyValue('overflow-y') !== 'auto') list.style.setProperty('overflow-y', 'auto', 'important');
-        // Scrolling the messages stays in the messages: reaching their end no longer starts scrolling the whole request.
         if (list.style.getPropertyValue('overscroll-behavior') !== 'contain') list.style.setProperty('overscroll-behavior', 'contain');
         if (touchScreenList) showListThumb(list);
       } catch (_) { reportStudioError("fit",_);}
     };
-    // iPad and iPhone draw no scrollbar until a list is being scrolled (2.3.0): a limited discussion gets a thin bar of
-    // its own on its right edge, showing that it scrolls and where you are in it, and a finger scrolls it up and down.
     const touchScreenList = navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse)').matches;
     const thumbLists = new WeakSet();
     let thumbStyle = null;
@@ -26960,9 +25124,6 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
       return at > 0 && at < 40 ? clean.slice(at + 2).trim() : '';
     };
     const shortDates = new Map();
-    // A comment's date keeps its time of day (2.0.4: the short form used to drop it, so URC-E users lost the
-    // time stamps in the conversation). All-number dates such as 12/10/2026 are left exactly as WME wrote them:
-    // the browser reads them month-first, which is wrong for most locales.
     const shortDate = text => {
       const clean = String(text || '').trim();
       if (!clean) return '';
@@ -26991,9 +25152,7 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
         for (const date of panel.querySelectorAll('.conversation-view .comment .date')) setShort(date, shortDate(date.textContent));
       } catch (_) { reportStudioError("shorten",_);}
     };
-    // The reporter's description stays in reach while you read down the conversation: once it scrolls out of
-    // sight, a short copy of it is pinned to the top of the request. Clicking it scrolls back up to it.
-    const pins = new Map();   // panel -> {wrap, card, label, text, scroller, description}
+    const pins = new Map();
     let pinStyle = null;
     const PIN_CSS = studioPart('PIN_CSS');
     const scrollerOf = (node, stop) => {
@@ -27050,10 +25209,6 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
         state.onScroll();
       } catch (_) { reportStudioError('pinDescription', _); }
     };
-    // The reply box sits at the bottom of the request all the time (2.0.5): at the very bottom when the request is
-    // short, and stuck there while you scroll when it is long, edge to edge. Every box between it and the request's
-    // scrolling area becomes a column that fills the free height, so the reply box can be pushed to the bottom; boxes
-    // that cut off their content (WME's open sections) are let through, so the stickiness reaches the scrolling area.
     let replyStyle = null;
     const sideLocked = new WeakSet();
     const REPLY_CSS = studioPart('REPLY_CSS');
@@ -27064,11 +25219,7 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
         const marked = [...panel.querySelectorAll(marks.map(name => `[${name}]`).join(','))];
         const win = panel.closest('[data-issues-tracker-window],[id^="ISSUE_WINDOW"],[data-testid="floating-window"]') || panel;
         const section = form?.closest('.section');
-        // The request's scrolling area: the nearest box that may scroll, whether or not it scrolls right now (waiting for
-        // it to scroll made the box switch on and off, so it jumped).
         let scroller = null;
-        // A folded Discussion (its arrow): WME hides the content with an inline display:none or marks a box as collapsed.
-        // The column rules below would show it again, so a folded section is left alone.
         let folded = !!section && (section.classList.contains('collapsed') || !!section.querySelector(':scope > .collapsed, :scope > [aria-expanded="false"]'));
         for (let node = form?.parentElement; node && node !== section && !folded; node = node.parentElement) {
           if (node.classList.contains('collapsed') || /display:\s*none/.test(node.getAttribute('style') || '')) folded = true;
@@ -27081,7 +25232,6 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
         }
         const clearScroller = () => { for (const node of panel.querySelectorAll('[data-wme-studio-reply-scroller]')) node.removeAttribute('data-wme-studio-reply-scroller'); };
         const popup = (form || panel).closest('[data-wme-studio-popup-kind]');
-        // A folded Discussion lets a window sized by hand shrink to what is left (never taller than the size chosen).
         if (popup) {
           if (folded && form) { if (!popup.hasAttribute('data-wme-studio-reply-folded')) popup.setAttribute('data-wme-studio-reply-folded', ''); }
           else popup.removeAttribute('data-wme-studio-reply-folded');
@@ -27110,43 +25260,27 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
         }
         for (const node of panel.querySelectorAll('[data-wme-studio-reply-scroller]')) if (node !== scroller) node.removeAttribute('data-wme-studio-reply-scroller');
         if (!scroller.hasAttribute('data-wme-studio-reply-scroller')) scroller.setAttribute('data-wme-studio-reply-scroller', '');
-        // (4.0.0) The reply box reaches past the window's sides (its background to the edges, trimmed there), and the
-        // trimmed part could still be scrolled to sideways (by focus or a drag), shifting the whole window's content
-        // to the left. The area never scrolls sideways.
         if (!sideLocked.has(scroller)) { sideLocked.add(scroller); scroller.addEventListener('scroll', () => { if (scroller.scrollLeft) scroller.scrollLeft = 0; }, { passive: true }); }
         if (scroller.scrollLeft) scroller.scrollLeft = 0;
-        // The window's own colour behind the box, made solid (it can be see-through in Floating mode). A window painted
-        // with the islands' gradient (3.0.0) lends the box the same gradient, laid out over the whole window, so the
-        // box's part of it lines up with the window around it.
         let paint = '', image = '', painted = null;
         for (let node = scroller; node && !paint && !image; node = node.parentElement) {
           const style = getComputedStyle(node), color = style.backgroundColor;
           if (style.backgroundImage && style.backgroundImage !== 'none' && /gradient/.test(style.backgroundImage)) { image = style.backgroundImage; painted = node; }
           else if (color && !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(color)) paint = color;
         }
-        // (4.0.0) The islands' first color is read from the painted window itself: this part of Studio has no "root",
-        // so a gradient window stopped everything here and the box kept a plain gray band.
         const solid = image ? (getComputedStyle(painted).getPropertyValue('--ws-island-a').trim() || '') : paint.replace(/^rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)$/, 'rgb($1, $2, $3)');
         if (solid && form.style.getPropertyValue('--ws-reply-bg') !== solid) form.style.setProperty('--ws-reply-bg', solid);
         if (image) {
-          // Measured in the window's own pixels (4.0.0): a window still growing in as it opens is drawn smaller than it
-          // is, and the gradient was then laid out a little too small, so a strip of plain color showed at its right edge.
-          // The gradient fills the window inside its border, so that is the size and the starting point used.
           const box = painted.getBoundingClientRect(), own = form.getBoundingClientRect();
           const unit = box.width / (painted.offsetWidth || box.width) || form.currentCSSZoom || 1;
           const values = { '--ws-reply-image': image, '--ws-reply-size': `${painted.clientWidth}px ${painted.clientHeight}px`, '--ws-reply-pos': `${Math.round((box.left - own.left) / unit + painted.clientLeft)}px ${Math.round((box.top - own.top) / unit + painted.clientTop)}px` };
           for (const [name, value] of Object.entries(values)) if (form.style.getPropertyValue(name) !== value) form.style.setProperty(name, value);
         } else for (const name of ['--ws-reply-image', '--ws-reply-size', '--ws-reply-pos']) if (form.style.getPropertyValue(name)) form.style.removeProperty(name);
-        // Stuck to the very bottom: a sticky box stops at the area's bottom padding, so it is moved past that padding.
         const bottom = `${-(parseFloat(getComputedStyle(scroller).paddingBottom) || 0)}px`;
         if (form.style.getPropertyValue('--ws-reply-bottom') !== bottom) form.style.setProperty('--ws-reply-bottom', bottom);
         for (const name of ['--ws-reply-ml', '--ws-reply-mr']) if (form.style.getPropertyValue(name)) form.style.removeProperty(name);
         if (!form.hasAttribute('data-wme-studio-sticky-reply')) form.setAttribute('data-wme-studio-sticky-reply', '');
-        // Even spacing: the space under the field (down to the window's bottom bar) matches the space above it (up to
-        // whatever shows right above the box). Hidden or empty boxes above are passed over: measuring from one of them
-        // (it sits at the top of the window) made the bottom padding as large as it goes, so there was room for nothing.
         const field = form.querySelector('wz-textarea, textarea, .new-comment-text');
-        // URC-E puts its Shortcuts inside the box, above the field, so the search starts at the field and goes up.
         const shown = node => { while (node && node.getBoundingClientRect().height < 1) node = node.previousElementSibling; return node; };
         let above = null;
         for (let node = field; node && node !== form && !above; node = node.parentElement) above = shown(node.previousElementSibling);
@@ -27161,25 +25295,20 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
           const zoom = form.currentCSSZoom || 1, own = getComputedStyle(form);
           const padTop = parseFloat(own.paddingTop) || 0, padBottom = parseFloat(own.paddingBottom) || 0;
           const fieldBox = field.getBoundingClientRect();
-          // The space each side would have without the box's own padding, in the box's units. Above, the free room that
-          // pushes the box down to the bottom (its automatic top margin, as laid out) does not count.
-          // Below, from the lowest thing in the box (the field, or a row under it).
           const lowest = Math.max(fieldBox.bottom, ...[...form.children].map(child => child.getBoundingClientRect()).filter(box => box.height >= 1).map(box => box.bottom));
           const baseBelow = Math.max(0, (bar.getBoundingClientRect().top - lowest) / zoom - padBottom);
           const gap = (fieldBox.top - above.getBoundingClientRect().bottom) / zoom;
           if (form.contains(above)) {
-            // The space above is inside the box (under URC-E's Shortcuts) and stays as it is: only the bottom matches it.
             setPad(8, gap >= 0 && gap < 60 ? Math.min(40, Math.max(0, gap - baseBelow)) : 8);
           } else {
             const pushed = Math.max(0, parseFloat(own.marginTop) || 0);
             const baseAbove = Math.max(0, gap - padTop - pushed);
             if (baseAbove < 60 && baseBelow < 60) {
-              const even = Math.max(baseAbove, baseBelow) + 8;   // at least 8px of the box's own each side
+              const even = Math.max(baseAbove, baseBelow) + 8;
               setPad(Math.min(40, even - baseAbove), Math.min(40, even - baseBelow));
             } else setPad(8, 8);
           }
         } else setPad(8, 8);
-        // The room the window may grow into: from its top down to the bottom of the screen, in its own (zoomed) units.
         if (popup) {
           const top = popup.getBoundingClientRect().top, zoom = popup.currentCSSZoom || 1;
           const room = `${Math.max(200, Math.floor((innerHeight - Math.max(0, top) - 12) / zoom))}px`;
@@ -27240,12 +25369,9 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
       if (globalThis.WMEStudioVectorWatch) globalThis.WMEStudioVectorWatch.watch(observe, { childList: true, subtree: true, characterData: true });
       else new MutationObserver(observe).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
       new MutationObserver(queue).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio-requests'] });
-      // A new theme, accent or island colors: the reply box takes the window's new color.
       document.addEventListener('wme-studio-colors-settled', queue);
-      // A request window sized by hand, or set back to its own size: its messages are fitted again.
       new MutationObserver(queue).observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ['data-wme-studio-user-height', 'data-wme-studio-fit-messages'] });
 
-      // A request window still opening or growing when its messages were measured: fitted again once it has settled.
       for (const type of ['transitionend', 'animationend']) document.addEventListener(type, event => {
         const target = event.target;
         if (target?.nodeType === 1 && (target.matches('[data-wme-studio-popup-kind]') || target.closest(PANEL))) queue();
