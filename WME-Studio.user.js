@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.2.1
+// @version      4.2.2
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -75,7 +75,20 @@ function wmeStudioBridgeNote(text, bad) {
   } catch (_) {   }
 }
 
-const WME_STUDIO_WANTED = { resources: '4.1.1-2026-10-28z9', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.2.1-2026-10-28z2', cloudSync: '4.1.0-2026-10-28' };
+const WME_STUDIO_WANTED = { resources: '4.2.1-2026-10-28', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.2.1-2026-10-28z2', cloudSync: '4.1.0-2026-10-28' };
+function wmeStudioCompareLibraryBuild(loaded, wanted) {
+  if (loaded === wanted) return 0;
+  const parse = value => {
+    const match = /^(\d+)\.(\d+)\.(\d+)(?:-(\d{4})-(\d{2})-(\d{2})(?:z(\d+))?)?$/.exec(String(value || ''));
+    return match ? match.slice(1).map(part => part == null ? null : Number(part)) : null;
+  };
+  const actual = parse(loaded), expected = parse(wanted);
+  if (!actual || !expected) return null;
+  for (let index = 0; index < 3; index++) if (actual[index] !== expected[index]) return actual[index] < expected[index] ? -1 : 1;
+  if (actual[3] == null || expected[3] == null) return null;
+  for (let index = 3; index < 7; index++) if ((actual[index] || 0) !== (expected[index] || 0)) return (actual[index] || 0) < (expected[index] || 0) ? -1 : 1;
+  return 0;
+}
 const WME_STUDIO_LIBRARIES = [
   { key: 'resources', name: 'Resources', code: 'WMEStudioResourcesCode', mark: /\bresources\.build = '([^'\n]{1,60})'/, url: 'https://update.greasyfork.org/scripts/600831/WME%20Studio%20Resources.js' },
   { key: 'screenDisplays', name: 'Screen displays', code: 'WMEStudioScreenDisplaysCode', mark: /\bconst BUILD = '([^'\n]{1,60})'/, url: 'https://update.greasyfork.org/scripts/601144/WME%20Studio%20Screen%20Displays.js' },
@@ -173,9 +186,11 @@ function wmeStudioStartBridge(main) {
     const saved = globalThis[lib.code], wanted = WME_STUDIO_WANTED[lib.key];
     const savedText = typeof saved === 'function' ? String(saved) : '', savedBuild = lib.mark.exec(savedText)?.[1] || '';
     const fromManager = { name: lib.name, text: savedText ? `(${savedText})();` : '', build: savedBuild };
-    if (savedBuild === wanted) return fromManager;
+    const savedOrder = wmeStudioCompareLibraryBuild(savedBuild, wanted);
+    if (savedOrder === 0 || savedOrder === 1) return fromManager;
     const text = await readText(lib.url), build = lib.mark.exec(text)?.[1] || '';
-    if (text.includes(`globalThis.${lib.code}`) && (build === wanted || !savedText)) {
+    const fetchedOrder = wmeStudioCompareLibraryBuild(build, wanted);
+    if (text.includes(`globalThis.${lib.code}`) && (fetchedOrder === 0 || fetchedOrder === 1 || !savedText)) {
       say(`${lib.name}: the userscript manager has ${savedBuild || 'no copy'}, so Studio uses ${build} from Greasy Fork`);
       return { name: lib.name, text, build, fresh: true };
     }
@@ -185,6 +200,7 @@ function wmeStudioStartBridge(main) {
 
   const pageCode = values => `(function (seed) {
   const TOKEN = seed.token, unsafeWindow = window, GM_info = seed.info, WME_STUDIO_WANTED = seed.wanted;
+  const wmeStudioCompareLibraryBuild = ${wmeStudioCompareLibraryBuild.toString()};
   const store = seed.values, listeners = new Map();
   const copy = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
   const post = message => window.postMessage(Object.assign({ wsBridge: TOKEN, from: 'page' }, message), '*');
@@ -285,14 +301,26 @@ const wmeStudioMain = () => {
   if (globalThis.__WME_STUDIO_USER_SCRIPT__) return;
   globalThis.__WME_STUDIO_USER_SCRIPT__ = true;
 
+  const STUDIO_TOOLTIP_DELAY = 500;
+  const STUDIO_TOOLTIPS_ROW = '<label class="srow togrow" data-row="showTooltips"><span class="srow-text"><strong>Show tooltips</strong><span class="small">Hover hints for buttons and controls. Off by default.</span></span><span class="switch"><input data-id="showTooltips" type="checkbox"><i></i></span></label>';
+  const STUDIO_TOOLTIP_SHADOW_CSS = `
+    :host-context(html[data-wme-studio="on"]) [data-wme-studio-tooltip-replaced],
+    :host-context(html[data-wme-studio="on"]):host([data-wme-studio-tooltip-replaced]) :is(.wz-tooltip-content,.wz-tooltip-content-holder) { visibility:hidden!important;pointer-events:none!important; }
+    :host-context(html[data-wme-studio="on"][data-wme-studio-tooltips="off"]) :is([role="tooltip"],wz-tooltip-content):not(:has(button,wz-button,a[href],input,select,textarea,wz-menu,wz-select,wz-checkbox,wz-toggle-switch,[role="button"],[role="menu"],[role="listbox"],[contenteditable="true"])),
+    :host-context(html[data-wme-studio="on"][data-wme-studio-tooltips="off"]) .tip > .bubble,
+    :host-context(html[data-wme-studio="on"][data-wme-studio-tooltips="off"]):host(wz-tooltip-content[data-wme-studio-tooltip-passive="on"]) :is(.wz-tooltip-content,.wz-tooltip-content-holder) { visibility:hidden!important;pointer-events:none!important; }
+  `;
   function studioPart(name, values) {
     const BUILD = WME_STUDIO_WANTED.interface, parts = globalThis.WMEStudioInterface, part = parts?.parts?.[name];
     if (part === undefined) {
       if (!studioPart.warned) { studioPart.warned = true; console.error('[WME Studio] The WME Studio Interface library did not load (or is an older copy). Check the @require line in the script header.'); }
       return '';
     }
-    if (parts.build !== BUILD && !studioPart.noted) { studioPart.noted = true; console.warn(`[WME Studio] WME Studio Interface is an older copy (${parts.build}, expected ${BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`); }
-    return typeof part === 'function' ? part(values || {}) : part;
+    if (wmeStudioCompareLibraryBuild(parts.build, BUILD) === -1 && !studioPart.noted) { studioPart.noted = true; console.warn(`[WME Studio] WME Studio Interface ${parts.build} is older than required ${BUILD}. Update WME Studio in your userscript manager, then reload WME.`); }
+    const rendered = typeof part === 'function' ? part(values || {}) : part;
+    if (typeof rendered !== 'string') return rendered;
+    if (['part2513','CSS','CSS_2'].includes(name)) return rendered + STUDIO_TOOLTIP_SHADOW_CSS;
+    return rendered.includes('</style>') ? rendered.replace('</style>', STUDIO_TOOLTIP_SHADOW_CSS + '</style>') : rendered;
   }
 
   const studioKeep = (() => {
@@ -370,7 +398,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.2.1';
+  const USERSCRIPT_VERSION = '4.2.2';
   const STUDIO_VERIFY_LINK = (() => {
     const KEY = 'wmeStudio.verifyLink';
     try {
@@ -897,7 +925,7 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
     'wmeStudio.workspaceProfiles.v1','wmeStudio.scriptTabPins.v1','wmeStudio.panelSizes.v1','wmeStudio.chatPanelOffset.v3','wmeStudio.streetViewWindow.v1',
     'wmeStudio.enabled','wmeStudio.theme','wmeStudio.corners','wmeStudio.accent',
     'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.islandFill','wmeStudio.islandColor','wmeStudio.islandColor2','wmeStudio.islandAngle','wmeStudio.islandIntensity','wmeStudio.taskStyle','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.compactRequests','wmeStudio.commandShortcut',
-    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.contextMenu','wmeStudio.showZoomLevel','wmeStudio.zoomScaleAlways','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.closeAfterReply','wmeStudio.requestCaseFile','wmeStudio.requestQuietDays','wmeStudio.urceHandoff','wmeStudio.screenDisplays','wmeStudio.screenLongPress','wmeStudio.screenRoadButton','wmeStudio.screenShapeButton','wmeStudio.screenDrawButton','wmeStudio.islandControls.v1'
+    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.showTooltips','wmeStudio.contextMenu','wmeStudio.showZoomLevel','wmeStudio.zoomScaleAlways','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.closeAfterReply','wmeStudio.requestCaseFile','wmeStudio.requestQuietDays','wmeStudio.urceHandoff','wmeStudio.screenDisplays','wmeStudio.screenLongPress','wmeStudio.screenRoadButton','wmeStudio.screenShapeButton','wmeStudio.screenDrawButton','wmeStudio.islandControls.v1'
   ];
   const emitStorage = changes => {
     if (!Object.keys(changes).length) return;
@@ -1065,10 +1093,9 @@ ${scope} #online-editors:has(.online-editors-list-wrapper) .online-editors-bubbl
   globalThis.WMEStudioAIHelperComponents = studioPart('part1150', { studioAIHelperTokensCSS });
   const studioResources = globalThis.WMEStudioResources;
   if (!studioResources?.pageSheet) console.error('[WME Studio] The WME Studio Resources library did not load. Check the @require line in the script header.');
-  else if (String(studioResources.version).split('.').slice(0, 2).join('.') !== USERSCRIPT_VERSION.split('.').slice(0, 2).join('.')) console.warn(`[WME Studio] Resources ${studioResources.version} loaded with Studio ${USERSCRIPT_VERSION}; update both scripts together.`);
   const RESOURCES_BUILD = WME_STUDIO_WANTED.resources;
-  if (studioResources?.pageSheet && studioResources.build !== RESOURCES_BUILD) {
-    const note = `WME Studio Resources is an older copy (${studioResources.build || studioResources.version}, expected ${RESOURCES_BUILD}). Your userscript manager will fetch the new one with the next version of WME Studio.`;
+  if (studioResources?.pageSheet && wmeStudioCompareLibraryBuild(studioResources.build, RESOURCES_BUILD) === -1) {
+    const note = `WME Studio Resources ${studioResources.build} is older than required ${RESOURCES_BUILD}. Update WME Studio in your userscript manager, then reload WME.`;
     console.warn('[WME Studio] ' + note);
     try { reportStudioError('Resources', new Error(note)); } catch (_) {}
   }
@@ -1318,7 +1345,7 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     discussionVisible: 2, compactRequests: true, language: 'auto', commandShortcut: 'Shift+KeyP',
     themeSchedule: 'off', themeNight: 'dark', themeDayStart: '07:00', themeNightStart: '20:00',
     eyeSaverSchedule: 'off', eyeSaverStart: '21:00', eyeSaverEnd: '07:00', eyeSaverFade: true,
-    customScrollbars: true, contextMenu: true,
+    customScrollbars: true, showTooltips: false, contextMenu: true,
     showZoomLevel: true,
     zoomScaleAlways: false,
     createMenuClick: false, searchWidth: 0,
@@ -3936,7 +3963,14 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
     if (placed) return {kind:'moved',rail:placed,anchor:anchor || source || placed,passive:!rich};
     return null;
   }
+  function markPassiveTooltip(content) {
+    if (!content) return;
+    const interactive = content.querySelector('button,wz-button,a[href],input,select,textarea,wz-menu,wz-select,wz-checkbox,wz-toggle-switch,[role="button"],[role="menu"],[role="listbox"],[contenteditable="true"]');
+    if (interactive) content.removeAttribute('data-wme-studio-tooltip-passive');
+    else if (content.getAttribute('data-wme-studio-tooltip-passive') !== 'on') content.setAttribute('data-wme-studio-tooltip-passive', 'on');
+  }
   function rememberToolTooltipContent(content) {
+    markPassiveTooltip(content);
     for (let node = content.parentElement; node; node = node.parentElement || node.getRootNode?.().host) {
       if (['overlay-buttons','app-head','online-editors'].includes(node.id)) break;
       if (node.matches?.('wz-tooltip,wz-basic-tooltip,wz-rich-tooltip') && toolTooltipLocation(node)) {
@@ -3955,20 +3989,20 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   }
   function clearToolTooltipPosition(state) {
     state.content.removeAttribute('data-wme-studio-tools-tooltip');
-    state.content.removeAttribute('data-wme-studio-tooltip-passive');
+    markPassiveTooltip(state.content);
     for (const name of toolTooltipVariables) {
       if (state.content.style.getPropertyValue(name)) state.content.style.removeProperty(name);
     }
   }
   function positionToolTooltip(state) {
     const location = toolTooltipLocation(state.instance);
-    if (!compactLayoutActive() || compactLayoutEditing || !state.content.isConnected || !location?.anchor?.isConnected) {
+    if (!compactLayoutActive() || settings.showTooltips !== true || compactLayoutEditing || !state.content.isConnected || !location?.anchor?.isConnected) {
       clearToolTooltipPosition(state); compactToolTooltips.delete(state.instance); return;
     }
     const surface = state.content.shadowRoot?.querySelector('.wz-tooltip-content');
     if (!surface) return;
     const rail = location.rail.getBoundingClientRect(), anchor = location.anchor.getBoundingClientRect();
-    if (location.passive && !state.content.querySelector('button,wz-button,a[href],input,select,textarea,[role="button"],[contenteditable="true"]')) state.content.setAttribute('data-wme-studio-tooltip-passive','on');
+    if (location.passive && !state.content.querySelector('button,wz-button,a[href],input,select,textarea,wz-menu,wz-select,wz-checkbox,wz-toggle-switch,[role="button"],[role="menu"],[role="listbox"],[contenteditable="true"]')) state.content.setAttribute('data-wme-studio-tooltip-passive','on');
     const gap = 10, edge = 8;
     const moved = movedControlIsland(location.anchor);
     if (moved) {
@@ -4042,7 +4076,7 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   }
   document.addEventListener('tooltipOpened', event => {
     const instance = event.detail?.tooltipInstance;
-    if (!instance || (instance.trigger || instance.getAttribute?.('trigger') || 'hover') !== 'hover' || !compactLayoutActive() || compactLayoutEditing) return;
+    if (settings.showTooltips !== true || !instance || (instance.trigger || instance.getAttribute?.('trigger') || 'hover') !== 'hover' || !compactLayoutActive() || compactLayoutEditing) return;
     const content = toolTooltipContent(instance);
     if (!content || !toolTooltipLocation(instance)) return;
     const state = { instance, content };
@@ -4956,6 +4990,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     const affects = (...keys) => !changed || keys.some(key => changed.has(key));
     if (windowResize && affects('enabled', 'compactMode', 'panelScale')) endWindowResize();
     attr('density', null);
+    attr('tooltips', settings.enabled ? settings.showTooltips === true ? 'on' : 'off' : null);
     if (affects('enabled')) clearNativeOverrides();
     if (!settings.enabled) {
       syncStudioPalette();
@@ -5014,7 +5049,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     if (affects('enabled','compactMode')) for (const state of restrictionPanels.values()) syncRestrictionPanel(state);
     scriptTabPicker.refresh();
     requestMinimizer.refresh();
-    caseFile.refresh(); quickReplies.refresh(); replyTools.refresh(); replyDetails.refresh(); chatPlus.refresh(); zoomLevelShow.refresh(); pieSupport.refresh(); wmephSupport.refresh(); mapButtonTips.refresh(); placeTemplates.refresh();
+    caseFile.refresh(); quickReplies.refresh(); replyTools.refresh(); replyDetails.refresh(); chatPlus.refresh(); zoomLevelShow.refresh(); pieSupport.refresh(); wmephSupport.refresh(); mapButtonTips.refresh(); tooltipControl.refresh(); placeTemplates.refresh();
     panelResizeHints.prune();
     syncCompactGlassAppearance();
     syncBetaNavigationGlassState();
@@ -6085,7 +6120,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
 
   const requestMinimizer = (() => {
     const limit = 12, items = new Map(), panels = new Map(), SAVED_KEY = 'wmeStudio.savedRequests.v1';
-    let sdk = null, zoomSDK = null, zoomLevel = null, sdkReadyHooked = false, sdkReady = false, connectedApp = null, active = null, host = null, shadow = null, naming = null, pendingRestore = null, refreshFrame = 0, positionFrame = 0, footer = null, pillPicker = null, pillColor = '#0099ff', pillIcon = 'request', tooltipButton = null;
+    let sdk = null, zoomSDK = null, zoomLevel = null, sdkReadyHooked = false, sdkReady = false, connectedApp = null, active = null, host = null, shadow = null, naming = null, pendingRestore = null, refreshFrame = 0, positionFrame = 0, footer = null, pillPicker = null, pillColor = '#0099ff', pillIcon = 'request', tooltipButton = null, tooltipTimer = 0;
     let headerSlot = null, headerShadow = null, menuOpen = false, menuFilter = 'all', headerWatch = null, headerFrame = 0, saveTimer = 0;
     const followUps = new Map(), FOLLOW_KEY = 'wmeStudio.followUps.v1', FOLLOW_MAX = 50;
     let followTimer = 0;
@@ -6350,11 +6385,18 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     return {close:closeColorPicker,isOpen:()=>colorPicker.matches(':popover-open')};
     }
     function hideMinimizeTip() {
+      clearTimeout(tooltipTimer); tooltipTimer = 0;
       tooltipButton?.removeAttribute('aria-describedby');tooltipButton=null;
       if(shadow)shadow.querySelector('.minimize-tip').hidden=true;
     }
-    function showMinimizeTip(button) {
-      if (!button.isConnected || button.hidden || !settings.enabled || compactLayoutEditing || naming) {hideMinimizeTip();return;}
+    function showMinimizeTip(button, delayed = false) {
+      if (!button.isConnected || button.hidden || !settings.enabled || settings.showTooltips !== true || compactLayoutEditing || naming) {hideMinimizeTip();return;}
+      if (!delayed) {
+        if (tooltipButton === button) return;
+        hideMinimizeTip(); tooltipButton = button;
+        tooltipTimer = setTimeout(() => { tooltipTimer = 0; if (tooltipButton === button) showMinimizeTip(button, true); }, STUDIO_TOOLTIP_DELAY);
+        return;
+      }
       ensureUI(); tooltipButton=button;const tip=shadow.querySelector('.minimize-tip');tip.textContent=button.minimizeTip || tr('Minimize');tip.hidden=false;
       const rect=button.getBoundingClientRect(),size=tip.getBoundingClientRect();
       tip.style.left=`${Math.max(8,Math.min(rect.left+(rect.width-size.width)/2,innerWidth-size.width-8))}px`;
@@ -7657,6 +7699,16 @@ html[data-wme-studio="on"] .ws-desc-fold span { overflow: hidden; min-width: 0; 
 html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .problem-data > .section[class*="description"] > :not(.ws-desc-fold):not(#ws-none) { display: none !important; }
 html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .ws-desc-fold { position: static; justify-content: flex-start; width: 100%; height: 26px; padding: 0 10px 0 6px; border-radius: 8px; text-align: left; }
 html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .ws-desc-fold svg { transform: rotate(180deg); }
+
+/* Keep the description inside the panel and leave a separate lane for its fold button. */
+html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] { box-sizing: border-box; padding: 4px var(--ws-pad, 12px) 10px !important; }
+html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] > :is(.content, .ws-case-tr) { box-sizing: border-box; min-width: 0; padding: 0 !important; padding-right: 34px !important; overflow-wrap: anywhere; }
+html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"] .ws-desc-fold { top: 4px; }
+/* Position the native Driver settings heading only once its anchor has a valid layout. */
+html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"]:not([data-ws-drive-positioned]) .problem-data > .more-info.section + .reporter-preferences.section > .title { position: static !important; margin: 0 0 6px !important; }
+html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"]:not([data-ws-drive-positioned]) .problem-data > .more-info.section + .reporter-preferences.section.collapsed { padding: 6px var(--ws-pad, 12px) 10px !important; }
+html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"][data-ws-drive-positioned] .problem-data > .more-info.section + .reporter-preferences.section > .title { position: absolute !important; top: var(--ws-drive-top) !important; left: var(--ws-drive-left) !important; margin: 0 !important; }
+
 @media (prefers-reduced-motion: reduce) { html[data-wme-studio="on"] .ws-desc-fold svg { transition: none; } }`);
     function foldDescription(panel) {
       const description = panel.querySelector('.problem-data > .section[class*="description"]');
@@ -7789,29 +7841,59 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     let driverOpen = false;
     try { driverOpen = localStorage.getItem(DRIVER_KEY) === '1'; } catch {}
     function measureDrive(panel, drive) {
-      const width = Math.round(drive.offsetWidth); if (width) panel.style.setProperty('--ws-drive-w', width + 'px');
-      const data = drive.closest('.problem-data'); if (!data || !drive.offsetHeight) return;
-      let offset = 0, node = drive;
-      while (node && node !== data) { offset += node.offsetTop; node = node.offsetParent; }
-      if (node !== data) return;
-      const top = `${Math.round(offset)}px`;
-      if (panel.style.getPropertyValue('--ws-drive-top') !== top) panel.style.setProperty('--ws-drive-top', top);
+      const data = drive?.closest('.problem-data');
+      const title = data?.querySelector(':scope > .more-info.section + .reporter-preferences.section > .title');
+      if (!settings.compactRequests || !data || !title || !data.offsetWidth || !data.offsetHeight || !drive.offsetHeight) {
+        panel.removeAttribute('data-ws-drive-positioned'); return;
+      }
+      // offsetParent can skip problem-data while the request is opening. Rectangles share
+      // one coordinate system; undo the panel's zoom/scale before writing CSS pixels.
+      const box = data.getBoundingClientRect(), anchor = drive.getBoundingClientRect();
+      const sx = box.width / data.offsetWidth, sy = box.height / data.offsetHeight;
+      if (!(sx > 0 && sy > 0 && anchor.width > 0 && anchor.height > 0)) {
+        panel.removeAttribute('data-ws-drive-positioned'); return;
+      }
+      const left = (anchor.right - box.left) / sx - data.clientLeft + data.scrollLeft + 6;
+      const top = (anchor.top - box.top) / sy - data.clientTop + data.scrollTop;
+      // Long translated headings can use their own row rather than overlap the edge.
+      const width = Math.max(title.offsetWidth, title.scrollWidth);
+      if (left + width + 12 > data.clientWidth) { panel.removeAttribute('data-ws-drive-positioned'); return; }
+      for (const [name, value] of [['--ws-drive-w', anchor.width / sx], ['--ws-drive-left', left], ['--ws-drive-top', top]]) {
+        const next = Math.round(value * 100) / 100 + 'px';
+        if (panel.style.getPropertyValue(name) !== next) panel.style.setProperty(name, next);
+      }
+      if (!panel.hasAttribute('data-ws-drive-positioned')) panel.setAttribute('data-ws-drive-positioned', '');
+    }
+    function queueDriveMeasure(state, panel) {
+      if (state.driveFrame || !panel.isConnected) return;
+      state.driveFrame = requestAnimationFrame(() => {
+        state.driveFrame = 0;
+        if (panel.isConnected && state.driveTitle?.isConnected) measureDrive(panel, state.driveTitle);
+      });
     }
     function paintDriver(state, panel) {
-      const drive = panel.querySelector('.problem-data > .more-info.section > .title');
-      if (drive !== state.driveTitle) {
-        state.driveSize?.disconnect(); state.driveSize = null; state.driveTitle = drive;
+      const data = panel.querySelector('.problem-data');
+      const drive = data?.querySelector(':scope > .more-info.section > .title');
+      const section = data?.querySelector(':scope > .reporter-preferences.section');
+      const description = data?.querySelector(':scope > .section[class*="description"]');
+      const title = section?.querySelector(':scope > .title');
+      const targets = [drive, data, description, title].filter(Boolean);
+      const changed = !state.driveTargets || targets.length !== state.driveTargets.length || targets.some((node, index) => node !== state.driveTargets[index]);
+      if (changed) {
+        state.driveSize?.disconnect(); state.driveSize = null; state.driveTitle = drive; state.driveTargets = targets;
         if (drive && typeof ResizeObserver === 'function') {
-          state.driveSize = new ResizeObserver(() => measureDrive(panel, drive));
-          state.driveSize.observe(drive);
-          const data = drive.closest('.problem-data'); if (data) state.driveSize.observe(data);
+          state.driveSize = new ResizeObserver(() => queueDriveMeasure(state, panel));
+          for (const node of targets) state.driveSize.observe(node);
         }
       }
-      if (drive) measureDrive(panel, drive);
-      const section = panel.querySelector('.problem-data > .reporter-preferences.section');
-      if (!section || driverSeen.has(section)) return;
-      driverSeen.add(section);
-      if (section.classList.contains('collapsed') === driverOpen) section.querySelector(':scope > .title')?.click();
+      let opened = false;
+      if (section && !driverSeen.has(section)) {
+        driverSeen.add(section);
+        if (section.classList.contains('collapsed') === driverOpen) { title?.click(); opened = true; }
+      }
+      if (drive) measureDrive(panel, drive); else panel.removeAttribute('data-ws-drive-positioned');
+      // WME can commit the collapsed state and its panel styles after this first pass.
+      if (changed || opened) queueDriveMeasure(state, panel);
     }
     const translators = new Map();
     let detector = null;
@@ -7977,7 +8059,9 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       state?.observer?.disconnect();
       for (const node of [state?.head, state?.status, state?.card, state?.tab]) node?.remove();
       if (state) { state.translate = 'off'; untranslate(state); }
-      state?.driveSize?.disconnect(); panel.style.removeProperty('--ws-drive-w');
+      state?.driveSize?.disconnect(); if (state?.driveFrame) cancelAnimationFrame(state.driveFrame);
+      for (const name of ['--ws-drive-w', '--ws-drive-left', '--ws-drive-top']) panel.style.removeProperty(name);
+      panel.removeAttribute('data-ws-drive-positioned');
       panel.removeAttribute('data-wme-studio-case');
       for (const item of panel.querySelectorAll('[data-ws-side]')) for (const name of ['data-ws-side', 'data-ws-who', 'data-ws-gap', 'data-ws-after', 'data-ws-open']) item.removeAttribute(name);
       for (const title of panel.querySelectorAll('[data-ws-toggle]')) title.removeAttribute('data-ws-toggle');
@@ -8045,8 +8129,14 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         });
         state.observer.observe(panel, { childList: true, subtree: true, characterData: true });
         panel.addEventListener('click', event => {
-          const driver = event.target.closest?.('.reporter-preferences.section > .title')?.parentElement;
-          if (driver && event.isTrusted) { setTimeout(() => { driverOpen = !driver.classList.contains('collapsed'); try { localStorage.setItem(DRIVER_KEY, driverOpen ? '1' : '0'); } catch {} }); return; }
+          const details = event.target.closest?.('.more-info.section > .title,.reporter-preferences.section > .title')?.parentElement;
+          if (details && event.isTrusted) {
+            setTimeout(() => {
+              if (details.classList.contains('reporter-preferences')) { driverOpen = !details.classList.contains('collapsed'); try { localStorage.setItem(DRIVER_KEY, driverOpen ? '1' : '0'); } catch {} }
+              queueDriveMeasure(state, panel);
+            });
+            return;
+          }
           const title = event.target.closest?.('.comment-title[data-ws-toggle]');
           const item = title?.closest('[data-ws-side="auto"]');
           if (!item) return;
@@ -8067,7 +8157,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       frame = requestAnimationFrame(() => {
         frame = 0;
         for (const panel of document.querySelectorAll('.problem-edit')) sync(panel);
-        for (const panel of [...states.keys()]) if (!panel.isConnected) { states.get(panel)?.observer?.disconnect(); states.delete(panel); }
+        for (const panel of [...states.keys()]) if (!panel.isConnected) clear(panel, states.get(panel));
       });
     }
     setInterval(() => { if (states.size) queue(); }, 60000);
@@ -8277,6 +8367,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         action: Object.hasOwn(view.builtActions || {}, key) ? view.builtActions[key] : builtDefaultAction(key), button: (view.builtButtons || []).includes(key) };
     }
     const ICONS = {
+      mapPin: '<path d="M9 3h6l-1 6 4 4v2H6v-2l4-4z"/><path d="M12 15v6"/>',
       tab: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
       edit: '<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/>',
       remove: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
@@ -8313,6 +8404,179 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
 html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit ::-webkit-scrollbar-thumb:hover { background: var(--wme-studio-text-muted) padding-box !important; }
 }`);
     function windows() { return [...document.querySelectorAll(WINDOW)].filter(win => win.querySelector('.problem-edit') && !win.closest('#wme-studio-compact-layout-editor')); }
+    // Temporary map placement belongs to this open panel only. Never put it in Studio storage.
+    let mapPinnedState = null;
+    const QR_FLOAT_CSS = `
+      .head{cursor:grab;touch-action:none;user-select:none;flex:none}
+      .head .icon{cursor:pointer;touch-action:manipulation}
+      .head:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:-3px}
+      .map-pin[aria-pressed="true"]{color:var(--wme-studio-accent,#0099ff);background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 15%,transparent)}
+      .qr-context{flex:none;margin:0;padding:9px 14px;border-bottom:1px solid var(--wme-studio-border,#3d444b);color:var(--wme-studio-text-muted,#9aa3ad);font-size:12px;line-height:1.5}
+      :host([data-floating]){position:fixed!important;inset:0 auto auto 0!important;width:0!important;height:0!important;z-index:10040!important;pointer-events:none}
+      :host([data-floating]) .panel{position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;width:var(--ws-qr-float-width)!important;max-height:var(--ws-qr-float-max)!important;pointer-events:auto}
+      :host([data-dragging]) .head{cursor:grabbing}
+      :host([data-dragging]) .panel{will-change:transform}
+    `;
+    function requestPanel(state) {
+      const win = state?.win;
+      return win?.isConnected && win.getClientRects().length ? win.querySelector('.problem-edit') : null;
+    }
+    const activeReplyElement = state => state.floatShadow?.activeElement || state.shadow.activeElement;
+    function floatingBounds() {
+      const viewport = globalThis.visualViewport;
+      const view = { left: viewport?.offsetLeft || 0, top: viewport?.offsetTop || 0,
+        right: (viewport?.offsetLeft || 0) + (viewport?.width || innerWidth), bottom: (viewport?.offsetTop || 0) + (viewport?.height || innerHeight) };
+      const map = document.getElementById('WazeMap')?.getBoundingClientRect();
+      if (!map?.width || !map.height) return view;
+      const bounds = { left: Math.max(view.left, map.left), top: Math.max(view.top, map.top), right: Math.min(view.right, map.right), bottom: Math.min(view.bottom, map.bottom) };
+      return bounds.right > bounds.left && bounds.bottom > bounds.top ? bounds : view;
+    }
+    function setFloatValue(state, name, value) {
+      if (state.panel.style.getPropertyValue(name) !== value) state.panel.style.setProperty(name, value);
+    }
+    function moveFloating(state, bounds, box) {
+      const point = state.floatPoint, scale = point.scale;
+      point.x = Math.max(bounds.left + 8, Math.min(point.x, Math.max(bounds.left + 8, bounds.right - box.width - 8)));
+      point.y = Math.max(bounds.top + 8, Math.min(point.y, Math.max(bounds.top + 8, bounds.bottom - box.height - 8)));
+      const transform = `translate3d(${Math.round(point.x / scale * 100) / 100}px,${Math.round(point.y / scale * 100) / 100}px,0)`;
+      if (state.panel.style.transform !== transform) state.panel.style.setProperty('transform', transform, 'important');
+    }
+    function placeFloating(state) {
+      if (!state.floatHost || !state.floatPoint || state.drag?.geometry) return;
+      const bounds = floatingBounds(), point = state.floatPoint, scale = point.scale;
+      setFloatValue(state, '--ws-qr-float-width', Math.max(1, Math.min(point.width, (bounds.right - bounds.left - 16) / scale)) + 'px');
+      setFloatValue(state, '--ws-qr-float-max', Math.max(48, Math.min(point.maxHeight, (bounds.bottom - bounds.top - 16) / scale)) + 'px');
+      moveFloating(state, bounds, state.panel.getBoundingClientRect());
+    }
+    function wireReplyHost(state, host, shadow) {
+      for (const type of ['keydown', 'keyup', 'keypress']) shadow.addEventListener(type, event => {
+        if (type === 'keydown') {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            if (state.menuOpen) { toggleMenu(state, false); state.panel.querySelector('.icon.more')?.focus({ preventScroll: true }); }
+            else if (state.view !== 'list') renderList(state);
+            else close(state, true);
+          } else if (listKeys(state, event)) event.preventDefault();
+          else if (state.view === 'list' && event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(activeReplyElement(state)?.tagName || '')) state.panel.querySelector('.find')?.focus({ preventScroll: true });
+        }
+        event.stopPropagation();
+      });
+      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'wheel', 'dblclick', 'focusin']) host.addEventListener(type, event => event.stopPropagation());
+    }
+    function floatPanel(state, rect = state.panel.getBoundingClientRect()) {
+      if (state.floatHost) return;
+      const scale = rect.width / state.panel.offsetWidth || 1;
+      state.floatPoint = { x: rect.left, y: rect.top, width: state.panel.offsetWidth || 400, maxHeight: parseFloat(getComputedStyle(state.panel).maxHeight) || 560, scale };
+      const host = el('div'); host.className = 'ws-quick-replies ws-quick-replies-map';
+      host.setAttribute('data-ws-keep', ''); host.setAttribute('data-floating', ''); host.style.zoom = String(scale);
+      const shadow = host.attachShadow({ mode: 'open' });
+      const style = document.createElement('style'); style.textContent = CSS + QR_EXTRA + QR_FLOAT_CSS; shadow.append(style);
+      state.floatHost = host; state.floatShadow = shadow;
+      document.body.append(host); shadow.append(state.panel);
+      wireReplyHost(state, host, shadow); placeFloating(state); paintMapPin(state); refreshPinnedContext(state);
+    }
+    function flushPanelDrag(state) {
+      const drag = state.drag; if (!drag?.geometry) return;
+      drag.frame = 0;
+      state.floatPoint.x = drag.nextX; state.floatPoint.y = drag.nextY;
+      moveFloating(state, drag.geometry.bounds, drag.geometry.box);
+    }
+    function endPanelDrag(state) {
+      const drag = state.drag; if (!drag) return;
+      if (drag.frame) { cancelAnimationFrame(drag.frame); flushPanelDrag(state); }
+      state.drag = null; drag.events.abort();
+      try { if (drag.handle.hasPointerCapture?.(drag.id)) drag.handle.releasePointerCapture(drag.id); } catch (_) {}
+      state.floatHost?.removeAttribute('data-dragging');
+      if (drag.moved) { placeFloating(state); refreshPinnedContext(state); }
+    }
+    function dockPanel(state) {
+      endPanelDrag(state);
+      state.panel.style.removeProperty('transform');
+      if (state.floatHost) { state.shadow.append(state.panel); state.floatHost.remove(); }
+      state.floatHost = null; state.floatShadow = null; state.floatPoint = null; state.contextKey = undefined;
+      state.panel.querySelector('.qr-context')?.remove(); paintMapPin(state);
+    }
+    function pinPanel(state) {
+      if (state.mapPinned) {
+        state.mapPinned = false; if (mapPinnedState === state) mapPinnedState = null;
+        if (!requestPanel(state)) { close(state); return; }
+        dockPanel(state); place(state); return;
+      }
+      if (mapPinnedState && mapPinnedState !== state) close(mapPinnedState);
+      floatPanel(state); state.mapPinned = true; mapPinnedState = state; paintMapPin(state);
+    }
+    function paintMapPin(state) {
+      for (const button of state.panel.querySelectorAll('.map-pin')) {
+        const label = tr(state.mapPinned ? 'Unpin from map' : 'Pin on map');
+        button.title = label; button.setAttribute('aria-label', label); button.setAttribute('aria-pressed', String(!!state.mapPinned));
+      }
+    }
+    function startPanelDrag(state, handle, event) {
+      if (event.button !== 0 || event.isPrimary === false || event.target.closest('button,a,input,textarea,select,[role="button"]')) return;
+      endPanelDrag(state); event.preventDefault(); event.stopPropagation();
+      const events = new AbortController(), rect = state.panel.getBoundingClientRect();
+      state.drag = { id: event.pointerId, x: event.clientX, y: event.clientY, rect, handle, events, moved: false };
+      const move = next => {
+        const drag = state.drag; if (!drag || next.pointerId !== drag.id) return;
+        const dx = next.clientX - drag.x, dy = next.clientY - drag.y;
+        if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+        if (!drag.moved) {
+          drag.moved = true; floatPanel(state, drag.rect);
+          try { handle.setPointerCapture(drag.id); } catch (_) {}
+          state.floatHost.setAttribute('data-dragging', '');
+          drag.geometry = { bounds: floatingBounds(), box: state.panel.getBoundingClientRect() };
+        }
+        next.preventDefault(); next.stopPropagation();
+        drag.nextX = drag.rect.left + dx; drag.nextY = drag.rect.top + dy;
+        if (!drag.frame) drag.frame = requestAnimationFrame(() => flushPanelDrag(state));
+      };
+      const end = next => {
+        const drag = state.drag; if (drag?.id !== next.pointerId) return;
+        if (drag.moved && next.type === 'pointerup') {
+          drag.nextX = drag.rect.left + next.clientX - drag.x; drag.nextY = drag.rect.top + next.clientY - drag.y;
+          if (!drag.frame) drag.frame = requestAnimationFrame(() => flushPanelDrag(state));
+        }
+        endPanelDrag(state);
+      };
+      window.addEventListener('pointermove', move, { capture: true, passive: false, signal: events.signal });
+      window.addEventListener('pointerup', end, { capture: true, signal: events.signal });
+      window.addEventListener('pointercancel', end, { capture: true, signal: events.signal });
+      window.addEventListener('blur', () => endPanelDrag(state), { once: true, signal: events.signal });
+    }
+    function refreshPinnedContext(state) {
+      if (!state.floatHost || state.drag?.moved) return;
+      const panel = requestPanel(state);
+      let key = 'none'; if (panel) { try { key = String(caseFile.facts(panel)?.id || 'open'); } catch (_) { key = 'open'; } }
+      if (state.contextKey === key) return;
+      state.contextKey = key;
+      state.panel.querySelector('.qr-context')?.remove();
+      if (state.view === 'list') paintRows(state);
+    }
+    function watchReplyWindow(state) {
+      state.observer?.disconnect(); state.size?.disconnect();
+      const refresh = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; for (const one of states.values()) { place(one); refreshPinnedContext(one); } }); };
+      state.observer = new MutationObserver(refresh);
+      state.observer.observe(state.win, { attributes: true, attributeFilter: ['style', 'class'] });
+      if (typeof ResizeObserver === 'function') {
+        state.size = new ResizeObserver(refresh);
+        for (const node of [state.win, state.shadow.querySelector('.stack'), state.panel]) if (node) state.size.observe(node);
+      }
+    }
+    function removeReplyState(state) {
+      if (!state) return;
+      if (mapPinnedState === state) mapPinnedState = null;
+      state.mapPinned = false; endPanelDrag(state); state.floatHost?.remove();
+      state.observer?.disconnect(); state.size?.disconnect(); state.replyWatch?.disconnect(); state.host.remove(); states.delete(state.win);
+    }
+    function retargetPinned(win) {
+      const state = mapPinnedState; if (!state || state.win === win) return;
+      const other = states.get(win); if (other && other !== state) removeReplyState(other);
+      endPanelDrag(state); states.delete(state.win); state.win = win;
+      for (const tab of state.host.querySelectorAll(':scope > .ws-case-translate')) tab.remove();
+      win.append(state.host); states.set(win, state); watchReplyWindow(state); caseFile.refresh();
+      refreshPinnedContext(state); place(state);
+    }
+
     function replyText(panel) {
       const field = panel?.querySelector('wz-textarea.new-comment-text') || panel?.querySelector('.new-comment-form textarea');
       return String(field?.value ?? field?.shadowRoot?.querySelector('textarea')?.value ?? '');
@@ -8435,7 +8699,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       logUse(id, chars || item.text.length, lang);
     }
     function insert(state, text, item = null) {
-      const panel = state.win.querySelector('.problem-edit'); if (!panel) return;
+      const panel = requestPanel(state); if (!panel) return;
       let now = replyText(panel).trimEnd(); const filled = fillVariables(text, panel);
       if (state.suggestedText && now.trim() === state.suggestedText.trim()) { now = ''; panel.querySelector('.ws-suggested')?.remove(); }
       state.suggestedText = '';
@@ -8444,7 +8708,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       caseFile.fill(panel, now ? `${now}\n\n${filled}` : filled);
       applyAction(panel, item?.action);
       paintButtons(state);
-      close(state);
+      if (!state.mapPinned) close(state); else place(state);
       if (!view.translate || !item) return;
       let ownLanguage = true;
       if (item.builtIn) { try { const languages = caseFile.replyLanguages(panel); ownLanguage = !languages.chosen && !languages.list.some(one => one.code === languages.language); } catch (_) { ownLanguage = false; } }
@@ -8456,6 +8720,8 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (radio && !radio.checked && !radio.disabled) { try { radio.click(); } catch (error) { reportStudioError('quick replies action', error); } }
     }
     function place(state) {
+      if (state.drag?.moved) return;
+      if (state.floatHost) { placeFloating(state); if (!state.win.isConnected) return; }
       const rect = state.win.getBoundingClientRect();
       const open = !state.panel.hidden, need = 34 + (open ? Math.min(320, innerWidth - 24) + 8 : 0);
       const side = rect.right + need > innerWidth - 8 && rect.left - need > 8 ? 'left' : 'right';
@@ -8489,6 +8755,8 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     function close(state, focus = false) {
       if (state.panel.hidden) return;
+      state.mapPinned = false; if (mapPinnedState === state) mapPinnedState = null;
+      dockPanel(state);
       state.panel.hidden = true; state.tab.setAttribute('aria-expanded', 'false'); state.editing = null; state.query = '';
       place(state); if (focus) state.tab.focus({ preventScroll: true });
     }
@@ -8506,7 +8774,19 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     function head(state, title, extra = null) {
       const box = el('div', 'head'); box.append(el('strong', '', title));
+      box.tabIndex = 0; box.setAttribute('aria-description', tr('Drag to move temporarily. Arrow keys also move this panel.'));
+      box.addEventListener('pointerdown', event => startPanelDrag(state, box, event));
+      box.addEventListener('keydown', event => {
+        if (event.target !== box || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+        event.preventDefault(); event.stopPropagation(); floatPanel(state);
+        const step = event.shiftKey ? 10 : 1;
+        state.floatPoint.x += event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0;
+        state.floatPoint.y += event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0;
+        placeFloating(state); box.focus({ preventScroll: true });
+      });
       if (extra) box.append(extra);
+      const mapPin = iconButton('mapPin', tr(state.mapPinned ? 'Unpin from map' : 'Pin on map'), () => pinPanel(state));
+      mapPin.classList.add('map-pin'); mapPin.setAttribute('aria-pressed', String(!!state.mapPinned)); box.append(mapPin);
       const shut = iconButton('close', tr('Close'), () => close(state, shut.wsKeyboard === true));
       shut.addEventListener('pointerdown', () => { shut.wsKeyboard = false; }); shut.addEventListener('keydown', () => { shut.wsKeyboard = true; });
       box.append(shut);
@@ -8608,7 +8888,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       };
       const order = value => () => { view.studio = value; saveView(); };
       const keys = foldKeys(state);
-      const panel = state.win.querySelector('.problem-edit');
+      const panel = requestPanel(state);
       let languages = null; try { languages = caseFile.replyLanguages(panel); } catch (_) { languages = null; }
       const languagePage = () => {
         const back = el('button', 'mo'); back.type = 'button'; back.setAttribute('role', 'menuitem');
@@ -8692,7 +8972,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     const folderTags = name => (folderMeta[name]?.tags || []).join(' ');
     function foldKeys(state) {
-      const panel = state.win.querySelector('.problem-edit');
+      const panel = requestPanel(state);
       const keys = folderNames().filter(name => custom.some(item => item.group === name)).map(name => `f:${name}`);
       if (custom.some(item => !item.group)) keys.push('none');
       try { if (caseFile.replies(panel).set) keys.push('studio', ...Object.keys(TYPE_BUILT).map(group => `studio:${group}`), 'studio:mapmate'); } catch (_) {   }
@@ -8730,7 +9010,12 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     function paintRows(state) {
       const body = state.panel.querySelector('.body'); if (!body) return;
-      const panel = state.win.querySelector('.problem-edit');
+      const panel = requestPanel(state);
+      if (!panel) {
+        body.replaceChildren(el('p', 'empty', tr('Open an update request to use Quick replies.')));
+        const title = state.panel.querySelector('.qtitle'); if (title) title.textContent = tr('No request open');
+        return;
+      }
       const { name, set, language } = caseFile.replies(panel);
       const type = typeOf(panel), query = fold(state.query).trim();
       const here = (() => { try { return caseFile.country(panel); } catch (_) { return ''; } })();
@@ -8853,7 +9138,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     function listKeys(state, event) {
       if (state.view !== 'list' || event.ctrlKey || event.metaKey || event.altKey) return false;
-      const rows = [...state.panel.querySelectorAll('.body .row')], focused = state.shadow.activeElement, inSearch = focused?.classList?.contains('find');
+      const rows = [...state.panel.querySelectorAll('.body .row')], focused = activeReplyElement(state), inSearch = focused?.classList?.contains('find');
       const at = rows.indexOf(focused);
       if (state.menuOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
         const options = [...state.panel.querySelectorAll('.menu .mo')], index = options.indexOf(focused);
@@ -8963,7 +9248,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const field = (labelText, node) => { const label = el('label', '', labelText); label.append(node); return label; };
       const title = el('input'); title.maxLength = 60; title.value = item?.title || ''; title.placeholder = tr('Road closed for works');
       const group = el('input'); group.maxLength = 40; group.value = item?.group || ''; group.placeholder = tr('Closures');
-      const current = typeOf(state.win.querySelector('.problem-edit'));
+      const current = typeOf(requestPanel(state));
       const type = el('input'); type.maxLength = 60; type.value = item?.type || ''; type.placeholder = current || tr('Missing roundabout');
       const typeLabel = field(tr('Show first for (optional)'), suggest(type, () => [...new Set([current, ...custom.map(one => one.type)].filter(Boolean))]));
       if (current) {
@@ -9177,8 +9462,8 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       .lab-row{position:relative;display:flex;align-items:center;gap:6px;min-height:18px}.lab{color:var(--wme-studio-text-muted,#9aa3ad);font-size:12px;font-weight:600;line-height:16px}
       .tip{display:inline-grid;place-items:center;flex:none;width:16px;height:16px;margin:0;padding:0;border:1px solid var(--wme-studio-border,#3d444b);border-radius:50%;background:transparent;color:var(--wme-studio-text-muted,#9aa3ad);line-height:0;cursor:help}.tip>svg{display:block;width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.tip>svg circle{fill:currentColor;stroke:none}
       .tip:hover,.tip:focus-visible{border-color:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-accent,#0099ff);outline:none}
-      .tip .bubble{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:6;display:none;padding:9px 11px;border:1px solid var(--wme-studio-border,#3d444b);border-radius:10px;background:var(--ws-window-paint,var(--wme-studio-surface,#292d31));-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 10px 28px rgba(0,0,0,.35);color:var(--wme-studio-text,#edf1f4);font-size:12px;font-weight:500;line-height:1.45;text-align:left;cursor:default;pointer-events:none}
-      .tip:hover .bubble,.tip:focus .bubble{display:block}
+      .tip .bubble{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:6;display:block;visibility:hidden;opacity:0;transition:visibility 0s,opacity .1s;padding:9px 11px;border:1px solid var(--wme-studio-border,#3d444b);border-radius:10px;background:var(--ws-window-paint,var(--wme-studio-surface,#292d31));-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 10px 28px rgba(0,0,0,.35);color:var(--wme-studio-text,#edf1f4);font-size:12px;font-weight:500;line-height:1.45;text-align:left;cursor:default;pointer-events:none}
+      .tip:hover .bubble,.tip:focus .bubble{visibility:visible;opacity:1;transition-delay:${STUDIO_TOOLTIP_DELAY}ms}
       .chip .label{max-width:120px;padding:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:16px}.chip[data-key="type"] .label{max-width:96px}
       .dd{position:relative}
       .dd-btn{display:flex;align-items:center;gap:8px;box-sizing:border-box;width:100%;height:36px;margin:0;padding:0 10px;border:1px solid var(--wme-studio-border,#3d444b);border-radius:10px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff);font:inherit;font-size:12.5px;font-weight:600;line-height:1;text-align:left;cursor:pointer}
@@ -9208,7 +9493,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     const ACTION_ICONS = { solved: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'not-identified': '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 8.5l7 7"/>', '': ICONS.tab };
     const ACTION_COLORS = { solved: '#30a46c', 'not-identified': '#8b95a3' };
     function paintButtons(state) {
-      const panel = state?.win?.querySelector('.problem-edit'); if (!panel) return;
+      const panel = requestPanel(state); if (!panel) return;
       const form = panel.querySelector('.new-comment-form');
       let bar = panel.querySelector('.ws-reply-buttons');
       if (!settings.enabled || urceLeads() || !form || !loaded) { bar?.remove(); return; }
@@ -9233,7 +9518,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (bar.nextElementSibling !== form) form.before(bar);
     }
     function suggestFirst(state) {
-      const panel = state?.win?.querySelector('.problem-edit'); if (!panel) return;
+      const panel = requestPanel(state); if (!panel) return;
       let facts = null; try { facts = caseFile.facts(panel); } catch (_) { facts = null; }
       const note = panel.querySelector('.ws-suggested');
       if (!view.suggest || urceLeads() || !facts || !Number.isFinite(facts.id) || facts.closed || facts.messages.length) { note?.remove(); return; }
@@ -9338,34 +9623,22 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     function attach(win) {
       let state = states.get(win);
-      if (state?.host.isConnected && state.host.parentElement === win) { urceMode(state); place(state); load().then(() => { paintButtons(state); suggestFirst(state); }); return; }
-      state?.host.remove(); state?.observer?.disconnect(); state?.size?.disconnect();
+      if (state?.mapPinned && state.floatHost && state.host.parentElement !== win) win.append(state.host);
+      if (state?.host.isConnected && state.host.parentElement === win) { urceMode(state); place(state); load().then(() => { paintButtons(state); suggestFirst(state); refreshPinnedContext(state); }); return; }
+      removeReplyState(state);
       const host = el('div'); host.className = 'ws-quick-replies'; host.setAttribute('data-ws-keep', '');
       const shadow = host.attachShadow({ mode: 'open' });
-      shadow.innerHTML = `<style>${CSS}${QR_EXTRA}</style><div class="stack"><slot name="extra"></slot><button class="tab" type="button" aria-expanded="false" aria-haspopup="dialog">${svg(ICONS.tab)}<span></span></button></div><div class="panel" role="dialog" hidden></div>`;
+      shadow.innerHTML = `<style>${CSS}${QR_EXTRA}${QR_FLOAT_CSS}</style><div class="stack"><slot name="extra"></slot><button class="tab" type="button" aria-expanded="false" aria-haspopup="dialog">${svg(ICONS.tab)}<span></span></button></div><div class="panel" role="dialog" hidden></div>`;
       state = { win, host, shadow, tab: shadow.querySelector('.tab'), panel: shadow.querySelector('.panel'), editing: null, observer: null };
       state.panel.tabIndex = -1;
       state.tab.querySelector('span').textContent = tr('Quick replies');
       state.tab.title = tr('Quick replies'); state.panel.setAttribute('aria-label', tr('Quick replies'));
       state.tab.addEventListener('click', event => { event.stopPropagation(); if (urceLeads() && openUrce()) { close(state); return; } if (state.panel.hidden) open(state); else close(state); });
-      for (const type of ['keydown', 'keyup', 'keypress']) shadow.addEventListener(type, event => {
-        if (type === 'keydown') {
-          if (event.key === 'Escape') { event.preventDefault(); if (state.menuOpen) { toggleMenu(state, false); state.panel.querySelector('.icon.more')?.focus({ preventScroll: true }); } else if (state.view !== 'list') renderList(state); else close(state, true); }
-          else if (listKeys(state, event)) event.preventDefault();
-          else if (state.view === 'list' && event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(state.shadow.activeElement?.tagName || '')) state.panel.querySelector('.find')?.focus({ preventScroll: true });
-        }
-        event.stopPropagation();
-      });
-      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'wheel', 'dblclick', 'focusin']) host.addEventListener(type, event => event.stopPropagation());
+      wireReplyHost(state, host, shadow);
       state.panel.addEventListener('pointerdown', event => { if (state.menuOpen && !event.composedPath().some(node => node.classList?.contains('menu') || node.classList?.contains('more'))) toggleMenu(state, false); });
       win.append(host);
       caseFile.refresh();
-      state.observer = new MutationObserver(() => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; for (const one of states.values()) place(one); }); });
-      state.observer.observe(win, { attributes: true, attributeFilter: ['style', 'class'] });
-      if (typeof ResizeObserver === 'function') {
-        state.size = new ResizeObserver(() => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; for (const one of states.values()) place(one); }); });
-        state.size.observe(win); state.size.observe(shadow.querySelector('.stack'));
-      }
+      watchReplyWindow(state);
       states.set(win, state);
       urceMode(state);
       place(state);
@@ -9398,7 +9671,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       return null;
     }
     function fitReply(state) {
-      const panel = state.win.querySelector('.problem-edit'), list = panel?.querySelector('.conversation-view .comment-list');
+      const panel = requestPanel(state), list = panel?.querySelector('.conversation-view .comment-list');
       const box = list && scroller(list, state.win);
       if (!list || !box) return;
       list.style.removeProperty('max-height');
@@ -9409,7 +9682,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (still > 1 && inner?.style.height) inner.style.height = `${Math.max(32, Math.floor(inner.getBoundingClientRect().height - still))}px`;
     }
     function watchReply(state) {
-      const field = state.win.querySelector('.problem-edit wz-textarea.new-comment-text');
+      const field = requestPanel(state)?.querySelector('wz-textarea.new-comment-text');
       if (field === state.reply) return;
       state.replyWatch?.disconnect(); state.reply = field;
       if (!field || typeof ResizeObserver !== 'function') return;
@@ -9423,13 +9696,21 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     function sync() {
       const live = settings.enabled ? windows() : [];
+      if (mapPinnedState && (!settings.enabled || urceLeads())) removeReplyState(mapPinnedState);
+      if (mapPinnedState) { const active = live.filter(win => win.getClientRects().length); if (active.length && !active.includes(mapPinnedState.win)) retargetPinned(active.at(-1)); }
       for (const win of live) { attach(win); const state = states.get(win); if (state) watchReply(state); }
-      for (const [win, state] of states) if (!live.includes(win) || !win.isConnected) { state.observer?.disconnect(); state.size?.disconnect(); state.replyWatch?.disconnect(); state.host.remove(); states.delete(win); }
+      for (const [win, state] of states) if (!live.includes(win) || !win.isConnected) {
+        if (state === mapPinnedState && state.mapPinned) { refreshPinnedContext(state); placeFloating(state); }
+        else removeReplyState(state);
+      }
     }
     let queued = 0;
     const queue = () => { if (!queued) queued = requestAnimationFrame(() => { queued = 0; sync(); }); };
     document.addEventListener('pointerdown', event => {
-      for (const state of states.values()) if (!state.panel.hidden && !event.composedPath().includes(state.host)) close(state);
+      for (const state of states.values()) if (!state.panel.hidden && !state.drag && !event.composedPath().includes(state.host) && !event.composedPath().includes(state.floatHost)) {
+        if (state.mapPinned) { if (state.menuOpen) toggleMenu(state, false); }
+        else close(state);
+      }
     }, true);
     addEventListener('resize', () => { for (const state of states.values()) place(state); }, { passive: true });
     load(); loadMine();
@@ -9540,7 +9821,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       let opened = null;
       try { opened = window.open(`${url}#${token}`, '_blank'); } catch (_) { opened = null; }
       if (!opened) { managers.delete(token); if (state?.panel) { const note = el('p', 'err', tr('Your browser blocked the new tab. Allow pop-ups for waze.com, then try again.')); state.panel.querySelector('.foot')?.before(note); setTimeout(() => note.remove(), 6000); } return false; }
-      if (state) close(state);
+      if (state && !state.mapPinned) close(state);
       return true;
     }
     function toggle(win) { sync(); const state = states.get(win); if (!state) return false; if (urceLeads() && openUrce()) { close(state, false); return true; } if (state.panel.hidden) open(state); else close(state, false); return true; }
@@ -9562,7 +9843,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         const rows = VARIABLES.filter(([, , group]) => group).map(([name, about, group]) => ({ name, label: tr(about), group, value: String(known[name] ?? '') }));
         return rows.concat(mineVars.map(item => ({ name: item.name, label: item.value, group: 'mine', value: item.value })));
       },
-      openVariables: win => { sync(); const state = states.get(win); if (!state) return false; load().then(() => { state.panel.hidden = false; state.tab.setAttribute('aria-expanded', 'true'); renderVars(state, () => close(state, false)); place(state); }); return true; } });
+      openVariables: win => { sync(); const state = states.get(win); if (!state) return false; load().then(() => { state.panel.hidden = false; state.tab.setAttribute('aria-expanded', 'true'); renderVars(state, () => { if (state.mapPinned) renderList(state); else close(state, false); }); place(state); }); return true; } });
   })();
 
   const replyTools = (() => {
@@ -10133,11 +10414,33 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
   })();
 
   GM_addStyle(studioPart('part13492'));
+  GM_addStyle(`#ws-zoom-scale{z-index:507}#ws-zoom-scale[data-obstructed]{visibility:hidden;pointer-events:none}`);
+  function placeZoomScale(box, size, bounds, obstacles, across) {
+    const gap = 8, inset = 6;
+    const clamp = (value, low, high) => Math.max(low, Math.min(value, high));
+    const candidates = across ? [
+      { side: 'below', left: box.left + (box.width - size.width) / 2, top: box.bottom + gap },
+      { side: 'above', left: box.left + (box.width - size.width) / 2, top: box.top - gap - size.height }
+    ] : [
+      { side: 'left', left: box.left - gap - size.width, top: box.top + (box.height - size.height) / 2 },
+      { side: 'right', left: box.right + gap, top: box.top + (box.height - size.height) / 2 }
+    ];
+    const prefer = across ? (box.top + box.height / 2 < (bounds.top + bounds.bottom) / 2 ? 'below' : 'above') : (box.left + box.width / 2 > (bounds.left + bounds.right) / 2 ? 'left' : 'right');
+    const overlap = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+    const choices = candidates.map(point => {
+      const left = clamp(point.left, bounds.left + inset, bounds.right - size.width - inset), top = clamp(point.top, bounds.top + inset, bounds.bottom - size.height - inset);
+      const rect = { left, top, right: left + size.width, bottom: top + size.height };
+      const covered = [box, ...obstacles].reduce((sum, obstacle) => sum + overlap(rect, obstacle), 0);
+      return { left, top, side: point.side, covered, score: covered * 100 + Math.abs(left - point.left) + Math.abs(top - point.top) + (point.side === prefer ? 0 : 1) };
+    });
+    return choices.sort((a, b) => a.score - b.score)[0];
+  }
   const zoomLevelShow = (() => {
     const win = () => (typeof unsafeWindow === 'undefined' ? window : unsafeWindow);
     const MIN_ZOOM = 4;
     let badge = null, bar = null, scale = null, hideTimer = 0, last = null, hooked = false, watcher = null, region = null, retry = 0;
     let hovering = false, pressing = false, picked = null, editing = null, restTimer = 0, settleTimer = 0;
+    let positionFrame = 0, sizeWatch = null, watchedBar = null, rootWatch = null;
     const always = () => live() && settings.zoomScaleAlways === true;
     function rest() {
       if (!always() || hovering || pressing) return;
@@ -10156,6 +10459,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     }
     function stepAt(event) { return event.target?.closest?.('.zs-step') || null; }
     function preview(step) {
+      if (!scale) return;
       for (const old of scale.querySelectorAll('.zs-step.hover')) { old.classList.remove('hover'); old.querySelector(':scope > b.hb')?.remove(); }
       picked = step ? Number(step.dataset.zoom) : null;
       if (!step) return;
@@ -10225,7 +10529,22 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
         if (events?.register) { events.register('zoomend', null, changed); hooked = true; }
       } catch (error) { reportStudioError('Watching the zoom level', error); }
     }
-    function findBar() { return document.querySelector('#overlay-buttons .zoom-bar-container') || document.querySelector('.zoom-bar-container'); }
+    function findBar() {
+      return [...document.querySelectorAll('.zoom-bar-container')].find(node => node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden') || null;
+    }
+    function queueScalePosition() {
+      if (positionFrame || !live()) return;
+      positionFrame = requestAnimationFrame(() => {
+        positionFrame = 0;
+        if (!live()) return;
+        if (bar !== findBar() || !badge?.isConnected) place();
+        if (scale?.hasAttribute('data-show')) positionScale();
+        else if (always()) rest();
+      });
+    }
+    addEventListener('resize', queueScalePosition, { passive: true });
+    addEventListener('scroll', queueScalePosition, { capture: true, passive: true });
+    document.addEventListener('pointerup', queueScalePosition, { passive: true });
     function place() {
       const found = live() ? findBar() : null;
       if (!found) { badge?.remove(); bar = null; return; }
@@ -10243,15 +10562,21 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       watch();
     }
     function watch() {
+      if (!rootWatch) {
+        rootWatch = new MutationObserver(queueScalePosition);
+        rootWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'data-wme-studio-compact', 'data-wme-studio-layout-editing'] });
+      }
+      if (watchedBar !== bar) {
+        sizeWatch?.disconnect(); watchedBar = bar;
+        if (bar && typeof ResizeObserver === 'function') { sizeWatch = new ResizeObserver(queueScalePosition); sizeWatch.observe(bar); }
+      }
       const next = document.getElementById('overlay-buttons-region') || bar?.parentElement || null;
       if (next === region && watcher) return;
       watcher?.disconnect(); region = next; if (!region) return;
-      let queued = false;
-      watcher = new MutationObserver(() => {
-        if (queued) return; queued = true;
-        requestAnimationFrame(() => { queued = false; if (live() && (!badge?.isConnected || badge.parentElement !== findBar())) place(); });
+      watcher = new MutationObserver(records => {
+        if (records.some(record => record.target !== badge && !badge?.contains(record.target) && record.target !== scale && !scale?.contains(record.target))) queueScalePosition();
       });
-      watcher.observe(region, { childList: true, subtree: true });
+      watcher.observe(region, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden', 'data-wme-studio-island-orient'] });
     }
     function paint(fromZoom) {
       const level = read();
@@ -10267,13 +10592,33 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       if (always() && scale?.isConnected && scale.hasAttribute('data-show')) { scale.setAttribute('data-rest', ''); return; }
       scale?.removeAttribute('data-show'); scale?.removeAttribute('data-rest');
     }
+    function positionScale() {
+      if (!scale) return false;
+      if (!bar?.isConnected) { scale.setAttribute('data-obstructed', ''); return false; }
+      const box = bar.getBoundingClientRect();
+      if (!box.width || !box.height || getComputedStyle(bar).visibility === 'hidden') { scale.setAttribute('data-obstructed', ''); return false; }
+      const across = box.width > box.height * 1.3;
+      scale.dataset.dir = across ? 'h' : 'v';
+      const size = scale.getBoundingClientRect();
+      const map = document.getElementById('WazeMap')?.getBoundingClientRect();
+      const bounds = { left: Math.max(0, map?.width ? map.left : 0), top: Math.max(0, map?.height ? map.top : 0), right: Math.min(innerWidth, map?.width ? map.right : innerWidth), bottom: Math.min(innerHeight, map?.height ? map.bottom : innerHeight) };
+      const obstacles = [];
+      for (const node of document.querySelectorAll('#sidebar,#panel-container > *,[id^="ISSUE_WINDOW"],[data-testid="floating-window"],.ws-quick-replies-map')) {
+        if (node.contains(bar) || node.hidden || !node.getClientRects().length || getComputedStyle(node).visibility === 'hidden') continue;
+        const rect = (node.shadowRoot?.querySelector('.panel') || node).getBoundingClientRect();
+        if (rect.width && rect.height) obstacles.push({ left: rect.left - 4, top: rect.top - 4, right: rect.right + 4, bottom: rect.bottom + 4 });
+      }
+      const point = placeZoomScale(box, size, bounds, obstacles, across);
+      scale.dataset.side = point.side;
+      scale.toggleAttribute('data-obstructed', point.covered > 0 || size.width > bounds.right - bounds.left - 12 || size.height > bounds.bottom - bounds.top - 12);
+      for (const [key, value] of [['left', Math.round(point.left) + 'px'], ['top', Math.round(point.top) + 'px']]) if (scale.style[key] !== value) scale.style[key] = value;
+      return true;
+    }
     function showScale(level, quiet = false) {
       if (!bar?.isConnected) return;
-      const box = bar.getBoundingClientRect(); if (!box.width || !box.height) return;
-      const top = topZoom(), low = Math.min(MIN_ZOOM, level), across = box.width > box.height * 1.3;
+      const top = topZoom(), low = Math.min(MIN_ZOOM, level);
       if (!scale) { scale = document.createElement('div'); scale.id = 'ws-zoom-scale'; scale.setAttribute('aria-hidden', 'true'); wireScale(); }
       if (!scale.isConnected) (document.body || document.documentElement).append(scale);
-      scale.dataset.dir = across ? 'h' : 'v';
       const steps = [];
       for (let zoom = top; zoom >= low; zoom--) {
         const step = document.createElement('span'); step.className = 'zs-step' + (zoom === level ? ' on' : '') + ((zoom === top || zoom === low) && zoom !== level ? ' end' : ''); step.dataset.zoom = String(zoom);
@@ -10282,23 +10627,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
         step.append(document.createElement('i')); steps.push(step);
       }
       scale.replaceChildren(...steps);
-      const size = scale.getBoundingClientRect(), gap = 8;
-      let left, topPx;
-      if (across) {
-        const below = box.top + box.height / 2 < innerHeight / 2;
-        scale.dataset.side = below ? 'below' : 'above';
-        topPx = below ? box.bottom + gap : box.top - gap - size.height;
-        left = box.left + box.width / 2 - size.width / 2;
-      } else {
-        const onLeft = box.left + box.width / 2 > innerWidth / 2;
-        scale.dataset.side = onLeft ? 'left' : 'right';
-        left = onLeft ? box.left - gap - size.width : box.right + gap;
-        topPx = box.top + box.height / 2 - size.height / 2;
-      }
-      scale.style.left = `${Math.round(Math.max(6, Math.min(left, innerWidth - size.width - 6)))}px`;
-      scale.style.top = `${Math.round(Math.max(6, Math.min(topPx, innerHeight - size.height - 6)))}px`;
+      if (!positionScale()) return;
       requestAnimationFrame(() => {
-        if (!scale) return;
+        if (!scale?.isConnected || !live()) return;
         if (quiet) { scale.setAttribute('data-show', ''); if (!hovering && !pressing) scale.setAttribute('data-rest', ''); return; }
         scale.removeAttribute('data-rest');
         scale.setAttribute('data-show', ''); document.documentElement.setAttribute('data-wme-studio-zoom-scale', 'on');
@@ -10308,7 +10639,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     }
     function refresh() {
       clearTimeout(retry);
-      if (!live()) { clearTimeout(hideTimer); hideScale(); badge?.remove(); scale?.remove(); watcher?.disconnect(); watcher = null; region = null; bar = null; return; }
+      if (!live()) {
+        clearTimeout(hideTimer); clearTimeout(restTimer); clearTimeout(settleTimer); cancelAnimationFrame(positionFrame); positionFrame = 0;
+        hovering = false; pressing = false; hideScale(); badge?.remove(); scale?.remove();
+        watcher?.disconnect(); sizeWatch?.disconnect(); rootWatch?.disconnect(); watcher = null; sizeWatch = null; rootWatch = null; watchedBar = null; region = null; bar = null; return;
+      }
       hook(); place();
       if (always()) { requestAnimationFrame(rest); clearTimeout(settleTimer); settleTimer = setTimeout(() => { rest(); settleTimer = setTimeout(rest, 900); }, 450); }
       else if (scale?.hasAttribute('data-rest')) hideScale();
@@ -10696,20 +11031,111 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     })();
     return Object.freeze({ refresh: queue });
   })();
-  (() => {
-    if (window.top !== window.self) return;
-    GM_addStyle(`.ws-tip{--ws-tip-paint:var(--wme-studio-surface-3,#30353a);--ws-tip-ink:var(--wme-studio-text,#edf1f4);--ws-tip-line:var(--wme-studio-border,rgba(255,255,255,.12));position:fixed;left:0;top:0;z-index:2147483000;display:flex;align-items:center;box-sizing:border-box;width:max-content;max-width:min(320px,calc(100vw - 16px));min-height:28px;margin:0;padding:6px 10px;border:1px solid var(--ws-tip-line);border-radius:var(--wme-studio-panel-radius,10px);background:var(--ws-tip-paint);color:var(--ws-tip-ink);box-shadow:var(--wme-studio-shadow,0 6px 18px rgba(0,0,0,.28));font:500 12px/16px var(--ws-font,inherit);white-space:pre-line;overflow-wrap:break-word;pointer-events:none}html[data-wme-studio-compact="on"][data-wme-studio-island-ink] .ws-tip{--ws-tip-paint:var(--ws-island-paint-solid,var(--ws-island-a));--ws-tip-ink:var(--ws-island-ink);--ws-tip-line:color-mix(in srgb,var(--ws-island-ink) 18%,transparent)}.ws-tip[hidden]{display:none}html[data-ws-tip-on] wz-tooltip-content:not(:has(button,wz-button,a[href],input)){visibility:hidden!important}`);
-    const INTERACTIVE = 'button,wz-button,a[href],input,select,textarea,[role="button"],[contenteditable="true"]';
-    let tip = null, over = null, hiddenWme = null, borrowed = null;
+  const tooltipControl = (() => {
+    if (window.top !== window.self) return Object.freeze({ refresh() {} });
+    GM_addStyle(`html[data-wme-studio="on"][data-wme-studio-tooltips="off"] :is([role="tooltip"],wz-tooltip-content):not(:has(button,wz-button,a[href],input,select,textarea,wz-menu,wz-select,wz-checkbox,wz-toggle-switch,[role="button"],[role="menu"],[role="listbox"],[contenteditable="true"])) { visibility:hidden!important;pointer-events:none!important; }`);
+    GM_addStyle(`.ws-tip{--ws-tip-paint:var(--wme-studio-surface-3,#30353a);--ws-tip-ink:var(--wme-studio-text,#edf1f4);--ws-tip-line:var(--wme-studio-border,rgba(255,255,255,.12));position:fixed;left:0;top:0;z-index:2147483000;display:flex;align-items:center;box-sizing:border-box;width:max-content;max-width:min(320px,calc(100vw - 16px));min-height:28px;margin:0;padding:6px 10px;border:1px solid var(--ws-tip-line);border-radius:var(--wme-studio-panel-radius,10px);background:var(--ws-tip-paint);color:var(--ws-tip-ink);box-shadow:var(--wme-studio-shadow,0 6px 18px rgba(0,0,0,.28));font:500 12px/16px var(--ws-font,inherit);white-space:pre-line;overflow-wrap:break-word;pointer-events:none}html[data-wme-studio-compact="on"][data-wme-studio-island-ink] .ws-tip{--ws-tip-paint:var(--ws-island-paint-solid,var(--ws-island-a));--ws-tip-ink:var(--ws-island-ink);--ws-tip-line:color-mix(in srgb,var(--ws-island-ink) 18%,transparent)}.ws-tip[hidden]{display:none}html[data-wme-studio="on"] [data-wme-studio-tooltip-replaced]{visibility:hidden!important;pointer-events:none!important}`);
+    const INTERACTIVE = 'button,wz-button,a[href],input,select,textarea,wz-menu,wz-select,wz-checkbox,wz-toggle-switch,[role="button"],[role="menu"],[role="listbox"],[contenteditable="true"]';
+    let tip = null, over = null, lastPath = [], hoverTimer = 0, hoverStart = 0, hoverDismissed = false, currentText = '', currentSide = 'below';
+    const replaced = new Set();
+    const suppressed = new Map();
+    const titleWatch = new MutationObserver(records => {
+      for (const { target } of records) {
+        const item = suppressed.get(target), value = target.getAttribute('title');
+        if (!item || !value) continue;
+        item.title = value;
+        target.setAttribute('title', '');
+      }
+    });
+    function restoreTitles() {
+      titleWatch.disconnect();
+      for (const [node, item] of suppressed) {
+        if (node.getAttribute('title') === '') {
+          if (item.title == null) node.removeAttribute('title'); else node.setAttribute('title', item.title);
+        }
+        if (item.label && node.getAttribute('aria-label') === item.label) node.removeAttribute('aria-label');
+      }
+      suppressed.clear();
+    }
+    function suppressTitles(path) {
+      restoreTitles();
+      let first = true;
+      for (const node of path) {
+        if (!node || node === document.body || node === document) break;
+        if (node.nodeType !== 1) continue;
+        const title = node.getAttribute('title');
+        if (!first && title == null) continue;
+        const item = { title, label: null };
+        if (title && node.matches(INTERACTIVE) && !node.hasAttribute('aria-label') && !node.hasAttribute('aria-labelledby') && !node.textContent.trim()) { node.setAttribute('aria-label', title); item.label = title; }
+        suppressed.set(node, item); node.setAttribute('title', ''); first = false;
+        titleWatch.observe(node, { attributes: true, attributeFilter: ['title'] });
+      }
+    }
+    function refresh() {
+      hide(); restoreTitles(); hoverDismissed = true;
+      if (settings.enabled && settings.showTooltips !== true) suppressTitles(lastPath.filter(node => node?.isConnected));
+    }
     const clean = text => String(text || '').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+    function tooltipText(content) {
+      const rendered = clean(content.innerText);
+      if (rendered.includes('\n')) return rendered;
+      const parts = [];
+      function read(node) {
+        if (node.nodeType === 3) { parts.push(node.textContent); return; }
+        if (node.nodeType !== 1 || node.matches('script,style,[hidden],[aria-hidden="true"]')) return;
+        if (node.localName === 'br') { parts.push('\n'); return; }
+        const block = node.matches('p,div,section,article,header,footer,li,h1,h2,h3,h4,h5,h6,[slot="title"],.title,.tooltip-title');
+        if (block) parts.push('\n');
+        const children = node.localName === 'slot' ? node.assignedNodes?.({ flatten: true }) : node.childNodes;
+        for (const child of children || []) read(child);
+        if (block) parts.push('\n');
+      }
+      for (const child of content.childNodes) read(child);
+      return clean(parts.join(''));
+    }
     const railLabel = item => clean(item.shadowRoot?.querySelector('.navigation-button')?.getAttribute('aria-label') || item.getAttribute('aria-label') || item.getAttribute('label')
       || item.shadowRoot?.querySelector('.item-content')?.textContent || item.textContent).replace(/\n/g, ' ');
-    function hide() {
-      over = null;
-      if (hiddenWme) { hiddenWme.style.removeProperty('visibility'); hiddenWme = null; }
-      if (borrowed) { if (!borrowed.node.hasAttribute('title')) borrowed.node.setAttribute('title', borrowed.text); borrowed = null; }
+    function hide(restore = true) {
+      clearTimeout(hoverTimer); hoverTimer = 0; over = null; currentText = '';
+      if (restore) {
+        for (const content of replaced) content.removeAttribute('data-wme-studio-tooltip-replaced');
+        replaced.clear(); restoreTitles();
+      }
       if (tip) tip.hidden = true;
       delete document.documentElement.dataset.wsTipOn;
+    }
+    function replaceNative(content) {
+      if (!content || content.querySelector(INTERACTIVE)) return;
+      content.setAttribute('data-wme-studio-tooltip-replaced', ''); replaced.add(content);
+    }
+    function sideFor(path) {
+      return path.find(node => node?.dataset?.wsTipSide)?.dataset.wsTipSide || (path.some(node => node?.id === 'drawer') ? 'right' : path.some(node => node?.id === 'overlay-buttons') ? 'tools' : 'below');
+    }
+    function schedule() {
+      clearTimeout(hoverTimer);
+      const target = over;
+      hoverTimer = setTimeout(() => {
+        hoverTimer = 0;
+        if (over === target && target?.isConnected && settings.enabled && settings.showTooltips === true && document.documentElement.dataset.wmeStudio === 'on') show(target, currentText, currentSide);
+      }, Math.max(0, STUDIO_TOOLTIP_DELAY - (performance.now() - hoverStart)));
+    }
+    function nativeOpened(event) {
+      const instance = event.detail?.tooltipInstance;
+      if (!instance) return;
+      const content = toolTooltipContent(instance);
+      markPassiveTooltip(content);
+      if (!content || content.querySelector(INTERACTIVE)) {
+        content?.removeAttribute('data-wme-studio-tooltip-replaced'); replaced.delete(content); return;
+      }
+      if (!settings.enabled || settings.showTooltips !== true || document.documentElement.dataset.wmeStudio !== 'on') return;
+      const source = instance.source || instance.querySelector?.('wz-tooltip-source') || instance.target || instance;
+      if (!source?.isConnected || !lastPath.some(node => node === instance || node === source || (node?.nodeType && (source.contains?.(node) || instance.contains?.(node))))) return;
+      const text = tooltipText(content);
+      if (!text) return;
+      if (hoverDismissed) { replaceNative(content); return; }
+      if (!over) { over = source; currentSide = sideFor(lastPath); suppressTitles(lastPath); }
+      currentText = text; replaceNative(content);
+      if (tip && !tip.hidden) show(over, currentText, currentSide); else schedule();
     }
     function show(target, text, side) {
       document.documentElement.dataset.wsTipOn = '1';
@@ -10730,11 +11156,14 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     }
     document.addEventListener('pointerover', event => {
       if (event.pointerType === 'touch') return;
-      if (document.documentElement.dataset.wmeStudio !== 'on') { if (over) hide(); return; }
-      const path = event.composedPath();
-      const rail = path.find(node => node?.id === 'drawer'), asked = path.find(node => node?.dataset?.wsTipSide)?.dataset.wsTipSide;
-      const side = asked || (rail ? 'right' : path.some(node => node?.id === 'overlay-buttons') ? 'tools' : 'below');
-      let target = null, text = '', wme = null, titled = null;
+      const path = event.composedPath(); lastPath = path;
+      if (document.documentElement.dataset.wmeStudio !== 'on') { hide(); restoreTitles(); return; }
+      if (settings.showTooltips !== true) { hide(); suppressTitles(path); return; }
+      if (path.some(node => node?.classList?.contains('ws-quick-replies-map') && node.hasAttribute('data-dragging'))) { hide(false); return; }
+      if (over && path.includes(over)) return;
+      hide(); hoverStart = performance.now(); hoverDismissed = false;
+      const rail = path.find(node => node?.id === 'drawer'), side = sideFor(path);
+      let target = null, text = '', wme = null;
       for (const node of path) {
         if (!node || node === document.body || node === document) break;
         if (node.nodeType !== 1) continue;
@@ -10744,16 +11173,15 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
           if (rail.getBoundingClientRect().width <= 120) { text = railLabel(node); target = text ? node : null; }
           break;
         }
-        if (node.localName === 'wz-tooltip' || node.localName === 'wz-basic-tooltip') {
+        if (node.localName === 'wz-tooltip' || node.localName === 'wz-basic-tooltip' || node.localName === 'wz-rich-tooltip') {
           const content = toolTooltipContent(node);
-          text = content && !content.querySelector(INTERACTIVE) ? clean(content.textContent) : '';
+          text = content && !content.querySelector(INTERACTIVE) ? tooltipText(content) : '';
           if (text) { target = node.querySelector(':scope > wz-tooltip-source') || node; wme = content; }
           break;
         }
-        if (node.localName === 'wz-rich-tooltip') break;
         const title = node.getAttribute?.('title');
         if (title && title.trim() && node.localName !== 'iframe') {
-          text = clean(title); target = node; titled = node;
+          text = clean(title); target = node;
           for (const up of path.slice(path.indexOf(node) + 1)) {
             if (!up || up === document.body) break;
             if (up.localName === 'wz-tooltip' || up.localName === 'wz-basic-tooltip') { const content = toolTooltipContent(up); wme = content && !content.querySelector(INTERACTIVE) ? content : null; break; }
@@ -10762,15 +11190,22 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
         }
       }
       if (!target) { if (over) hide(); return; }
-      hide(); over = target;
-      if (titled) { borrowed = { node: titled, text: titled.getAttribute('title') }; titled.removeAttribute('title'); }
-      if (wme) { hiddenWme = wme; wme.style.setProperty('visibility', 'hidden', 'important'); }
-      show(target, text, side);
+      over = target; currentText = text; currentSide = side;
+      suppressTitles(path); replaceNative(wme); schedule();
     }, true);
-    document.addEventListener('pointerdown', hide, true);
-    document.addEventListener('keydown', hide, true);
-    addEventListener('blur', hide);
-    addEventListener('scroll', () => { if (over) hide(); }, { capture: true, passive: true });
+    document.addEventListener('pointerdown', () => { hide(false); hoverDismissed = true; }, true);
+    document.addEventListener('keydown', () => { hide(false); hoverDismissed = true; }, true);
+    document.addEventListener('tooltipOpened', nativeOpened, true);
+    document.addEventListener('tooltipClosed', event => { const instance = event.detail?.tooltipInstance; if (!instance) return; const content = toolTooltipContent(instance); content?.removeAttribute('data-wme-studio-tooltip-replaced'); replaced.delete(content); }, true);
+    document.addEventListener('pointerout', event => {
+      let inside = false;
+      for (let node = event.relatedTarget; node; node = node.assignedSlot || node.parentElement || node.getRootNode?.().host) { if (node === over) { inside = true; break; } }
+      if (over && !inside) hide();
+      if (!event.relatedTarget) { restoreTitles(); lastPath = []; }
+    }, true);
+    addEventListener('blur', () => { hide(); restoreTitles(); lastPath = []; });
+    addEventListener('scroll', () => { if (over) { hide(false); hoverDismissed = true; } }, { capture: true, passive: true });
+    return Object.freeze({ refresh });
   })();
   (() => {
     const FRAMES = '[id^="ISSUE_WINDOW"],[data-testid="floating-window"],#sidebar,#panel-container > *';
@@ -13212,7 +13647,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     tip.style.left = `${Math.round(Math.max(8, Math.min(innerWidth - box.width - 8, at.left + at.width / 2 - box.width / 2)))}px`;
     tip.style.top = `${Math.round(below ? at.bottom + 12 : Math.max(8, at.top - 12 - box.height))}px`;
   }
-  function showAreaManagerTip(anchor) {
+  function showAreaManagerTip(anchor, delayed = false) {
+    if (settings.showTooltips !== true) return;
+    if (!delayed) {
+      clearTimeout(areaManagerTip.timer);
+      areaManagerTip.timer = setTimeout(() => { areaManagerTip.timer = 0; if (anchor.isConnected) showAreaManagerTip(anchor, true); }, STUDIO_TOOLTIP_DELAY);
+      return;
+    }
     const region = areaManagerRegion();
     if (!region) return;
     const shown = anchor.textContent || '';
@@ -13229,7 +13670,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       if (areaManagerTip.anchor?.matches(':hover')) placeAreaManagerTip();
     });
   }
-  function hideAreaManagerTip() { areaManagerTip.anchor = null; areaManagerTip.node?.remove(); }
+  function hideAreaManagerTip() { clearTimeout(areaManagerTip.timer); areaManagerTip.timer = 0; areaManagerTip.anchor = null; areaManagerTip.node?.remove(); }
   globalThis.WMEStudioAreaManagers = () => ({ ...(areaManagerTip.last || {}), names: areaManagerTip.names, html: (areaManagerRegion()?.outerHTML || '').slice(0, 1500) });
   function headerAreaManagers() {
     const none = { text: '', names: '' };
@@ -15180,6 +15621,22 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     async reset() { await studioKeep.set(ISLAND_CONTROLS_KEY, {}); setIslandControls({}); }
   });
 
+  function placeIslandActions(rect, bar, dock, width, height) {
+    const gap = 12, inset = 12;
+    const clamp = (value, size, limit) => Math.max(inset, Math.min(value, limit - size - inset));
+    const candidates = [
+      { left: rect.left + rect.width + gap, top: rect.top },
+      { left: rect.left - bar.width - gap, top: rect.top },
+      { left: rect.left + (rect.width - bar.width) / 2, top: rect.top + rect.height + gap },
+      { left: rect.left + (rect.width - bar.width) / 2, top: rect.top - bar.height - gap }
+    ];
+    const overlap = (a, b) => Math.max(0, Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top));
+    const choices = candidates.map((point, index) => {
+      const next = { left: clamp(point.left, bar.width, width), top: clamp(point.top, bar.height, height), width: bar.width, height: bar.height };
+      return { ...next, score: overlap(next, rect) * 10 + overlap(next, dock) * 10 + Math.abs(next.left - point.left) + Math.abs(next.top - point.top) + index };
+    });
+    return choices.sort((a, b) => a.score - b.score)[0];
+  }
   function buildCompactLayoutEditor() {
     if (compactLayoutEditor?.host?.isConnected) return compactLayoutEditor;
     const host = document.createElement('div');
@@ -15188,6 +15645,22 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const shadow = host.attachShadow({ mode: 'open' });
     queueMicrotask(() => globalThis.WMEStudioI18n?.localize(shadow));
     shadow.innerHTML = studioPart('part19371', { studioButtonMotionCSS, studioControlsCSS, studioRangeCSS });
+    const contextStyle = document.createElement('style');
+    contextStyle.textContent = `
+      .ctx{flex-direction:column;align-items:stretch;gap:1px;width:216px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;padding:6px;border-radius:11px;white-space:normal;touch-action:pan-y}
+      .ctx-name{padding:5px 8px;overflow-wrap:anywhere}
+      .ctx-rename{width:100%;min-width:0;margin:0;flex:none}
+      .ctx-sep{width:auto;height:1px;min-height:1px;margin:4px 3px;flex:none}
+      .ctx-action{width:100%;height:auto;min-height:29px;flex:none;justify-content:flex-start;padding:5px 8px;gap:8px;text-align:start;line-height:17px;border-radius:6px;white-space:normal;overflow-wrap:anywhere}
+      .ctx-action.ctx-icon{width:100%;justify-content:flex-start;padding:5px 8px}
+      .ctx-hint{padding:5px 8px;font-size:11px;line-height:16px}
+      .ctx-width{display:grid;grid-template-columns:1fr auto;gap:5px;height:auto;padding:5px 8px;white-space:normal;flex:none}
+      .ctx-width input{grid-column:1 / -1;grid-row:2;width:100%;min-width:0}
+      .ctx-width output{min-width:0;text-align:end;font-size:11px}
+      .replace-menu{max-width:calc(100vw - 24px)}
+      @media(pointer:coarse){.ctx-action{min-height:36px}}
+    `;
+    shadow.append(contextStyle);
     (document.documentElement || document).append(host);
     const grid = document.createElement('div');
     grid.id = 'wme-studio-compact-layout-grid';
@@ -15241,6 +15714,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     const selectedPanels = new Set(), panelPreviews = new Map(), previewRestores = new Map();
     const panelRows = new Map();
     const library = q('.library'), libraryBody = q('[data-id="lib-body"]'), ctxBar = q('[data-id="ctx"]');
+    ctxBar.setAttribute('aria-orientation', 'vertical');
     const replaceMenu = q('[data-id="replace-menu"]');
     const ghost = q('.ghost'), dropMarker = q('.marker'), dropRing = q('.drop-ring'), controlRing = q('.control-ring'), newSpot = q('.newspot');
     const undoStack = [], redoStack = [];
@@ -15693,9 +16167,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       replaceMenu.dataset.key = key;
       replaceMenu.hidden = false;
       const button = anchor.getBoundingClientRect(), menu = replaceMenu.getBoundingClientRect();
-      const left = Math.max(12, Math.min(innerWidth - menu.width - 12, button.left));
-      const below = button.bottom + 8, above = button.top - menu.height - 8;
-      const top = below + menu.height <= innerHeight - 12 ? below : Math.max(12, above);
+      const context = ctxBar.getBoundingClientRect();
+      const beside = context.right + menu.width + 8 <= innerWidth - 12 ? context.right + 8 : context.left - menu.width - 8;
+      const left = Math.max(12, Math.min(innerWidth - menu.width - 12, beside));
+      const top = Math.max(12, Math.min(innerHeight - menu.height - 12, button.top));
       replaceMenu.style.left = `${Math.round(left)}px`; replaceMenu.style.top = `${Math.round(top)}px`;
       replaceMenu.querySelector('.replace-row')?.focus({ preventScroll: true });
     }
@@ -15801,11 +16276,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       ctxBar.hidden = false;
       if (name.classList.contains('ctx-rename') && shadow.activeElement !== name) { name.focus({ preventScroll: true }); name.select(); }
       const rect = info.rect, bar = ctxBar.getBoundingClientRect(), dockRect = dock.getBoundingClientRect();
-      let top = rect.top + rect.height + 14;
-      if (top + bar.height > innerHeight - 12 || (top < dockRect.bottom && top + bar.height > dockRect.top && rect.left < dockRect.right && rect.left + rect.width > dockRect.left)) top = rect.top - bar.height - 14;
-      if (top < 12) top = Math.min(innerHeight - bar.height - 12, rect.top + rect.height + 14);
-      const left = Math.max(12, Math.min(innerWidth - bar.width - 12, rect.left + rect.width / 2 - bar.width / 2));
-      ctxBar.style.left = `${Math.round(left)}px`; ctxBar.style.top = `${Math.round(top)}px`;
+      const point = placeIslandActions(rect, bar, dockRect, innerWidth, innerHeight);
+      ctxBar.style.left = `${Math.round(point.left)}px`; ctxBar.style.top = `${Math.round(point.top)}px`;
       const ring = key && controlRect(key);
       controlRing.hidden = !ring;
       if (ring) Object.assign(controlRing.style, { left: `${ring.left - 3}px`, top: `${ring.top - 3}px`, width: `${ring.width + 6}px`, height: `${ring.height + 6}px` });
@@ -17807,6 +18279,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     observer:null,geometry:null,resize:null,queued:false,element:null,hovered:false,focused:false,frame:0};
   function hideBetaVersionTooltip() {
     const state = betaVersionTooltip;
+    clearTimeout(state.timer); state.timer = 0;
     if (state.element) state.element.hidden = true;
     if (state.badge) {
       const ids = (state.badge.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => id && id !== 'wme-studio-beta-tooltip');
@@ -17851,9 +18324,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
   }
   function showBetaVersionTooltip() {
     const state = betaVersionTooltip;
-    if (!settings.enabled || compactLayoutEditing || !state.badge || !(state.hovered || state.focused)) {
+    if (!settings.enabled || settings.showTooltips !== true || compactLayoutEditing || !state.badge || !(state.hovered || state.focused)) {
       hideBetaVersionTooltip(); return;
     }
+    if (state.timer && !state.focused) return;
     if (!state.element) {
       state.element = document.createElement('div'); state.element.id = 'wme-studio-beta-tooltip';
       state.element.setAttribute('role','tooltip'); state.element.hidden = true;
@@ -17867,8 +18341,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     state.element.hidden = false; positionBetaVersionTooltip();
   }
   function onBetaPointerEnter(event) {
-    if (event.pointerType === 'touch' || betaVersionTooltip.hovered) return;
-    betaVersionTooltip.hovered = true; showBetaVersionTooltip();
+    if (event.pointerType === 'touch' || betaVersionTooltip.hovered || !settings.enabled || settings.showTooltips !== true) return;
+    betaVersionTooltip.hovered = true;
+    clearTimeout(betaVersionTooltip.timer);
+    betaVersionTooltip.timer = setTimeout(() => { betaVersionTooltip.timer = 0; showBetaVersionTooltip(); }, STUDIO_TOOLTIP_DELAY);
   }
   function onBetaPointerLeave() { betaVersionTooltip.hovered = false; showBetaVersionTooltip(); }
   function onBetaFocusIn() { betaVersionTooltip.focused = true; showBetaVersionTooltip(); }
@@ -19790,6 +20266,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       };
       function showTip(target) {
         tipTimer=0;
+        if (settings.showTooltips !== true) return;
         if (tipTarget!==target || !target.isConnected || !target.dataset.tip || state.open || typeof state.tip.showPopover!=='function') return;
         state.tip.textContent=target.dataset.tip;
         try { state.tip.showPopover(); } catch (_) { return; }
@@ -19803,7 +20280,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         if (target===tipTarget) return;
         state.hideTip();
         if (!target || event.pointerType!=='mouse' || target.matches('.tab[aria-selected="true"]') && target.lastElementChild.scrollWidth<=target.lastElementChild.clientWidth) return;
-        tipTarget=target;showTip(target);
+        tipTarget=target;tipTimer=setTimeout(()=>showTip(target),STUDIO_TOOLTIP_DELAY);
       });
       state.bar.addEventListener('pointerleave',()=>state.hideTip());
       state.bar.addEventListener('pointerdown',()=>state.hideTip());
@@ -20948,8 +21425,24 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     return '';
   }
-  const STUDIO_BUILD = '4.2.1-2026-10-28z2';
+  const STUDIO_BUILD = '4.2.2-2026-10-29z4';
   const STUDIO_CHANGELOG = Object.freeze([
+    { version: '4.2.2', groups: [
+      { title: 'Quick replies', items: [
+        "Drag Quick replies by its header to move it onto the map. Its position is temporary and resets when you close it.",
+        "Pin on map keeps Quick replies open while you use the map, pick replies or switch requests. Unpin returns it to the request window. No request open? The panel waits for the next one."
+      ] },
+      { title: 'Layout', items: [
+        "The zoom scale follows the zoom buttons when you move or rotate their island, and stays clear of panels.",
+        "Island actions in Arrange open in a compact vertical menu beside the island.",
+        "Tooltips are off by default. Turn Show tooltips on in Settings › Appearance › Interface to bring back hover hints."
+      ] },
+      { title: 'Fixes', items: [
+        "Update request descriptions have space on both sides, with room for the expand button so it no longer covers the text.",
+        "Driver settings lines up beside Drive details as soon as a request opens, including scaled panels and descriptions that change height. Resizing the window is no longer needed.",
+        "The current Resources library is recognized correctly, without an incorrect older-copy warning."
+      ] }
+    ] },
     { version: '4.2.1', groups: [
       { title: 'Fixes', items: [
         "In Firefox and Safari, selecting segments with Ctrl+Shift and a drag no longer waits half a second before each selection shows."
@@ -21537,6 +22030,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     host.addEventListener('wheel', event => event.stopPropagation(), { passive: true });
     queueMicrotask(() => globalThis.WMEStudioI18n?.localize(shadow));
     shadow.innerHTML = studioPart('part26206', { USERSCRIPT_VERSION, layoutThumb, studioButtonMotionCSS, studioControlsCSS, studioIcon, studioRangeCSS, studioStripCSS })
+      .replace('<label class="srow togrow" data-row="customScrollbars">', STUDIO_TOOLTIPS_ROW + '<label class="srow togrow" data-row="customScrollbars">')
       .replace('<span class="value" data-id="requestQuietDays-value">7</span></div>', '<span class="value" data-id="requestQuietDays-value">7</span></div>'
         + '<label class="srow togrow" data-row="urceHandoff"><span class="srow-text"><strong>Leave replies and reminders to URC-E</strong>'
         + '<span class="small">When URComments-Enhanced is installed, its comments, reminders and closing do that work, and Studio only styles the request window. Off: Studio\'s quick replies, follow-ups and closing suggestions stay too.</span>'
@@ -22009,7 +22503,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
       if (currentRead) globalThis.WMEStudioI18n.setLanguage(current.language);
       paintShortcut();
-      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).checked = current[key];
+      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','showTooltips','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).checked = current[key];
       q('[data-id="screenDisplays-missing"]').hidden = !current.screenDisplays || !!globalThis.WMEStudioScreenDisplays;
       q('[data-row="zoomScaleAlways"]').hidden = !current.showZoomLevel;
       paintSchedule();
@@ -22421,7 +22915,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     arrangeViewport.addEventListener('change',()=>{if(studioPanelOpen)render();});
     qa('[data-setting]').forEach(button => button.addEventListener('click', () => change({ ...settingPatch(button.dataset.setting, button.dataset.value), ...(button.dataset.accent ? { accent: button.dataset.accent } : {}) }, true)));
     qa('[data-island-gradient]').forEach(button => button.addEventListener('click', () => { const [islandColor, islandColor2] = button.dataset.islandGradient.split(','); change({ islandFill: 'gradient', islandColor, islandColor2, ...(button.dataset.accent ? { accent: button.dataset.accent } : {}) }, true); }));
-    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
+    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','showTooltips','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
     qa('[data-time]').forEach(input => input.addEventListener('change', () => { if (/^\d\d:\d\d$/.test(input.value)) change({ [input.dataset.time]: input.value }); else paintSchedule(); }));
     setInterval(() => { if (studioPanelOpen) paintSchedule(); }, 30000);
     qa('input[name="workspace-mode"]').forEach(input => input.addEventListener('change', e => {
@@ -23845,7 +24339,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         const setting = (label,target,section,keywords)=>({label:translate(label),category:sections[target],keywords,run:()=>openStudioUI(target,section)});
         commands = [page('Open settings','home','settings options preferences'),page('Saved workspaces','layout','profiles presets layouts save','workspace-profiles'),page('Backup & restore','studio','import export backup restore','backup-tools'),page('Report a bug','bug','bug report issue problem feedback support help','bugReport'),page('Verify on Discord','bug','discord verify verification code editor roles rank','discordVerify'),...(globalThis.WMEStudioDiscord?.invite ? [{label:translate('Join the Discord'),category:'Studio',keywords:'discord chat community server help questions',run:()=>window.open(globalThis.WMEStudioDiscord.invite,'_blank','noopener')}] : []),
           setting('Presets','layout','preset-current','starting layout balanced left-handed review desk wide header'),setting('Header width','layout','compactHeaderWidth','floating header extend full page'),setting('HUD size','layout','hudScale','floating scale islands header'),
-          setting('Accent colour','look','accent','color highlight custom'),setting('Island color','look','islandFill','islands background colour gradient custom contrast'),setting('Color intensity','look','islandIntensity','island colour gradient strength strong soft muted vivid blend'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','map','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','map','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
+          setting('Accent colour','look','accent','color highlight custom'),setting('Island color','look','islandFill','islands background colour gradient custom contrast'),setting('Color intensity','look','islandIntensity','island colour gradient strength strong soft muted vivid blend'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','map','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','map','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Show tooltips','look','showTooltips','hover hints labels buttons controls'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
           setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Open the + menu on click','map','createMenuClick','plus add create hover click menu roads places'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),setting('Show the zoom level','map','showZoomLevel','zoom level number scale plus minus buttons'),
           setting('Case file request window','panels','requestCaseFile','ur update request case conversation status waiting reply'),setting('Quiet days before closing','panels','requestQuietDays','ur request quiet days close reminder reporter'),setting('Leave replies and reminders to URC-E','panels','urceHandoff','urce urcomments enhanced comments replies reminders close'),setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Enable Screen displays','screens','screenDisplays','touch screen tablet tap select multiple segments places nodes several'),setting('Draw a road','screens','screenDrawButton','touch draw new road segment create add points snap junction finish'),setting('Shape a road','screens','screenShapeButton','touch shape geometry points vertex vertices move add delete junction node drag snap undo redo'),setting('Road between two segments','screens','screenRoadButton','touch select road path street between segments'),setting('Long-press for the right-click menu','screens','screenLongPress','touch hold press context menu right click'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
           setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script developers','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
