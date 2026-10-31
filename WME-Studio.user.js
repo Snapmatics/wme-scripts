@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.2.2
+// @version      4.3.0
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -75,7 +75,7 @@ function wmeStudioBridgeNote(text, bad) {
   } catch (_) {   }
 }
 
-const WME_STUDIO_WANTED = { resources: '4.2.1-2026-10-28', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.2.1-2026-10-28z2', cloudSync: '4.1.0-2026-10-28' };
+const WME_STUDIO_WANTED = { resources: '4.2.1-2026-10-28', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.3.0-2026-10-31z119', cloudSync: '4.3.0-2026-10-29' };
 function wmeStudioCompareLibraryBuild(loaded, wanted) {
   if (loaded === wanted) return 0;
   const parse = value => {
@@ -199,8 +199,11 @@ function wmeStudioStartBridge(main) {
   let libraries = [];
 
   const pageCode = values => `(function (seed) {
-  const TOKEN = seed.token, unsafeWindow = window, GM_info = seed.info, WME_STUDIO_WANTED = seed.wanted;
+  const TOKEN = seed.token, unsafeWindow = window, GM_info = seed.info, WME_STUDIO_WANTED = seed.wanted, WME_STUDIO_BETA = seed.beta;
   const wmeStudioCompareLibraryBuild = ${wmeStudioCompareLibraryBuild.toString()};
+  const WME_STUDIO_BETA_STATE = ${JSON.stringify(WME_STUDIO_BETA_STATE)}, WME_STUDIO_BETA_MARK = ${JSON.stringify(WME_STUDIO_BETA_MARK)};
+  ${wmeStudioBetaState.toString()}
+  ${wmeStudioBetaCheck.toString()}
   const store = seed.values, listeners = new Map();
   const copy = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
   const post = message => window.postMessage(Object.assign({ wsBridge: TOKEN, from: 'page' }, message), '*');
@@ -271,7 +274,7 @@ function wmeStudioStartBridge(main) {
   document.documentElement.setAttribute('data-wme-studio-bridge', 'on');
 ${libraries.map(lib => `  try {\n${lib.text}\n;} catch (error) { console.error('[WME Studio] ${lib.name}', error); }`).join('\n')}
   (${String(main)})();
-})(${JSON.stringify({ token, info, values, wanted: WME_STUDIO_WANTED })});`;
+})(${JSON.stringify({ token, info, values, wanted: WME_STUDIO_WANTED, beta: typeof WME_STUDIO_BETA === 'object' ? WME_STUDIO_BETA : null })});`;
 
   let blocked = '';
   document.addEventListener('securitypolicyviolation', event => { if (!blocked) blocked = `${event.violatedDirective || event.effectiveDirective || ''} ${event.blockedURI || ''}`.trim(); }, true);
@@ -302,13 +305,10 @@ const wmeStudioMain = () => {
   globalThis.__WME_STUDIO_USER_SCRIPT__ = true;
 
   const STUDIO_TOOLTIP_DELAY = 500;
-  const STUDIO_TOOLTIPS_ROW = '<label class="srow togrow" data-row="showTooltips"><span class="srow-text"><strong>Show tooltips</strong><span class="small">Hover hints for buttons and controls. Off by default.</span></span><span class="switch"><input data-id="showTooltips" type="checkbox"><i></i></span></label>';
+  const STUDIO_TOOLTIPS_ROW = '<label class="srow togrow" data-row="showTooltips"><span class="srow-text"><strong>Show tooltips</strong><span class="small">Use Studio’s delayed hover hints. Off leaves WME and other scripts’ tooltips unchanged.</span></span><span class="switch"><input data-id="showTooltips" type="checkbox"><i></i></span></label>';
   const STUDIO_TOOLTIP_SHADOW_CSS = `
-    :host-context(html[data-wme-studio="on"]) [data-wme-studio-tooltip-replaced],
-    :host-context(html[data-wme-studio="on"]):host([data-wme-studio-tooltip-replaced]) :is(.wz-tooltip-content,.wz-tooltip-content-holder) { visibility:hidden!important;pointer-events:none!important; }
-    :host-context(html[data-wme-studio="on"][data-wme-studio-tooltips="off"]) :is([role="tooltip"],wz-tooltip-content):not(:has(button,wz-button,a[href],input,select,textarea,wz-menu,wz-select,wz-checkbox,wz-toggle-switch,[role="button"],[role="menu"],[role="listbox"],[contenteditable="true"])),
-    :host-context(html[data-wme-studio="on"][data-wme-studio-tooltips="off"]) .tip > .bubble,
-    :host-context(html[data-wme-studio="on"][data-wme-studio-tooltips="off"]):host(wz-tooltip-content[data-wme-studio-tooltip-passive="on"]) :is(.wz-tooltip-content,.wz-tooltip-content-holder) { visibility:hidden!important;pointer-events:none!important; }
+    :host-context(html[data-wme-studio="on"][data-wme-studio-tooltips="on"]) [data-wme-studio-tooltip-replaced],
+    :host-context(html[data-wme-studio="on"][data-wme-studio-tooltips="on"]):host([data-wme-studio-tooltip-replaced]) :is(.wz-tooltip-content,.wz-tooltip-content-holder) { visibility:hidden!important;pointer-events:none!important; }
   `;
   function studioPart(name, values) {
     const BUILD = WME_STUDIO_WANTED.interface, parts = globalThis.WMEStudioInterface, part = parts?.parts?.[name];
@@ -325,7 +325,7 @@ const wmeStudioMain = () => {
 
   const studioKeep = (() => {
     const COPY = 'wmeStudio.keep.v1', MARK = 'wmeStudio.installed.v1', NONE = '\u0000wmeStudio.none';
-    const SKIP = new Set(['wmeStudio.scriptTabIcons.v1', 'wmeStudio.fumePaused.v1', 'wmeStudio.cloudSync.v1', 'wmeStudio.cloudSyncBase.v1', MARK]);
+    const SKIP = new Set(['wmeStudio.scriptTabIcons.v1', 'wmeStudio.fumePaused.v1', 'wmeStudio.cloudSync.v1', 'wmeStudio.cloudSyncBase.v1', MARK, 'wmeStudio.betaData.v1', 'wmeStudio.betaImport.v1', 'wmeStudio.qrPage.v1']);
     const PROBE = ['wmeStudio.setup.v1', 'wmeStudio.update.glassOpacity60', 'wmeStudio.update.sideRailsViewportCenter.v3', 'wmeStudio.theme', 'wmeStudio.compactMode', 'wmeStudio.enabled'];
     const kept = key => typeof key === 'string' && key.startsWith('wmeStudio.') && !SKIP.has(key);
     const thenable = value => !!value && typeof value.then === 'function';
@@ -355,6 +355,25 @@ const wmeStudioMain = () => {
         if (restored) console.info(`[WME Studio] put back ${restored} saved settings from this browser`);
       }
     } catch (error) { console.warn('[WME Studio] could not check for kept settings', error); }
+    let fromBeta = null;
+    try {
+      const BD = 'wmeStudio.betaData.v1', pending = GM_getValue(BD, null);
+      const betaGone = (() => {
+        try {
+          const state = JSON.parse(localStorage.getItem('wmeStudio.betaState') || 'null');
+          if (!state || typeof state !== 'object') return false;
+          return state.member === false || state.ended === true || (Number(state.at) > 0 && Date.now() - Number(state.at) > 2 * 86400000);
+        } catch (_) { return false; }
+      })();
+      if (!(typeof WME_STUDIO_BETA === 'object' && WME_STUDIO_BETA) && !thenable(pending) && betaGone) {
+        if (pending?.values) fromBeta = pending;
+        else if (!restored) {
+          const saved = Number(JSON.parse(localStorage.getItem(COPY) || '{}')?.saved) || 0, copy = readCopy(), values = {};
+          if (saved > (Number(GM_getValue('wmeStudio.betaImport.v1', 0)) || 0)) for (const key of Object.keys(copy)) if (kept(key) && JSON.stringify(copy[key]) !== JSON.stringify(GM_getValue(key, NONE))) values[key] = copy[key];
+          if (Object.keys(values).length) { fromBeta = { values, saved }; GM_setValue(BD, fromBeta); }
+        }
+      }
+    } catch (_) { fromBeta = null; }
     try { addEventListener('pagehide', flush); } catch (_) {   }
     return {
       get(key, fallback) {
@@ -369,7 +388,8 @@ const wmeStudioMain = () => {
         return result;
       },
       onSet(watcher) { if (typeof watcher === 'function') watchers.add(watcher); },
-      flush, get restored() { return restored; }
+      flush, get restored() { return restored; }, fromBeta,
+      betaDone() { fromBeta = null; GM_setValue('wmeStudio.betaData.v1', null); GM_setValue('wmeStudio.betaImport.v1', Date.now()); }
     };
   })();
 
@@ -398,7 +418,9 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.2.2';
+  const USERSCRIPT_VERSION = '4.3.0';
+  const STUDIO_BETA = typeof WME_STUDIO_BETA === 'object' && WME_STUDIO_BETA ? WME_STUDIO_BETA : null;
+  const STUDIO_BETA_LABEL = STUDIO_BETA || (() => { try { const version = String(GM_info?.script?.version || ''), build = /-beta\.(\d+)$/.exec(version); return build ? { serial: Number(build[1]), version } : null; } catch (_) { return null; } })();
   const STUDIO_VERIFY_LINK = (() => {
     const KEY = 'wmeStudio.verifyLink';
     try {
@@ -416,6 +438,38 @@ const wmeStudioMain = () => {
   })();
   const BUG_REPORT_ENDPOINT = 'https://wme-studio-reports.charalamposavgenikos.workers.dev';
   const BUG_REPORT_FALLBACK_URL = 'https://greasyfork.org/scripts/599569/feedback';
+  const QR_PAGE_KEY = 'wmeStudio.qrPage.v1';
+  function qrPageKept() {
+    try { const value = GM_getValue(QR_PAGE_KEY, null); return value && typeof value === 'object' && typeof value.then !== 'function' && value.page ? value : null; } catch (_) { return null; }
+  }
+  function syncQrPage(hash) {
+    if (typeof hash !== 'string' || !/^[a-f0-9]{0,64}$/.test(hash) || (qrPageKept()?.hash || '') === hash) return;
+    if (!hash) { try { GM_setValue(QR_PAGE_KEY, null); } catch (_) {   } return; }
+    const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/quick-replies/page`;
+    const done = body => {
+      let data = null; try { data = JSON.parse(body); } catch (_) { return; }
+      if (data?.ok && data.hash === hash && data.page && typeof data.page === 'object') { try { GM_setValue(QR_PAGE_KEY, { hash, page: data.page, at: Date.now() }); } catch (_) {   } }
+    };
+    try {
+      if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, timeout: 10000, anonymous: true, onload: response => { if (response.status === 200) done(response.responseText || ''); } });
+      else fetch(url, { mode: 'cors', cache: 'no-store' }).then(response => (response.ok ? response.text() : '')).then(done).catch(() => {});
+    } catch (_) {   }
+  }
+  function qrPageWords(lang) {
+    const page = qrPageKept()?.page; if (!page) return null;
+    const say = (value, max) => String(typeof value === 'string' ? value : value && typeof value === 'object' ? (value[lang] || value.en || Object.values(value).find(Boolean) || '') : '').replace(/\s+/g, ' ').trim().slice(0, max);
+    const link = value => (/^https:\/\/[^\s<>"']{3,300}$/.test(String(value || '')) ? String(value) : '');
+    const out = {};
+    if (say(page.title, 80)) out.title = say(page.title, 80);
+    if (say(page.lead, 400)) out.lead = say(page.lead, 400);
+    const n = page.notice;
+    if (n && (say(n.title, 100) || say(n.text, 400))) out.notice = { title: say(n.title, 100), text: say(n.text, 400), until: /^\d{4}-\d{2}-\d{2}$/.test(String(n.until || '')) ? n.until : '', url: link(n.url), link: say(n.link, 40) };
+    const tips = (Array.isArray(page.tips) ? page.tips : []).map(tip => ({ title: say(tip?.title, 80), text: say(tip?.text, 300) })).filter(tip => tip.title && tip.text).slice(0, 12);
+    if (tips.length) out.tips = tips;
+    const todo = (Array.isArray(page.todo) ? page.todo : []).map(item => ({ title: say(item?.title, 100), about: say(item?.about, 300), url: link(item?.url), button: say(item?.button, 30) })).filter(item => item.title).slice(0, 4);
+    if (todo.length) out.todo = todo;
+    return Object.keys(out).length ? out : null;
+  }
   const studioFlags = (() => {
     const KEY = 'wmeStudioFlags.v1', WEEK = 7 * 86400000, EVENT = 'wme-studio-flags';
     const LANGUAGE_FLAGS = { en: 'GB', el: 'GR', es: 'ES', pt: 'PT', fr: 'FR', de: 'DE', it: 'IT', nl: 'NL', pl: 'PL', ru: 'RU', tr: 'TR', ka: 'GE', uk: 'UA', cs: 'CZ', sk: 'SK',
@@ -453,7 +507,24 @@ const wmeStudioMain = () => {
       const node = document.createElement('img'); node.className = className; node.src = address; node.alt = ''; node.decoding = 'async'; node.setAttribute('aria-hidden', 'true'); node.draggable = false;
       return node;
     }
-    return Object.freeze({ src, img, start, EVENT, forLanguage: language => LANGUAGE_FLAGS[String(language || '').toLowerCase()] || '', languages: () => ({ ...LANGUAGE_FLAGS }), all: () => { start(); return flags; } });
+    const COUNTRY_NAMES = { 'united states': 'US', usa: 'US', 'united kingdom': 'GB', uk: 'GB', england: 'GB-ENG', scotland: 'GB-SCT', wales: 'GB-WLS', 'northern ireland': 'GB-NIR',
+      'czech republic': 'CZ', macedonia: 'MK', 'north macedonia': 'MK', 'ivory coast': 'CI', 'cote d ivoire': 'CI', russia: 'RU', 'south korea': 'KR', 'korea south': 'KR', 'korea, south': 'KR',
+      vatican: 'VA', 'vatican city': 'VA', turkey: 'TR', turkiye: 'TR', 'bosnia and herzegovina': 'BA', burma: 'MM', 'palestinian territories': 'PS', 'congo kinshasa': 'CD', 'congo brazzaville': 'CG',
+      swaziland: 'SZ', 'cape verde': 'CV', 'east timor': 'TL', taiwan: 'TW', 'hong kong': 'HK', macau: 'MO', laos: 'LA', syria: 'SY', iran: 'IR', moldova: 'MD', venezuela: 'VE', bolivia: 'BO',
+      tanzania: 'TZ', vietnam: 'VN', brunei: 'BN', 'the netherlands': 'NL', holland: 'NL', 'the bahamas': 'BS', 'the gambia': 'GM', 'falkland islands': 'FK', 'faroe islands': 'FO' };
+    const foldName = name => String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    let countryCodes = null;
+    function forCountry(name) {
+      start();
+      const key = foldName(name); if (!key || !flags) return '';
+      if (!countryCodes) {
+        countryCodes = new Map();
+        try { const names = new Intl.DisplayNames(['en'], { type: 'region' }); for (const code of Object.keys(flags)) if (/^[A-Z]{2}$/.test(code)) { const known = names.of(code); if (known && known !== code) countryCodes.set(foldName(known), code); } } catch (_) {   }
+        for (const [known, code] of Object.entries(COUNTRY_NAMES)) countryCodes.set(foldName(known), code);
+      }
+      return countryCodes.get(key) || '';
+    }
+    return Object.freeze({ src, img, start, EVENT, forCountry, forLanguage: language => LANGUAGE_FLAGS[String(language || '').toLowerCase()] || '', languages: () => ({ ...LANGUAGE_FLAGS }), all: () => { start(); return flags; } });
   })();
   const studioSDK = (() => {
     let handle = null, waiting = false, initialized = false;
@@ -854,36 +925,7 @@ const wmeStudioMain = () => {
     document.documentElement.setAttribute('data-wme-studio-safari','on');
     const webkit = /AppleWebKit\//.test(navigator.userAgent) && !/\b(?:Chrome|Chromium|Edg|OPR|Firefox)\//.test(navigator.userAgent);
     if (webkit) document.documentElement.setAttribute('data-wme-studio-webkit','on');
-    const page = text => viewportCSS(text) + `
-html[data-wme-studio="on"][data-wme-studio-safari="on"] { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
-/* Messages in Safari (4.0.0): Panel size scales a panel with zoom, and Safari scales the box of a zoomed frame but not
-   the page inside it, so Messages showed smaller than its box, cut off on the left, with a white band beside and
-   under it. In Safari, Messages keeps its own size. */
-html[data-wme-studio="on"][data-wme-studio-webkit="on"] :is(iframe[src*="/chat/embed"],iframe[data-wme-studio-chat-panel="on"]) { zoom: 1 !important; }
-html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-webkit="on"] iframe[data-wme-studio-chat-panel="on"] {
-  width: min(var(--ws-chat-user-width, 360px), calc(100vw - 48px)) !important;
-  height: min(var(--ws-chat-user-height, 680px), calc(100vh - 120px)) !important;
-  max-width: calc(100vw - 24px) !important; max-height: calc(100vh - 24px) !important;
-}
-html[data-wme-studio="on"][data-wme-studio-safari="on"] [aria-roledescription="draggable"] { touch-action:none; }
-/* Safari drew two thin light lines across the Online Editors island, along the top and bottom of its icon: the
-   icon's colour showed past the edges of its mask. The icon box is kept to the icon's own 20px square, the mask is
-   spelled out in full and the icon is drawn on a layer of its own, so nothing shows outside the icon's shape. */
-html[data-wme-studio="on"][data-wme-studio-safari="on"][data-wme-studio-compact="on"] wz-button.online-editors-bubble > img[slot="left-icon"] {
-  flex: 0 0 20px !important; max-width: 20px !important; min-width: 20px !important; overflow: hidden !important;
-  -webkit-mask-repeat: no-repeat !important; mask-repeat: no-repeat !important;
-  -webkit-mask-position: center !important; mask-position: center !important;
-  -webkit-mask-size: 20px 20px !important; mask-size: 20px 20px !important;
-  -webkit-mask-clip: border-box !important; mask-clip: border-box !important;
-  -webkit-transform: translateZ(0); transform: translateZ(0); border: 0 !important; outline: 0 !important; box-shadow: none !important;
-}
-@media (hover:none) {
-  html[data-wme-studio="on"][data-wme-studio-safari="on"][data-wme-studio-compact="on"] { --ws-compact-hover-opacity:var(--ws-compact-opacity,60%) !important; }
-}
-@media (min-width:768px) and (max-width:1179px) and (min-height:500px) {
-  html[data-wme-studio="on"][data-wme-studio-safari="on"][data-wme-studio-compact="on"] { --ws-compact-header-inset:72px; }
-}
-`;
+    const page = text => viewportCSS(text) + studioPart('p430L977');
     return Object.freeze({active:true,viewport,page,css:text=>prepare(text).css,bind,release});
   })();
   const storageListeners = new Set();
@@ -924,8 +966,8 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
   const trackedStorageKeys = [
     'wmeStudio.workspaceProfiles.v1','wmeStudio.scriptTabPins.v1','wmeStudio.panelSizes.v1','wmeStudio.chatPanelOffset.v3','wmeStudio.streetViewWindow.v1',
     'wmeStudio.enabled','wmeStudio.theme','wmeStudio.corners','wmeStudio.accent',
-    'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.islandFill','wmeStudio.islandColor','wmeStudio.islandColor2','wmeStudio.islandAngle','wmeStudio.islandIntensity','wmeStudio.taskStyle','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.compactRequests','wmeStudio.commandShortcut',
-    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.showTooltips','wmeStudio.contextMenu','wmeStudio.showZoomLevel','wmeStudio.zoomScaleAlways','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.closeAfterReply','wmeStudio.requestCaseFile','wmeStudio.requestQuietDays','wmeStudio.urceHandoff','wmeStudio.screenDisplays','wmeStudio.screenLongPress','wmeStudio.screenRoadButton','wmeStudio.screenShapeButton','wmeStudio.screenDrawButton','wmeStudio.islandControls.v1'
+    'wmeStudio.addons','wmeStudio.motion','wmeStudio.compactMode','wmeStudio.closureColors','wmeStudio.closureActiveColor','wmeStudio.closureUpcomingColor','wmeStudio.closureEndedColor','wmeStudio.closureShowActive','wmeStudio.closureShowUpcoming','wmeStudio.closureShowEnded','wmeStudio.closureFilterPinned','wmeStudio.scriptTabNames','wmeStudio.compactHeaderFullWidth','wmeStudio.compactHeaderWidth','wmeStudio.compactIslandOpacity','wmeStudio.islandFill','wmeStudio.islandColor','wmeStudio.islandColor2','wmeStudio.islandAngle','wmeStudio.islandIntensity','wmeStudio.taskStyle','wmeStudio.compactSnapEdges','wmeStudio.compactSnapCenter','wmeStudio.compactIslandLayout.v1','wmeStudio.layerColumns','wmeStudio.eyeSaver','wmeStudio.satelliteBrightness','wmeStudio.viewportOverlay','wmeStudio.viewportBrightness','wmeStudio.gpsBelowRoads','wmeStudio.gpsOpacity','wmeStudio.discussionVisible','wmeStudio.replyLines','wmeStudio.halloweenDay','wmeStudio.halloweenAsked','wmeStudio.halloweenExtras','wmeStudio.halloweenPumpkins','wmeStudio.halloweenFog','wmeStudio.halloweenAuto','wmeStudio.clockFormat','wmeStudio.compactRequests','wmeStudio.commandShortcut',
+    'wmeStudio.themeSchedule','wmeStudio.themeNight','wmeStudio.themeDayStart','wmeStudio.themeNightStart','wmeStudio.eyeSaverSchedule','wmeStudio.eyeSaverStart','wmeStudio.eyeSaverEnd','wmeStudio.eyeSaverFade','wmeStudio.customScrollbars','wmeStudio.showTooltips','wmeStudio.contextMenu','wmeStudio.showZoomLevel','wmeStudio.zoomScaleAlways','wmeStudio.createMenuClick','wmeStudio.searchWidth','wmeStudio.closeAfterReply','wmeStudio.requestCaseFile','wmeStudio.requestQuietDays','wmeStudio.requestNextInTracker','wmeStudio.urceHandoff','wmeStudio.screenDisplays','wmeStudio.screenLongPress','wmeStudio.screenRoadButton','wmeStudio.screenShapeButton','wmeStudio.screenDrawButton','wmeStudio.islandControls.v1','wmeStudio.reporterKeys.v1'
   ];
   const emitStorage = changes => {
     if (!Object.keys(changes).length) return;
@@ -999,7 +1041,7 @@ ${selector}:disabled { opacity: .42; cursor: not-allowed; }
     return `${studioKeyedList('button,.btn,[role="button"]', ':host-context(html[data-wme-studio="on"]) ', ':not(.drag-shield)')} {border-radius:var(--wme-studio-button-radius,var(--wme-studio-radius,5px)) !important;}
 ${studioKeyedList('button,.btn,[role="button"]', ':host-context(html[data-wme-studio="on"]) ', ':hover')} {box-shadow:none !important;}
 ${studioButtonMotionCSS('button,.btn,[role="button"]', ':host-context(html[data-wme-studio="on"][data-wme-studio-motion="normal"]):host-context(html:not([data-wme-studio-layout-editing="on"]))', false)}
-@supports selector(::-webkit-scrollbar){:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *{scrollbar-width:auto!important;scrollbar-color:auto!important}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar{width:11px;height:11px;background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-track{background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-corner{background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-button{display:none;width:0;height:0}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb{min-height:36px;min-width:36px;border:3px solid transparent;border-radius:999px;background-clip:padding-box;background-color:color-mix(in srgb,var(--wme-studio-text-muted,#8b96a1) 45%,transparent)}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 75%,transparent)}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb:active{background-color:var(--wme-studio-accent,#0099ff)}}@supports not selector(::-webkit-scrollbar){:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *{scrollbar-width:thin!important;scrollbar-color:color-mix(in srgb,var(--wme-studio-text-muted,#8b96a1) 55%,transparent) transparent!important}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *:hover{scrollbar-color:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 80%,transparent) transparent!important}}`;
+@supports selector(::-webkit-scrollbar){:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *{scrollbar-width:auto!important;scrollbar-color:auto!important}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar{width:11px;height:11px;background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-track{background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) textarea::-webkit-scrollbar-track{margin-block:7px}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-corner{background:transparent}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-button{display:none;width:0;height:0}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb{min-height:36px;min-width:36px;border:3px solid transparent;border-radius:999px;background-clip:padding-box;background-color:color-mix(in srgb,var(--wme-studio-text-muted,#8b96a1) 45%,transparent)}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 75%,transparent)}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) ::-webkit-scrollbar-thumb:active{background-color:var(--wme-studio-accent,#0099ff)}}@supports not selector(::-webkit-scrollbar){:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *{scrollbar-width:thin!important;scrollbar-color:color-mix(in srgb,var(--wme-studio-text-muted,#8b96a1) 55%,transparent) transparent!important}:host-context(html[data-wme-studio="on"][data-wme-studio-scrollbars="on"]) *:hover{scrollbar-color:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 80%,transparent) transparent!important}}`;
   }
   function studioGlassFeedbackCSS(scope, contrastScope) {
     return String.raw`
@@ -1342,7 +1384,12 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     accent: '#0099ff', addons: true, motion: true, compactMode: true, compactHeaderFullWidth: false, compactHeaderWidth: 100,
     compactIslandOpacity: 60, compactSnapEdges: true, compactSnapCenter: true, layerColumns: 'one',
     eyeSaver: 0, satelliteBrightness: 100, viewportBrightness: 100, hudScale: 100, panelScale: 100, fontScale: 100, gpsBelowRoads: true, gpsOpacity: 100,
-    discussionVisible: 2, compactRequests: true, language: 'auto', commandShortcut: 'Shift+KeyP',
+    discussionVisible: 2, compactRequests: true,
+    closureColors: true, closureActiveColor: '#e5484d', closureUpcomingColor: '#f59e0b', closureEndedColor: '#60a5fa',
+    closureShowActive: true, closureShowUpcoming: true, closureShowEnded: false,
+    closureFilterPinned: false,
+    scriptTabNames: true,
+    replyLines: 4, language: 'auto', commandShortcut: 'Shift+KeyP',
     themeSchedule: 'off', themeNight: 'dark', themeDayStart: '07:00', themeNightStart: '20:00',
     eyeSaverSchedule: 'off', eyeSaverStart: '21:00', eyeSaverEnd: '07:00', eyeSaverFade: true,
     customScrollbars: true, showTooltips: false, contextMenu: true,
@@ -1350,12 +1397,14 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     zoomScaleAlways: false,
     createMenuClick: false, searchWidth: 0,
     closeAfterReply: false,
-    requestCaseFile: true, requestQuietDays: 7,
+    requestCaseFile: true, requestQuietDays: 7, requestNextInTracker: false,
+    clockFormat: 'auto',
     urceHandoff: true,
     taskStyle: 'classic',
     screenDisplays: false, screenLongPress: true, screenRoadButton: true, screenShapeButton: true, screenDrawButton: true,
     islandFill: 'theme', islandColor: '#1e3a5f', islandColor2: '#6d28d9', islandAngle: '135',
-    islandIntensity: 100
+    islandIntensity: 100,
+    halloweenDay: '', halloweenAsked: '', halloweenExtras: true, halloweenPumpkins: false, halloweenFog: false, halloweenAuto: false
   });
   const SHORTCUT_CODE = /^(?:Key[A-Z]|Digit\d|Numpad\d|F(?:[1-9]|1\d|2[0-4])|Space|Enter|Comma|Period|Slash|Semicolon|Quote|Backquote|Minus|Equal|BracketLeft|BracketRight|Backslash|IntlBackslash)$/;
   const SHORTCUT_MODIFIERS = ['Ctrl', 'Alt', 'Shift', 'Meta'];
@@ -1379,9 +1428,9 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
     return value.split('+').map(part => names[part] || part.replace(/^(?:Key|Digit)/, '').replace(/^Numpad/, 'Num ')).join(' + ');
   }
   globalThis.WMEStudioShortcut = { normalize: normalizeShortcut, fromEvent: shortcutFromEvent, label: shortcutLabel, recording: false };
-  const choices = { taskStyle: ['classic', 'edge', 'dot', 'fade'], islandFill: ['theme', 'color', 'gradient'], islandAngle: ['90', '135', '180', '225'], theme: ['light', 'dark', 'black'], themeNight: ['dark', 'black'], themeSchedule: ['off', 'sun', 'custom'], eyeSaverSchedule: ['off', 'sun', 'custom'], corners: ['flat', 'soft'], layerColumns: ['one', 'two'], language: ['auto','en','el','es','pt','fr','de','it','nl','pl','ru','tr','ka'] };
-  const ranges = { requestQuietDays: [1, 30], compactHeaderWidth: [0, 100], compactIslandOpacity: [20, 100], islandIntensity: [20, 100], eyeSaver: [0, 100], satelliteBrightness: [0, 100], viewportBrightness: [0, 100], gpsOpacity: [0, 100], hudScale: [70, 100], panelScale: [70, 100], fontScale: [85, 120], discussionVisible: [1, 10], searchWidth: [0, 900] };
-  const steps = { compactHeaderWidth: 1, discussionVisible: 1, searchWidth: 1, requestQuietDays: 1 };
+  const choices = { clockFormat: ['auto', '12', '24'], taskStyle: ['classic', 'edge', 'dot', 'fade'], islandFill: ['theme', 'color', 'gradient'], islandAngle: ['90', '135', '180', '225'], theme: ['light', 'dark', 'black'], themeNight: ['dark', 'black'], themeSchedule: ['off', 'sun', 'custom'], eyeSaverSchedule: ['off', 'sun', 'custom'], corners: ['flat', 'soft'], layerColumns: ['one', 'two'], language: ['auto','en','el','es','pt','fr','de','it','nl','pl','ru','tr','ka'] };
+  const ranges = { requestQuietDays: [1, 30], compactHeaderWidth: [0, 100], compactIslandOpacity: [20, 100], islandIntensity: [20, 100], eyeSaver: [0, 100], satelliteBrightness: [0, 100], viewportBrightness: [0, 100], gpsOpacity: [0, 100], hudScale: [70, 100], panelScale: [70, 100], fontScale: [85, 120], discussionVisible: [1, 10], replyLines: [2, 20], searchWidth: [0, 900] };
+  const steps = { compactHeaderWidth: 1, discussionVisible: 1, replyLines: 1, searchWidth: 1, requestQuietDays: 1 };
   const clockTimes = new Set(['themeDayStart', 'themeNightStart', 'eyeSaverStart', 'eyeSaverEnd']);
   const CLOCK = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
   const prefix = 'wmeStudio.';
@@ -1395,9 +1444,10 @@ ${STUDIO_DARK} select option:disabled { color: var(--wme-studio-text-muted); }
       else if (ranges[key]) out[key] = Number.isFinite(value)
         ? Math.min(ranges[key][1], Math.max(ranges[key][0], Math.round(value / (steps[key] || 5)) * (steps[key] || 5)))
         : fallback;
-      else if (key === 'accent' || key === 'islandColor' || key === 'islandColor2') out[key] = /^#[0-9a-f]{6}$/i.test(value || '') ? value.toLowerCase() : fallback;
+      else if (key === 'accent' || key === 'islandColor' || key === 'islandColor2' || /^closure[A-Z][a-z]+Color$/.test(key)) out[key] = /^#[0-9a-f]{6}$/i.test(value || '') ? value.toLowerCase() : fallback;
       else if (clockTimes.has(key)) out[key] = typeof value === 'string' && CLOCK.test(value) ? value : fallback;
       else if (key === 'commandShortcut') { const shortcut = normalizeShortcut(value); out[key] = shortcut === null ? fallback : shortcut; }
+      else if (key === 'halloweenDay' || key === 'halloweenAsked') out[key] = value === '' || /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : fallback;
       else out[key] = typeof value === 'boolean' ? value : fallback;
     }
     return out;
@@ -1777,31 +1827,7 @@ ${root} .qr-btn:focus-visible {
       id: 'map-pins',
       selectors: ['.wmeRcPins','.wmeRcPinsStandaloneSidebar','.wmeRcPinsTabView','.wmeRcPinsTabPanelHost','.wmeRcPinsBubble','.wmeRcPinsContextMenu','.wmeRcPinsContextSubmenu','.wmeRcPinSetDropdownMenu','.wmeRcUnifiedDropdownMenu'],
       css: studioPart('part2045') }, true);
-    registerCompatibilityAdapter({ id: 'wme-fume', selectors: ['#abAlerts','#WMEFUzoom','#WMEFUPC','#FUME_DSA'], css: String.raw`
-$root { color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
-$root#abAlerts { background: var(--wme-studio-surface) !important; box-shadow: var(--wme-studio-shadow) !important; border-radius: var(--wme-studio-panel-radius) !important; }
-$root#abAlerts > #header { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
-$root#abAlerts > #content { background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; }
-$root#abAlerts > #controls { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; }
-$root#abAlerts #abAlertTickBtn,
-$root#abAlerts #abAlertCrossBtn { background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; box-shadow: none !important; border-radius: var(--wme-studio-radius); }
-$root#abAlerts #abAlertTickBtn:hover,
-$root#abAlerts #abAlertCrossBtn:hover { background: var(--wme-studio-hover) !important; border-color: var(--wme-studio-accent) !important; }
-$root#abAlerts #abAlertTickBtn:active,
-$root#abAlerts #abAlertCrossBtn:active { background: var(--wme-studio-active) !important; }
-$root#abAlerts #abAlertTickBtn:focus-visible,
-$root#abAlerts #abAlertCrossBtn:focus-visible { outline: 2px solid var(--wme-studio-accent); outline-offset: 2px; }
-$root#abAlerts #content { scrollbar-color: var(--wme-studio-border-strong) transparent; }
-$root#WMEFUzoom { background: var(--wme-studio-surface) !important; box-shadow: var(--wme-studio-shadow) !important; }
-$root#WMEFUzoom .olButton { background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
-$root#WMEFUzoom .olButton:hover { background: var(--wme-studio-hover) !important; }
-$root#WMEFUzoom .yslider-stops { background-color: var(--wme-studio-surface-2) !important; background-image: linear-gradient(90deg, transparent 45%, var(--wme-studio-border-strong) 45%, var(--wme-studio-border-strong) 55%, transparent 55%), linear-gradient(var(--wme-studio-border-strong) 1px, transparent 1px) !important; }
-$root#WMEFUzoom .slider { color: var(--wme-studio-text-on-light) !important; border-color: var(--wme-studio-border-strong) !important; }
-$root#WMEFUzoom .slider[title$="Can permalink any segments at this zoom level"] { background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; }
-$root#WMEFUPC .WMEFU-toolbar-button { color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
-$root[data-wme-studio-fume-panel] { background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; }
-$root[data-wme-studio-fume-panel] a[href] { color: var(--wme-studio-accent) !important; }
-` }, true);
+    registerCompatibilityAdapter({ id: 'wme-fume', selectors: ['#abAlerts','#WMEFUzoom','#WMEFUPC','#FUME_DSA'], css: studioPart('p430L1957') }, true);
     registerCompatibilityAdapter({ id: 'urc-e', selectors: ['#sidepanel-urc-e','#urceDiv'], css: studioPart('part2183') }, true);
     registerCompatibilityAdapter({ id: 'toolbox', selectors: ['.wme-studio-toolbox-dialog'], css: studioPart('part2250') }, true);
 
@@ -1824,94 +1850,176 @@ $root #ce-ignored-badge { background: var(--wme-studio-surface-3) !important; co
 $root [style*="color:#555"],$root [style*="color: #555"],$root [style*="color:#666"],$root [style*="color: #666"],$root [style*="color:#777"],$root [style*="color: #777"],$root [style*="color:#888"],$root [style*="color: #888"],$root [style*="color:#999"],$root [style*="color: #999"],$root [style*="color:#aaa"],$root [style*="color: #aaa"] { color: var(--wme-studio-text-muted) !important; }
 $root [style*="color:#c00"],$root [style*="color: #c00"],$root [style*="color:#cc0000"],$root [style*="color: #cc0000"],$root [style*="color:#d00"],$root [style*="color: #d00"],$root [style*="color:#e00"],$root [style*="color: #e00"] { color: color-mix(in srgb, #ff5c5c 85%, var(--wme-studio-text)) !important; border-color: currentColor !important; }
 ` }, true);
-    registerCompatibilityAdapter({ id: 'wazetoastr-updates', selectors: ['#WTSU-Container'], css: String.raw`
-$root {
-  position: fixed !important; inset: auto !important; left: 50% !important; top: 50% !important;
-  transform: translate(-50%,-50%) !important; translate: none !important; margin: 0 !important;
-  width: 650px; max-width: calc(100vw - 24px) !important; height: auto !important;
-  max-height: min(600px,calc(100dvh - 24px)) !important; box-sizing: border-box; overflow: auto;
-  background: var(--wme-studio-surface-3) !important; color: var(--wme-studio-text) !important;
-  border-color: var(--wme-studio-border) !important; border-radius: var(--wme-studio-panel-radius);
-  box-shadow: var(--wme-studio-shadow) !important; font: 13px/1.5 var(--ws-font) !important;
-}
-$root :is(.modal-heading,.WTSU-updates-wrapper) { font-family: var(--ws-font) !important; color: var(--wme-studio-text) !important; }
-$root :is(h1,h2,h3,h4,h5,h6,p,li,strong,b,small,span) { color: var(--wme-studio-text) !important; }
-$root .WTSU-updates-wrapper {
-  display: grid; grid-template-columns: minmax(100px,175px) minmax(0,1fr); gap: 10px;
-  grid-template-rows: minmax(0,1fr); height: min(340px,calc(100dvh - 160px)) !important; min-height: 90px;
-}
-$root :is(#WTSU-script-list,#WTSU-script-update-info) {
-  float: none !important; width: auto !important; height: auto !important; min-width: 0; min-height: 0;
-  max-height: none !important; margin: 0 !important; box-sizing: border-box;
-  overflow-y: auto; overflow-x: hidden; overflow-wrap: anywhere;
-  scrollbar-width: thin; scrollbar-color: var(--wme-studio-border-strong) transparent;
-}
-$root #WTSU-script-update-info {
-  background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
-  border: 1px solid var(--wme-studio-border); border-radius: var(--wme-studio-radius); box-shadow: none !important;
-}
-$root a[href] { color: var(--wme-studio-accent) !important; }
-$root .WTSU-script-item {
-  background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
-  border: 1px solid var(--wme-studio-border); border-radius: var(--wme-studio-button-radius,var(--wme-studio-radius));
-  box-shadow: none !important;
-}
-$root .WTSU-script-item:hover { background: var(--wme-studio-hover) !important; }
-$root .WTSU-script-item.WTSU-active {
-  background: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important;
-  border-color: var(--wme-studio-accent); transform: none !important;
-}
-$root #WTSU-Close {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 25px; height: 25px; padding: 0 !important; box-sizing: border-box;
-  background: transparent !important; color: var(--wme-studio-text) !important; border: 0 !important; box-shadow: none !important;
-}
-$root #WTSU-Close::before { font-family: FontAwesome !important; }
-$root #WTSU-Close:hover { color: var(--wme-studio-accent) !important; }
-$root :is(a,button):focus-visible { outline: 2px solid var(--wme-studio-accent); outline-offset: 2px; }
+    registerCompatibilityAdapter({ id: 'ut-kadastrs', selectors: ['#kadastrsMenuDiv-tooltip'], css: String.raw`
+$root wz-button.overlay-button { margin: 0 4px 4px 0 !important; vertical-align: middle; }
+$root wz-button.overlay-button > i.w-icon { margin-inline-end: 6px !important; line-height: 1 !important; vertical-align: middle; }
 ` }, true);
-    registerCompatibilityAdapter({ id: 'wme-opendata', selectors: ['#oslWindow'], css: String.raw`
-$root {
-  background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important;
-  border-color: var(--wme-studio-border) !important; border-radius: var(--wme-studio-panel-radius) !important;
-  box-shadow: var(--wme-studio-shadow) !important; font-family: var(--ws-font) !important;
+    registerCompatibilityAdapter({ id: 'ut-kadastrs-tab', selectors: ['[data-wme-studio-kadastrs-tab]'], css: String.raw`
+$root { background: transparent !important; color: var(--wme-studio-text) !important; box-shadow: none !important; }
+$root :is(label,span,b,strong,p,h1,h2,h3,h4,h5,div) { color: inherit; }
+$root :is(button,input[type="button"],input[type="submit"]) {
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: 30px; min-width: 0; padding: 0 12px !important;
+  margin: 8px 6px 0 0; vertical-align: middle; border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-button-radius, var(--wme-studio-radius)) !important;
+  background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; box-shadow: none !important; opacity: 1;
+  font: 600 12.5px/1 var(--ws-font) !important; white-space: nowrap; cursor: pointer;
 }
-$root #oslDragBar {
-  background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important;
-  border-color: var(--wme-studio-border) !important;
+$root :is(button,input[type="button"],input[type="submit"]):hover:not(:disabled) { background: var(--wme-studio-hover) !important; }
+$root :is(button,input[type="button"],input[type="submit"]):active:not(:disabled) { background: var(--wme-studio-active) !important; border-color: var(--wme-studio-accent) !important; }
+$root :is(button,input[type="button"],input[type="submit"]):disabled { opacity: .5; cursor: default; }
+$root :is(button,input[type="button"],input[type="submit"]):focus-visible { outline: 2px solid var(--wme-studio-accent); outline-offset: 2px; }
+$root :is(input[type="text"],input[type="number"],input:not([type]),select) {
+  box-sizing: border-box; height: 30px; padding: 0 10px !important; vertical-align: middle; margin-inline-end: 8px;
+  border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius) !important;
+  background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; box-shadow: none !important; font: 13px/normal var(--ws-font) !important;
 }
-/* Only the UI sections: map overlays and their road/type colors are separate roots. */
-$root > :is(#oslOSLDiv,#oslSegGeoUIDiv,#oslGazTagsDiv,#oslNCDiv,#oslMLCDiv) {
-  background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important;
-  border-color: var(--wme-studio-border) !important;
-}
-$root > :is(#oslOSLDiv,#oslSegGeoUIDiv,#oslGazTagsDiv,#oslNCDiv,#oslMLCDiv) > div:first-child {
-  background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important;
-}
-$root :is(label,span:not(#oslSelect),td,th,b,i,p) { color: inherit !important; }
-$root #oslMLCDiv > div:nth-child(2) { color: var(--wme-studio-text-secondary) !important; }
-$root a[href] { color: var(--wme-studio-accent) !important; }
-$root hr { border-color: var(--wme-studio-border) !important; }
-$root :is(select,option,input[type="text"],input[type="number"]) {
-  background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important;
-  border-color: var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius);
-}
-$root :is(input[type="checkbox"],input[type="radio"]) { accent-color: var(--wme-studio-accent); color-scheme: inherit; }
-$root input::placeholder { color: var(--wme-studio-text-muted) !important; }
-$root #oslSelect {
-  background: var(--wme-studio-active) !important; color: var(--wme-studio-text) !important;
-  border-color: var(--wme-studio-accent) !important; border-radius: var(--wme-studio-button-radius,var(--wme-studio-radius));
-}
-$root #oslSelect:hover { background: var(--wme-studio-hover) !important; }
-/* OpenData communicates this span's disabled state with an inline grey background. */
-$root #oslSelect:is([disabled],[aria-disabled="true"],[style*="rgb(160, 160, 160)"]) {
-  background: var(--wme-studio-input) !important; color: var(--wme-studio-text-muted) !important;
-  border-color: var(--wme-studio-border) !important; cursor: default !important;
-}
-$root :is(input,select,a[href],[name="oslMinMaxToggle"],#_minimax):focus-visible {
-  outline: 2px solid var(--wme-studio-accent); outline-offset: 2px;
-}
+$root :is(input[type="text"],input[type="number"],input:not([type]),select):focus { border-color: var(--wme-studio-accent) !important; outline: none; }
+$root :is(input[type="checkbox"],input[type="radio"]) { accent-color: var(--wme-studio-accent); vertical-align: middle; margin: 0 8px 0 0; }
+$root label { vertical-align: middle; }
 ` }, true);
+    (() => {
+      const MARK = 'data-wme-studio-kadastrs-tab';
+      let found = null, seen = false, tries = 0;
+      const look = () => {
+        if (found?.isConnected) return;
+        if (!seen && ++tries > 75) { clearInterval(timer); return; }
+        found = null;
+        const button = [...document.querySelectorAll('#sidebar :is(button,input[type="button"])')].find(node => /^\s*Evil Mode\s*$/i.test(node.value || node.textContent || ''));
+        const tab = button && (button.closest('.tab-pane,[id^="sidepanel-"]') || button.parentElement);
+        if (!tab || tab.id === 'sidebar') return;
+        tab.setAttribute(MARK, ''); registerRoot(tab, 'ut-kadastrs-tab'); found = tab; seen = true;
+      };
+      const timer = setInterval(look, 4000);
+      setTimeout(look, 1500);
+    })();
+    (() => {
+      let queued = false;
+      const move = () => {
+        queued = false;
+        const menu = document.getElementById('ursusButtonsMenu'), tools = document.querySelector('#overlay-buttons .overlay-buttons-container.top');
+        if (!menu || !tools) return;
+        for (const button of menu.querySelectorAll('.overlay-buttons-container > :is(wz-button, .overlay-button)')) { button.setAttribute('data-wme-studio-moved-tool', 'ursus'); tools.append(button); }
+      };
+      const queue = () => { if (!queued) { queued = true; queueMicrotask(move); } };
+      GM_addStyle('html[data-wme-studio="on"] #ursusButtonsMenu:not(:has(wz-button, .overlay-button)) { display: none !important; }');
+      const watch = () => {
+        const region = document.getElementById('overlay-buttons-region');
+        if (!region) { setTimeout(watch, 2000); return; }
+        new MutationObserver(records => { if (records.some(record => [...record.addedNodes].some(node => node.nodeType === 1 && (node.id === 'ursusButtonsMenu' || node.closest?.('#ursusButtonsMenu'))))) queue(); })
+          .observe(region, { childList: true, subtree: true });
+        queue();
+      };
+      watch();
+    })();
+    registerCompatibilityAdapter({ id: 'route-checker', selectors: ['#route-checker'], css: String.raw`
+$root { background: transparent !important; color: var(--wme-studio-text) !important; box-shadow: none !important; }
+$root #routeOptions { border-color: var(--wme-studio-border) !important; }
+$root #routeOptions :where(b,label,span) { color: inherit !important; }
+$root a[href]:not(.step) { color: var(--wme-studio-accent) !important; }
+$root :is(input[type="checkbox"],input[type="radio"]) { accent-color: var(--wme-studio-accent); }
+$root #routeTest p.route { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; }
+$root #routeTest p.route i:not([style*="color"]) { color: var(--wme-studio-text-secondary) !important; }
+$root #routeTest a.step:not([style*="color"]) { color: var(--wme-studio-text) !important; }
+$root #routeTest a.step { border-bottom-color: var(--wme-studio-border) !important; }
+$root #routeTest a.step:is([style*="color:red"],[style*="color: red"],[style*="rgb(255, 0, 0)"]) { color: color-mix(in srgb, #e5484d 85%, var(--wme-studio-text)) !important; }
+$root #routeTest a.step:hover { background: var(--wme-studio-hover) !important; }
+$root #routeTest a.step:active { background: var(--wme-studio-active) !important; }
+$root #routeTest a.select { color: var(--wme-studio-accent) !important; }
+$root #routeTest :is([style*="color:blue"],[style*="color: blue"],[style*="color:#00f"],[style*="color: #00f"],[style*="rgb(0, 0, 255)"]) { color: color-mix(in srgb, var(--wme-studio-accent) 70%, var(--wme-studio-text)) !important; }
+$root :is(b,a,span):is([style*="#8309e1" i],[style*="rgb(131, 9, 225)"]) { color: color-mix(in srgb, #8309e1 62%, var(--wme-studio-text)) !important; }
+$root :is(b,a,span):is([style*="#888800" i],[style*="rgb(136, 136, 0)"]) { color: color-mix(in srgb, #888800 70%, var(--wme-studio-text)) !important; }
+$root #routeTest div.routes_footer { color: var(--wme-studio-text-muted) !important; }
+` }, true);
+    const omnisearchCSS = String.raw`
+$root {
+  --wos-blue: var(--wme-studio-accent) !important; --wos-blue-btn: var(--wme-studio-accent) !important;
+  --wos-blue-dk: color-mix(in srgb, var(--wme-studio-accent) 72%, var(--wme-studio-text)) !important; --wos-blue-dk2: var(--wos-blue-dk) !important;
+  --wos-grey: var(--wme-studio-text-muted) !important; --wos-surface: var(--wme-studio-surface) !important; --wos-bg: var(--wme-studio-surface-2) !important;
+  --wos-border: var(--wme-studio-border) !important; --wos-hover: var(--wme-studio-active) !important;
+  --wos-text: var(--wme-studio-text) !important; --wos-text2: var(--wme-studio-text-secondary) !important;
+  --wos-radius: var(--wme-studio-panel-radius) !important; --wos-shadow: var(--wme-studio-shadow) !important;
+  font-family: var(--ws-font) !important;
+}
+$root#wos-pal { background: var(--wme-studio-surface) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
+$root#wos-pal #wos-q { color: var(--wme-studio-text) !important; font-family: var(--ws-font) !important; background: transparent !important; }
+$root#wos-pal #wos-q::placeholder { color: var(--wme-studio-text-muted) !important; }
+$root#wos-pal .wos-grip { color: var(--wme-studio-text-muted) !important; }
+$root#wos-pal .wos-filtres { background: transparent !important; }
+$root#wos-pal .wos-filtre { background: var(--wme-studio-input) !important; color: var(--wme-studio-text-secondary) !important; border-color: var(--wme-studio-border) !important; font-family: var(--ws-font) !important; }
+$root#wos-pal .wos-filtre:hover { background: var(--wme-studio-hover) !important; color: var(--wme-studio-text) !important; }
+$root#wos-pal .wos-filtre[aria-pressed="true"] { background: var(--wme-studio-accent) !important; border-color: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important; }
+$root#wos-pal .wos-filtre[aria-pressed="true"] .wos-nbf { color: var(--wme-studio-on-accent) !important; }
+$root#wos-pal .wos-fermer { background: transparent !important; color: var(--wme-studio-text-secondary) !important; border: 0 !important; }
+$root#wos-pal .wos-fermer:hover { background: var(--wme-studio-hover) !important; color: var(--wme-studio-text) !important; }
+$root#wos-pal .wos-chev { background: var(--wme-studio-input) !important; color: var(--wme-studio-text-secondary) !important; border-color: var(--wme-studio-border) !important; }
+$root#wos-pal .wos-chev:hover { background: var(--wme-studio-accent) !important; border-color: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important; }
+$root#wos-pal .wos-ico { background: var(--wme-studio-input) !important; color: var(--wme-studio-text-secondary) !important; }
+$root#wos-pal .wos-opt[aria-selected="true"] .wos-ico { background: var(--wme-studio-surface) !important; color: var(--wos-blue-dk) !important; }
+$root#wos-pal .wos-ico:is(.wos-k-link,.wos-k-coords,.wos-k-id) { color: color-mix(in srgb, #ef6c00 75%, var(--wme-studio-text)) !important; }
+$root#wos-pal .wos-ico.wos-k-google { color: color-mix(in srgb, #1a73e8 70%, var(--wme-studio-text)) !important; }
+$root#wos-pal .wos-etat.wos-err { color: color-mix(in srgb, #e5484d 80%, var(--wme-studio-text)) !important; }
+$root :is(kbd) { background: var(--wme-studio-input) !important; color: var(--wme-studio-text) !important; border-color: var(--wme-studio-border) !important; }
+$root.wos-toast { background: var(--wme-studio-surface-3) !important; color: var(--wme-studio-text) !important; border: 1px solid var(--wme-studio-border); font-family: var(--ws-font) !important; }
+$root#wos-pal .wos-liste { background: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+$root#wos-pal .wos-opt:not([aria-selected="true"]) { background: transparent !important; border-inline-start-color: transparent !important; }
+$root#wos-pal .wos-opt[aria-selected="true"] { background: var(--wme-studio-active) !important; border-inline-start-color: var(--wme-studio-accent) !important; }
+$root.wos-nbtn { font-family: var(--ws-font) !important; }
+$root#wos-sidebar { background: transparent !important; color: var(--wme-studio-text) !important; box-shadow: none !important; }
+$root#wos-sidebar h2 { color: var(--wme-studio-text) !important; }
+$root#wos-sidebar .wos-sb-ver { color: var(--wme-studio-text-muted) !important; }
+$root#wos-sidebar :is(.wos-sb-sec,.wos-sb-hint,.wos-sb-foot,.wos-sb-links) { color: var(--wme-studio-text-secondary) !important; }
+$root#wos-sidebar .wos-toggle-lbl { color: var(--wme-studio-text) !important; }
+$root#wos-sidebar a[href] { color: var(--wme-studio-accent) !important; }
+$root#wos-sidebar .wos-sb-ouvrir { background: var(--wme-studio-accent) !important; color: var(--wme-studio-on-accent) !important; border: 0 !important; font-family: var(--ws-font) !important; }
+$root#wos-sidebar .wos-sb-ouvrir kbd { background: color-mix(in srgb, var(--wme-studio-on-accent) 18%, transparent) !important; color: var(--wme-studio-on-accent) !important; border-color: color-mix(in srgb, var(--wme-studio-on-accent) 35%, transparent) !important; }
+$root#wos-sidebar .wos-toggle-slider { background: var(--wme-studio-border-strong) !important; }
+$root#wos-sidebar .wos-toggle input:checked + .wos-toggle-slider { background: var(--wme-studio-accent) !important; }
+$root#wos-sidebar .wos-help-section { border-color: var(--wme-studio-border) !important; }
+$root#wos-sidebar .wos-help-hdr { background: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; border: 0 !important; font-family: var(--ws-font) !important; }
+$root#wos-sidebar .wos-help-hdr:hover { background: var(--wme-studio-hover) !important; }
+$root#wos-sidebar .wos-help-hdr.on { background: var(--wme-studio-active) !important; color: var(--wos-blue-dk) !important; }
+$root#wos-sidebar .wos-help-body { color: var(--wme-studio-text) !important; }
+`;
+    registerCompatibilityAdapter({ id: 'omnisearch', selectors: ['#wos-pal','#wos-sidebar','.wos-nbtn','.wos-toast'], css: omnisearchCSS }, true);
+    if (typeof HTMLElement.prototype.showPopover === 'function') (() => {
+      GM_addStyle(`html[data-wme-studio="on"] #wos-pal[popover]:popover-open { position: fixed !important; right: auto !important; bottom: auto !important;
+  margin: 0 !important; padding: 0 !important; translate: var(--ws-wos-x, 0px) var(--ws-wos-y, 0px); }
+#wos-pal[popover]::backdrop { display: none; }`);
+      let pal = null, palWatch = null, layer = null;
+      const sync = () => {
+        if (!pal?.isConnected) return;
+        const open = document.documentElement.getAttribute('data-wme-studio') === 'on' && !pal.hidden;
+        if (open) {
+          const area = pal.parentElement?.parentElement?.getBoundingClientRect?.();
+          const x = `${Math.round(area?.left || 0)}px`, y = `${Math.round(area?.top || 0)}px`;
+          if (pal.style.getPropertyValue('--ws-wos-x') !== x) pal.style.setProperty('--ws-wos-x', x);
+          if (pal.style.getPropertyValue('--ws-wos-y') !== y) pal.style.setProperty('--ws-wos-y', y);
+          if (!pal.hasAttribute('popover')) pal.setAttribute('popover', 'manual');
+          if (!pal.matches(':popover-open')) { try { pal.showPopover(); } catch (_) {   } }
+        } else if (pal.hasAttribute('popover')) {
+          try { if (pal.matches(':popover-open')) pal.hidePopover(); } catch (_) {   }
+          pal.removeAttribute('popover');
+        }
+      };
+      const look = () => {
+        const next = document.getElementById('wos-couche');
+        if (next && next !== layer) { layer = next; new MutationObserver(look).observe(layer, { childList: true }); }
+        const found = document.getElementById('wos-pal');
+        if (!found || found === pal) return;
+        pal = found; palWatch?.disconnect();
+        palWatch = new MutationObserver(sync); palWatch.observe(pal, { attributes: true, attributeFilter: ['hidden', 'style'] });
+        sync();
+      };
+      const watch = () => {
+        const area = document.querySelector('div.edit-area-main');
+        if (!area) { setTimeout(watch, 2000); return; }
+        new MutationObserver(look).observe(area, { childList: true });
+        look();
+      };
+      watch();
+      addEventListener('resize', sync, { passive: true });
+    })();
+    registerCompatibilityAdapter({ id: 'wazetoastr-updates', selectors: ['#WTSU-Container'], css: studioPart('p430L2007') }, true);
+    registerCompatibilityAdapter({ id: 'wme-opendata', selectors: ['#oslWindow'], css: studioPart('p430L2053') }, true);
     registerCompatibilityAdapter({ id: 'known-addons', selectors: ['.wmeRcModal','.wmeRcSide','#waa-panel','.dz-root','#WWSU-Container'], css: String.raw`
 $root {
   --wmeRcCompactBg: var(--wme-studio-surface) !important;
@@ -1940,6 +2048,18 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
   if (!standaloneSignin && !/(?:^|\/)editor(?!\/sdk(?:\/|$))(?:\/|$)/i.test(location.pathname)) return;
   if (globalThis.__wmeStudioRunning) return;
   globalThis.__wmeStudioRunning = true;
+  if (editorProfile && window.top === window.self) {
+    let view = null, paint = '';
+    try { view = localStorage.getItem('wmeStudio.profileView.v1'); paint = localStorage.getItem('wmeStudio.profileBoot.v1') || ''; } catch (_) {   }
+    if (view !== 'waze') {
+      if (!/^(?:#[0-9a-f]{3,8}|rgba?\([\d.,\s%]+\))$/i.test(paint.trim())) paint = '#16181c';
+      const cover = document.createElement('style'); cover.id = 'ws-pp-boot';
+      cover.textContent = `html[data-ws-pp-boot]{background:${paint.trim()}!important}html[data-ws-pp-boot] body{visibility:hidden!important}`;
+      (document.head || document.documentElement).append(cover);
+      document.documentElement.setAttribute('data-ws-pp-boot', '');
+      setTimeout(() => document.documentElement.removeAttribute('data-ws-pp-boot'), 6000);
+    }
+  }
   const studioRuleBuckets = (() => {
     const done = new WeakSet();
     const splitList = text => {
@@ -2115,7 +2235,8 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
       if (!target || done.has(target)) return;
       done.add(target);
       const node = target.ownerNode;
-      if (!node || node.localName !== 'style' || !(node.textContent || '').includes('data-wme-studio')) return;
+      const text = node?.localName === 'style' ? node.textContent || '' : '';
+      if (!text.includes('data-wme-studio') || !/:(?:is|where)\(/.test(text)) return;
       let rules = null;
       try { rules = target.cssRules; } catch (_) { return; }
       try { visit(rules); } catch (studioError) { console.warn('[WME Studio] A stylesheet was left as written.', studioError); }
@@ -2137,8 +2258,7 @@ globalThis.WMEStudioComponents = studioPart('part2513', { studioButtonMotionCSS,
     if (!document.head) new MutationObserver((records, own) => { if (!document.head) return; own.disconnect(); observer.disconnect(); watch(); scan(); }).observe(document.documentElement, { childList: true });
     return { scan, rewrite };
   })();
-  if (editorProfile) GM_addStyle(`html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity, #edits-by-type, body) .tooltip .tooltip-inner,
-html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity, #edits-by-type, body) .tooltip .tooltip-inner * { color: #fff !important; }`);
+  if (editorProfile) GM_addStyle(studioPart('p430L2277'));
   const config = globalThis.WMEStudioSettings;
   const schedule = globalThis.WMEStudioSchedule;
 
@@ -2232,7 +2352,7 @@ html[data-wme-studio="on"][data-wme-studio-page="profile"] :is(#editing-activity
         sent = { target: done.target, at: performance.now() };
         try {
           if (done.target instanceof HTMLElement) done.target.click();
-          else done.target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, button: 0, clientX: done.x, clientY: done.y, screenX: done.x, screenY: done.y }));
+          else done.target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, detail: 1, button: 0, clientX: done.x, clientY: done.y, screenX: done.x, screenY: done.y }));
         }
         catch (error) { reportStudioError('fast tap', error); }
       }, { capture: true, passive: false });
@@ -2721,67 +2841,9 @@ ${ON_ISLAND()} :is(select, datalist) option, ${ON_ISLAND()} select optgroup { ba
 ${ON_ISLAND()} select option:checked { background-color: color-mix(in srgb, var(--wme-studio-accent) 34%, var(--ws-island-a)); color: var(--ws-island-ink); }
 `);
   GM_addStyle(studioPart('part5423', { ISLAND_ALIASES, ISLAND_PANELS, ISLAND_PANEL_PAINT }));
-  GM_addStyle(`
-@property --ws-side-width { syntax: '*'; inherits: false; }
-@property --ws-lane-width { syntax: '*'; inherits: false; }
-@property --ws-side-dock-left { syntax: '*'; inherits: false; }
-@property --ws-side-dock-right { syntax: '*'; inherits: false; }
-@property --ws-side-dock-top { syntax: '*'; inherits: false; }
-@property --ws-side-dock-bottom { syntax: '*'; inherits: false; }
-@property --ws-side-dock-height { syntax: '*'; inherits: false; }
-@property --ws-side-dock-css-height { syntax: '*'; inherits: false; }
-@property --ws-dock-panel-left { syntax: '*'; inherits: false; }
-@property --ws-dock-panel-right { syntax: '*'; inherits: false; }
-@property --ws-dock-panel-top { syntax: '*'; inherits: false; }
-@property --ws-dock-panel-bottom { syntax: '*'; inherits: false; }
-@property --ws-dock-panel-css-height { syntax: '*'; inherits: false; }
-html[data-wme-studio="on"] .app[data-wme-studio-lanes="on"] :is(#sidebar, .edit-area-main) {
-  --ws-sidebar: min(var(--ws-lane-width, 330px), calc(100vw - 240px));
-}
-html[data-wme-studio="on"][data-wme-studio-side-width="on"] .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) :is(#sidebar, .edit-area-main) {
-  --ws-sidebar: min(var(--ws-side-width), calc(100vw - 24px));
-}
-html[data-wme-studio="on"][data-wme-studio-compact="on"] .app:not(.sidebar-fullscreen:not([data-wme-studio-hub-window])) #sidebar#sidebar {
-  top: calc(var(--ws-dock-panel-top, var(--ws-side-dock-top, var(--ws-compact-panel-top))) / var(--ws-panel-zoom, 1)) !important;
-  bottom: calc(var(--ws-dock-panel-bottom, var(--ws-side-dock-bottom, var(--ws-compact-gap))) / var(--ws-panel-zoom, 1)) !important;
-  left: calc(var(--ws-dock-panel-left, var(--ws-side-dock-left, calc((var(--ws-compact-side-inset) + var(--ws-compact-rail)) * var(--ws-hud-zoom, 1) + 16px))) / var(--ws-panel-zoom, 1)) !important;
-  right: calc(var(--ws-dock-panel-right, var(--ws-side-dock-right, auto)) / var(--ws-panel-zoom, 1)) !important;
-  height: var(--ws-dock-panel-css-height, var(--ws-side-dock-css-height, auto)) !important;
-}
-`);
-  GM_addStyle(`
-@property --ws-hub-left { syntax: '*'; inherits: false; }
-@property --ws-hub-top { syntax: '*'; inherits: false; }
-@property --ws-hub-width { syntax: '*'; inherits: false; }
-@property --ws-hub-height { syntax: '*'; inherits: false; }
-html[data-wme-studio="on"][data-wme-studio-compact="on"] .app.sidebar-fullscreen[data-wme-studio-hub-window] #sidebar#sidebar {
-  --ws-hub-w: min(var(--ws-hub-width, min(1120px, calc(100vw - 48px))), calc(100vw - 24px));
-  --ws-hub-h: min(var(--ws-hub-height, max(320px, calc(100vh - var(--ws-compact-panel-top, 80px) - 40px))), calc(100vh - 24px));
-  position: fixed !important; z-index: 509;
-  width: calc(var(--ws-hub-w) / var(--ws-panel-zoom, 1)) !important; max-width: none !important;
-  height: calc(var(--ws-hub-h) / var(--ws-panel-zoom, 1)) !important; min-height: 0 !important; max-height: none !important;
-  left: calc(clamp(12px, var(--ws-hub-left, calc((100vw - var(--ws-hub-w)) / 2)), calc(100vw - var(--ws-hub-w) - 12px)) / var(--ws-panel-zoom, 1)) !important;
-  top: calc(clamp(12px, var(--ws-hub-top, var(--ws-compact-panel-top, 80px)), calc(100vh - var(--ws-hub-h) - 12px)) / var(--ws-panel-zoom, 1)) !important;
-  right: auto !important; bottom: auto !important; margin: 0 !important;
-  opacity: 1 !important; visibility: visible !important; pointer-events: auto !important;
-  border: 1px solid var(--wme-studio-border) !important; border-radius: var(--ws-compact-radius, 16px) !important; overflow: hidden !important;
-  background: var(--ws-island-paint-hover, var(--ws-island-a, var(--wme-studio-surface))) !important; box-shadow: 0 18px 50px #00000040 !important;
-  transform: none !important; translate: none !important;
-}
-html[data-wme-studio="on"][data-wme-studio-compact="on"] .app.sidebar-fullscreen[data-wme-studio-hub-window] #sidebar .tab-pane.active > [class*="header--"] { cursor: grab; }
-html[data-wme-studio="on"][data-wme-studio-hub-moving] .app.sidebar-fullscreen[data-wme-studio-hub-window] #sidebar .tab-pane.active > [class*="header--"] { cursor: grabbing; }
-/* A side panel's title stays on top of what scrolls under it (4.0.0): WME's buttons draw their text one layer up
-   (Imperial and Metric in Settings, the page arrows in Your drives), over the title's own layer. */
-html[data-wme-studio="on"] #sidebar .tab-pane > div[class*="header--"] { z-index: 6; }
-/* A request window's × sits a little in from the window's edge (4.0.0); the minimize button follows it. */
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) [aria-roledescription="draggable"] div[class*="controlsContainer--"] { margin-right: 6px !important; }
-`);
-  GM_addStyle(`
-html[data-wme-studio="on"] [data-testid="ai-helper-window"] :is([class*="container--"],[class*="disclaimer--"]) { border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
-html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row][data-wme-studio-fit-row]:has(> [class*="pagination--"]) { flex-wrap: nowrap !important; }
-html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row]:not([data-wme-studio-fit-row="column"]):has(> [class*="pagination--"]) { align-items: center; }
-html[data-wme-studio="on"] :is(#sidebar,#filter-panel-region) div[data-wme-studio-fit-row="wrap"][data-wme-studio-fit-row]:has(> [class*="pagination--"]) { flex-wrap: wrap !important; }
-`);
+  GM_addStyle(studioPart('p430L3024'));
+  GM_addStyle(studioPart('p430L3055'));
+  GM_addStyle(studioPart('p430L2964'));
   GM_addStyle(`
 html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--"]::after {
   background: linear-gradient(var(--wme-studio-surface) 0%, var(--wme-studio-surface) 20%, transparent 100%) !important;
@@ -3027,6 +3089,11 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       else high = height - 1;
     }
     return best;
+  }
+  function compactFitRequest(rect, obstacles, viewport = { width: innerWidth, height: innerHeight }) {
+    const inPlace = compactFitInPlace(rect, obstacles, viewport);
+    if (inPlace && inPlace.height >= rect.height - 1) return inPlace;
+    return compactFreePosition(rect, obstacles, viewport) || inPlace || compactFitPanel(rect, obstacles, viewport);
   }
   function compactSlidePosition(rect, previous, obstacles, viewport = { width: innerWidth, height: innerHeight }, inset = 12, horizontalInset = inset) {
     const gap = COMPACT_ISLAND_GAP;
@@ -3751,7 +3818,7 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   }
 
   let defaultSideCenterFrame = 0;
-  let defaultSideCenterSettle = 0;
+  let defaultSideCenterSettle = 0, defaultSideCenterSettleFrame = 0;
   const defaultSideCenterObserved = new WeakSet();
   function visibleViewportBox() {
     const vv = window.visualViewport;
@@ -3811,7 +3878,7 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
 
     if (needsAnotherPass && defaultSideCenterSettle < 6) {
       defaultSideCenterSettle += 1;
-      requestAnimationFrame(() => syncDefaultSideIslandCenters(force));
+      if (!defaultSideCenterSettleFrame) defaultSideCenterSettleFrame = requestAnimationFrame(() => { defaultSideCenterSettleFrame = 0; syncDefaultSideIslandCenters(force); });
     } else {
       defaultSideCenterSettle = 0;
     }
@@ -3966,7 +4033,7 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   function markPassiveTooltip(content) {
     if (!content) return;
     const interactive = content.querySelector('button,wz-button,a[href],input,select,textarea,wz-menu,wz-select,wz-checkbox,wz-toggle-switch,[role="button"],[role="menu"],[role="listbox"],[contenteditable="true"]');
-    if (interactive) content.removeAttribute('data-wme-studio-tooltip-passive');
+    if (!settings.enabled || settings.showTooltips !== true || interactive) content.removeAttribute('data-wme-studio-tooltip-passive');
     else if (content.getAttribute('data-wme-studio-tooltip-passive') !== 'on') content.setAttribute('data-wme-studio-tooltip-passive', 'on');
   }
   function rememberToolTooltipContent(content) {
@@ -3994,9 +4061,19 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
       if (state.content.style.getPropertyValue(name)) state.content.style.removeProperty(name);
     }
   }
+  function studioPlacesTooltip(instance) {
+    if (settings.showTooltips === true) return true;
+    if (!settings.enabled) return false;
+    const kind = toolTooltipLocation(instance)?.kind;
+    if (kind === 'moved') return true;
+    if (kind !== 'header') return false;
+    try { if (floatingHeader.position) return true; } catch (_) {   }
+    const head = document.getElementById('app-head')?.getBoundingClientRect();
+    return !!head?.height && head.top + head.height / 2 > innerHeight / 2;
+  }
   function positionToolTooltip(state) {
     const location = toolTooltipLocation(state.instance);
-    if (!compactLayoutActive() || settings.showTooltips !== true || compactLayoutEditing || !state.content.isConnected || !location?.anchor?.isConnected) {
+    if (!compactLayoutActive() || !studioPlacesTooltip(state.instance) || compactLayoutEditing || !state.content.isConnected || !location?.anchor?.isConnected) {
       clearToolTooltipPosition(state); compactToolTooltips.delete(state.instance); return;
     }
     const surface = state.content.shadowRoot?.querySelector('.wz-tooltip-content');
@@ -4076,9 +4153,9 @@ html[data-wme-studio="on"] .tippy-box [class*="header--"] + [class*="container--
   }
   document.addEventListener('tooltipOpened', event => {
     const instance = event.detail?.tooltipInstance;
-    if (settings.showTooltips !== true || !instance || (instance.trigger || instance.getAttribute?.('trigger') || 'hover') !== 'hover' || !compactLayoutActive() || compactLayoutEditing) return;
+    if (!instance || (instance.trigger || instance.getAttribute?.('trigger') || 'hover') !== 'hover' || !compactLayoutActive() || compactLayoutEditing) return;
     const content = toolTooltipContent(instance);
-    if (!content || !toolTooltipLocation(instance)) return;
+    if (!content || !toolTooltipLocation(instance) || !studioPlacesTooltip(instance)) return;
     const state = { instance, content };
     compactToolTooltips.set(instance, state); positionToolTooltip(state);
   }, true);
@@ -4953,6 +5030,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (key === 'hudScale') { rootStyle('--ws-hud-zoom', String(hudZoomOf(value))); scheduleIslandControls(); }
       else if (key === 'compactHeaderWidth') { rootStyle('--ws-header-width-extension', String(value / 100)); attr('header-width', value > 0 ? 'custom' : null); scheduleIslandControls(); }
       else if (key === 'searchWidth') { rootStyle('--ws-search-width', value ? `${value}px` : ''); attr('search-width', value ? 'custom' : null); }
+      else if (key === 'replyLines') rootStyle('--ws-reply-lines', String(value));
       else if (key === 'compactIslandOpacity' && settings.compactMode) liveGlass(value);
       else if (key === 'eyeSaver') liveEyeSaver(value);
       else if (key === 'satelliteBrightness') liveSatellite(value);
@@ -4993,6 +5071,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     attr('tooltips', settings.enabled ? settings.showTooltips === true ? 'on' : 'off' : null);
     if (affects('enabled')) clearNativeOverrides();
     if (!settings.enabled) {
+      root.removeAttribute('data-ws-pp-boot');
       syncStudioPalette();
       root.removeAttribute('data-wme-studio-sidebar-entry');
       for (const key of ['', 'page', 'theme', 'corners', 'addons', 'motion', 'compact', 'header-width', 'layer-columns', 'light-glass', 'eye-saver', 'satellite', 'viewport-overlay', 'requests', 'scrollbars', 'screen-displays', 'sd-longpress', 'sd-road', 'sd-shape', 'sd-draw', 'island-ink']) attr(key, null);
@@ -5017,6 +5096,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       rootStyle('--ws-hud-zoom', String(hudZoomOf(settings.hudScale)));
       rootStyle('--ws-header-width-extension', String(settings.compactHeaderWidth / 100));
       rootStyle('--ws-search-width', settings.searchWidth ? `${settings.searchWidth}px` : '');
+      rootStyle('--ws-reply-lines', String(settings.replyLines));
       attr('search-width', settings.searchWidth ? 'custom' : null);
       syncFontScale();
       rootStyle('--ws-panel-zoom', String(settings.panelScale / 100));
@@ -5049,7 +5129,8 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     if (affects('enabled','compactMode')) for (const state of restrictionPanels.values()) syncRestrictionPanel(state);
     scriptTabPicker.refresh();
     requestMinimizer.refresh();
-    caseFile.refresh(); quickReplies.refresh(); replyTools.refresh(); replyDetails.refresh(); chatPlus.refresh(); zoomLevelShow.refresh(); pieSupport.refresh(); wmephSupport.refresh(); mapButtonTips.refresh(); tooltipControl.refresh(); placeTemplates.refresh();
+    syncHalloween();
+    caseFile.refresh(); zoneSchedule.refresh(); savePopoverPlacer.refresh(); saveList.refresh(); closureColors.refresh(); quickReplies.refresh(); replyTools.refresh(); replyDetails.refresh(); chatPlus.refresh(); zoomLevelShow.refresh(); pieSupport.refresh(); wmephSupport.refresh(); mapButtonTips.refresh(); tooltipControl.refresh(); placeTemplates.refresh();
     panelResizeHints.prune();
     syncCompactGlassAppearance();
     syncBetaNavigationGlassState();
@@ -5326,43 +5407,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     markNavigationLabelText(shadow.querySelector('.wz-navigation-item') || button);
     markNavigationLabelText(item.host);
   }
-  const betaNavigationGlassCSS = `
-@media (min-width:1180px) and (min-height:640px) {
-  :host(#drawer[data-wme-studio-beta-glass="on"]) {
-    position:fixed!important;zoom:var(--ws-hud-zoom,1);top:calc(50vh / var(--ws-hud-zoom,1))!important;
-    bottom:auto!important;left:var(--ws-compact-side-inset,12px)!important;right:auto!important;
-    width:var(--ws-compact-rail,52px)!important;height:fit-content!important;min-height:0!important;max-height:none!important;
-    margin:0!important;padding:4px 0!important;border:0!important;border-radius:var(--ws-compact-radius,20px)!important;
-    overflow:visible!important;transform:translateY(-50%)!important;z-index:507!important;
-    background:transparent!important;
-    -webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none!important;
-  }
-  :host(#drawer[data-wme-studio-beta-glass="on"][data-wme-studio-menu-over]) { z-index:511!important; }
-  :host(#drawer[data-wme-studio-beta-glass="on"][data-wme-studio-beta-placed="on"]) {
-    top:calc(var(--ws-island-navigation-top,0px) / var(--ws-hud-zoom,1))!important;
-    left:calc(var(--ws-island-navigation-left,12px) / var(--ws-hud-zoom,1))!important;transform:none!important;
-  }
-  :host(#drawer[data-wme-studio-beta-glass="on"]:hover) {
-    background:transparent!important;
-  }
-  :host(#drawer[data-wme-studio-beta-glass="on"])::before {
-    content:""!important;position:absolute!important;inset:0!important;z-index:-1!important;
-    pointer-events:none!important;border-radius:inherit!important;
-    background:var(--ws-island-paint, color-mix(in srgb,var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-opacity,60%),transparent))!important;
-    -webkit-backdrop-filter:blur(8px)!important;backdrop-filter:blur(8px)!important;box-shadow:none!important;
-  }
-  :host(#drawer[data-wme-studio-beta-glass="on"]:hover)::before {
-    background:var(--ws-island-paint-hover, color-mix(in srgb,var(--ws-island-a, var(--wme-studio-bg)) var(--ws-compact-hover-opacity,100%),transparent))!important;
-  }
-  :host(#drawer[data-wme-studio-beta-glass="on"]) .wz-navigation-drawer {
-    width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;
-    border-inline-end:0!important;border-radius:inherit!important;overflow:visible!important;
-    background:transparent!important;background-color:transparent!important;box-shadow:none!important;
-  }
-  :host(#drawer[data-wme-studio-beta-glass="on"]) .wz-navigation-drawer::before {
-    background:transparent!important;box-shadow:none!important;
-  }
-}`;
+  const betaNavigationGlassCSS = studioPart('p430L5806');
   function syncBetaNavigationGlass(shadow, item) {
     if (!betaEditor || item.host.localName !== 'wz-navigation-drawer' || item.host.id !== 'drawer') return;
     const active = compactLayoutActive();
@@ -6489,9 +6534,11 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const menu = shadow.querySelector('.menu'), anchor = headerSlot.getBoundingClientRect();
       const width = Math.min(344, innerWidth - 24), top = Math.round(anchor.bottom + 10);
       const left = Math.round(Math.max(12, Math.min(anchor.right - width, innerWidth - width - 12)));
-      host.style.setProperty('--ws-saved-top', `${top}px`); host.style.setProperty('--ws-saved-left', `${left}px`);
-      host.style.setProperty('--ws-saved-max', `${Math.max(180, Math.min(520, innerHeight - top - 16))}px`);
-      menu.style.transformOrigin = `${Math.round(anchor.left + anchor.width / 2 - left)}px top`;
+      const low = anchor.top + anchor.height / 2 > innerHeight / 2;
+      host.style.setProperty('--ws-saved-top', low ? 'auto' : `${top}px`); host.style.setProperty('--ws-saved-left', `${left}px`);
+      host.style.setProperty('--ws-saved-bottom', low ? `${Math.round(innerHeight - anchor.top + 10)}px` : 'auto');
+      host.style.setProperty('--ws-saved-max', `${Math.max(180, Math.min(520, low ? anchor.top - 26 : innerHeight - top - 16))}px`);
+      menu.style.transformOrigin = `${Math.round(anchor.left + anchor.width / 2 - left)}px ${low ? 'bottom' : 'top'}`;
       requestAnimationFrame(() => paintMenuFade(menu.querySelector('.menu-list')));
     }
     function paintMenuFade(box) {
@@ -7067,8 +7114,9 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     function refreshButtons() {
       for (const [panel,state] of panels) {
         if (!panel.isConnected) { positions?.unobserve(panel); if(state.close)positions?.unobserve(state.close); state.button.remove(); panels.delete(panel); continue; }
-        state.button.hidden=!settings.enabled || compactLayoutEditing || !isUpdate(panel);
-        state.button.disabled=!!pendingRestore || !active || items.size>=limit && !items.has(active.id);
+        const hidden=!settings.enabled || compactLayoutEditing || !isUpdate(panel), disabled=!!pendingRestore || !active || items.size>=limit && !items.has(active.id);
+        if (state.button.hidden!==hidden) state.button.hidden=hidden;
+        if (state.button.disabled!==disabled) state.button.disabled=disabled;
         state.button.minimizeTip=items.size>=limit && !items.has(active?.id)?tr('{0} requests saved · remove one first', limit):tr('Minimize');
       }
     }
@@ -7139,6 +7187,83 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       }
       queueRefresh();
       tellManagers();
+      lastShownAt = performance.now();
+      followTrackerPage(next?.id);
+    }
+    let bracketAt = 0, bracketWay = 0, following = 0, lastShownAt = 0;
+    window.addEventListener('keydown', event => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.target?.closest?.('input,textarea,[contenteditable="true"],wz-text-input,wz-textarea')) return;
+      const way = event.key === ']' || (event.code === 'BracketRight' && event.key !== '[') ? 1 : event.key === '[' || event.code === 'BracketLeft' ? -1 : 0;
+      if (way) { bracketAt = performance.now(); bracketWay = way; edgeOfPage(bracketWay, bracketAt); }
+    }, true);
+    function edgeOfPage(way, at) {
+      if (!settings.enabled) return;
+      const rows = trackerEntries();
+      const index = rows.findIndex(row => row.selected);
+      if (index < 0 || index !== (way > 0 ? rows.length - 1 : 0)) return;
+      const before = active?.id;
+      setTimeout(() => {
+        if (lastShownAt > at || active?.id !== before) return;
+        const root = document.getElementById('sidepanel-issue-tracker');
+        const range = () => root?.querySelector('[class*="range--"]')?.textContent || '';
+        const button = trackerPager()?.[way > 0 ? 'next' : 'prev'];
+        if (!button || button.disabled || button.hasAttribute('disabled')) return;
+        const was = range(), ticket = ++following;
+        button.click();
+        let tries = 0;
+        const open = () => {
+          if (ticket !== following) return;
+          const fresh = trackerEntries();
+          if (range() !== was && fresh.length) {
+            const row = fresh[way > 0 ? 0 : fresh.length - 1].row;
+            try { row.scrollIntoView({ block: 'nearest' }); } catch (_) {   }
+            row.click();
+            return;
+          }
+          if (++tries < 20) setTimeout(open, 150);
+        };
+        setTimeout(open, 150);
+      }, 450);
+    }
+    function trackerPager() {
+      const root = document.getElementById('sidepanel-issue-tracker') || document.querySelector('#sidebar [class*="issuesTracker--"],#filter-panel-region [class*="issuesTracker--"]');
+      if (!root) return null;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!/^\s*\d+\s*[-–]\s*\d+\s+\S+\s+\d+\s*$/.test(node.textContent)) continue;
+        for (let box = node.parentElement, depth = 0; box && box !== root && depth < 4; box = box.parentElement, depth++) {
+          const buttons = [...box.querySelectorAll('wz-button,button')].filter(button => !button.closest('wz-card,[class*="listItem"]'));
+          if (buttons.length >= 2) return { prev: buttons[0], next: buttons[buttons.length - 1] };
+        }
+      }
+      return null;
+    }
+    function followTrackerPage(id) {
+      if (!settings.enabled || !id || !bracketWay || performance.now() - bracketAt > 2500) return;
+      const way = bracketWay, ticket = ++following; bracketWay = 0;
+      const holds = rows => rows.some(row => row.id) ? rows.some(row => row.id === String(id)) : rows.some(row => row.selected);
+      const root = () => document.getElementById('sidepanel-issue-tracker');
+      const range = () => root()?.querySelector('[class*="range--"]')?.textContent || '';
+      const first = text => parseInt(String(text).match(/\d+/)?.[0] || '', 10);
+      const started = performance.now();
+      let home = '', clicks = 0, clickedFrom = null, revealed = false;
+      const check = () => {
+        if (ticket !== following) return;
+        const rows = trackerEntries(), now = range();
+        if (clickedFrom !== null && now === clickedFrom) { if (performance.now() - started < 4500) setTimeout(check, 150); return; }
+        clickedFrom = null;
+        if (rows.length && holds(rows)) {
+          home = now;
+          if (!revealed) { revealed = true; const row = rows.find(item => item.id === String(id)) || rows.find(item => item.selected); try { row?.row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {   } }
+        } else if (rows.length && performance.now() - started >= 900 && clicks < 4) {
+          const from = first(now), to = home ? first(home) : NaN;
+          const dir = Number.isFinite(from) && Number.isFinite(to) ? (to < from ? -1 : 1) : way;
+          const button = trackerPager()?.[dir > 0 ? 'next' : 'prev'];
+          if (button && !button.disabled && !button.hasAttribute('disabled')) { clickedFrom = now; clicks++; revealed = false; button.click(); }
+        }
+        if (performance.now() - started < 4000) setTimeout(check, 200);
+      };
+      setTimeout(check, 200);
     }
     function requestClosed() { try { requestReveal.forget(); } catch (_) {   } saveCurrent(); active=null; closeName(); queueRefresh(); tellManagers(); }
     function tellManagers() { for (const delay of [150, 1200]) setTimeout(() => { try { quickReplies.notifyManagers(); } catch (_) {   } }, delay); }
@@ -7354,7 +7479,60 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     }, true);
     setInterval(() => { if (followUps.size) pruneFollowUps(); }, 60000);
 
+    studioPart('reviewPlace', { on: () => settings.enabled, reportStudioError });
     const visited = new Set();
+    function trackerEntries() {
+      const root = document.getElementById('sidepanel-issue-tracker') || document.querySelector('#sidebar [class*="issuesTracker--"],#filter-panel-region [class*="issuesTracker--"]');
+      if (!root) return [];
+      const selector = 'wz-card.list-item-card,wz-card.issue-tracker-card-content,[data-issue-type][data-issue-id],[data-map-update-request-id]';
+      const rows = [...root.querySelectorAll(selector)].filter(row => !row.parentElement?.closest(selector) && !row.closest('[hidden],[aria-hidden="true"]'));
+      const positive = value => /^\d+$/.test(String(value || '')) && Number(value) > 0 ? String(value) : '';
+      return rows.map(row => {
+        let id = positive(row.getAttribute('data-map-update-request-id')), issue = positive(row.getAttribute('data-issue-id'));
+        let type = row.getAttribute('data-issue-type') || row.getAttribute('data-type') || '', known = !!id, closed = /^(?:closed|resolved)$/i.test(row.getAttribute('data-status') || '');
+        const link = row.matches('a[href]') ? row : row.querySelector('a[href*="mapUpdateRequest="]');
+        if (link) { try { id ||= positive(new URL(link.href, location.href).searchParams.get('mapUpdateRequest')); known ||= !!id; } catch (_) {   } }
+        const take = value => {
+          if (known && id) return;
+          if (!value || typeof value !== 'object') return;
+          const attrs = value.attributes || value;
+          const kind = String(attrs.issueType || attrs.objectType || (typeof attrs.type === 'string' ? attrs.type : '')).replace(/[^a-z]/gi, '').toLowerCase();
+          const requestId = positive(attrs.mapUpdateRequestId ?? attrs.updateRequestId);
+          const isRequest = !!requestId || ['mapupdaterequest', 'updaterequest', 'ur'].includes(kind) || !!value.attributes && attrs.driveDate != null;
+          if (!isRequest) return;
+          const candidate = requestId || positive(attrs.referenceId ?? attrs.objectId ?? attrs.objectID ?? attrs.id);
+          if (!candidate) return;
+          id = candidate; known = true; type = 'mapUpdateRequest';
+          issue ||= positive(attrs.mapIssueId ?? attrs.issueTrackerId ?? (attrs.objectId != null ? attrs.id : null));
+          closed ||= attrs.open === false || attrs.isOpen === false || attrs.resolution != null;
+        };
+        for (let node = row, depth = 0; node && node !== root && depth < 8; node = node.parentElement, depth++) {
+          const key = Object.keys(node).find(name => name.startsWith('__reactProps$') || name.startsWith('__reactFiber$'));
+          let fiber = key?.startsWith('__reactFiber$') ? node[key] : null;
+          const readProps = props => { if (!props || typeof props !== 'object') return; for (const value of [props, props.model, props.issue, props.item, props.data, props.request, props.mapIssue, props.problem, props.mapUpdateRequest]) take(value); };
+          if (key && !fiber) readProps(node[key]);
+          for (let hop = 0; fiber && hop < 8; fiber = fiber.return, hop++) readProps(fiber.memoizedProps);
+          if (known) break;
+        }
+        if (!id && /^(?:mapUpdateRequest|updateRequest|ur)$/i.test(type)) id = positive(row.getAttribute('data-id') || row.getAttribute('data-request-id'));
+        if (id && !known) { const model = legacyRequest(id); if (model) take(model); }
+        known ||= /^(?:mapUpdateRequest|updateRequest|ur)$/i.test(type) && !!id;
+        const selected = row.matches('.selected,[aria-selected="true"]') || !!row.shadowRoot?.querySelector('.selected,[aria-selected="true"]') || !!row.closest('[aria-selected="true"]');
+        return { row, id, mapIssueId: issue ? Number(issue) : NaN, known, closed, selected };
+      });
+    }
+    function trackerNext(panel) {
+      readCurrent();
+      const fromId = active?.id || (() => { try { return caseFile.facts(panel)?.id; } catch (_) { return null; } })();
+      const rows = trackerEntries();
+      let at = rows.findIndex(item => item.id && item.id === String(fromId));
+      if (at < 0) at = rows.findIndex(item => item.selected);
+      const next = rows.slice(at + 1).find(item => {
+        const attrs = item.id ? legacyRequest(item.id)?.attributes : null;
+        return item.known && !item.closed && attrs?.open !== false && attrs?.resolution == null && item.id !== String(fromId) && !visited.has(item.id) && !item.row.matches('[disabled],[aria-disabled="true"]');
+      }) || null;
+      return { fromId, next };
+    }
     function nextRequest(fromId, fromWhere) {
       let list = [];
       try { list = (sdk?.DataModel?.MapUpdateRequests?.getAll?.() || []).filter(one => one && one.isOpen !== false).map(one => ({ id: String(one.id), at: one.geometry?.type === 'Point' ? one.geometry.coordinates : null })); } catch (_) { list = []; }
@@ -7365,16 +7543,39 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const far = at => !here || !at ? Infinity : (at[0] - here[0]) ** 2 * Math.cos(here[1] * Math.PI / 180) ** 2 + (at[1] - here[1]) ** 2;
       return list.filter(one => one.id !== String(fromId) && !visited.has(one.id)).sort((one, two) => far(one.at) - far(two.at))[0] || null;
     }
-    async function openNext(panel) {
+    function nextNote(panel, text) {
+      document.getElementById('wme-studio-next-note')?.remove();
+      const win = panel?.isConnected ? panel.closest(REQUEST_WINDOW_SELECTOR) || panel : null, box = win?.getBoundingClientRect?.();
+      if (!box?.width) { ensureUI(); message(text); setTimeout(() => message(''), 4000); return; }
+      const note = document.createElement('div'); note.id = 'wme-studio-next-note'; note.setAttribute('role', 'status'); note.setAttribute('data-ws-keep', ''); note.textContent = text;
+      const below = box.bottom + 60 < innerHeight;
+      note.style.cssText = `position:fixed;left:${Math.round(box.left + box.width / 2)}px;top:${Math.round(below ? box.bottom + 8 : Math.max(8, box.top - 8))}px;transform:translate(-50%,${below ? '0' : '-100%'});z-index:2147483000;`
+        + `display:flex;align-items:center;min-height:34px;max-width:${Math.max(240, Math.round(box.width))}px;box-sizing:border-box;padding:7px 13px;border-radius:11px;`
+        + 'background:var(--wme-studio-surface,#1c2026);color:var(--wme-studio-text,#eef1f4);border:1px solid var(--wme-studio-border,rgba(255,255,255,.12));'
+        + 'box-shadow:0 10px 30px rgba(0,0,0,.3);font:600 12.5px/1.35 var(--ws-font,Inter,system-ui,sans-serif);pointer-events:none';
+      document.body.append(note);
+      setTimeout(() => note.remove(), 4500);
+    }
+    async function openNext(panel, trackerPlan = null) {
       readCurrent();
+      if (!settings.requestNextInTracker && trackerEntries().length) globalThis.WMEStudioTip?.('next');
       let where = null; try { where = caseFile.facts(panel)?.where || null; } catch (_) { where = null; }
-      const fromId = active?.id; if (fromId) visited.add(String(fromId));
-      const next = nextRequest(fromId, where);
-      if (!next) { ensureUI(); message(tr('No other open update requests around here. Move the map to find more.')); setTimeout(() => message(''), 4000); return false; }
-      visited.add(next.id);
+      let tracker = settings.requestNextInTracker ? trackerPlan || trackerNext(panel) : null;
+      const fromId = tracker?.fromId || trackerPlan?.fromId || active?.id; if (fromId) visited.add(String(fromId));
+      let next = tracker ? tracker.next : nextRequest(fromId, where);
+      if (!next && !tracker) { const plan = trackerPlan || trackerNext(panel); if (plan?.next) { tracker = plan; next = plan.next; } }
+      if (!next && tracker) { const near = nextRequest(fromId, where); if (near) { tracker = null; next = near; } }
+      if (!next) { nextNote(panel, tr(settings.requestNextInTracker && trackerEntries().length ? 'No next update request in the loaded issue tracker list. Open the tracker or load more results.' : 'No other open update requests around here. Move the map to find more.')); return false; }
+      if (tracker && next.row?.isConnected) {
+        const attrs = legacyRequest(next.id)?.attributes;
+        if (attrs?.open === false || attrs?.resolution != null) { visited.add(next.id); return openNext(panel); }
+        next.row.click(); visited.add(next.id);
+        for (let tick = 0; tick < 15; tick++) { await new Promise(done => setTimeout(done, 100)); readCurrent(); if (String(active?.id) === String(next.id)) return true; }
+        if (String(active?.id) !== String(fromId) && active?.id) return true;
+      }
       const model = legacyRequest(next.id), issue = Number(model?.attributes?.mapIssueId ?? model?.getMapIssueId?.());
-      try { await nativeOpen({ type: 'mapUpdateRequest', id: next.id, mapIssueId: Number.isFinite(issue) ? issue : NaN, model, where: null }); return true; }
-      catch (studioError) { reportStudioError('openNext', studioError); ensureUI(); message(tr('I couldn’t open the next request. Please try again.')); setTimeout(() => message(''), 4000); return false; }
+      try { await nativeOpen({ type: 'mapUpdateRequest', id: next.id, mapIssueId: Number.isFinite(next.mapIssueId) ? next.mapIssueId : Number.isFinite(issue) ? issue : NaN, model, where: null }); visited.add(next.id); return true; }
+      catch (studioError) { reportStudioError('openNext', studioError); nextNote(panel, tr('I couldn’t open the next request. Please try again.')); return false; }
     }
 
     document.addEventListener('DOMContentLoaded',connect,{once:true}); window.addEventListener('load',connect,{once:true});
@@ -7383,7 +7584,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
     document.addEventListener('wme-studio-urce', () => render());
     try { GM_addValueChangeListener?.(SAVED_KEY, (key, before, after, remote) => { if (!remote || !Array.isArray(after)) return; const kept = new Map(items); items.clear(); for (const raw of after.slice(0, limit)) { const item = storedItem(raw); if (item) { const old = kept.get(item.id); items.set(item.id, old ? Object.assign(old, item, { model: old.model }) : item); } } render(); }); } catch (_) {   }
     return Object.freeze({inspect,refresh:()=>{connect();render();},prune:()=>{refreshButtons();if(naming && !naming.edit && !naming.panel?.isConnected)closeName();},
-      noteState,openNext,sendButton:sendButtonOf,
+      noteState,openNext,trackerNext,sendButton:sendButtonOf,
       openId:()=>{ try { readCurrent(); } catch (_) {   } const id=active?.type==='mapUpdateRequest'||active?.id!=null?active?.id:sdkOpen; return id!=null&&/^\d+$/.test(String(id))?Number(id):NaN; },
       savedList:()=>[...items.values()].sort((a,b)=>(b.savedAt||0)-(a.savedAt||0)).map(item=>({id:item.id,name:item.name,color:colorValue(item.color),ink:inkFor(item.color),icon:iconSVG(item.icon),tag:item.tag||'',where:item.where||null}))});
   })();
@@ -7449,7 +7650,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       hi: { spot: "रिपोर्ट के लिए धन्यवाद! क्या आप बता सकते हैं कि यह ठीक कहाँ हुआ? सड़क का नाम या चौराहा हमें जगह ढूँढने में मदद करता है।", fixed: "धन्यवाद! हमने यहाँ नक्शा ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।", remind: "फिर से नमस्ते! इसे ठीक करने के लिए हमें थोड़ी और जानकारी चाहिए। क्या आप बता सकते हैं कि समस्या ठीक कहाँ थी? अगर हमें जवाब नहीं मिला, तो हम कुछ दिनों में यह रिपोर्ट बंद कर देंगे।", close: "हमें कोई जवाब नहीं मिला, इसलिए हम फ़िलहाल यह रिपोर्ट बंद कर रहे हैं। अगर ऐसा फिर हो, तो कृपया उसी जगह से नई रिपोर्ट भेजें। धन्यवाद!" },
       ca: { spot: "Gràcies per l’avís! Ens pots dir on va passar exactament? El nom del carrer o la cruïlla ens ajuda a trobar-ho.", fixed: "Gràcies! Hem corregit el mapa aquí. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.", remind: "Hola de nou! Encara necessitem una mica més de detall per corregir-ho. Ens pots dir on era exactament el problema? Si no tenim resposta, tancarem aquest avís d’aquí a uns dies.", close: "No hem tingut resposta, així que de moment tanquem aquest avís. Si torna a passar, envia un avís nou des del mateix lloc. Gràcies!" }
     };
-    const MORE_REPLIES = /*@@MORE_REPLIES@@*/{"en":{"t-turn-ask":"Thanks for the report! Which turn was it: from which street onto which, and in which direction were you driving?","t-turn-done":"Thank you! We've fixed that turn on the map. The app shows the change after the next map update, usually within a few days.","t-address-ask":"Thanks for the report! What is the correct address or street name, and which place were you trying to reach?","t-address-done":"Thank you! We've corrected the address on the map. The app shows the change after the next map update, usually within a few days.","t-route-ask":"Thanks for the report! Where did you start, where were you going, and which way did you expect the app to take you?","t-route-done":"Thanks for the report! We checked the map here and it's right. The app picks the route from live traffic, so it can differ from day to day.","t-roundabout-ask":"Thanks for the report! Which junction should be a roundabout? The streets that meet there help us find it.","t-roundabout-done":"Thank you! We've added the roundabout to the map. The app shows it after the next map update, usually within a few days.","t-general-ask":"Thanks for the report! Could you tell us a bit more about what was wrong, and where exactly?","t-junction-ask":"Thanks for the report! Which junction, exit or bridge was it, and in which direction were you driving?","t-junction-done":"Thank you! We've fixed the junction on the map. The app shows the change after the next map update, usually within a few days.","t-direction-ask":"Thanks for the report! Which street was it, and in which direction is it really open to traffic?","t-direction-done":"Thank you! We've corrected the driving direction on the map. The app shows the change after the next map update, usually within a few days.","t-road-ask":"Thanks for the report! What is the road called, where does it start and end, and is it open to everyone?","t-road-done":"Thank you! We've added the road to the map. The app shows it after the next map update, usually within a few days.","t-landmark-ask":"Thanks for the report! What is the place called, and where exactly is it?","t-landmark-done":"Thank you! We've added the place to the map. It shows in the app after the next map update, usually within a few days.","t-blocked-ask":"Thanks for the report! Is the road closed for good or for a while? If you know until when, that helps a lot.","t-blocked-done":"Thank you! We've added the closure to the map, so the app routes around it.","t-speed-ask":"Thanks for the report! What speed limit is posted there, and for which direction?","t-speed-done":"Thank you! We've updated the speed limit on the map. The app shows it after the next map update, usually within a few days.","nothing":"Thanks for the report! We checked the map here and couldn't find anything wrong, so we left it as it is. If it happens again, please send a new report from the spot.","mm-ask":"Thanks for your report! Could you tell us a little more: exactly where it is, and in which direction you were driving?","mm-bump-done":"Thank you! We've added the speed bump to the map, so the app warns drivers about it.","mm-bump-none":"Thanks for the report! We checked and couldn't see a speed bump here, so we left the map as it is.","mm-light-done":"Thank you! We've added the traffic lights to the map.","mm-light-none":"Thanks for the report! We checked and couldn't see traffic lights here, so we left the map as it is.","mm-curve-done":"Thank you! We've marked the dangerous curve on the map, so the app warns drivers about it.","mm-curve-none":"Thanks for the report! We checked this curve and didn't find a reason to change the map, so we left it as it is.","mm-rail-done":"Thank you! We've added the railroad crossing to the map, so the app warns drivers about it.","mm-rail-none":"Thanks for the report! We checked and couldn't see a railroad crossing here, so we left the map as it is.","mm-camera-done":"Thank you! We've added the speed camera to the map.","mm-camera-none":"Thanks for the report! We checked and couldn't confirm a speed camera here, so we left the map as it is.","mm-done":"Thank you! We've updated the map here. The app shows the change after the next map update, usually within a few days.","mm-none":"Thanks for the report! We checked the map here and didn't find anything to change, so we left it as it is."},"el":{"t-turn-ask":"Ευχαριστούμε για την αναφορά! Ποια στροφή ήταν: από ποιον δρόμο προς ποιον, και προς ποια κατεύθυνση οδηγούσατε;","t-turn-done":"Ευχαριστούμε! Διορθώσαμε τη στροφή στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-address-ask":"Ευχαριστούμε για την αναφορά! Ποια είναι η σωστή διεύθυνση ή το σωστό όνομα του δρόμου, και πού προσπαθούσατε να πάτε;","t-address-done":"Ευχαριστούμε! Διορθώσαμε τη διεύθυνση στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-route-ask":"Ευχαριστούμε για την αναφορά! Από πού ξεκινήσατε, πού πηγαίνατε και από ποιον δρόμο περιμένατε να σας πάει η εφαρμογή;","t-route-done":"Ευχαριστούμε για την αναφορά! Ελέγξαμε τον χάρτη σε αυτό το σημείο και είναι σωστός. Η εφαρμογή επιλέγει τη διαδρομή με βάση την κίνηση σε πραγματικό χρόνο, οπότε μπορεί να διαφέρει από μέρα σε μέρα.","t-roundabout-ask":"Ευχαριστούμε για την αναφορά! Ποια διασταύρωση θα έπρεπε να είναι κυκλικός κόμβος; Τα ονόματα των δρόμων που συναντιούνται εκεί μάς βοηθούν να τη βρούμε.","t-roundabout-done":"Ευχαριστούμε! Προσθέσαμε τον κυκλικό κόμβο στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-general-ask":"Ευχαριστούμε για την αναφορά! Μπορείτε να μας πείτε λίγα περισσότερα για το τι ήταν λάθος και πού ακριβώς;","t-junction-ask":"Ευχαριστούμε για την αναφορά! Ποιος κόμβος, ποια έξοδος ή ποια γέφυρα ήταν, και προς ποια κατεύθυνση οδηγούσατε;","t-junction-done":"Ευχαριστούμε! Διορθώσαμε τον κόμβο στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-direction-ask":"Ευχαριστούμε για την αναφορά! Ποιος δρόμος ήταν, και προς ποια κατεύθυνση επιτρέπεται πραγματικά η κυκλοφορία;","t-direction-done":"Ευχαριστούμε! Διορθώσαμε την κατεύθυνση κυκλοφορίας στον χάρτη. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-road-ask":"Ευχαριστούμε για την αναφορά! Πώς λέγεται ο δρόμος, πού αρχίζει και πού τελειώνει, και είναι ανοιχτός για όλους;","t-road-done":"Ευχαριστούμε! Προσθέσαμε τον δρόμο στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-landmark-ask":"Ευχαριστούμε για την αναφορά! Πώς λέγεται το μέρος και πού ακριβώς βρίσκεται;","t-landmark-done":"Ευχαριστούμε! Προσθέσαμε το μέρος στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","t-blocked-ask":"Ευχαριστούμε για την αναφορά! Ο δρόμος είναι κλειστός μόνιμα ή προσωρινά; Αν ξέρετε μέχρι πότε, μας βοηθά πολύ.","t-blocked-done":"Ευχαριστούμε! Προσθέσαμε το κλείσιμο του δρόμου στον χάρτη, οπότε η εφαρμογή θα το παρακάμπτει.","t-speed-ask":"Ευχαριστούμε για την αναφορά! Ποιο όριο ταχύτητας δείχνει η πινακίδα εκεί, και για ποια κατεύθυνση;","t-speed-done":"Ευχαριστούμε! Ενημερώσαμε το όριο ταχύτητας στον χάρτη. Θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","nothing":"Ευχαριστούμε για την αναφορά! Ελέγξαμε τον χάρτη σε αυτό το σημείο και δεν βρήκαμε κάποιο λάθος, οπότε τον αφήσαμε ως έχει. Αν συμβεί ξανά, στείλτε νέα αναφορά από το σημείο.","mm-ask":"Ευχαριστούμε για την αναφορά! Μπορείτε να μας πείτε λίγα περισσότερα: πού ακριβώς βρίσκεται και προς ποια κατεύθυνση οδηγούσατε;","mm-bump-done":"Ευχαριστούμε! Προσθέσαμε το σαμαράκι στον χάρτη, ώστε η εφαρμογή να ειδοποιεί τους οδηγούς.","mm-bump-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε και δεν εντοπίσαμε σαμαράκι σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-light-done":"Ευχαριστούμε! Προσθέσαμε τα φανάρια στον χάρτη.","mm-light-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε και δεν εντοπίσαμε φανάρια σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-curve-done":"Ευχαριστούμε! Σημειώσαμε την επικίνδυνη στροφή στον χάρτη, ώστε η εφαρμογή να ειδοποιεί τους οδηγούς.","mm-curve-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε αυτή τη στροφή και δεν βρήκαμε λόγο να αλλάξουμε τον χάρτη, οπότε τον αφήσαμε ως έχει.","mm-rail-done":"Ευχαριστούμε! Προσθέσαμε την ισόπεδη σιδηροδρομική διάβαση στον χάρτη, ώστε η εφαρμογή να ειδοποιεί τους οδηγούς.","mm-rail-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε και δεν εντοπίσαμε ισόπεδη σιδηροδρομική διάβαση σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-camera-done":"Ευχαριστούμε! Προσθέσαμε την κάμερα ελέγχου ταχύτητας στον χάρτη.","mm-camera-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε, αλλά δεν μπορέσαμε να επιβεβαιώσουμε κάμερα ελέγχου ταχύτητας σε αυτό το σημείο, οπότε αφήσαμε τον χάρτη ως έχει.","mm-done":"Ευχαριστούμε! Ενημερώσαμε τον χάρτη σε αυτό το σημείο. Η αλλαγή θα φανεί στην εφαρμογή μετά την επόμενη ενημέρωση του χάρτη, συνήθως μέσα σε λίγες μέρες.","mm-none":"Ευχαριστούμε για την αναφορά! Ελέγξαμε τον χάρτη σε αυτό το σημείο και δεν βρήκαμε κάτι να αλλάξουμε, οπότε τον αφήσαμε ως έχει."},"de":{"t-turn-ask":"Danke für die Meldung! Um welche Abbiegung ging es: von welcher Straße in welche, und in welche Richtung bist du gefahren?","t-turn-done":"Danke! Wir haben die Abbiegung auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-address-ask":"Danke für die Meldung! Wie lautet die richtige Adresse oder der richtige Straßenname, und wohin wolltest du?","t-address-done":"Danke! Wir haben die Adresse auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-route-ask":"Danke für die Meldung! Wo bist du losgefahren, wohin wolltest du, und welchen Weg hättest du von der App erwartet?","t-route-done":"Danke für die Meldung! Wir haben die Karte hier geprüft, und sie stimmt. Die App wählt die Route anhand des aktuellen Verkehrs, deshalb kann sie von Tag zu Tag unterschiedlich sein.","t-roundabout-ask":"Danke für die Meldung! Welche Kreuzung sollte ein Kreisverkehr sein? Die Straßen, die dort aufeinandertreffen, helfen uns, sie zu finden.","t-roundabout-done":"Danke! Wir haben den Kreisverkehr auf der Karte ergänzt. Die App zeigt ihn nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-general-ask":"Danke für die Meldung! Kannst du uns etwas mehr dazu sagen, was falsch war und wo genau?","t-junction-ask":"Danke für die Meldung! Um welche Kreuzung, Ausfahrt oder Brücke ging es, und in welche Richtung bist du gefahren?","t-junction-done":"Danke! Wir haben die Kreuzung auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-direction-ask":"Danke für die Meldung! Um welche Straße ging es, und in welche Richtung darf man sie tatsächlich befahren?","t-direction-done":"Danke! Wir haben die Fahrtrichtung auf der Karte korrigiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-road-ask":"Danke für die Meldung! Wie heißt die Straße, wo beginnt und endet sie, und darf sie jeder befahren?","t-road-done":"Danke! Wir haben die Straße auf der Karte ergänzt. Die App zeigt sie nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-landmark-ask":"Danke für die Meldung! Wie heißt der Ort, und wo genau liegt er?","t-landmark-done":"Danke! Wir haben den Ort auf der Karte ergänzt. Er erscheint in der App nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","t-blocked-ask":"Danke für die Meldung! Ist die Straße dauerhaft oder nur vorübergehend gesperrt? Wenn du weißt, bis wann, hilft uns das sehr.","t-blocked-done":"Danke! Wir haben die Sperrung auf der Karte eingetragen, damit die App sie umfährt.","t-speed-ask":"Danke für die Meldung! Welches Tempolimit ist dort ausgeschildert, und für welche Richtung?","t-speed-done":"Danke! Wir haben das Tempolimit auf der Karte aktualisiert. Die App zeigt es nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","nothing":"Danke für die Meldung! Wir haben die Karte hier geprüft und keinen Fehler gefunden, deshalb haben wir sie so gelassen. Falls es wieder passiert, sende bitte eine neue Meldung von der Stelle aus.","mm-ask":"Danke für die Meldung! Kannst du uns etwas mehr sagen: Wo genau ist es, und in welche Richtung bist du gefahren?","mm-bump-done":"Danke! Wir haben die Bodenschwelle auf der Karte eingetragen, damit die App Fahrer davor warnt.","mm-bump-none":"Danke für die Meldung! Wir haben nachgesehen und hier keine Bodenschwelle gefunden, deshalb haben wir die Karte so gelassen.","mm-light-done":"Danke! Wir haben die Ampel auf der Karte eingetragen.","mm-light-none":"Danke für die Meldung! Wir haben nachgesehen und hier keine Ampel gefunden, deshalb haben wir die Karte so gelassen.","mm-curve-done":"Danke! Wir haben die gefährliche Kurve auf der Karte markiert, damit die App Fahrer davor warnt.","mm-curve-none":"Danke für die Meldung! Wir haben uns die Kurve angesehen und keinen Grund gefunden, die Karte zu ändern, deshalb haben wir sie so gelassen.","mm-rail-done":"Danke! Wir haben den Bahnübergang auf der Karte eingetragen, damit die App Fahrer davor warnt.","mm-rail-none":"Danke für die Meldung! Wir haben nachgesehen und hier keinen Bahnübergang gefunden, deshalb haben wir die Karte so gelassen.","mm-camera-done":"Danke! Wir haben den Blitzer auf der Karte eingetragen.","mm-camera-none":"Danke für die Meldung! Wir haben nachgesehen, konnten hier aber keinen Blitzer bestätigen, deshalb haben wir die Karte so gelassen.","mm-done":"Danke! Wir haben die Karte hier aktualisiert. Die App zeigt die Änderung nach dem nächsten Karten-Update, meist innerhalb weniger Tage.","mm-none":"Danke für die Meldung! Wir haben die Karte hier geprüft und nichts gefunden, was geändert werden müsste, deshalb haben wir sie so gelassen."},"ru":{"t-turn-ask":"Спасибо за сообщение! О каком повороте речь: с какой улицы на какую и в каком направлении вы ехали?","t-turn-done":"Спасибо! Мы исправили этот поворот на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-address-ask":"Спасибо за сообщение! Подскажите правильный адрес или название улицы и куда вы хотели попасть?","t-address-done":"Спасибо! Мы исправили адрес на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-route-ask":"Спасибо за сообщение! Откуда вы выехали, куда направлялись и каким путём, по-вашему, должно было повести приложение?","t-route-done":"Спасибо за сообщение! Мы проверили карту в этом месте, всё верно. Приложение выбирает маршрут с учётом текущей дорожной ситуации, поэтому он может меняться день ото дня.","t-roundabout-ask":"Спасибо за сообщение! Какой перекрёсток должен быть с круговым движением? Названия улиц, которые там сходятся, помогут нам его найти.","t-roundabout-done":"Спасибо! Мы добавили круговое движение на карту. Приложение покажет его после следующего обновления карты, обычно в течение нескольких дней.","t-general-ask":"Спасибо за сообщение! Расскажите, пожалуйста, чуть подробнее: что было не так и где именно?","t-junction-ask":"Спасибо за сообщение! О какой развязке, съезде или мосте речь и в каком направлении вы ехали?","t-junction-done":"Спасибо! Мы исправили развязку на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-direction-ask":"Спасибо за сообщение! О какой улице речь и в каком направлении по ней на самом деле разрешено движение?","t-direction-done":"Спасибо! Мы исправили направление движения на карте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","t-road-ask":"Спасибо за сообщение! Как называется дорога, где она начинается и заканчивается и открыта ли она для всех?","t-road-done":"Спасибо! Мы добавили дорогу на карту. Приложение покажет её после следующего обновления карты, обычно в течение нескольких дней.","t-landmark-ask":"Спасибо за сообщение! Как называется это место и где именно оно находится?","t-landmark-done":"Спасибо! Мы добавили это место на карту. Оно появится в приложении после следующего обновления карты, обычно в течение нескольких дней.","t-blocked-ask":"Спасибо за сообщение! Дорога закрыта насовсем или временно? Если знаете, до какого времени, это очень поможет.","t-blocked-done":"Спасибо! Мы отметили перекрытие на карте, так что приложение будет прокладывать маршрут в объезд.","t-speed-ask":"Спасибо за сообщение! Какое ограничение скорости указано там на знаке и для какого направления?","t-speed-done":"Спасибо! Мы обновили ограничение скорости на карте. Приложение покажет его после следующего обновления карты, обычно в течение нескольких дней.","nothing":"Спасибо за сообщение! Мы проверили карту в этом месте и не нашли ошибок, поэтому оставили всё как есть. Если это повторится, отправьте новое сообщение прямо с места.","mm-ask":"Спасибо за сообщение! Подскажите чуть подробнее: где именно это и в каком направлении вы ехали?","mm-bump-done":"Спасибо! Мы добавили лежачего полицейского на карту, и приложение будет предупреждать о нём водителей.","mm-bump-none":"Спасибо за сообщение! Мы проверили и не нашли здесь лежачего полицейского, поэтому оставили карту без изменений.","mm-light-done":"Спасибо! Мы добавили светофор на карту.","mm-light-none":"Спасибо за сообщение! Мы проверили и не нашли здесь светофора, поэтому оставили карту без изменений.","mm-curve-done":"Спасибо! Мы отметили опасный поворот на карте, и приложение будет предупреждать о нём водителей.","mm-curve-none":"Спасибо за сообщение! Мы проверили этот поворот и не нашли причин менять карту, поэтому оставили всё как есть.","mm-rail-done":"Спасибо! Мы добавили железнодорожный переезд на карту, и приложение будет предупреждать о нём водителей.","mm-rail-none":"Спасибо за сообщение! Мы проверили и не нашли здесь железнодорожного переезда, поэтому оставили карту без изменений.","mm-camera-done":"Спасибо! Мы добавили камеру контроля скорости на карту.","mm-camera-none":"Спасибо за сообщение! Мы проверили, но не смогли подтвердить, что здесь есть камера контроля скорости, поэтому оставили карту без изменений.","mm-done":"Спасибо! Мы обновили карту в этом месте. Приложение покажет изменение после следующего обновления карты, обычно в течение нескольких дней.","mm-none":"Спасибо за сообщение! Мы проверили карту в этом месте и не нашли ничего, что нужно менять, поэтому оставили всё как есть."},"cs":{"t-turn-ask":"Díky za hlášení! O které odbočení šlo: z které ulice do které a jakým směrem jste jeli?","t-turn-done":"Děkujeme! Odbočení jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-address-ask":"Díky za hlášení! Jaká je správná adresa nebo název ulice a kam jste se snažili dostat?","t-address-done":"Děkujeme! Adresu jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-route-ask":"Díky za hlášení! Odkud jste vyjížděli, kam jste jeli a kudy jste čekali, že vás aplikace povede?","t-route-done":"Díky za hlášení! Mapu jsme na tomto místě zkontrolovali a je v pořádku. Aplikace vybírá trasu podle aktuální dopravy, takže se může den ode dne lišit.","t-roundabout-ask":"Díky za hlášení! Která křižovatka by měla být kruhový objezd? Názvy ulic, které se tam potkávají, nám pomůžou ji najít.","t-roundabout-done":"Děkujeme! Kruhový objezd jsme přidali do mapy. Aplikace ho ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-general-ask":"Díky za hlášení! Můžete nám říct trochu víc o tom, co bylo špatně a kde přesně?","t-junction-ask":"Díky za hlášení! O kterou křižovatku, sjezd nebo most šlo a jakým směrem jste jeli?","t-junction-done":"Děkujeme! Křižovatku jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-direction-ask":"Díky za hlášení! O kterou ulici šlo a jakým směrem je v ní provoz skutečně povolen?","t-direction-done":"Děkujeme! Směr jízdy jsme na mapě opravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-road-ask":"Díky za hlášení! Jak se silnice jmenuje, kde začíná a končí a může po ní jezdit každý?","t-road-done":"Děkujeme! Silnici jsme přidali do mapy. Aplikace ji ukáže po příští aktualizaci mapy, obvykle během několika dní.","t-landmark-ask":"Díky za hlášení! Jak se to místo jmenuje a kde přesně je?","t-landmark-done":"Děkujeme! Místo jsme přidali do mapy. V aplikaci se objeví po příští aktualizaci mapy, obvykle během několika dní.","t-blocked-ask":"Díky za hlášení! Je silnice uzavřená natrvalo, nebo jen dočasně? Pokud víte, do kdy, hodně nám to pomůže.","t-blocked-done":"Děkujeme! Uzavírku jsme přidali do mapy, takže ji aplikace bude objíždět.","t-speed-ask":"Díky za hlášení! Jaká rychlost je tam povolená podle značky a pro který směr?","t-speed-done":"Děkujeme! Rychlostní limit jsme na mapě aktualizovali. Aplikace ho ukáže po příští aktualizaci mapy, obvykle během několika dní.","nothing":"Díky za hlášení! Mapu jsme na tomto místě zkontrolovali a žádnou chybu jsme nenašli, takže jsme ji nechali beze změny. Pokud se to stane znovu, pošlete prosím nové hlášení přímo z místa.","mm-ask":"Díky za hlášení! Můžete nám říct trochu víc: kde přesně to je a jakým směrem jste jeli?","mm-bump-done":"Děkujeme! Zpomalovací práh jsme přidali do mapy, takže na něj aplikace řidiče upozorní.","mm-bump-none":"Díky za hlášení! Podívali jsme se a zpomalovací práh jsme tu nenašli, takže jsme mapu nechali beze změny.","mm-light-done":"Děkujeme! Semafor jsme přidali do mapy.","mm-light-none":"Díky za hlášení! Podívali jsme se a semafor jsme tu nenašli, takže jsme mapu nechali beze změny.","mm-curve-done":"Děkujeme! Nebezpečnou zatáčku jsme na mapě označili, takže na ni aplikace řidiče upozorní.","mm-curve-none":"Díky za hlášení! Tuto zatáčku jsme zkontrolovali a nenašli jsme důvod mapu měnit, takže jsme ji nechali beze změny.","mm-rail-done":"Děkujeme! Železniční přejezd jsme přidali do mapy, takže na něj aplikace řidiče upozorní.","mm-rail-none":"Díky za hlášení! Podívali jsme se a železniční přejezd jsme tu nenašli, takže jsme mapu nechali beze změny.","mm-camera-done":"Děkujeme! Rychlostní radar jsme přidali do mapy.","mm-camera-none":"Díky za hlášení! Podívali jsme se, ale rychlostní radar jsme tu nedokázali potvrdit, takže jsme mapu nechali beze změny.","mm-done":"Děkujeme! Mapu jsme na tomto místě upravili. Aplikace změnu ukáže po příští aktualizaci mapy, obvykle během několika dní.","mm-none":"Díky za hlášení! Mapu jsme na tomto místě zkontrolovali a nenašli jsme nic, co by bylo potřeba změnit, takže jsme ji nechali beze změny."},"bg":{"t-turn-ask":"Благодарим за сигнала! За кой завой става дума: от коя улица в коя и в каква посока карахте?","t-turn-done":"Благодарим! Поправихме завоя на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-address-ask":"Благодарим за сигнала! Кой е правилният адрес или името на улицата и до кое място се опитвахте да стигнете?","t-address-done":"Благодарим! Поправихме адреса на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-route-ask":"Благодарим за сигнала! Откъде тръгнахте, накъде отивахте и по кой път очаквахте приложението да ви води?","t-route-done":"Благодарим за сигнала! Проверихме картата тук и тя е вярна. Приложението избира маршрута според трафика в реално време, затова той може да е различен в различните дни.","t-roundabout-ask":"Благодарим за сигнала! Кое кръстовище трябва да е кръгово движение? Улиците, които се събират там, ще ни помогнат да го открием.","t-roundabout-done":"Благодарим! Добавихме кръговото движение на картата. Приложението ще го покаже след следващото обновяване на картата, обикновено до няколко дни.","t-general-ask":"Благодарим за сигнала! Можете ли да ни разкажете малко повече какво не беше наред и къде точно?","t-junction-ask":"Благодарим за сигнала! За кой пътен възел, изход или мост става дума и в каква посока карахте?","t-junction-done":"Благодарим! Поправихме пътния възел на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-direction-ask":"Благодарим за сигнала! За коя улица става дума и в каква посока всъщност е разрешено движението по нея?","t-direction-done":"Благодарим! Поправихме посоката на движение на картата. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","t-road-ask":"Благодарим за сигнала! Как се казва пътят, откъде започва и докъде стига и отворен ли е за всички?","t-road-done":"Благодарим! Добавихме пътя на картата. Приложението ще го покаже след следващото обновяване на картата, обикновено до няколко дни.","t-landmark-ask":"Благодарим за сигнала! Как се казва мястото и къде точно се намира?","t-landmark-done":"Благодарим! Добавихме мястото на картата. То ще се появи в приложението след следващото обновяване на картата, обикновено до няколко дни.","t-blocked-ask":"Благодарим за сигнала! Пътят затворен ли е завинаги или временно? Ако знаете до кога, това много ще ни помогне.","t-blocked-done":"Благодарим! Добавихме затварянето на картата, така че приложението ще го заобикаля.","t-speed-ask":"Благодарим за сигнала! Какво ограничение на скоростта показва знакът там и за коя посока?","t-speed-done":"Благодарим! Обновихме ограничението на скоростта на картата. Приложението ще го покаже след следващото обновяване на картата, обикновено до няколко дни.","nothing":"Благодарим за сигнала! Проверихме картата тук и не открихме нищо грешно, затова я оставихме както е. Ако се случи отново, моля, изпратете нов сигнал от самото място.","mm-ask":"Благодарим за сигнала! Можете ли да ни кажете малко повече: къде точно е и в каква посока карахте?","mm-bump-done":"Благодарим! Добавихме легналия полицай на картата, така че приложението ще предупреждава шофьорите за него.","mm-bump-none":"Благодарим за сигнала! Проверихме и не видяхме легнал полицай тук, затова оставихме картата както е.","mm-light-done":"Благодарим! Добавихме светофара на картата.","mm-light-none":"Благодарим за сигнала! Проверихме и не видяхме светофар тук, затова оставихме картата както е.","mm-curve-done":"Благодарим! Отбелязахме опасния завой на картата, така че приложението ще предупреждава шофьорите за него.","mm-curve-none":"Благодарим за сигнала! Проверихме този завой и не открихме причина да променяме картата, затова я оставихме както е.","mm-rail-done":"Благодарим! Добавихме железопътния прелез на картата, така че приложението ще предупреждава шофьорите за него.","mm-rail-none":"Благодарим за сигнала! Проверихме и не видяхме железопътен прелез тук, затова оставихме картата както е.","mm-camera-done":"Благодарим! Добавихме камерата за скорост на картата.","mm-camera-none":"Благодарим за сигнала! Проверихме, но не успяхме да потвърдим камера за скорост тук, затова оставихме картата както е.","mm-done":"Благодарим! Обновихме картата тук. Приложението ще покаже промяната след следващото обновяване на картата, обикновено до няколко дни.","mm-none":"Благодарим за сигнала! Проверихме картата тук и не открихме нищо за промяна, затова я оставихме както е."},"ar":{"t-turn-ask":"شكرًا على البلاغ! أي انعطاف تقصد: من أي شارع إلى أي شارع، وفي أي اتجاه كنت تقود؟","t-turn-done":"شكرًا لك! لقد صحّحنا هذا الانعطاف على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-address-ask":"شكرًا على البلاغ! ما العنوان أو اسم الشارع الصحيح، وإلى أي مكان كنت تحاول الوصول؟","t-address-done":"شكرًا لك! لقد صحّحنا العنوان على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-route-ask":"شكرًا على البلاغ! من أين انطلقت، وإلى أين كنت متجهًا، وأي طريق كنت تتوقع أن يأخذك فيه التطبيق؟","t-route-done":"شكرًا على البلاغ! لقد راجعنا الخريطة هنا وهي صحيحة. يختار التطبيق المسار بناءً على حركة المرور المباشرة، لذا قد يختلف من يوم لآخر.","t-roundabout-ask":"شكرًا على البلاغ! أي تقاطع يجب أن يكون دوّارًا؟ أسماء الشوارع التي تلتقي هناك تساعدنا على العثور عليه.","t-roundabout-done":"شكرًا لك! لقد أضفنا الدوّار إلى الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-general-ask":"شكرًا على البلاغ! هل يمكنك أن تخبرنا بمزيد من التفاصيل عن الخطأ، وأين بالضبط؟","t-junction-ask":"شكرًا على البلاغ! أي تقاطع أو مخرج أو جسر تقصد، وفي أي اتجاه كنت تقود؟","t-junction-done":"شكرًا لك! لقد صحّحنا التقاطع على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-direction-ask":"شكرًا على البلاغ! أي شارع تقصد، وفي أي اتجاه يُسمح بالسير فيه فعلًا؟","t-direction-done":"شكرًا لك! لقد صحّحنا اتجاه السير على الخريطة. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-road-ask":"شكرًا على البلاغ! ما اسم الطريق، وأين يبدأ وأين ينتهي، وهل هو مفتوح للجميع؟","t-road-done":"شكرًا لك! لقد أضفنا الطريق إلى الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-landmark-ask":"شكرًا على البلاغ! ما اسم المكان، وأين يقع بالضبط؟","t-landmark-done":"شكرًا لك! لقد أضفنا المكان إلى الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","t-blocked-ask":"شكرًا على البلاغ! هل الطريق مغلق نهائيًا أم مؤقتًا؟ إذا كنت تعرف حتى متى، فهذا يساعدنا كثيرًا.","t-blocked-done":"شكرًا لك! لقد أضفنا الإغلاق إلى الخريطة، لذا سيقترح التطبيق طريقًا بديلًا لتجنّبه.","t-speed-ask":"شكرًا على البلاغ! ما حد السرعة المكتوب على اللافتة هناك، ولأي اتجاه؟","t-speed-done":"شكرًا لك! لقد حدّثنا حد السرعة على الخريطة. سيظهر في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","nothing":"شكرًا على البلاغ! لقد راجعنا الخريطة هنا ولم نجد أي خطأ، لذا تركناها كما هي. إذا تكرر الأمر، يُرجى إرسال بلاغ جديد من المكان نفسه.","mm-ask":"شكرًا على البلاغ! هل يمكنك أن تخبرنا بالمزيد: أين يقع بالضبط، وفي أي اتجاه كنت تقود؟","mm-bump-done":"شكرًا لك! لقد أضفنا المطب إلى الخريطة، لذا سينبّه التطبيق السائقين إليه.","mm-bump-none":"شكرًا على البلاغ! لقد تحققنا ولم نجد مطبًا هنا، لذا تركنا الخريطة كما هي.","mm-light-done":"شكرًا لك! لقد أضفنا إشارة المرور إلى الخريطة.","mm-light-none":"شكرًا على البلاغ! لقد تحققنا ولم نجد إشارة مرور هنا، لذا تركنا الخريطة كما هي.","mm-curve-done":"شكرًا لك! لقد حدّدنا المنعطف الخطير على الخريطة، لذا سينبّه التطبيق السائقين إليه.","mm-curve-none":"شكرًا على البلاغ! لقد تحققنا من هذا المنعطف ولم نجد سببًا لتغيير الخريطة، لذا تركناها كما هي.","mm-rail-done":"شكرًا لك! لقد أضفنا معبر السكة الحديدية إلى الخريطة، لذا سينبّه التطبيق السائقين إليه.","mm-rail-none":"شكرًا على البلاغ! لقد تحققنا ولم نجد معبر سكة حديدية هنا، لذا تركنا الخريطة كما هي.","mm-camera-done":"شكرًا لك! لقد أضفنا كاميرا مراقبة السرعة إلى الخريطة.","mm-camera-none":"شكرًا على البلاغ! لقد تحققنا لكن لم نتمكن من تأكيد وجود كاميرا مراقبة سرعة هنا، لذا تركنا الخريطة كما هي.","mm-done":"شكرًا لك! لقد حدّثنا الخريطة هنا. سيظهر التغيير في التطبيق بعد التحديث القادم للخريطة، عادةً خلال بضعة أيام.","mm-none":"شكرًا على البلاغ! لقد راجعنا الخريطة هنا ولم نجد ما يستدعي التغيير، لذا تركناها كما هي."},"ja":{"t-turn-ask":"ご報告ありがとうございます！どの右左折でしたか？どの通りからどの通りへ、どちら方面に走行されていたか教えていただけますか？","t-turn-done":"ありがとうございます！地図上のこの右左折を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-address-ask":"ご報告ありがとうございます！正しい住所または通りの名前と、どこへ向かおうとされていたかを教えていただけますか？","t-address-done":"ありがとうございます！地図上の住所を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-route-ask":"ご報告ありがとうございます！出発地と目的地、そしてアプリにどのルートで案内してほしかったかを教えていただけますか？","t-route-done":"ご報告ありがとうございます！この場所の地図を確認したところ、正しく登録されていました。アプリはリアルタイムの交通状況をもとにルートを選ぶため、日によって異なる場合があります。","t-roundabout-ask":"ご報告ありがとうございます！どの交差点がラウンドアバウト（環状交差点）であるべきでしょうか？そこで交わる通りの名前がわかると場所を特定しやすくなります。","t-roundabout-done":"ありがとうございます！地図にラウンドアバウトを追加しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-general-ask":"ご報告ありがとうございます！何が間違っていたのか、具体的にどこだったのか、もう少し詳しく教えていただけますか？","t-junction-ask":"ご報告ありがとうございます！どの分岐点、出口、または橋でしたか？また、どちら方面に走行されていましたか？","t-junction-done":"ありがとうございます！地図上の分岐点を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-direction-ask":"ご報告ありがとうございます！どの通りで、実際にはどちらの方向に通行できますか？","t-direction-done":"ありがとうございます！地図上の通行方向を修正しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-road-ask":"ご報告ありがとうございます！道路の名前、始点と終点、そして誰でも通行できる道路かどうかを教えていただけますか？","t-road-done":"ありがとうございます！地図に道路を追加しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-landmark-ask":"ご報告ありがとうございます！その場所の名前と、具体的な位置を教えていただけますか？","t-landmark-done":"ありがとうございます！地図にその場所を追加しました。次回の地図更新後、通常数日以内にアプリに反映されます。","t-blocked-ask":"ご報告ありがとうございます！その道路はずっと通行止めですか、それとも一時的ですか？いつまでかご存じでしたら、とても助かります。","t-blocked-done":"ありがとうございます！地図に通行止めを登録しましたので、アプリはそこを避けてルートを案内します。","t-speed-ask":"ご報告ありがとうございます！そこに表示されている制限速度と、どちらの方向かを教えていただけますか？","t-speed-done":"ありがとうございます！地図上の制限速度を更新しました。次回の地図更新後、通常数日以内にアプリに反映されます。","nothing":"ご報告ありがとうございます！この場所の地図を確認しましたが、問題は見つからなかったため、そのままにしています。また同じことが起きた場合は、その場所から新しく報告してください。","mm-ask":"ご報告ありがとうございます！もう少し詳しく教えていただけますか？具体的な場所と、どちら方面に走行されていたかがわかると助かります。","mm-bump-done":"ありがとうございます！地図に減速帯（ハンプ）を追加しましたので、アプリでドライバーに警告が表示されます。","mm-bump-none":"ご報告ありがとうございます！確認しましたが、この場所に減速帯は見当たらなかったため、地図はそのままにしています。","mm-light-done":"ありがとうございます！地図に信号機を追加しました。","mm-light-none":"ご報告ありがとうございます！確認しましたが、この場所に信号機は見当たらなかったため、地図はそのままにしています。","mm-curve-done":"ありがとうございます！地図に危険なカーブを登録しましたので、アプリでドライバーに警告が表示されます。","mm-curve-none":"ご報告ありがとうございます！このカーブを確認しましたが、地図を変更する理由は見当たらなかったため、そのままにしています。","mm-rail-done":"ありがとうございます！地図に踏切を追加しましたので、アプリでドライバーに警告が表示されます。","mm-rail-none":"ご報告ありがとうございます！確認しましたが、この場所に踏切は見当たらなかったため、地図はそのままにしています。","mm-camera-done":"ありがとうございます！地図にオービスを追加しました。","mm-camera-none":"ご報告ありがとうございます！調べましたが、この場所のオービスは確認できなかったため、地図はそのままにしています。","mm-done":"ありがとうございます！この場所の地図を更新しました。次回の地図更新後、通常数日以内にアプリに反映されます。","mm-none":"ご報告ありがとうございます！この場所の地図を確認しましたが、変更が必要な点は見つからなかったため、そのままにしています。"},"da":{"t-turn-ask":"Tak for rapporten! Hvilket sving var det: fra hvilken vej ind på hvilken, og i hvilken retning kørte du?","t-turn-done":"Tak! Vi har rettet svinget på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-address-ask":"Tak for rapporten! Hvad er den rigtige adresse eller det rigtige vejnavn, og hvilket sted prøvede du at komme til?","t-address-done":"Tak! Vi har rettet adressen på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-route-ask":"Tak for rapporten! Hvor startede du, hvor skulle du hen, og hvilken vej havde du forventet, at appen ville sende dig?","t-route-done":"Tak for rapporten! Vi har tjekket kortet her, og det er korrekt. Appen vælger ruten ud fra den aktuelle trafik, så den kan variere fra dag til dag.","t-roundabout-ask":"Tak for rapporten! Hvilket kryds burde være en rundkørsel? Navnene på de veje, der mødes der, hjælper os med at finde det.","t-roundabout-done":"Tak! Vi har tilføjet rundkørslen på kortet. Den vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-general-ask":"Tak for rapporten! Kan du fortælle os lidt mere om, hvad der var galt, og hvor præcis?","t-junction-ask":"Tak for rapporten! Hvilket kryds, hvilken frakørsel eller bro var det, og i hvilken retning kørte du?","t-junction-done":"Tak! Vi har rettet krydset på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-direction-ask":"Tak for rapporten! Hvilken vej var det, og i hvilken retning må man faktisk køre på den?","t-direction-done":"Tak! Vi har rettet kørselsretningen på kortet. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-road-ask":"Tak for rapporten! Hvad hedder vejen, hvor starter og slutter den, og er den åben for alle?","t-road-done":"Tak! Vi har tilføjet vejen på kortet. Den vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-landmark-ask":"Tak for rapporten! Hvad hedder stedet, og hvor præcis ligger det?","t-landmark-done":"Tak! Vi har tilføjet stedet på kortet. Det vises i appen efter næste kortopdatering, som regel inden for et par dage.","t-blocked-ask":"Tak for rapporten! Er vejen lukket permanent eller kun midlertidigt? Hvis du ved, hvor længe, hjælper det os meget.","t-blocked-done":"Tak! Vi har tilføjet spærringen på kortet, så appen sender dig uden om den.","t-speed-ask":"Tak for rapporten! Hvilken hastighedsgrænse er skiltet der, og i hvilken retning?","t-speed-done":"Tak! Vi har opdateret hastighedsgrænsen på kortet. Den vises i appen efter næste kortopdatering, som regel inden for et par dage.","nothing":"Tak for rapporten! Vi har tjekket kortet her og kunne ikke finde noget forkert, så vi har ladet det være, som det er. Hvis det sker igen, så send gerne en ny rapport fra stedet.","mm-ask":"Tak for rapporten! Kan du fortælle os lidt mere: præcis hvor det er, og i hvilken retning du kørte?","mm-bump-done":"Tak! Vi har tilføjet vejbumpet på kortet, så appen advarer bilister om det.","mm-bump-none":"Tak for rapporten! Vi har tjekket og kunne ikke se noget vejbump her, så vi har ladet kortet være, som det er.","mm-light-done":"Tak! Vi har tilføjet lyskrydset på kortet.","mm-light-none":"Tak for rapporten! Vi har tjekket og kunne ikke se noget lyskryds her, så vi har ladet kortet være, som det er.","mm-curve-done":"Tak! Vi har markeret det farlige sving på kortet, så appen advarer bilister om det.","mm-curve-none":"Tak for rapporten! Vi har tjekket svinget og fandt ingen grund til at ændre kortet, så vi har ladet det være, som det er.","mm-rail-done":"Tak! Vi har tilføjet jernbaneoverkørslen på kortet, så appen advarer bilister om den.","mm-rail-none":"Tak for rapporten! Vi har tjekket og kunne ikke se nogen jernbaneoverkørsel her, så vi har ladet kortet være, som det er.","mm-camera-done":"Tak! Vi har tilføjet fartkameraet på kortet.","mm-camera-none":"Tak for rapporten! Vi har tjekket, men kunne ikke bekræfte noget fartkamera her, så vi har ladet kortet være, som det er.","mm-done":"Tak! Vi har opdateret kortet her. Ændringen vises i appen efter næste kortopdatering, som regel inden for et par dage.","mm-none":"Tak for rapporten! Vi har tjekket kortet her og fandt ikke noget, der skulle ændres, så vi har ladet det være, som det er."},"et":{"t-turn-ask":"Aitäh teate eest! Millise pöördega oli tegu: milliselt tänavalt millisele ja mis suunas te sõitsite?","t-turn-done":"Aitäh! Parandasime selle pöörde kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-address-ask":"Aitäh teate eest! Milline on õige aadress või tänava nimi ja kuhu te püüdsite jõuda?","t-address-done":"Aitäh! Parandasime aadressi kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-route-ask":"Aitäh teate eest! Kust te alustasite, kuhu sõitsite ja millist teed mööda ootasite, et rakendus teid juhataks?","t-route-done":"Aitäh teate eest! Kontrollisime kaarti selles kohas ja see on õige. Rakendus valib marsruudi reaalajas liiklusolude põhjal, seega võib see päeviti erineda.","t-roundabout-ask":"Aitäh teate eest! Milline ristmik peaks olema ringristmik? Sinna kokku saavate tänavate nimed aitavad meil selle üles leida.","t-roundabout-done":"Aitäh! Lisasime ringristmiku kaardile. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-general-ask":"Aitäh teate eest! Kas saaksite veidi täpsemalt öelda, mis oli valesti ja kus täpselt?","t-junction-ask":"Aitäh teate eest! Millise ristmiku, mahasõidu või sillaga oli tegu ja mis suunas te sõitsite?","t-junction-done":"Aitäh! Parandasime ristmiku kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-direction-ask":"Aitäh teate eest! Millise tänavaga oli tegu ja mis suunas on sellel tegelikult liiklus lubatud?","t-direction-done":"Aitäh! Parandasime sõidusuuna kaardil. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-road-ask":"Aitäh teate eest! Mis on tee nimi, kust see algab ja kus lõpeb ning kas see on kõigile avatud?","t-road-done":"Aitäh! Lisasime tee kaardile. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-landmark-ask":"Aitäh teate eest! Mis on koha nimi ja kus see täpselt asub?","t-landmark-done":"Aitäh! Lisasime koha kaardile. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","t-blocked-ask":"Aitäh teate eest! Kas tee on suletud jäädavalt või ajutiselt? Kui teate, mis ajani, aitab see meid väga.","t-blocked-done":"Aitäh! Lisasime teesulgemise kaardile, nii et rakendus juhatab sellest mööda.","t-speed-ask":"Aitäh teate eest! Milline kiiruspiirang seal märgiga kehtib ja millises suunas?","t-speed-done":"Aitäh! Uuendasime kiiruspiirangut kaardil. See ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","nothing":"Aitäh teate eest! Kontrollisime kaarti selles kohas ega leidnud midagi valesti, seega jätsime selle nii, nagu see on. Kui see juhtub uuesti, saatke palun uus teade otse sellest kohast.","mm-ask":"Aitäh teate eest! Kas saaksite veidi täpsemalt öelda: kus see täpselt asub ja mis suunas te sõitsite?","mm-bump-done":"Aitäh! Lisasime lamava politseiniku kaardile, nii et rakendus hoiatab juhte selle eest.","mm-bump-none":"Aitäh teate eest! Kontrollisime ega näinud siin lamavat politseinikku, seega jätsime kaardi nii, nagu see on.","mm-light-done":"Aitäh! Lisasime foorid kaardile.","mm-light-none":"Aitäh teate eest! Kontrollisime ega näinud siin foore, seega jätsime kaardi nii, nagu see on.","mm-curve-done":"Aitäh! Märkisime ohtliku kurvi kaardile, nii et rakendus hoiatab juhte selle eest.","mm-curve-none":"Aitäh teate eest! Kontrollisime seda kurvi ega leidnud põhjust kaarti muuta, seega jätsime selle nii, nagu see on.","mm-rail-done":"Aitäh! Lisasime raudteeülesõidu kaardile, nii et rakendus hoiatab juhte selle eest.","mm-rail-none":"Aitäh teate eest! Kontrollisime ega näinud siin raudteeülesõitu, seega jätsime kaardi nii, nagu see on.","mm-camera-done":"Aitäh! Lisasime kiiruskaamera kaardile.","mm-camera-none":"Aitäh teate eest! Kontrollisime, kuid ei suutnud siin kiiruskaamerat kinnitada, seega jätsime kaardi nii, nagu see on.","mm-done":"Aitäh! Uuendasime kaarti selles kohas. Muudatus ilmub rakendusse pärast järgmist kaardiuuendust, tavaliselt mõne päeva jooksul.","mm-none":"Aitäh teate eest! Kontrollisime kaarti selles kohas ega leidnud midagi, mida muuta, seega jätsime selle nii, nagu see on."},"vi":{"t-turn-ask":"Cảm ơn bạn đã báo cáo! Đó là chỗ rẽ nào: từ đường nào sang đường nào, và bạn đang đi theo hướng nào?","t-turn-done":"Cảm ơn bạn! Chúng tôi đã sửa chỗ rẽ đó trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-address-ask":"Cảm ơn bạn đã báo cáo! Địa chỉ hoặc tên đường đúng là gì, và bạn đang muốn đến địa điểm nào?","t-address-done":"Cảm ơn bạn! Chúng tôi đã sửa địa chỉ trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-route-ask":"Cảm ơn bạn đã báo cáo! Bạn xuất phát từ đâu, muốn đi đến đâu, và bạn mong ứng dụng dẫn đường theo lối nào?","t-route-done":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra bản đồ tại đây và thấy bản đồ đúng. Ứng dụng chọn tuyến đường dựa trên tình hình giao thông thực tế, nên tuyến đường có thể khác nhau tùy ngày.","t-roundabout-ask":"Cảm ơn bạn đã báo cáo! Giao lộ nào nên là vòng xuyến? Tên các con đường giao nhau ở đó sẽ giúp chúng tôi tìm ra vị trí.","t-roundabout-done":"Cảm ơn bạn! Chúng tôi đã thêm vòng xuyến vào bản đồ. Ứng dụng sẽ hiển thị vòng xuyến sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-general-ask":"Cảm ơn bạn đã báo cáo! Bạn có thể cho chúng tôi biết thêm một chút về lỗi gặp phải, và chính xác là ở đâu không?","t-junction-ask":"Cảm ơn bạn đã báo cáo! Đó là nút giao, lối ra hay cây cầu nào, và bạn đang đi theo hướng nào?","t-junction-done":"Cảm ơn bạn! Chúng tôi đã sửa nút giao trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-direction-ask":"Cảm ơn bạn đã báo cáo! Đó là đường nào, và thực tế xe được phép đi theo chiều nào?","t-direction-done":"Cảm ơn bạn! Chúng tôi đã sửa chiều lưu thông trên bản đồ. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-road-ask":"Cảm ơn bạn đã báo cáo! Con đường tên là gì, bắt đầu và kết thúc ở đâu, và có mở cho mọi người đi không?","t-road-done":"Cảm ơn bạn! Chúng tôi đã thêm con đường vào bản đồ. Ứng dụng sẽ hiển thị con đường sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-landmark-ask":"Cảm ơn bạn đã báo cáo! Địa điểm đó tên là gì, và chính xác nằm ở đâu?","t-landmark-done":"Cảm ơn bạn! Chúng tôi đã thêm địa điểm vào bản đồ. Ứng dụng sẽ hiển thị địa điểm sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","t-blocked-ask":"Cảm ơn bạn đã báo cáo! Đường bị đóng vĩnh viễn hay chỉ tạm thời? Nếu bạn biết đóng đến khi nào thì sẽ giúp chúng tôi rất nhiều.","t-blocked-done":"Cảm ơn bạn! Chúng tôi đã thêm đoạn đường bị đóng vào bản đồ, nên ứng dụng sẽ chỉ đường tránh qua đó.","t-speed-ask":"Cảm ơn bạn đã báo cáo! Biển báo ở đó ghi giới hạn tốc độ bao nhiêu, và áp dụng cho hướng nào?","t-speed-done":"Cảm ơn bạn! Chúng tôi đã cập nhật giới hạn tốc độ trên bản đồ. Ứng dụng sẽ hiển thị giới hạn mới sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","nothing":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra bản đồ tại đây và không thấy có gì sai, nên vẫn giữ nguyên. Nếu việc này xảy ra lại, vui lòng gửi báo cáo mới ngay tại vị trí đó.","mm-ask":"Cảm ơn bạn đã báo cáo! Bạn có thể cho chúng tôi biết thêm một chút không: chính xác là ở đâu, và bạn đang đi theo hướng nào?","mm-bump-done":"Cảm ơn bạn! Chúng tôi đã thêm gờ giảm tốc vào bản đồ, nên ứng dụng sẽ cảnh báo tài xế.","mm-bump-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra và không thấy gờ giảm tốc ở đây, nên vẫn giữ nguyên bản đồ.","mm-light-done":"Cảm ơn bạn! Chúng tôi đã thêm đèn giao thông vào bản đồ.","mm-light-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra và không thấy đèn giao thông ở đây, nên vẫn giữ nguyên bản đồ.","mm-curve-done":"Cảm ơn bạn! Chúng tôi đã đánh dấu khúc cua nguy hiểm trên bản đồ, nên ứng dụng sẽ cảnh báo tài xế.","mm-curve-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra khúc cua này và không thấy lý do để thay đổi bản đồ, nên vẫn giữ nguyên.","mm-rail-done":"Cảm ơn bạn! Chúng tôi đã thêm điểm giao cắt đường sắt vào bản đồ, nên ứng dụng sẽ cảnh báo tài xế.","mm-rail-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra và không thấy điểm giao cắt đường sắt ở đây, nên vẫn giữ nguyên bản đồ.","mm-camera-done":"Cảm ơn bạn! Chúng tôi đã thêm camera bắn tốc độ vào bản đồ.","mm-camera-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra nhưng chưa xác nhận được có camera bắn tốc độ ở đây, nên vẫn giữ nguyên bản đồ.","mm-done":"Cảm ơn bạn! Chúng tôi đã cập nhật bản đồ tại đây. Ứng dụng sẽ hiển thị thay đổi sau lần cập nhật bản đồ tiếp theo, thường trong vòng vài ngày.","mm-none":"Cảm ơn bạn đã báo cáo! Chúng tôi đã kiểm tra bản đồ tại đây và không thấy cần thay đổi gì, nên vẫn giữ nguyên."},"es":{"t-turn-ask":"¡Gracias por el aviso! ¿Qué giro era: de qué calle a qué calle, y en qué sentido circulabas?","t-turn-done":"¡Gracias! Hemos corregido ese giro en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-address-ask":"¡Gracias por el aviso! ¿Cuál es la dirección o el nombre de calle correcto, y a qué lugar intentabas llegar?","t-address-done":"¡Gracias! Hemos corregido la dirección en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-route-ask":"¡Gracias por el aviso! ¿Desde dónde salías, adónde ibas y por dónde esperabas que te llevara la app?","t-route-done":"¡Gracias por el aviso! Hemos revisado el mapa aquí y está bien. La app elige la ruta según el tráfico en tiempo real, así que puede variar de un día a otro.","t-roundabout-ask":"¡Gracias por el aviso! ¿Qué cruce debería ser una rotonda? Las calles que se juntan ahí nos ayudan a encontrarlo.","t-roundabout-done":"¡Gracias! Hemos añadido la rotonda al mapa. La app la mostrará tras la próxima actualización del mapa, normalmente en pocos días.","t-general-ask":"¡Gracias por el aviso! ¿Puedes contarnos un poco más sobre qué estaba mal y dónde exactamente?","t-junction-ask":"¡Gracias por el aviso! ¿Qué cruce, salida o puente era, y en qué sentido circulabas?","t-junction-done":"¡Gracias! Hemos corregido el cruce en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-direction-ask":"¡Gracias por el aviso! ¿Qué calle era, y en qué sentido está abierta realmente al tráfico?","t-direction-done":"¡Gracias! Hemos corregido el sentido de circulación en el mapa. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","t-road-ask":"¡Gracias por el aviso! ¿Cómo se llama la vía, dónde empieza y dónde termina, y está abierta a todo el mundo?","t-road-done":"¡Gracias! Hemos añadido la vía al mapa. La app la mostrará tras la próxima actualización del mapa, normalmente en pocos días.","t-landmark-ask":"¡Gracias por el aviso! ¿Cómo se llama el lugar y dónde está exactamente?","t-landmark-done":"¡Gracias! Hemos añadido el lugar al mapa. Aparecerá en la app tras la próxima actualización del mapa, normalmente en pocos días.","t-blocked-ask":"¡Gracias por el aviso! ¿La vía está cortada de forma definitiva o temporal? Si sabes hasta cuándo, nos ayuda mucho.","t-blocked-done":"¡Gracias! Hemos añadido el corte al mapa, así que la app lo evitará al calcular la ruta.","t-speed-ask":"¡Gracias por el aviso! ¿Qué límite de velocidad indica la señal ahí, y para qué sentido?","t-speed-done":"¡Gracias! Hemos actualizado el límite de velocidad en el mapa. La app lo mostrará tras la próxima actualización del mapa, normalmente en pocos días.","nothing":"¡Gracias por el aviso! Hemos revisado el mapa aquí y no hemos encontrado nada incorrecto, así que lo dejamos como está. Si vuelve a pasar, envía un aviso nuevo desde el lugar.","mm-ask":"¡Gracias por el aviso! ¿Puedes contarnos un poco más: dónde está exactamente y en qué sentido circulabas?","mm-bump-done":"¡Gracias! Hemos añadido el badén al mapa, así que la app avisará a los conductores.","mm-bump-none":"¡Gracias por el aviso! Lo hemos revisado y no vemos ningún badén aquí, así que dejamos el mapa como está.","mm-light-done":"¡Gracias! Hemos añadido el semáforo al mapa.","mm-light-none":"¡Gracias por el aviso! Lo hemos revisado y no vemos ningún semáforo aquí, así que dejamos el mapa como está.","mm-curve-done":"¡Gracias! Hemos marcado la curva peligrosa en el mapa, así que la app avisará a los conductores.","mm-curve-none":"¡Gracias por el aviso! Hemos revisado esta curva y no vemos motivo para cambiar el mapa, así que lo dejamos como está.","mm-rail-done":"¡Gracias! Hemos añadido el paso a nivel al mapa, así que la app avisará a los conductores.","mm-rail-none":"¡Gracias por el aviso! Lo hemos revisado y no vemos ningún paso a nivel aquí, así que dejamos el mapa como está.","mm-camera-done":"¡Gracias! Hemos añadido el radar al mapa.","mm-camera-none":"¡Gracias por el aviso! Lo hemos revisado y no podemos confirmar que haya un radar aquí, así que dejamos el mapa como está.","mm-done":"¡Gracias! Hemos actualizado el mapa aquí. La app mostrará el cambio tras la próxima actualización del mapa, normalmente en pocos días.","mm-none":"¡Gracias por el aviso! Hemos revisado el mapa aquí y no hemos encontrado nada que cambiar, así que lo dejamos como está."},"it":{"t-turn-ask":"Grazie per la segnalazione! Di quale svolta si tratta: da quale via verso quale, e in che direzione stavi guidando?","t-turn-done":"Grazie! Abbiamo corretto quella svolta sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-address-ask":"Grazie per la segnalazione! Qual è l’indirizzo o il nome della via corretto, e quale luogo stavi cercando di raggiungere?","t-address-done":"Grazie! Abbiamo corretto l’indirizzo sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-route-ask":"Grazie per la segnalazione! Qual era il punto di partenza, dove stavi andando e da che parte ti aspettavi che ti portasse l’app?","t-route-done":"Grazie per la segnalazione! Abbiamo controllato la mappa in questo punto ed è corretta. L’app sceglie il percorso in base al traffico in tempo reale, quindi può cambiare da un giorno all’altro.","t-roundabout-ask":"Grazie per la segnalazione! Quale incrocio dovrebbe essere una rotatoria? Le vie che si incontrano lì ci aiutano a trovarlo.","t-roundabout-done":"Grazie! Abbiamo aggiunto la rotatoria alla mappa. L’app la mostrerà dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-general-ask":"Grazie per la segnalazione! Puoi dirci qualcosa in più su cosa non andava e dove esattamente?","t-junction-ask":"Grazie per la segnalazione! Di quale incrocio, uscita o ponte si tratta, e in che direzione stavi guidando?","t-junction-done":"Grazie! Abbiamo corretto l’incrocio sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-direction-ask":"Grazie per la segnalazione! Di quale via si tratta, e in quale senso è davvero aperta al traffico?","t-direction-done":"Grazie! Abbiamo corretto il senso di marcia sulla mappa. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-road-ask":"Grazie per la segnalazione! Come si chiama la strada, dove inizia e dove finisce, ed è aperta a tutti?","t-road-done":"Grazie! Abbiamo aggiunto la strada alla mappa. L’app la mostrerà dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-landmark-ask":"Grazie per la segnalazione! Come si chiama il luogo e dove si trova esattamente?","t-landmark-done":"Grazie! Abbiamo aggiunto il luogo alla mappa. Comparirà nell’app dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","t-blocked-ask":"Grazie per la segnalazione! La strada è chiusa definitivamente o solo per un periodo? Se sai fino a quando, ci aiuta molto.","t-blocked-done":"Grazie! Abbiamo aggiunto la chiusura alla mappa, così l’app la eviterà nel calcolo del percorso.","t-speed-ask":"Grazie per la segnalazione! Quale limite di velocità è indicato lì, e per quale direzione?","t-speed-done":"Grazie! Abbiamo aggiornato il limite di velocità sulla mappa. L’app lo mostrerà dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","nothing":"Grazie per la segnalazione! Abbiamo controllato la mappa in questo punto e non abbiamo trovato nulla di sbagliato, quindi l’abbiamo lasciata com’è. Se succede di nuovo, invia una nuova segnalazione dal punto.","mm-ask":"Grazie per la segnalazione! Puoi dirci qualcosa in più: dove si trova esattamente e in che direzione stavi guidando?","mm-bump-done":"Grazie! Abbiamo aggiunto il dosso alla mappa, così l’app avviserà i conducenti.","mm-bump-none":"Grazie per la segnalazione! Abbiamo controllato e non vediamo nessun dosso qui, quindi abbiamo lasciato la mappa com’è.","mm-light-done":"Grazie! Abbiamo aggiunto il semaforo alla mappa.","mm-light-none":"Grazie per la segnalazione! Abbiamo controllato e non vediamo nessun semaforo qui, quindi abbiamo lasciato la mappa com’è.","mm-curve-done":"Grazie! Abbiamo segnato la curva pericolosa sulla mappa, così l’app avviserà i conducenti.","mm-curve-none":"Grazie per la segnalazione! Abbiamo controllato questa curva e non abbiamo trovato motivi per modificare la mappa, quindi l’abbiamo lasciata com’è.","mm-rail-done":"Grazie! Abbiamo aggiunto il passaggio a livello alla mappa, così l’app avviserà i conducenti.","mm-rail-none":"Grazie per la segnalazione! Abbiamo controllato e non vediamo nessun passaggio a livello qui, quindi abbiamo lasciato la mappa com’è.","mm-camera-done":"Grazie! Abbiamo aggiunto l’autovelox alla mappa.","mm-camera-none":"Grazie per la segnalazione! Abbiamo controllato e non possiamo confermare la presenza di un autovelox qui, quindi abbiamo lasciato la mappa com’è.","mm-done":"Grazie! Abbiamo aggiornato la mappa in questo punto. L’app mostrerà la modifica dopo il prossimo aggiornamento della mappa, di solito entro pochi giorni.","mm-none":"Grazie per la segnalazione! Abbiamo controllato la mappa in questo punto e non abbiamo trovato nulla da modificare, quindi l’abbiamo lasciata com’è."},"tr":{"t-turn-ask":"Bildirim için teşekkürler! Hangi dönüştü: hangi sokaktan hangi sokağa dönüyordunuz ve hangi yönde gidiyordunuz?","t-turn-done":"Teşekkürler! O dönüşü haritada düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-address-ask":"Bildirim için teşekkürler! Doğru adres ya da sokak adı nedir ve hangi yere ulaşmaya çalışıyordunuz?","t-address-done":"Teşekkürler! Adresi haritada düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-route-ask":"Bildirim için teşekkürler! Nereden yola çıktınız, nereye gidiyordunuz ve uygulamanın sizi hangi yoldan götürmesini bekliyordunuz?","t-route-done":"Bildirim için teşekkürler! Buradaki haritayı kontrol ettik, doğru görünüyor. Uygulama rotayı anlık trafiğe göre seçtiği için rota günden güne değişebilir.","t-roundabout-ask":"Bildirim için teşekkürler! Hangi kavşak döner kavşak olmalı? Orada birleşen sokakların adları yeri bulmamıza yardımcı olur.","t-roundabout-done":"Teşekkürler! Döner kavşağı haritaya ekledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-general-ask":"Bildirim için teşekkürler! Neyin yanlış olduğunu ve tam olarak nerede olduğunu biraz daha anlatabilir misiniz?","t-junction-ask":"Bildirim için teşekkürler! Hangi kavşak, çıkış ya da köprüydü ve hangi yönde gidiyordunuz?","t-junction-done":"Teşekkürler! Kavşağı haritada düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-direction-ask":"Bildirim için teşekkürler! Hangi sokaktı ve gerçekte hangi yönde trafiğe açık?","t-direction-done":"Teşekkürler! Haritadaki trafik yönünü düzelttik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-road-ask":"Bildirim için teşekkürler! Yolun adı ne, nerede başlayıp nerede bitiyor ve herkesin kullanımına açık mı?","t-road-done":"Teşekkürler! Yolu haritaya ekledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-landmark-ask":"Bildirim için teşekkürler! Yerin adı ne ve tam olarak nerede?","t-landmark-done":"Teşekkürler! Yeri haritaya ekledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","t-blocked-ask":"Bildirim için teşekkürler! Yol kalıcı olarak mı yoksa geçici olarak mı kapalı? Ne zamana kadar kapalı olduğunu biliyorsanız bu çok yardımcı olur.","t-blocked-done":"Teşekkürler! Yol kapanışını haritaya ekledik, böylece uygulama rotayı bu yolu kullanmadan oluşturur.","t-speed-ask":"Bildirim için teşekkürler! Oradaki tabelada hangi hız sınırı yazıyor ve hangi yön için geçerli?","t-speed-done":"Teşekkürler! Haritadaki hız sınırını güncelledik. Bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","nothing":"Bildirim için teşekkürler! Buradaki haritayı kontrol ettik ve bir sorun bulamadık, bu yüzden olduğu gibi bıraktık. Tekrar olursa lütfen o noktadan yeni bir bildirim gönderin.","mm-ask":"Bildirim için teşekkürler! Biraz daha bilgi verebilir misiniz: tam olarak nerede ve hangi yönde gidiyordunuz?","mm-bump-done":"Teşekkürler! Hız kesiciyi haritaya ekledik, böylece uygulama sürücüleri uyaracak.","mm-bump-none":"Bildirim için teşekkürler! Kontrol ettik ama burada bir hız kesici göremedik, bu yüzden haritayı olduğu gibi bıraktık.","mm-light-done":"Teşekkürler! Trafik ışıklarını haritaya ekledik.","mm-light-none":"Bildirim için teşekkürler! Kontrol ettik ama burada trafik ışığı göremedik, bu yüzden haritayı olduğu gibi bıraktık.","mm-curve-done":"Teşekkürler! Tehlikeli virajı haritada işaretledik, böylece uygulama sürücüleri uyaracak.","mm-curve-none":"Bildirim için teşekkürler! Bu virajı kontrol ettik ve haritayı değiştirmek için bir neden bulamadık, bu yüzden olduğu gibi bıraktık.","mm-rail-done":"Teşekkürler! Hemzemin geçidi haritaya ekledik, böylece uygulama sürücüleri uyaracak.","mm-rail-none":"Bildirim için teşekkürler! Kontrol ettik ama burada bir hemzemin geçit göremedik, bu yüzden haritayı olduğu gibi bıraktık.","mm-camera-done":"Teşekkürler! Hız kamerasını haritaya ekledik.","mm-camera-none":"Bildirim için teşekkürler! Kontrol ettik ama burada bir hız kamerası olduğunu doğrulayamadık, bu yüzden haritayı olduğu gibi bıraktık.","mm-done":"Teşekkürler! Haritayı burada güncelledik. Değişiklik bir sonraki harita güncellemesinden sonra uygulamada görünür, genellikle birkaç gün içinde.","mm-none":"Bildirim için teşekkürler! Buradaki haritayı kontrol ettik ve değiştirilecek bir şey bulamadık, bu yüzden olduğu gibi bıraktık."},"sk":{"t-turn-ask":"Ďakujeme za hlásenie! O ktoré odbočenie išlo: z ktorej ulice na ktorú a ktorým smerom ste išli?","t-turn-done":"Ďakujeme! Odbočenie sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-address-ask":"Ďakujeme za hlásenie! Aká je správna adresa alebo názov ulice a na aké miesto ste sa chceli dostať?","t-address-done":"Ďakujeme! Adresu sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-route-ask":"Ďakujeme za hlásenie! Odkiaľ ste vyrážali, kam ste išli a ktorou cestou ste čakali, že vás aplikácia povedie?","t-route-done":"Ďakujeme za hlásenie! Mapu na tomto mieste sme skontrolovali a je v poriadku. Aplikácia vyberá trasu podľa aktuálnej dopravy, takže sa môže zo dňa na deň líšiť.","t-roundabout-ask":"Ďakujeme za hlásenie! Ktorá križovatka by mala byť kruhový objazd? Názvy ulíc, ktoré sa tam stretávajú, nám pomôžu ju nájsť.","t-roundabout-done":"Ďakujeme! Kruhový objazd sme pridali do mapy. Aplikácia ho ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-general-ask":"Ďakujeme za hlásenie! Môžete nám povedať trochu viac o tom, čo bolo zle a kde presne?","t-junction-ask":"Ďakujeme za hlásenie! O ktorú križovatku, výjazd alebo most išlo a ktorým smerom ste išli?","t-junction-done":"Ďakujeme! Križovatku sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-direction-ask":"Ďakujeme za hlásenie! O ktorú ulicu išlo a ktorým smerom je v skutočnosti prejazdná?","t-direction-done":"Ďakujeme! Smer jazdy sme na mape opravili. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-road-ask":"Ďakujeme za hlásenie! Ako sa cesta volá, kde začína a kde končí a je prístupná pre všetkých?","t-road-done":"Ďakujeme! Cestu sme pridali do mapy. Aplikácia ju ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-landmark-ask":"Ďakujeme za hlásenie! Ako sa to miesto volá a kde presne sa nachádza?","t-landmark-done":"Ďakujeme! Miesto sme pridali do mapy. V aplikácii sa zobrazí po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","t-blocked-ask":"Ďakujeme za hlásenie! Je cesta uzavretá natrvalo, alebo len dočasne? Ak viete, dokedy, veľmi nám to pomôže.","t-blocked-done":"Ďakujeme! Uzávierku sme pridali do mapy, takže ju aplikácia bude obchádzať.","t-speed-ask":"Ďakujeme za hlásenie! Aká najvyššia povolená rýchlosť je tam vyznačená a pre ktorý smer?","t-speed-done":"Ďakujeme! Rýchlostný limit sme na mape aktualizovali. Aplikácia ho ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","nothing":"Ďakujeme za hlásenie! Mapu na tomto mieste sme skontrolovali a nenašli sme na nej chybu, preto sme ju nechali tak. Ak sa to stane znova, pošlite prosím nové hlásenie priamo z miesta.","mm-ask":"Ďakujeme za hlásenie! Môžete nám povedať trochu viac: kde presne to je a ktorým smerom ste išli?","mm-bump-done":"Ďakujeme! Spomaľovací prah sme pridali do mapy, takže aplikácia naň vodičov upozorní.","mm-bump-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale spomaľovací prah sme tu nenašli, preto sme mapu nechali tak.","mm-light-done":"Ďakujeme! Semafor sme pridali do mapy.","mm-light-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale semafor sme tu nenašli, preto sme mapu nechali tak.","mm-curve-done":"Ďakujeme! Nebezpečnú zákrutu sme označili na mape, takže aplikácia na ňu vodičov upozorní.","mm-curve-none":"Ďakujeme za hlásenie! Túto zákrutu sme skontrolovali a nenašli sme dôvod mapu meniť, preto sme ju nechali tak.","mm-rail-done":"Ďakujeme! Železničné priecestie sme pridali do mapy, takže aplikácia naň vodičov upozorní.","mm-rail-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale železničné priecestie sme tu nenašli, preto sme mapu nechali tak.","mm-camera-done":"Ďakujeme! Rýchlostný radar sme pridali do mapy.","mm-camera-none":"Ďakujeme za hlásenie! Skontrolovali sme to, ale rýchlostný radar sa nám tu nepodarilo potvrdiť, preto sme mapu nechali tak.","mm-done":"Ďakujeme! Mapu sme na tomto mieste aktualizovali. Aplikácia zmenu ukáže po najbližšej aktualizácii mapy, zvyčajne v priebehu niekoľkých dní.","mm-none":"Ďakujeme za hlásenie! Mapu na tomto mieste sme skontrolovali a nenašli sme nič, čo by bolo treba zmeniť, preto sme ju nechali tak."},"sr":{"t-turn-ask":"Hvala na prijavi! O kom skretanju je reč: iz koje ulice u koju, i u kom smeru ste vozili?","t-turn-done":"Hvala! Ispravili smo to skretanje na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-address-ask":"Hvala na prijavi! Koja je tačna adresa ili naziv ulice, i do kog mesta ste pokušavali da stignete?","t-address-done":"Hvala! Ispravili smo adresu na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-route-ask":"Hvala na prijavi! Odakle ste krenuli, kuda ste išli i kojim putem ste očekivali da vas aplikacija vodi?","t-route-done":"Hvala na prijavi! Proverili smo mapu na ovom mestu i ispravna je. Aplikacija bira rutu prema saobraćaju u realnom vremenu, pa se ruta može razlikovati iz dana u dan.","t-roundabout-ask":"Hvala na prijavi! Koja raskrsnica treba da bude kružni tok? Nazivi ulica koje se tu spajaju pomoći će nam da je pronađemo.","t-roundabout-done":"Hvala! Dodali smo kružni tok na mapu. Aplikacija će ga prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-general-ask":"Hvala na prijavi! Možete li nam reći nešto više o tome šta nije bilo u redu i gde tačno?","t-junction-ask":"Hvala na prijavi! O kojoj raskrsnici, izlazu ili mostu je reč, i u kom smeru ste vozili?","t-junction-done":"Hvala! Ispravili smo raskrsnicu na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-direction-ask":"Hvala na prijavi! O kojoj ulici je reč, i u kom smeru je zaista otvorena za saobraćaj?","t-direction-done":"Hvala! Ispravili smo smer kretanja na mapi. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-road-ask":"Hvala na prijavi! Kako se put zove, gde počinje i gde se završava, i da li je otvoren za sve?","t-road-done":"Hvala! Dodali smo put na mapu. Aplikacija će ga prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-landmark-ask":"Hvala na prijavi! Kako se to mesto zove i gde se tačno nalazi?","t-landmark-done":"Hvala! Dodali smo mesto na mapu. U aplikaciji će se prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","t-blocked-ask":"Hvala na prijavi! Da li je put zatvoren trajno ili privremeno? Ako znate do kada, to nam mnogo pomaže.","t-blocked-done":"Hvala! Dodali smo zatvaranje puta na mapu, pa će ga aplikacija zaobilaziti.","t-speed-ask":"Hvala na prijavi! Koje je ograničenje brzine istaknuto na tom mestu, i za koji smer?","t-speed-done":"Hvala! Ažurirali smo ograničenje brzine na mapi. Aplikacija će ga prikazati posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","nothing":"Hvala na prijavi! Proverili smo mapu na ovom mestu i nismo pronašli grešku, pa smo je ostavili kakva jeste. Ako se ponovi, pošaljite novu prijavu sa tog mesta.","mm-ask":"Hvala na prijavi! Možete li nam reći malo više: gde se tačno nalazi i u kom smeru ste vozili?","mm-bump-done":"Hvala! Dodali smo ležećeg policajca na mapu, pa će aplikacija upozoravati vozače na njega.","mm-bump-none":"Hvala na prijavi! Proverili smo i ovde nismo videli ležećeg policajca, pa smo mapu ostavili kakva jeste.","mm-light-done":"Hvala! Dodali smo semafor na mapu.","mm-light-none":"Hvala na prijavi! Proverili smo i ovde nismo videli semafor, pa smo mapu ostavili kakva jeste.","mm-curve-done":"Hvala! Označili smo opasnu krivinu na mapi, pa će aplikacija upozoravati vozače na nju.","mm-curve-none":"Hvala na prijavi! Proverili smo ovu krivinu i nismo našli razlog da menjamo mapu, pa smo je ostavili kakva jeste.","mm-rail-done":"Hvala! Dodali smo pružni prelaz na mapu, pa će aplikacija upozoravati vozače na njega.","mm-rail-none":"Hvala na prijavi! Proverili smo i ovde nismo videli pružni prelaz, pa smo mapu ostavili kakva jeste.","mm-camera-done":"Hvala! Dodali smo radar na mapu.","mm-camera-none":"Hvala na prijavi! Proverili smo i nismo mogli da potvrdimo da ovde postoji radar, pa smo mapu ostavili kakva jeste.","mm-done":"Hvala! Ažurirali smo mapu na ovom mestu. Aplikacija će prikazati izmenu posle sledećeg ažuriranja mape, obično u roku od nekoliko dana.","mm-none":"Hvala na prijavi! Proverili smo mapu na ovom mestu i nismo pronašli ništa što treba menjati, pa smo je ostavili kakva jeste."},"he":{"t-turn-ask":"תודה על הדיווח! על איזו פנייה מדובר: מאיזה רחוב לאיזה רחוב, ובאיזה כיוון נסעתם?","t-turn-done":"תודה! תיקנו את הפנייה במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-address-ask":"תודה על הדיווח! מה הכתובת או שם הרחוב הנכונים, ולאיזה מקום ניסיתם להגיע?","t-address-done":"תודה! תיקנו את הכתובת במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-route-ask":"תודה על הדיווח! מאיפה יצאתם, לאן נסעתם, ובאיזו דרך ציפיתם שהאפליקציה תוביל אתכם?","t-route-done":"תודה על הדיווח! בדקנו את המפה כאן והיא תקינה. האפליקציה בוחרת את המסלול לפי התנועה בזמן אמת, ולכן הוא יכול להשתנות מיום ליום.","t-roundabout-ask":"תודה על הדיווח! איזה צומת אמור להיות כיכר? שמות הרחובות שנפגשים שם יעזרו לנו למצוא אותו.","t-roundabout-done":"תודה! הוספנו את הכיכר למפה. היא תופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-general-ask":"תודה על הדיווח! תוכלו לספר לנו עוד קצת מה לא היה תקין, ואיפה בדיוק?","t-junction-ask":"תודה על הדיווח! על איזה צומת, יציאה או גשר מדובר, ובאיזה כיוון נסעתם?","t-junction-done":"תודה! תיקנו את הצומת במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-direction-ask":"תודה על הדיווח! על איזה רחוב מדובר, ובאיזה כיוון התנועה בו מותרת בפועל?","t-direction-done":"תודה! תיקנו את כיוון הנסיעה במפה. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-road-ask":"תודה על הדיווח! איך קוראים לכביש, איפה הוא מתחיל ואיפה נגמר, והאם הוא פתוח לכולם?","t-road-done":"תודה! הוספנו את הכביש למפה. הוא יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-landmark-ask":"תודה על הדיווח! איך קוראים למקום, ואיפה בדיוק הוא נמצא?","t-landmark-done":"תודה! הוספנו את המקום למפה. הוא יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","t-blocked-ask":"תודה על הדיווח! הכביש סגור לצמיתות או לזמן מה? אם אתם יודעים עד מתי, זה יעזור לנו מאוד.","t-blocked-done":"תודה! הוספנו את החסימה למפה, כך שהאפליקציה תנווט מסביב לה.","t-speed-ask":"תודה על הדיווח! איזו מהירות מותרת מופיעה בשלט שם, ובאיזה כיוון?","t-speed-done":"תודה! עדכנו את המהירות המותרת במפה. היא תופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","nothing":"תודה על הדיווח! בדקנו את המפה כאן ולא מצאנו שום בעיה, ולכן השארנו אותה כמו שהיא. אם זה יקרה שוב, נא לשלוח דיווח חדש מהמקום עצמו.","mm-ask":"תודה על הדיווח! תוכלו לספר לנו עוד קצת: איפה בדיוק זה, ובאיזה כיוון נסעתם?","mm-bump-done":"תודה! הוספנו את פס ההאטה למפה, כך שהאפליקציה תתריע עליו לנהגים.","mm-bump-none":"תודה על הדיווח! בדקנו ולא ראינו כאן פס האטה, ולכן השארנו את המפה כמו שהיא.","mm-light-done":"תודה! הוספנו את הרמזור למפה.","mm-light-none":"תודה על הדיווח! בדקנו ולא ראינו כאן רמזור, ולכן השארנו את המפה כמו שהיא.","mm-curve-done":"תודה! סימנו את העיקול המסוכן במפה, כך שהאפליקציה תתריע עליו לנהגים.","mm-curve-none":"תודה על הדיווח! בדקנו את העיקול הזה ולא מצאנו סיבה לשנות את המפה, ולכן השארנו אותה כמו שהיא.","mm-rail-done":"תודה! הוספנו את מפגש מסילת הברזל למפה, כך שהאפליקציה תתריע עליו לנהגים.","mm-rail-none":"תודה על הדיווח! בדקנו ולא ראינו כאן מפגש מסילת ברזל, ולכן השארנו את המפה כמו שהיא.","mm-camera-done":"תודה! הוספנו את מצלמת המהירות למפה.","mm-camera-none":"תודה על הדיווח! בדקנו ולא הצלחנו לאשר שיש כאן מצלמת מהירות, ולכן השארנו את המפה כמו שהיא.","mm-done":"תודה! עדכנו את המפה כאן. השינוי יופיע באפליקציה אחרי עדכון המפה הבא, בדרך כלל תוך כמה ימים.","mm-none":"תודה על הדיווח! בדקנו את המפה כאן ולא מצאנו מה לשנות, ולכן השארנו אותה כמו שהיא."},"ko":{"t-turn-ask":"신고해 주셔서 감사합니다! 어느 도로에서 어느 도로로 회전하는 구간이었는지, 그리고 어느 방향으로 주행 중이셨는지 알려주실 수 있나요?","t-turn-done":"감사합니다! 해당 회전 구간을 지도에서 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-address-ask":"신고해 주셔서 감사합니다! 올바른 주소나 도로명은 무엇이며, 어느 장소로 가려고 하셨나요?","t-address-done":"감사합니다! 지도에서 주소를 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-route-ask":"신고해 주셔서 감사합니다! 어디에서 출발해 어디로 가셨는지, 그리고 앱이 어느 길로 안내하길 기대하셨는지 알려주실 수 있나요?","t-route-done":"신고해 주셔서 감사합니다! 이곳의 지도를 확인해 보니 정확했습니다. 앱은 실시간 교통 상황에 따라 경로를 정하기 때문에 날마다 경로가 달라질 수 있습니다.","t-roundabout-ask":"신고해 주셔서 감사합니다! 어느 교차로가 회전교차로여야 하나요? 그곳에서 만나는 도로 이름을 알려주시면 위치를 찾는 데 도움이 됩니다.","t-roundabout-done":"감사합니다! 지도에 회전교차로를 추가했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-general-ask":"신고해 주셔서 감사합니다! 무엇이 잘못되었는지, 정확히 어디였는지 조금 더 알려주실 수 있나요?","t-junction-ask":"신고해 주셔서 감사합니다! 어느 교차로, 출구 또는 다리였는지, 그리고 어느 방향으로 주행 중이셨는지 알려주실 수 있나요?","t-junction-done":"감사합니다! 지도에서 해당 교차로를 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-direction-ask":"신고해 주셔서 감사합니다! 어느 도로였는지, 그리고 실제로 어느 방향으로 통행이 가능한지 알려주실 수 있나요?","t-direction-done":"감사합니다! 지도에서 통행 방향을 수정했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-road-ask":"신고해 주셔서 감사합니다! 도로 이름이 무엇인지, 어디에서 시작해 어디에서 끝나는지, 그리고 누구나 통행할 수 있는 도로인지 알려주실 수 있나요?","t-road-done":"감사합니다! 지도에 도로를 추가했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-landmark-ask":"신고해 주셔서 감사합니다! 장소 이름이 무엇이고, 정확히 어디에 있나요?","t-landmark-done":"감사합니다! 지도에 장소를 추가했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","t-blocked-ask":"신고해 주셔서 감사합니다! 도로가 영구적으로 폐쇄된 건가요, 아니면 일시적인가요? 언제까지인지 아시면 큰 도움이 됩니다.","t-blocked-done":"감사합니다! 지도에 도로 통제를 추가해, 앱이 그 구간을 피해서 안내합니다.","t-speed-ask":"신고해 주셔서 감사합니다! 그곳에 표시된 제한속도는 얼마이고, 어느 방향 기준인가요?","t-speed-done":"감사합니다! 지도에서 제한속도를 업데이트했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","nothing":"신고해 주셔서 감사합니다! 이곳의 지도를 확인했지만 잘못된 점을 찾지 못해 그대로 두었습니다. 같은 일이 다시 생기면 해당 장소에서 새로 신고해 주세요.","mm-ask":"신고해 주셔서 감사합니다! 정확히 어디인지, 그리고 어느 방향으로 주행 중이셨는지 조금 더 알려주실 수 있나요?","mm-bump-done":"감사합니다! 지도에 과속방지턱을 추가해, 앱이 운전자에게 미리 알려줍니다.","mm-bump-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에서 과속방지턱을 찾지 못해 지도를 그대로 두었습니다.","mm-light-done":"감사합니다! 지도에 신호등을 추가했습니다.","mm-light-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에서 신호등을 찾지 못해 지도를 그대로 두었습니다.","mm-curve-done":"감사합니다! 지도에 위험한 커브를 표시해, 앱이 운전자에게 미리 알려줍니다.","mm-curve-none":"신고해 주셔서 감사합니다! 이 커브를 확인했지만 지도를 변경할 이유를 찾지 못해 그대로 두었습니다.","mm-rail-done":"감사합니다! 지도에 철도 건널목을 추가해, 앱이 운전자에게 미리 알려줍니다.","mm-rail-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에서 철도 건널목을 찾지 못해 지도를 그대로 두었습니다.","mm-camera-done":"감사합니다! 지도에 과속 단속 카메라를 추가했습니다.","mm-camera-none":"신고해 주셔서 감사합니다! 확인해 보았지만 이곳에 과속 단속 카메라가 있는지 확인할 수 없어 지도를 그대로 두었습니다.","mm-done":"감사합니다! 이곳의 지도를 업데이트했습니다. 다음 지도 업데이트 후, 보통 며칠 이내에 앱에 반영됩니다.","mm-none":"신고해 주셔서 감사합니다! 이곳의 지도를 확인했지만 변경할 부분을 찾지 못해 그대로 두었습니다."},"fi":{"t-turn-ask":"Kiitos ilmoituksesta! Mistä käännöksestä oli kyse: miltä kadulta mille, ja mihin suuntaan ajoit?","t-turn-done":"Kiitos! Korjasimme käännöksen kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-address-ask":"Kiitos ilmoituksesta! Mikä on oikea osoite tai kadunnimi, ja mihin paikkaan olit menossa?","t-address-done":"Kiitos! Korjasimme osoitteen kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-route-ask":"Kiitos ilmoituksesta! Mistä lähdit, minne olit menossa ja mitä reittiä odotit sovelluksen ehdottavan?","t-route-done":"Kiitos ilmoituksesta! Tarkistimme kartan tässä kohdassa, ja se on kunnossa. Sovellus valitsee reitin reaaliaikaisen liikennetilanteen mukaan, joten se voi vaihdella päivästä toiseen.","t-roundabout-ask":"Kiitos ilmoituksesta! Minkä risteyksen pitäisi olla kiertoliittymä? Siinä kohtaavien katujen nimet auttavat meitä löytämään sen.","t-roundabout-done":"Kiitos! Lisäsimme kiertoliittymän kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-general-ask":"Kiitos ilmoituksesta! Voisitko kertoa hieman tarkemmin, mikä oli vialla ja missä tarkalleen?","t-junction-ask":"Kiitos ilmoituksesta! Mistä risteyksestä, liittymästä tai sillasta oli kyse, ja mihin suuntaan ajoit?","t-junction-done":"Kiitos! Korjasimme risteyksen kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-direction-ask":"Kiitos ilmoituksesta! Mistä kadusta oli kyse, ja mihin suuntaan sillä oikeasti saa ajaa?","t-direction-done":"Kiitos! Korjasimme ajosuunnan kartalla. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-road-ask":"Kiitos ilmoituksesta! Mikä tien nimi on, mistä se alkaa ja mihin se päättyy, ja onko se kaikkien käytössä?","t-road-done":"Kiitos! Lisäsimme tien kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-landmark-ask":"Kiitos ilmoituksesta! Mikä paikan nimi on, ja missä se tarkalleen sijaitsee?","t-landmark-done":"Kiitos! Lisäsimme paikan kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","t-blocked-ask":"Kiitos ilmoituksesta! Onko tie suljettu pysyvästi vai väliaikaisesti? Jos tiedät, mihin asti, se auttaa paljon.","t-blocked-done":"Kiitos! Lisäsimme tiesulun kartalle, joten sovellus ohjaa sen ohi.","t-speed-ask":"Kiitos ilmoituksesta! Mikä nopeusrajoitus siellä on merkitty, ja kumpaan suuntaan?","t-speed-done":"Kiitos! Päivitimme nopeusrajoituksen kartalle. Se näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","nothing":"Kiitos ilmoituksesta! Tarkistimme kartan tässä kohdassa emmekä löytäneet virhettä, joten jätimme sen ennalleen. Jos sama toistuu, lähetä uusi ilmoitus paikan päältä.","mm-ask":"Kiitos ilmoituksesta! Voisitko kertoa hieman tarkemmin: missä tarkalleen se on ja mihin suuntaan ajoit?","mm-bump-done":"Kiitos! Lisäsimme hidastetöyssyn kartalle, joten sovellus varoittaa siitä kuljettajia.","mm-bump-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme nähneet tässä hidastetöyssyä, joten jätimme kartan ennalleen.","mm-light-done":"Kiitos! Lisäsimme liikennevalot kartalle.","mm-light-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme nähneet tässä liikennevaloja, joten jätimme kartan ennalleen.","mm-curve-done":"Kiitos! Merkitsimme vaarallisen mutkan kartalle, joten sovellus varoittaa siitä kuljettajia.","mm-curve-none":"Kiitos ilmoituksesta! Tarkistimme tämän mutkan emmekä löytäneet syytä muuttaa karttaa, joten jätimme sen ennalleen.","mm-rail-done":"Kiitos! Lisäsimme tasoristeyksen kartalle, joten sovellus varoittaa siitä kuljettajia.","mm-rail-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme nähneet tässä tasoristeystä, joten jätimme kartan ennalleen.","mm-camera-done":"Kiitos! Lisäsimme nopeusvalvontakameran kartalle.","mm-camera-none":"Kiitos ilmoituksesta! Tarkistimme asian, mutta emme voineet varmistaa, että tässä on nopeusvalvontakamera, joten jätimme kartan ennalleen.","mm-done":"Kiitos! Päivitimme kartan tässä kohdassa. Muutos näkyy sovelluksessa seuraavan karttapäivityksen jälkeen, yleensä muutaman päivän kuluessa.","mm-none":"Kiitos ilmoituksesta! Tarkistimme kartan tässä kohdassa emmekä löytäneet muutettavaa, joten jätimme sen ennalleen."},"id":{"t-turn-ask":"Terima kasih atas laporannya! Belokan yang mana: dari jalan apa ke jalan apa, dan ke arah mana Anda berkendara?","t-turn-done":"Terima kasih! Kami sudah memperbaiki belokan itu di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-address-ask":"Terima kasih atas laporannya! Apa alamat atau nama jalan yang benar, dan tempat mana yang ingin Anda tuju?","t-address-done":"Terima kasih! Kami sudah memperbaiki alamatnya di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-route-ask":"Terima kasih atas laporannya! Dari mana Anda berangkat, ke mana tujuan Anda, dan lewat jalan mana Anda harapkan aplikasi mengarahkan Anda?","t-route-done":"Terima kasih atas laporannya! Kami sudah memeriksa peta di sini dan sudah benar. Aplikasi memilih rute berdasarkan kondisi lalu lintas terkini, jadi rutenya bisa berbeda dari hari ke hari.","t-roundabout-ask":"Terima kasih atas laporannya! Persimpangan mana yang seharusnya menjadi bundaran? Nama jalan-jalan yang bertemu di sana membantu kami menemukannya.","t-roundabout-done":"Terima kasih! Kami sudah menambahkan bundaran ke peta. Bundaran ini akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-general-ask":"Terima kasih atas laporannya! Bisakah Anda ceritakan sedikit lebih banyak tentang apa yang salah, dan di mana tepatnya?","t-junction-ask":"Terima kasih atas laporannya! Persimpangan, jalan keluar, atau jembatan mana itu, dan ke arah mana Anda berkendara?","t-junction-done":"Terima kasih! Kami sudah memperbaiki persimpangan itu di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-direction-ask":"Terima kasih atas laporannya! Jalan mana itu, dan ke arah mana sebenarnya jalan itu boleh dilalui?","t-direction-done":"Terima kasih! Kami sudah memperbaiki arah lalu lintas di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-road-ask":"Terima kasih atas laporannya! Apa nama jalannya, dari mana sampai mana, dan apakah jalan itu terbuka untuk umum?","t-road-done":"Terima kasih! Kami sudah menambahkan jalan itu ke peta. Jalan ini akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-landmark-ask":"Terima kasih atas laporannya! Apa nama tempatnya, dan di mana tepatnya lokasinya?","t-landmark-done":"Terima kasih! Kami sudah menambahkan tempat itu ke peta. Tempat ini akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","t-blocked-ask":"Terima kasih atas laporannya! Apakah jalannya ditutup permanen atau sementara? Jika Anda tahu sampai kapan, itu sangat membantu.","t-blocked-done":"Terima kasih! Kami sudah menambahkan penutupan jalan ke peta, jadi aplikasi akan mengarahkan pengemudi lewat jalan lain.","t-speed-ask":"Terima kasih atas laporannya! Berapa batas kecepatan yang tertera di sana, dan untuk arah mana?","t-speed-done":"Terima kasih! Kami sudah memperbarui batas kecepatan di peta. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","nothing":"Terima kasih atas laporannya! Kami sudah memeriksa peta di sini dan tidak menemukan kesalahan, jadi petanya kami biarkan seperti semula. Jika terjadi lagi, silakan kirim laporan baru dari lokasi tersebut.","mm-ask":"Terima kasih atas laporannya! Bisakah Anda memberi tahu kami sedikit lebih banyak: di mana tepatnya lokasinya, dan ke arah mana Anda berkendara?","mm-bump-done":"Terima kasih! Kami sudah menambahkan polisi tidur ke peta, jadi aplikasi akan memperingatkan pengemudi.","mm-bump-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak melihat polisi tidur di sini, jadi petanya kami biarkan seperti semula.","mm-light-done":"Terima kasih! Kami sudah menambahkan lampu lalu lintas ke peta.","mm-light-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak melihat lampu lalu lintas di sini, jadi petanya kami biarkan seperti semula.","mm-curve-done":"Terima kasih! Kami sudah menandai tikungan berbahaya di peta, jadi aplikasi akan memperingatkan pengemudi.","mm-curve-none":"Terima kasih atas laporannya! Kami sudah memeriksa tikungan ini dan tidak menemukan alasan untuk mengubah peta, jadi petanya kami biarkan seperti semula.","mm-rail-done":"Terima kasih! Kami sudah menambahkan perlintasan kereta api ke peta, jadi aplikasi akan memperingatkan pengemudi.","mm-rail-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak melihat perlintasan kereta api di sini, jadi petanya kami biarkan seperti semula.","mm-camera-done":"Terima kasih! Kami sudah menambahkan kamera kecepatan ke peta.","mm-camera-none":"Terima kasih atas laporannya! Kami sudah memeriksa dan tidak dapat memastikan adanya kamera kecepatan di sini, jadi petanya kami biarkan seperti semula.","mm-done":"Terima kasih! Kami sudah memperbarui peta di sini. Perubahannya akan muncul di aplikasi setelah pembaruan peta berikutnya, biasanya dalam beberapa hari.","mm-none":"Terima kasih atas laporannya! Kami sudah memeriksa peta di sini dan tidak menemukan apa pun yang perlu diubah, jadi petanya kami biarkan seperti semula."},"hi":{"t-turn-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सा मोड़ था: किस सड़क से किस सड़क पर, और आप किस दिशा में जा रहे थे?","t-turn-done":"धन्यवाद! हमने नक्शे पर वह मोड़ ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-address-ask":"रिपोर्ट के लिए धन्यवाद! सही पता या सड़क का नाम क्या है, और आप किस जगह पहुँचना चाहते थे?","t-address-done":"धन्यवाद! हमने नक्शे पर पता ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-route-ask":"रिपोर्ट के लिए धन्यवाद! आप कहाँ से चले थे, कहाँ जा रहे थे, और आपको ऐप से किस रास्ते की उम्मीद थी?","t-route-done":"रिपोर्ट के लिए धन्यवाद! हमने यहाँ नक्शा जाँचा और वह सही है। ऐप लाइव ट्रैफ़िक के हिसाब से रास्ता चुनता है, इसलिए यह हर दिन अलग हो सकता है।","t-roundabout-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सा चौराहा गोल चक्कर होना चाहिए? वहाँ मिलने वाली सड़कों के नाम हमें उसे ढूँढने में मदद करते हैं।","t-roundabout-done":"धन्यवाद! हमने नक्शे पर गोल चक्कर जोड़ दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगा।","t-general-ask":"रिपोर्ट के लिए धन्यवाद! क्या आप थोड़ा और बता सकते हैं कि क्या गलत था, और ठीक कहाँ?","t-junction-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सा जंक्शन, एग्ज़िट या पुल था, और आप किस दिशा में जा रहे थे?","t-junction-done":"धन्यवाद! हमने नक्शे पर जंक्शन ठीक कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-direction-ask":"रिपोर्ट के लिए धन्यवाद! कौन-सी सड़क थी, और असल में उस पर किस दिशा में ट्रैफ़िक चल सकता है?","t-direction-done":"धन्यवाद! हमने नक्शे पर ट्रैफ़िक की दिशा ठीक कर दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","t-road-ask":"रिपोर्ट के लिए धन्यवाद! सड़क का नाम क्या है, वह कहाँ से शुरू होकर कहाँ खत्म होती है, और क्या वह सबके लिए खुली है?","t-road-done":"धन्यवाद! हमने नक्शे पर सड़क जोड़ दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगी।","t-landmark-ask":"रिपोर्ट के लिए धन्यवाद! उस जगह का नाम क्या है, और वह ठीक कहाँ है?","t-landmark-done":"धन्यवाद! हमने नक्शे पर वह जगह जोड़ दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगी।","t-blocked-ask":"रिपोर्ट के लिए धन्यवाद! क्या सड़क हमेशा के लिए बंद है या कुछ समय के लिए? अगर आपको पता है कि कब तक, तो इससे बहुत मदद मिलेगी।","t-blocked-done":"धन्यवाद! हमने नक्शे पर सड़क बंद होने की जानकारी जोड़ दी है, इसलिए ऐप अब दूसरे रास्ते से ले जाएगा।","t-speed-ask":"रिपोर्ट के लिए धन्यवाद! वहाँ बोर्ड पर कितनी स्पीड लिमिट लिखी है, और किस दिशा के लिए?","t-speed-done":"धन्यवाद! हमने नक्शे पर स्पीड लिमिट अपडेट कर दी है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, यह ऐप में दिखेगी।","nothing":"रिपोर्ट के लिए धन्यवाद! हमने यहाँ नक्शा जाँचा, लेकिन कोई गलती नहीं मिली, इसलिए हमने उसे वैसे ही छोड़ दिया है। अगर ऐसा फिर हो, तो कृपया उसी जगह से नई रिपोर्ट भेजें।","mm-ask":"रिपोर्ट के लिए धन्यवाद! क्या आप थोड़ा और बता सकते हैं: यह ठीक कहाँ है, और आप किस दिशा में जा रहे थे?","mm-bump-done":"धन्यवाद! हमने नक्शे पर स्पीड ब्रेकर जोड़ दिया है, इसलिए ऐप ड्राइवरों को इसके बारे में चेतावनी देगा।","mm-bump-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ कोई स्पीड ब्रेकर नहीं दिखा, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-light-done":"धन्यवाद! हमने नक्शे पर ट्रैफ़िक लाइट जोड़ दी है।","mm-light-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ कोई ट्रैफ़िक लाइट नहीं दिखी, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-curve-done":"धन्यवाद! हमने नक्शे पर खतरनाक मोड़ चिह्नित कर दिया है, इसलिए ऐप ड्राइवरों को इसके बारे में चेतावनी देगा।","mm-curve-none":"रिपोर्ट के लिए धन्यवाद! हमने इस मोड़ को जाँचा, लेकिन नक्शा बदलने की कोई वजह नहीं मिली, इसलिए हमने उसे वैसे ही छोड़ दिया है।","mm-rail-done":"धन्यवाद! हमने नक्शे पर रेलवे फाटक जोड़ दिया है, इसलिए ऐप ड्राइवरों को इसके बारे में चेतावनी देगा।","mm-rail-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ कोई रेलवे फाटक नहीं दिखा, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-camera-done":"धन्यवाद! हमने नक्शे पर स्पीड कैमरा जोड़ दिया है।","mm-camera-none":"रिपोर्ट के लिए धन्यवाद! हमने जाँचा, लेकिन यहाँ स्पीड कैमरा होने की पुष्टि नहीं कर पाए, इसलिए हमने नक्शा वैसे ही छोड़ दिया है।","mm-done":"धन्यवाद! हमने यहाँ नक्शा अपडेट कर दिया है। अगले नक्शा अपडेट के बाद, आमतौर पर कुछ दिनों में, ऐप में यह बदलाव दिखेगा।","mm-none":"रिपोर्ट के लिए धन्यवाद! हमने यहाँ नक्शा जाँचा, लेकिन बदलने लायक कुछ नहीं मिला, इसलिए हमने उसे वैसे ही छोड़ दिया है।"},"pt":{"t-turn-ask":"Obrigado pelo aviso! Que viragem era: de que rua para que rua, e em que sentido seguia?","t-turn-done":"Obrigado! Corrigimos essa viragem no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-address-ask":"Obrigado pelo aviso! Qual é a morada ou o nome da rua correto, e a que local queria chegar?","t-address-done":"Obrigado! Corrigimos a morada no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-route-ask":"Obrigado pelo aviso! De onde partiu, para onde ia e por onde esperava que a app o levasse?","t-route-done":"Obrigado pelo aviso! Verificámos o mapa aqui e está correto. A app escolhe o percurso com base no trânsito em tempo real, por isso pode variar de dia para dia.","t-roundabout-ask":"Obrigado pelo aviso! Que cruzamento deveria ser uma rotunda? Os nomes das ruas que lá se cruzam ajudam-nos a encontrá-lo.","t-roundabout-done":"Obrigado! Acrescentámos a rotunda ao mapa. A app mostra-a depois da próxima atualização do mapa, normalmente em poucos dias.","t-general-ask":"Obrigado pelo aviso! Pode dizer-nos um pouco mais sobre o que estava errado, e onde exatamente?","t-junction-ask":"Obrigado pelo aviso! Que cruzamento, saída ou ponte era, e em que sentido seguia?","t-junction-done":"Obrigado! Corrigimos o cruzamento no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-direction-ask":"Obrigado pelo aviso! Que rua era, e em que sentido está realmente aberta ao trânsito?","t-direction-done":"Obrigado! Corrigimos o sentido de circulação no mapa. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","t-road-ask":"Obrigado pelo aviso! Como se chama a estrada, onde começa e acaba, e está aberta a todos?","t-road-done":"Obrigado! Acrescentámos a estrada ao mapa. A app mostra-a depois da próxima atualização do mapa, normalmente em poucos dias.","t-landmark-ask":"Obrigado pelo aviso! Como se chama o local, e onde fica exatamente?","t-landmark-done":"Obrigado! Acrescentámos o local ao mapa. Aparece na app depois da próxima atualização do mapa, normalmente em poucos dias.","t-blocked-ask":"Obrigado pelo aviso! A estrada está cortada de vez ou só durante algum tempo? Se souber até quando, ajuda muito.","t-blocked-done":"Obrigado! Acrescentámos o corte de estrada ao mapa, por isso a app passa a contorná-lo.","t-speed-ask":"Obrigado pelo aviso! Qual é o limite de velocidade sinalizado no local, e para que sentido?","t-speed-done":"Obrigado! Atualizámos o limite de velocidade no mapa. A app mostra-o depois da próxima atualização do mapa, normalmente em poucos dias.","nothing":"Obrigado pelo aviso! Verificámos o mapa aqui e não encontrámos nada de errado, por isso deixámo-lo como está. Se voltar a acontecer, envie um novo aviso a partir do local.","mm-ask":"Obrigado pelo aviso! Pode dizer-nos um pouco mais: onde fica exatamente e em que sentido seguia?","mm-bump-done":"Obrigado! Acrescentámos a lomba ao mapa, por isso a app avisa os condutores.","mm-bump-none":"Obrigado pelo aviso! Verificámos e não encontrámos nenhuma lomba aqui, por isso deixámos o mapa como está.","mm-light-done":"Obrigado! Acrescentámos os semáforos ao mapa.","mm-light-none":"Obrigado pelo aviso! Verificámos e não encontrámos semáforos aqui, por isso deixámos o mapa como está.","mm-curve-done":"Obrigado! Assinalámos a curva perigosa no mapa, por isso a app avisa os condutores.","mm-curve-none":"Obrigado pelo aviso! Verificámos esta curva e não encontrámos motivo para alterar o mapa, por isso deixámo-lo como está.","mm-rail-done":"Obrigado! Acrescentámos a passagem de nível ao mapa, por isso a app avisa os condutores.","mm-rail-none":"Obrigado pelo aviso! Verificámos e não encontrámos nenhuma passagem de nível aqui, por isso deixámos o mapa como está.","mm-camera-done":"Obrigado! Acrescentámos o radar de velocidade ao mapa.","mm-camera-none":"Obrigado pelo aviso! Verificámos e não conseguimos confirmar um radar de velocidade aqui, por isso deixámos o mapa como está.","mm-done":"Obrigado! Atualizámos o mapa aqui. A app mostra a alteração depois da próxima atualização do mapa, normalmente em poucos dias.","mm-none":"Obrigado pelo aviso! Verificámos o mapa aqui e não encontrámos nada para alterar, por isso deixámo-lo como está."},"nl":{"t-turn-ask":"Bedankt voor de melding! Om welke afslag ging het: van welke straat naar welke, en in welke richting reed je?","t-turn-done":"Bedankt! We hebben die afslag op de kaart aangepast. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-address-ask":"Bedankt voor de melding! Wat is het juiste adres of de juiste straatnaam, en naar welke plek wilde je?","t-address-done":"Bedankt! We hebben het adres op de kaart gecorrigeerd. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-route-ask":"Bedankt voor de melding! Waar vertrok je, waar ging je naartoe en welke route had je van de app verwacht?","t-route-done":"Bedankt voor de melding! We hebben de kaart hier gecontroleerd en die klopt. De app kiest de route op basis van het actuele verkeer, dus die kan per dag verschillen.","t-roundabout-ask":"Bedankt voor de melding! Welk kruispunt zou een rotonde moeten zijn? De straten die daar samenkomen helpen ons het te vinden.","t-roundabout-done":"Bedankt! We hebben de rotonde aan de kaart toegevoegd. De app toont die na de volgende kaartupdate, meestal binnen een paar dagen.","t-general-ask":"Bedankt voor de melding! Kun je ons iets meer vertellen over wat er niet klopte, en waar precies?","t-junction-ask":"Bedankt voor de melding! Om welk kruispunt, welke afrit of welke brug ging het, en in welke richting reed je?","t-junction-done":"Bedankt! We hebben het kruispunt op de kaart aangepast. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-direction-ask":"Bedankt voor de melding! Om welke straat ging het, en in welke richting is die echt open voor verkeer?","t-direction-done":"Bedankt! We hebben de rijrichting op de kaart gecorrigeerd. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","t-road-ask":"Bedankt voor de melding! Hoe heet de weg, waar begint en eindigt hij, en is hij voor iedereen toegankelijk?","t-road-done":"Bedankt! We hebben de weg aan de kaart toegevoegd. De app toont hem na de volgende kaartupdate, meestal binnen een paar dagen.","t-landmark-ask":"Bedankt voor de melding! Hoe heet de plek, en waar ligt die precies?","t-landmark-done":"Bedankt! We hebben de plek aan de kaart toegevoegd. Die verschijnt in de app na de volgende kaartupdate, meestal binnen een paar dagen.","t-blocked-ask":"Bedankt voor de melding! Is de weg voorgoed afgesloten of tijdelijk? Als je weet tot wanneer, helpt dat enorm.","t-blocked-done":"Bedankt! We hebben de afsluiting op de kaart gezet, dus de app leidt je er nu omheen.","t-speed-ask":"Bedankt voor de melding! Welke maximumsnelheid staat daar aangegeven, en voor welke richting?","t-speed-done":"Bedankt! We hebben de maximumsnelheid op de kaart bijgewerkt. De app toont die na de volgende kaartupdate, meestal binnen een paar dagen.","nothing":"Bedankt voor de melding! We hebben de kaart hier gecontroleerd en niets verkeerds gevonden, dus we laten hem zoals hij is. Gebeurt het opnieuw, stuur dan een nieuwe melding vanaf de plek.","mm-ask":"Bedankt voor de melding! Kun je ons iets meer vertellen: waar het precies is, en in welke richting je reed?","mm-bump-done":"Bedankt! We hebben de verkeersdrempel aan de kaart toegevoegd, dus de app waarschuwt bestuurders ervoor.","mm-bump-none":"Bedankt voor de melding! We hebben gekeken, maar zagen hier geen verkeersdrempel, dus we laten de kaart zoals hij is.","mm-light-done":"Bedankt! We hebben de verkeerslichten aan de kaart toegevoegd.","mm-light-none":"Bedankt voor de melding! We hebben gekeken, maar zagen hier geen verkeerslichten, dus we laten de kaart zoals hij is.","mm-curve-done":"Bedankt! We hebben de gevaarlijke bocht op de kaart gemarkeerd, dus de app waarschuwt bestuurders ervoor.","mm-curve-none":"Bedankt voor de melding! We hebben deze bocht bekeken en geen reden gevonden om de kaart aan te passen, dus we laten hem zoals hij is.","mm-rail-done":"Bedankt! We hebben de spoorwegovergang aan de kaart toegevoegd, dus de app waarschuwt bestuurders ervoor.","mm-rail-none":"Bedankt voor de melding! We hebben gekeken, maar zagen hier geen spoorwegovergang, dus we laten de kaart zoals hij is.","mm-camera-done":"Bedankt! We hebben de flitspaal aan de kaart toegevoegd.","mm-camera-none":"Bedankt voor de melding! We hebben gekeken, maar konden hier geen flitspaal bevestigen, dus we laten de kaart zoals hij is.","mm-done":"Bedankt! We hebben de kaart hier bijgewerkt. De app toont de wijziging na de volgende kaartupdate, meestal binnen een paar dagen.","mm-none":"Bedankt voor de melding! We hebben de kaart hier gecontroleerd en niets gevonden om aan te passen, dus we laten hem zoals hij is."},"ka":{"t-turn-ask":"გმადლობთ შეტყობინებისთვის! რომელი მოხვევა იყო: რომელი ქუჩიდან რომელზე და რა მიმართულებით მოძრაობდით?","t-turn-done":"გმადლობთ! ეს მოხვევა რუკაზე გავასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-address-ask":"გმადლობთ შეტყობინებისთვის! რა არის სწორი მისამართი ან ქუჩის სახელი და რომელ ადგილას მისვლას ცდილობდით?","t-address-done":"გმადლობთ! მისამართი რუკაზე შევასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-route-ask":"გმადლობთ შეტყობინებისთვის! საიდან დაიძარით, სად მიდიოდით და რომელი გზით ელოდით, რომ აპი წაგიყვანდათ?","t-route-done":"გმადლობთ შეტყობინებისთვის! რუკა ამ ადგილას შევამოწმეთ და ყველაფერი სწორადაა. აპი მარშრუტს მიმდინარე მოძრაობის მიხედვით ირჩევს, ამიტომ ის შეიძლება დღიდან დღემდე განსხვავდებოდეს.","t-roundabout-ask":"გმადლობთ შეტყობინებისთვის! რომელი გზაჯვარედინი უნდა იყოს წრიული მოძრაობით? იქ შემხვედრი ქუჩების სახელები დაგვეხმარება მის პოვნაში.","t-roundabout-done":"გმადლობთ! წრიული მოძრაობის გზაჯვარედინი რუკაზე დავამატეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-general-ask":"გმადლობთ შეტყობინებისთვის! შეგიძლიათ ცოტა მეტი გვითხრათ, რა იყო არასწორად და ზუსტად სად?","t-junction-ask":"გმადლობთ შეტყობინებისთვის! რომელი გზაჯვარედინი, გასასვლელი ან ხიდი იყო და რა მიმართულებით მოძრაობდით?","t-junction-done":"გმადლობთ! გზაჯვარედინი რუკაზე გავასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-direction-ask":"გმადლობთ შეტყობინებისთვის! რომელი ქუჩა იყო და სინამდვილეში რომელი მიმართულებით არის ღია მოძრაობისთვის?","t-direction-done":"გმადლობთ! მოძრაობის მიმართულება რუკაზე შევასწორეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-road-ask":"გმადლობთ შეტყობინებისთვის! რა ჰქვია გზას, სად იწყება და სად მთავრდება, და ღიაა თუ არა ყველასთვის?","t-road-done":"გმადლობთ! გზა რუკაზე დავამატეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-landmark-ask":"გმადლობთ შეტყობინებისთვის! რა ჰქვია ამ ადგილს და ზუსტად სად მდებარეობს?","t-landmark-done":"გმადლობთ! ადგილი რუკაზე დავამატეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","t-blocked-ask":"გმადლობთ შეტყობინებისთვის! გზა სამუდამოდაა ჩაკეტილი თუ დროებით? თუ იცით, როდემდე, ეს ძალიან დაგვეხმარება.","t-blocked-done":"გმადლობთ! გზის ჩაკეტვა რუკაზე დავამატეთ, ასე რომ, აპი მარშრუტს მისი გვერდის ავლით გაიყვანს.","t-speed-ask":"გმადლობთ შეტყობინებისთვის! სიჩქარის რა ზღვარია იქ ნიშნით მითითებული და რომელი მიმართულებისთვის?","t-speed-done":"გმადლობთ! სიჩქარის ზღვარი რუკაზე განვაახლეთ. აპში ის რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","nothing":"გმადლობთ შეტყობინებისთვის! რუკა ამ ადგილას შევამოწმეთ და შეცდომა ვერ ვიპოვეთ, ამიტომ ისე დავტოვეთ, როგორც იყო. თუ ისევ მოხდება, გთხოვთ, იმ ადგილიდან ახალი შეტყობინება გამოგვიგზავნოთ.","mm-ask":"გმადლობთ შეტყობინებისთვის! შეგიძლიათ ცოტა მეტი გვითხრათ: ზუსტად სად არის და რა მიმართულებით მოძრაობდით?","mm-bump-done":"გმადლობთ! ხელოვნური უსწორმასწორობა რუკაზე დავამატეთ, ასე რომ, აპი მძღოლებს ამის შესახებ გააფრთხილებს.","mm-bump-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ ხელოვნური უსწორმასწორობა ვერ დავინახეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-light-done":"გმადლობთ! შუქნიშანი რუკაზე დავამატეთ.","mm-light-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ შუქნიშანი ვერ დავინახეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-curve-done":"გმადლობთ! სახიფათო მოსახვევი რუკაზე მოვნიშნეთ, ასე რომ, აპი მძღოლებს ამის შესახებ გააფრთხილებს.","mm-curve-none":"გმადლობთ შეტყობინებისთვის! ეს მოსახვევი შევამოწმეთ და რუკის შეცვლის მიზეზი ვერ ვნახეთ, ამიტომ ისე დავტოვეთ, როგორც იყო.","mm-rail-done":"გმადლობთ! სარკინიგზო გადასასვლელი რუკაზე დავამატეთ, ასე რომ, აპი მძღოლებს ამის შესახებ გააფრთხილებს.","mm-rail-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ სარკინიგზო გადასასვლელი ვერ დავინახეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-camera-done":"გმადლობთ! სიჩქარის კამერა რუკაზე დავამატეთ.","mm-camera-none":"გმადლობთ შეტყობინებისთვის! შევამოწმეთ და აქ სიჩქარის კამერის არსებობა ვერ დავადასტურეთ, ამიტომ რუკა ისე დავტოვეთ, როგორც იყო.","mm-done":"გმადლობთ! რუკა ამ ადგილას განვაახლეთ. ცვლილება აპში რუკის შემდეგი განახლების შემდეგ გამოჩნდება, ჩვეულებრივ რამდენიმე დღეში.","mm-none":"გმადლობთ შეტყობინებისთვის! რუკა ამ ადგილას შევამოწმეთ და შესაცვლელი ვერაფერი ვიპოვეთ, ამიტომ ისე დავტოვეთ, როგორც იყო."},"hu":{"t-turn-ask":"Köszönjük a bejelentést! Melyik kanyarodásról van szó: melyik utcából melyikbe, és milyen irányban haladtál?","t-turn-done":"Köszönjük! Kijavítottuk ezt a kanyarodást a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-address-ask":"Köszönjük a bejelentést! Mi a helyes cím vagy utcanév, és hova szerettél volna eljutni?","t-address-done":"Köszönjük! Kijavítottuk a címet a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-route-ask":"Köszönjük a bejelentést! Honnan indultál, hova tartottál, és merre számítottál, hogy az alkalmazás visz?","t-route-done":"Köszönjük a bejelentést! Megnéztük itt a térképet, és rendben van. Az alkalmazás az aktuális forgalom alapján választja az útvonalat, így az napról napra eltérhet.","t-roundabout-ask":"Köszönjük a bejelentést! Melyik kereszteződésnek kellene körforgalomnak lennie? Az ott találkozó utcák segítenek megtalálni.","t-roundabout-done":"Köszönjük! Felvettük a körforgalmat a térképre. Az alkalmazás a következő térképfrissítés után mutatja, általában néhány napon belül.","t-general-ask":"Köszönjük a bejelentést! Megírnád egy kicsit részletesebben, mi volt a hiba, és pontosan hol?","t-junction-ask":"Köszönjük a bejelentést! Melyik kereszteződésről, lehajtóról vagy hídról van szó, és milyen irányban haladtál?","t-junction-done":"Köszönjük! Kijavítottuk a kereszteződést a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-direction-ask":"Köszönjük a bejelentést! Melyik utcáról van szó, és valójában melyik irányban járható?","t-direction-done":"Köszönjük! Kijavítottuk a menetirányt a térképen. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","t-road-ask":"Köszönjük a bejelentést! Mi az út neve, hol kezdődik és hol ér véget, és mindenki számára nyitott?","t-road-done":"Köszönjük! Felvettük az utat a térképre. Az alkalmazás a következő térképfrissítés után mutatja, általában néhány napon belül.","t-landmark-ask":"Köszönjük a bejelentést! Mi a hely neve, és pontosan hol található?","t-landmark-done":"Köszönjük! Felvettük a helyet a térképre. A következő térképfrissítés után jelenik meg az alkalmazásban, általában néhány napon belül.","t-blocked-ask":"Köszönjük a bejelentést! Az út véglegesen vagy csak egy ideig van lezárva? Ha tudod, meddig, az sokat segít.","t-blocked-done":"Köszönjük! Felvettük a lezárást a térképre, így az alkalmazás elkerüli.","t-speed-ask":"Köszönjük a bejelentést! Milyen sebességkorlátozás van ott kitáblázva, és melyik irányban?","t-speed-done":"Köszönjük! Frissítettük a sebességkorlátozást a térképen. Az alkalmazás a következő térképfrissítés után mutatja, általában néhány napon belül.","nothing":"Köszönjük a bejelentést! Megnéztük itt a térképet, de nem találtunk hibát, ezért úgy hagytuk, ahogy van. Ha újra előfordul, kérjük, küldj új bejelentést a helyszínről.","mm-ask":"Köszönjük a bejelentést! Megírnád egy kicsit részletesebben, pontosan hol van, és milyen irányban haladtál?","mm-bump-done":"Köszönjük! Felvettük a fekvőrendőrt a térképre, így az alkalmazás figyelmezteti rá a sofőröket.","mm-bump-none":"Köszönjük a bejelentést! Megnéztük, de nem láttunk itt fekvőrendőrt, ezért a térképet úgy hagytuk, ahogy van.","mm-light-done":"Köszönjük! Felvettük a jelzőlámpát a térképre.","mm-light-none":"Köszönjük a bejelentést! Megnéztük, de nem láttunk itt jelzőlámpát, ezért a térképet úgy hagytuk, ahogy van.","mm-curve-done":"Köszönjük! Megjelöltük a veszélyes kanyart a térképen, így az alkalmazás figyelmezteti rá a sofőröket.","mm-curve-none":"Köszönjük a bejelentést! Megnéztük ezt a kanyart, de nem találtunk okot a térkép módosítására, ezért úgy hagytuk, ahogy van.","mm-rail-done":"Köszönjük! Felvettük a vasúti átjárót a térképre, így az alkalmazás figyelmezteti rá a sofőröket.","mm-rail-none":"Köszönjük a bejelentést! Megnéztük, de nem láttunk itt vasúti átjárót, ezért a térképet úgy hagytuk, ahogy van.","mm-camera-done":"Köszönjük! Felvettük a traffipaxot a térképre.","mm-camera-none":"Köszönjük a bejelentést! Megnéztük, de nem tudtuk megerősíteni, hogy itt traffipax van, ezért a térképet úgy hagytuk, ahogy van.","mm-done":"Köszönjük! Frissítettük itt a térképet. Az alkalmazás a következő térképfrissítés után mutatja a változást, általában néhány napon belül.","mm-none":"Köszönjük a bejelentést! Megnéztük itt a térképet, de nem találtunk semmi módosítanivalót, ezért úgy hagytuk, ahogy van."},"hr":{"t-turn-ask":"Hvala na prijavi! O kojem je skretanju riječ: iz koje ulice u koju i u kojem ste smjeru vozili?","t-turn-done":"Hvala! Ispravili smo to skretanje na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-address-ask":"Hvala na prijavi! Koja je točna adresa ili naziv ulice i do kojeg ste mjesta htjeli stići?","t-address-done":"Hvala! Ispravili smo adresu na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-route-ask":"Hvala na prijavi! Odakle ste krenuli, kamo ste išli i kojim ste putem očekivali da će vas aplikacija voditi?","t-route-done":"Hvala na prijavi! Provjerili smo kartu na ovom mjestu i ispravna je. Aplikacija odabire rutu prema prometu u stvarnom vremenu, pa se ona može razlikovati iz dana u dan.","t-roundabout-ask":"Hvala na prijavi! Koje bi raskrižje trebalo biti kružni tok? Nazivi ulica koje se ondje susreću pomoći će nam da ga pronađemo.","t-roundabout-done":"Hvala! Dodali smo kružni tok na kartu. Aplikacija će ga prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-general-ask":"Hvala na prijavi! Možete li nam reći nešto više o tome što nije bilo u redu i gdje točno?","t-junction-ask":"Hvala na prijavi! O kojem je raskrižju, izlazu ili mostu riječ i u kojem ste smjeru vozili?","t-junction-done":"Hvala! Ispravili smo raskrižje na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-direction-ask":"Hvala na prijavi! O kojoj je ulici riječ i u kojem je smjeru zaista otvorena za promet?","t-direction-done":"Hvala! Ispravili smo smjer vožnje na karti. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-road-ask":"Hvala na prijavi! Kako se cesta zove, gdje počinje i gdje završava te je li otvorena za sve?","t-road-done":"Hvala! Dodali smo cestu na kartu. Aplikacija će je prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-landmark-ask":"Hvala na prijavi! Kako se mjesto zove i gdje se točno nalazi?","t-landmark-done":"Hvala! Dodali smo mjesto na kartu. U aplikaciji će se prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","t-blocked-ask":"Hvala na prijavi! Je li cesta zatvorena trajno ili privremeno? Ako znate do kada, to nam puno pomaže.","t-blocked-done":"Hvala! Dodali smo zatvaranje ceste na kartu, pa će aplikacija voditi vozače zaobilaznim putem.","t-speed-ask":"Hvala na prijavi! Koje je ograničenje brzine ondje označeno i za koji smjer?","t-speed-done":"Hvala! Ažurirali smo ograničenje brzine na karti. Aplikacija će ga prikazati nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","nothing":"Hvala na prijavi! Provjerili smo kartu na ovom mjestu i nismo pronašli ništa pogrešno pa smo je ostavili kakva jest. Ako se ponovi, pošaljite novu prijavu s tog mjesta.","mm-ask":"Hvala na prijavi! Možete li nam reći nešto više: gdje se točno nalazi i u kojem ste smjeru vozili?","mm-bump-done":"Hvala! Dodali smo ležećeg policajca na kartu, pa će aplikacija upozoravati vozače na njega.","mm-bump-none":"Hvala na prijavi! Provjerili smo i ovdje nismo vidjeli ležećeg policajca pa smo kartu ostavili kakva jest.","mm-light-done":"Hvala! Dodali smo semafor na kartu.","mm-light-none":"Hvala na prijavi! Provjerili smo i ovdje nismo vidjeli semafor pa smo kartu ostavili kakva jest.","mm-curve-done":"Hvala! Označili smo opasan zavoj na karti, pa će aplikacija upozoravati vozače na njega.","mm-curve-none":"Hvala na prijavi! Provjerili smo ovaj zavoj i nismo pronašli razlog za promjenu karte pa smo je ostavili kakva jest.","mm-rail-done":"Hvala! Dodali smo željeznički prijelaz na kartu, pa će aplikacija upozoravati vozače na njega.","mm-rail-none":"Hvala na prijavi! Provjerili smo i ovdje nismo vidjeli željeznički prijelaz pa smo kartu ostavili kakva jest.","mm-camera-done":"Hvala! Dodali smo kameru za nadzor brzine na kartu.","mm-camera-none":"Hvala na prijavi! Provjerili smo i nismo mogli potvrditi da ovdje postoji kamera za nadzor brzine pa smo kartu ostavili kakva jest.","mm-done":"Hvala! Ažurirali smo kartu na ovom mjestu. Aplikacija će prikazati promjenu nakon sljedećeg ažuriranja karte, obično u roku od nekoliko dana.","mm-none":"Hvala na prijavi! Provjerili smo kartu na ovom mjestu i nismo pronašli ništa što treba promijeniti pa smo je ostavili kakva jest."},"fa":{"t-turn-ask":"از گزارش شما سپاسگزاریم! کدام گردش بود: از کدام خیابان به کدام خیابان، و در چه جهتی رانندگی می‌کردید؟","t-turn-done":"سپاسگزاریم! آن گردش را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-address-ask":"از گزارش شما سپاسگزاریم! نشانی یا نام درست خیابان چیست و می‌خواستید به کدام مکان بروید؟","t-address-done":"سپاسگزاریم! نشانی را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-route-ask":"از گزارش شما سپاسگزاریم! از کجا راه افتادید، به کجا می‌رفتید و انتظار داشتید برنامه شما را از کدام مسیر ببرد؟","t-route-done":"از گزارش شما سپاسگزاریم! نقشه را در این محل بررسی کردیم و درست است. برنامه مسیر را بر اساس ترافیک لحظه‌ای انتخاب می‌کند، بنابراین ممکن است از روزی به روز دیگر فرق کند.","t-roundabout-ask":"از گزارش شما سپاسگزاریم! کدام تقاطع باید میدان باشد؟ نام خیابان‌هایی که آنجا به هم می‌رسند به ما کمک می‌کند آن را پیدا کنیم.","t-roundabout-done":"سپاسگزاریم! میدان را به نقشه اضافه کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-general-ask":"از گزارش شما سپاسگزاریم! ممکن است کمی بیشتر توضیح دهید که چه چیزی اشتباه بود و دقیقاً کجا؟","t-junction-ask":"از گزارش شما سپاسگزاریم! کدام تقاطع، خروجی یا پل بود و در چه جهتی رانندگی می‌کردید؟","t-junction-done":"سپاسگزاریم! تقاطع را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-direction-ask":"از گزارش شما سپاسگزاریم! کدام خیابان بود و در واقع در چه جهتی برای تردد باز است؟","t-direction-done":"سپاسگزاریم! جهت حرکت را روی نقشه اصلاح کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-road-ask":"از گزارش شما سپاسگزاریم! نام این راه چیست، از کجا شروع و به کجا ختم می‌شود، و آیا برای همه باز است؟","t-road-done":"سپاسگزاریم! این راه را به نقشه اضافه کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-landmark-ask":"از گزارش شما سپاسگزاریم! نام این مکان چیست و دقیقاً کجاست؟","t-landmark-done":"سپاسگزاریم! این مکان را به نقشه اضافه کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","t-blocked-ask":"از گزارش شما سپاسگزاریم! آیا راه برای همیشه بسته است یا موقتاً؟ اگر می‌دانید تا کی، خیلی کمک می‌کند.","t-blocked-done":"سپاسگزاریم! بسته بودن راه را به نقشه اضافه کردیم، بنابراین برنامه رانندگان را از مسیر دیگری می‌برد.","t-speed-ask":"از گزارش شما سپاسگزاریم! محدودیت سرعتی که آنجا با تابلو اعلام شده چقدر است و برای کدام جهت؟","t-speed-done":"سپاسگزاریم! محدودیت سرعت را روی نقشه به‌روز کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","nothing":"از گزارش شما سپاسگزاریم! نقشه را در این محل بررسی کردیم و مشکلی پیدا نکردیم، بنابراین آن را همان‌طور که بود گذاشتیم. اگر دوباره پیش آمد، لطفاً از همان محل گزارش جدیدی بفرستید.","mm-ask":"از گزارش شما سپاسگزاریم! ممکن است کمی بیشتر بگویید: دقیقاً کجاست و در چه جهتی رانندگی می‌کردید؟","mm-bump-done":"سپاسگزاریم! سرعت‌گیر را به نقشه اضافه کردیم، بنابراین برنامه به رانندگان درباره آن هشدار می‌دهد.","mm-bump-none":"از گزارش شما سپاسگزاریم! بررسی کردیم و اینجا سرعت‌گیری ندیدیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-light-done":"سپاسگزاریم! چراغ راهنمایی را به نقشه اضافه کردیم.","mm-light-none":"از گزارش شما سپاسگزاریم! بررسی کردیم و اینجا چراغ راهنمایی ندیدیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-curve-done":"سپاسگزاریم! پیچ خطرناک را روی نقشه مشخص کردیم، بنابراین برنامه به رانندگان درباره آن هشدار می‌دهد.","mm-curve-none":"از گزارش شما سپاسگزاریم! این پیچ را بررسی کردیم و دلیلی برای تغییر نقشه پیدا نکردیم، بنابراین آن را همان‌طور که بود گذاشتیم.","mm-rail-done":"سپاسگزاریم! گذرگاه راه‌آهن را به نقشه اضافه کردیم، بنابراین برنامه به رانندگان درباره آن هشدار می‌دهد.","mm-rail-none":"از گزارش شما سپاسگزاریم! بررسی کردیم و اینجا گذرگاه راه‌آهنی ندیدیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-camera-done":"سپاسگزاریم! دوربین کنترل سرعت را به نقشه اضافه کردیم.","mm-camera-none":"از گزارش شما سپاسگزاریم! بررسی کردیم اما نتوانستیم وجود دوربین کنترل سرعت را در اینجا تأیید کنیم، بنابراین نقشه را همان‌طور که بود گذاشتیم.","mm-done":"سپاسگزاریم! نقشه را در این محل به‌روز کردیم. این تغییر پس از به‌روزرسانی بعدی نقشه، معمولاً ظرف چند روز، در برنامه نمایش داده می‌شود.","mm-none":"از گزارش شما سپاسگزاریم! نقشه را در این محل بررسی کردیم و چیزی برای تغییر پیدا نکردیم، بنابراین آن را همان‌طور که بود گذاشتیم."},"sv":{"t-turn-ask":"Tack för rapporten! Vilken sväng gällde det: från vilken gata in på vilken, och åt vilket håll körde du?","t-turn-done":"Tack! Vi har rättat svängen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-address-ask":"Tack för rapporten! Vilken är rätt adress eller gatunamn, och vilken plats försökte du ta dig till?","t-address-done":"Tack! Vi har rättat adressen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-route-ask":"Tack för rapporten! Var startade du, vart var du på väg och vilken väg hade du väntat dig att appen skulle ta?","t-route-done":"Tack för rapporten! Vi har kollat kartan här och den stämmer. Appen väljer rutt utifrån trafiken i realtid, så den kan skilja sig från dag till dag.","t-roundabout-ask":"Tack för rapporten! Vilken korsning borde vara en rondell? Gatorna som möts där hjälper oss att hitta den.","t-roundabout-done":"Tack! Vi har lagt till rondellen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-general-ask":"Tack för rapporten! Kan du berätta lite mer om vad som var fel, och exakt var?","t-junction-ask":"Tack för rapporten! Vilken korsning, avfart eller bro gällde det, och åt vilket håll körde du?","t-junction-done":"Tack! Vi har rättat korsningen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-direction-ask":"Tack för rapporten! Vilken gata gällde det, och åt vilket håll är den egentligen öppen för trafik?","t-direction-done":"Tack! Vi har rättat körriktningen på kartan. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-road-ask":"Tack för rapporten! Vad heter vägen, var börjar och slutar den, och är den öppen för alla?","t-road-done":"Tack! Vi har lagt till vägen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-landmark-ask":"Tack för rapporten! Vad heter platsen, och var ligger den exakt?","t-landmark-done":"Tack! Vi har lagt till platsen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","t-blocked-ask":"Tack för rapporten! Är vägen avstängd för gott eller bara ett tag? Om du vet hur länge hjälper det mycket.","t-blocked-done":"Tack! Vi har lagt in avstängningen på kartan, så appen leder trafiken runt den.","t-speed-ask":"Tack för rapporten! Vilken hastighetsgräns är skyltad där, och åt vilket håll?","t-speed-done":"Tack! Vi har uppdaterat hastighetsgränsen på kartan. Den syns i appen efter nästa kartuppdatering, oftast inom några dagar.","nothing":"Tack för rapporten! Vi har kollat kartan här men inte hittat något fel, så vi låter den vara som den är. Om det händer igen får du gärna skicka en ny rapport från platsen.","mm-ask":"Tack för rapporten! Kan du berätta lite mer: exakt var det är, och åt vilket håll du körde?","mm-bump-done":"Tack! Vi har lagt till farthindret på kartan, så appen varnar förare för det.","mm-bump-none":"Tack för rapporten! Vi har kollat men kunde inte se något farthinder här, så vi låter kartan vara som den är.","mm-light-done":"Tack! Vi har lagt till trafikljusen på kartan.","mm-light-none":"Tack för rapporten! Vi har kollat men kunde inte se några trafikljus här, så vi låter kartan vara som den är.","mm-curve-done":"Tack! Vi har markerat den farliga kurvan på kartan, så appen varnar förare för den.","mm-curve-none":"Tack för rapporten! Vi har kollat kurvan men inte hittat någon anledning att ändra kartan, så vi låter den vara som den är.","mm-rail-done":"Tack! Vi har lagt till järnvägsövergången på kartan, så appen varnar förare för den.","mm-rail-none":"Tack för rapporten! Vi har kollat men kunde inte se någon järnvägsövergång här, så vi låter kartan vara som den är.","mm-camera-done":"Tack! Vi har lagt till fartkameran på kartan.","mm-camera-none":"Tack för rapporten! Vi har kollat men kunde inte bekräfta någon fartkamera här, så vi låter kartan vara som den är.","mm-done":"Tack! Vi har uppdaterat kartan här. Ändringen syns i appen efter nästa kartuppdatering, oftast inom några dagar.","mm-none":"Tack för rapporten! Vi har kollat kartan här men inte hittat något att ändra, så vi låter den vara som den är."},"lt":{"t-turn-ask":"Ačiū už pranešimą! Apie kurį posūkį kalbate: iš kurios gatvės į kurią ir kuria kryptimi važiavote?","t-turn-done":"Ačiū! Pataisėme šį posūkį žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-address-ask":"Ačiū už pranešimą! Koks yra teisingas adresas ar gatvės pavadinimas ir į kurią vietą norėjote nuvykti?","t-address-done":"Ačiū! Pataisėme adresą žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-route-ask":"Ačiū už pranešimą! Iš kur išvykote, kur važiavote ir kokiu keliu tikėjotės, kad programėlė jus nuves?","t-route-done":"Ačiū už pranešimą! Patikrinome žemėlapį šioje vietoje ir jis teisingas. Programėlė maršrutą parenka pagal eismą realiuoju laiku, todėl jis kiekvieną dieną gali skirtis.","t-roundabout-ask":"Ačiū už pranešimą! Kuri sankryža turėtų būti žiedinė? Ten susikertančių gatvių pavadinimai padės mums ją rasti.","t-roundabout-done":"Ačiū! Pažymėjome žiedinę sankryžą žemėlapyje. Programėlėje ji bus matoma po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-general-ask":"Ačiū už pranešimą! Ar galite papasakoti šiek tiek daugiau, kas buvo negerai ir kur tiksliai?","t-junction-ask":"Ačiū už pranešimą! Kuri tai buvo sankryža, nuovaža ar tiltas ir kuria kryptimi važiavote?","t-junction-done":"Ačiū! Pataisėme sankryžą žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-direction-ask":"Ačiū už pranešimą! Kuri tai gatvė ir kuria kryptimi joje iš tikrųjų leidžiamas eismas?","t-direction-done":"Ačiū! Pataisėme eismo kryptį žemėlapyje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-road-ask":"Ačiū už pranešimą! Kaip vadinasi kelias, kur jis prasideda ir baigiasi, ir ar juo gali važiuoti visi?","t-road-done":"Ačiū! Įtraukėme kelią į žemėlapį. Programėlėje jis bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-landmark-ask":"Ačiū už pranešimą! Kaip vadinasi ta vieta ir kur tiksliai ji yra?","t-landmark-done":"Ačiū! Įtraukėme vietą į žemėlapį. Programėlėje ji bus matoma po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","t-blocked-ask":"Ačiū už pranešimą! Ar kelias uždarytas visam laikui, ar laikinai? Jei žinote, iki kada, tai labai padėtų.","t-blocked-done":"Ačiū! Pažymėjome uždarymą žemėlapyje, todėl programėlė parinks maršrutą jį aplenkdama.","t-speed-ask":"Ačiū už pranešimą! Koks greičio apribojimas ten nurodytas ženklu ir kuria kryptimi?","t-speed-done":"Ačiū! Atnaujinome greičio apribojimą žemėlapyje. Programėlėje jis bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","nothing":"Ačiū už pranešimą! Patikrinome žemėlapį šioje vietoje ir klaidų neradome, todėl palikome jį tokį, koks yra. Jei tai pasikartos, atsiųskite naują pranešimą iš tos vietos.","mm-ask":"Ačiū už pranešimą! Ar galite papasakoti šiek tiek daugiau: kur tiksliai tai yra ir kuria kryptimi važiavote?","mm-bump-done":"Ačiū! Pažymėjome greičio mažinimo kalnelį žemėlapyje, todėl programėlė apie jį įspės vairuotojus.","mm-bump-none":"Ačiū už pranešimą! Patikrinome, bet greičio mažinimo kalnelio čia nepastebėjome, todėl žemėlapį palikome tokį, koks yra.","mm-light-done":"Ačiū! Pažymėjome šviesoforą žemėlapyje.","mm-light-none":"Ačiū už pranešimą! Patikrinome, bet šviesoforo čia nepastebėjome, todėl žemėlapį palikome tokį, koks yra.","mm-curve-done":"Ačiū! Pažymėjome pavojingą posūkį žemėlapyje, todėl programėlė apie jį įspės vairuotojus.","mm-curve-none":"Ačiū už pranešimą! Patikrinome šį posūkį ir neradome priežasties keisti žemėlapį, todėl palikome jį tokį, koks yra.","mm-rail-done":"Ačiū! Pažymėjome geležinkelio pervažą žemėlapyje, todėl programėlė apie ją įspės vairuotojus.","mm-rail-none":"Ačiū už pranešimą! Patikrinome, bet geležinkelio pervažos čia nepastebėjome, todėl žemėlapį palikome tokį, koks yra.","mm-camera-done":"Ačiū! Pažymėjome greičio matuoklį žemėlapyje.","mm-camera-none":"Ačiū už pranešimą! Patikrinome, bet negalėjome patvirtinti, kad čia yra greičio matuoklis, todėl žemėlapį palikome tokį, koks yra.","mm-done":"Ačiū! Atnaujinome žemėlapį šioje vietoje. Pakeitimas programėlėje bus matomas po kito žemėlapio atnaujinimo, paprastai per kelias dienas.","mm-none":"Ačiū už pranešimą! Patikrinome žemėlapį šioje vietoje ir neradome nieko, ką reikėtų keisti, todėl palikome jį tokį, koks yra."},"ms":{"t-turn-ask":"Terima kasih atas laporan anda! Belokan yang mana satu: dari jalan mana ke jalan mana, dan ke arah mana anda memandu?","t-turn-done":"Terima kasih! Kami telah membetulkan belokan itu di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-address-ask":"Terima kasih atas laporan anda! Apakah alamat atau nama jalan yang betul, dan ke tempat mana anda hendak pergi?","t-address-done":"Terima kasih! Kami telah membetulkan alamat itu di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-route-ask":"Terima kasih atas laporan anda! Dari mana anda bermula, ke mana anda hendak pergi, dan ikut jalan mana yang anda jangka aplikasi akan bawa anda?","t-route-done":"Terima kasih atas laporan anda! Kami telah menyemak peta di sini dan ia betul. Aplikasi memilih laluan berdasarkan trafik semasa, jadi laluannya mungkin berbeza dari hari ke hari.","t-roundabout-ask":"Terima kasih atas laporan anda! Persimpangan mana yang sepatutnya menjadi bulatan? Nama jalan yang bertemu di situ membantu kami mencarinya.","t-roundabout-done":"Terima kasih! Kami telah menambah bulatan itu ke peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-general-ask":"Terima kasih atas laporan anda! Boleh beritahu kami sedikit lagi tentang apa yang salah, dan di mana tepatnya?","t-junction-ask":"Terima kasih atas laporan anda! Persimpangan, susur keluar atau jambatan yang mana, dan ke arah mana anda memandu?","t-junction-done":"Terima kasih! Kami telah membetulkan persimpangan itu di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-direction-ask":"Terima kasih atas laporan anda! Jalan yang mana, dan ke arah mana sebenarnya ia dibuka kepada lalu lintas?","t-direction-done":"Terima kasih! Kami telah membetulkan arah pemanduan di peta. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-road-ask":"Terima kasih atas laporan anda! Apakah nama jalan itu, di mana ia bermula dan berakhir, dan adakah ia dibuka kepada semua?","t-road-done":"Terima kasih! Kami telah menambah jalan itu ke peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-landmark-ask":"Terima kasih atas laporan anda! Apakah nama tempat itu, dan di mana tepatnya ia terletak?","t-landmark-done":"Terima kasih! Kami telah menambah tempat itu ke peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","t-blocked-ask":"Terima kasih atas laporan anda! Adakah jalan itu ditutup terus atau buat sementara? Jika anda tahu sehingga bila, itu sangat membantu.","t-blocked-done":"Terima kasih! Kami telah menambah penutupan jalan itu ke peta, jadi aplikasi akan memilih laluan lain.","t-speed-ask":"Terima kasih atas laporan anda! Berapakah had laju yang dipaparkan pada papan tanda di situ, dan untuk arah mana?","t-speed-done":"Terima kasih! Kami telah mengemas kini had laju di peta. Ia akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","nothing":"Terima kasih atas laporan anda! Kami telah menyemak peta di sini dan tidak menemui sebarang kesilapan, jadi kami membiarkannya seperti sedia ada. Jika ia berlaku lagi, sila hantar laporan baharu dari lokasi itu.","mm-ask":"Terima kasih atas laporan anda! Boleh beritahu kami sedikit lagi: di mana tepatnya, dan ke arah mana anda memandu?","mm-bump-done":"Terima kasih! Kami telah menambah bonggol jalan itu ke peta, jadi aplikasi akan memberi amaran kepada pemandu.","mm-bump-none":"Terima kasih atas laporan anda! Kami telah menyemak dan tidak nampak sebarang bonggol jalan di sini, jadi kami membiarkan peta seperti sedia ada.","mm-light-done":"Terima kasih! Kami telah menambah lampu isyarat itu ke peta.","mm-light-none":"Terima kasih atas laporan anda! Kami telah menyemak dan tidak nampak sebarang lampu isyarat di sini, jadi kami membiarkan peta seperti sedia ada.","mm-curve-done":"Terima kasih! Kami telah menandakan selekoh berbahaya itu di peta, jadi aplikasi akan memberi amaran kepada pemandu.","mm-curve-none":"Terima kasih atas laporan anda! Kami telah menyemak selekoh ini dan tidak menemui sebab untuk mengubah peta, jadi kami membiarkannya seperti sedia ada.","mm-rail-done":"Terima kasih! Kami telah menambah lintasan kereta api itu ke peta, jadi aplikasi akan memberi amaran kepada pemandu.","mm-rail-none":"Terima kasih atas laporan anda! Kami telah menyemak dan tidak nampak sebarang lintasan kereta api di sini, jadi kami membiarkan peta seperti sedia ada.","mm-camera-done":"Terima kasih! Kami telah menambah kamera had laju itu ke peta.","mm-camera-none":"Terima kasih atas laporan anda! Kami telah menyemak tetapi tidak dapat mengesahkan adanya kamera had laju di sini, jadi kami membiarkan peta seperti sedia ada.","mm-done":"Terima kasih! Kami telah mengemas kini peta di sini. Perubahan akan dipaparkan dalam aplikasi selepas kemas kini peta seterusnya, biasanya dalam beberapa hari.","mm-none":"Terima kasih atas laporan anda! Kami telah menyemak peta di sini dan tidak menemui apa-apa yang perlu diubah, jadi kami membiarkannya seperti sedia ada."},"ca":{"t-turn-ask":"Gràcies per l’avís! Quin gir era: de quin carrer a quin, i en quin sentit circulaves?","t-turn-done":"Gràcies! Hem corregit aquest gir al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-address-ask":"Gràcies per l’avís! Quina és l’adreça o el nom del carrer correcte, i a quin lloc volies arribar?","t-address-done":"Gràcies! Hem corregit l’adreça al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-route-ask":"Gràcies per l’avís! D’on sorties, on anaves i per on esperaves que et portés l’app?","t-route-done":"Gràcies per l’avís! Hem revisat el mapa aquí i és correcte. L’app tria la ruta segons el trànsit en temps real, així que pot variar d’un dia a l’altre.","t-roundabout-ask":"Gràcies per l’avís! Quina cruïlla hauria de ser una rotonda? Els carrers que s’hi troben ens ajuden a localitzar-la.","t-roundabout-done":"Gràcies! Hem afegit la rotonda al mapa. L’app la mostrarà després de la propera actualització del mapa, normalment en pocs dies.","t-general-ask":"Gràcies per l’avís! Ens pots explicar una mica més què no anava bé, i on exactament?","t-junction-ask":"Gràcies per l’avís! Quina cruïlla, sortida o pont era, i en quin sentit circulaves?","t-junction-done":"Gràcies! Hem corregit la cruïlla al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-direction-ask":"Gràcies per l’avís! Quin carrer era, i en quin sentit està obert realment al trànsit?","t-direction-done":"Gràcies! Hem corregit el sentit de circulació al mapa. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","t-road-ask":"Gràcies per l’avís! Com es diu la via, on comença i on acaba, i és oberta a tothom?","t-road-done":"Gràcies! Hem afegit la via al mapa. L’app la mostrarà després de la propera actualització del mapa, normalment en pocs dies.","t-landmark-ask":"Gràcies per l’avís! Com es diu el lloc, i on és exactament?","t-landmark-done":"Gràcies! Hem afegit el lloc al mapa. Apareixerà a l’app després de la propera actualització del mapa, normalment en pocs dies.","t-blocked-ask":"Gràcies per l’avís! La via està tallada definitivament o només durant un temps? Si saps fins quan, ens ajuda molt.","t-blocked-done":"Gràcies! Hem afegit el tall al mapa, així que l’app proposarà rutes que l’evitin.","t-speed-ask":"Gràcies per l’avís! Quin límit de velocitat hi ha senyalitzat, i per a quin sentit?","t-speed-done":"Gràcies! Hem actualitzat el límit de velocitat al mapa. L’app el mostrarà després de la propera actualització del mapa, normalment en pocs dies.","nothing":"Gràcies per l’avís! Hem revisat el mapa aquí i no hi hem trobat res malament, així que l’hem deixat tal com estava. Si torna a passar, envia un avís nou des del mateix lloc.","mm-ask":"Gràcies per l’avís! Ens pots explicar una mica més: on és exactament i en quin sentit circulaves?","mm-bump-done":"Gràcies! Hem afegit el ressalt al mapa, així que l’app n’avisarà els conductors.","mm-bump-none":"Gràcies per l’avís! Ho hem revisat i no hi hem vist cap ressalt, així que hem deixat el mapa tal com estava.","mm-light-done":"Gràcies! Hem afegit el semàfor al mapa.","mm-light-none":"Gràcies per l’avís! Ho hem revisat i no hi hem vist cap semàfor, així que hem deixat el mapa tal com estava.","mm-curve-done":"Gràcies! Hem marcat el revolt perillós al mapa, així que l’app n’avisarà els conductors.","mm-curve-none":"Gràcies per l’avís! Hem revisat aquest revolt i no hem trobat cap motiu per canviar el mapa, així que l’hem deixat tal com estava.","mm-rail-done":"Gràcies! Hem afegit el pas a nivell al mapa, així que l’app n’avisarà els conductors.","mm-rail-none":"Gràcies per l’avís! Ho hem revisat i no hi hem vist cap pas a nivell, així que hem deixat el mapa tal com estava.","mm-camera-done":"Gràcies! Hem afegit el radar al mapa.","mm-camera-none":"Gràcies per l’avís! Ho hem revisat i no hem pogut confirmar que hi hagi un radar, així que hem deixat el mapa tal com estava.","mm-done":"Gràcies! Hem actualitzat el mapa aquí. L’app mostrarà el canvi després de la propera actualització del mapa, normalment en pocs dies.","mm-none":"Gràcies per l’avís! Hem revisat el mapa aquí i no hi hem trobat res a canviar, així que l’hem deixat tal com estava."},"fr":{"t-turn-ask":"Merci pour le signalement ! Où fallait-il tourner : de quelle rue vers quelle rue, et dans quel sens rouliez-vous ?","t-turn-done":"Merci ! Nous avons corrigé ce changement de direction sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-address-ask":"Merci pour le signalement ! Quelle est la bonne adresse ou le bon nom de rue, et quel lieu cherchiez-vous à rejoindre ?","t-address-done":"Merci ! Nous avons corrigé l’adresse sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-route-ask":"Merci pour le signalement ! D’où êtes-vous parti, où alliez-vous, et par où pensiez-vous que l’appli vous ferait passer ?","t-route-done":"Merci pour le signalement ! Nous avons vérifié la carte ici et elle est correcte. L’appli choisit l’itinéraire en fonction du trafic en temps réel, il peut donc varier d’un jour à l’autre.","t-roundabout-ask":"Merci pour le signalement ! Quel carrefour devrait être un rond-point ? Le nom des rues qui s’y croisent nous aide à le trouver.","t-roundabout-done":"Merci ! Nous avons ajouté le rond-point sur la carte. L’appli l’affichera après la prochaine mise à jour de la carte, en général sous quelques jours.","t-general-ask":"Merci pour le signalement ! Pouvez-vous nous en dire un peu plus sur le problème, et où exactement ?","t-junction-ask":"Merci pour le signalement ! De quel carrefour, sortie ou pont s’agit-il, et dans quel sens rouliez-vous ?","t-junction-done":"Merci ! Nous avons corrigé le carrefour sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-direction-ask":"Merci pour le signalement ! De quelle rue s’agit-il, et dans quel sens la circulation y est-elle réellement autorisée ?","t-direction-done":"Merci ! Nous avons corrigé le sens de circulation sur la carte. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","t-road-ask":"Merci pour le signalement ! Comment s’appelle la route, où commence-t-elle et où finit-elle, et est-elle ouverte à tous ?","t-road-done":"Merci ! Nous avons ajouté la route sur la carte. L’appli l’affichera après la prochaine mise à jour de la carte, en général sous quelques jours.","t-landmark-ask":"Merci pour le signalement ! Comment s’appelle ce lieu, et où se trouve-t-il exactement ?","t-landmark-done":"Merci ! Nous avons ajouté le lieu sur la carte. Il apparaîtra dans l’appli après la prochaine mise à jour de la carte, en général sous quelques jours.","t-blocked-ask":"Merci pour le signalement ! La route est-elle fermée définitivement ou temporairement ? Si vous savez jusqu’à quand, cela nous aide beaucoup.","t-blocked-done":"Merci ! Nous avons ajouté la fermeture sur la carte, l’appli la contourne donc désormais.","t-speed-ask":"Merci pour le signalement ! Quelle limitation de vitesse est indiquée à cet endroit, et dans quel sens ?","t-speed-done":"Merci ! Nous avons mis à jour la limitation de vitesse sur la carte. L’appli l’affichera après la prochaine mise à jour de la carte, en général sous quelques jours.","nothing":"Merci pour le signalement ! Nous avons vérifié la carte ici sans rien trouver d’anormal, nous l’avons donc laissée telle quelle. Si cela se reproduit, envoyez un nouveau signalement depuis l’endroit.","mm-ask":"Merci pour le signalement ! Pouvez-vous nous en dire un peu plus : où exactement, et dans quel sens rouliez-vous ?","mm-bump-done":"Merci ! Nous avons ajouté le ralentisseur sur la carte, l’appli avertira donc les conducteurs.","mm-bump-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas vu de ralentisseur ici, nous avons donc laissé la carte telle quelle.","mm-light-done":"Merci ! Nous avons ajouté les feux tricolores sur la carte.","mm-light-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas vu de feux tricolores ici, nous avons donc laissé la carte telle quelle.","mm-curve-done":"Merci ! Nous avons signalé le virage dangereux sur la carte, l’appli avertira donc les conducteurs.","mm-curve-none":"Merci pour le signalement ! Nous avons vérifié ce virage et n’avons trouvé aucune raison de modifier la carte, nous l’avons donc laissée telle quelle.","mm-rail-done":"Merci ! Nous avons ajouté le passage à niveau sur la carte, l’appli avertira donc les conducteurs.","mm-rail-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas vu de passage à niveau ici, nous avons donc laissé la carte telle quelle.","mm-camera-done":"Merci ! Nous avons ajouté le radar sur la carte.","mm-camera-none":"Merci pour le signalement ! Nous avons vérifié et n’avons pas pu confirmer la présence d’un radar ici, nous avons donc laissé la carte telle quelle.","mm-done":"Merci ! Nous avons corrigé la carte à cet endroit. L’appli affichera le changement après la prochaine mise à jour de la carte, en général sous quelques jours.","mm-none":"Merci pour le signalement ! Nous avons vérifié la carte ici et n’avons rien trouvé à modifier, nous l’avons donc laissée telle quelle."},"pl":{"t-turn-ask":"Dziękujemy za zgłoszenie! O który skręt chodzi: z jakiej ulicy w jaką i w którym kierunku jazdy?","t-turn-done":"Dziękujemy! Poprawiliśmy ten skręt na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-address-ask":"Dziękujemy za zgłoszenie! Jaki jest prawidłowy adres lub nazwa ulicy i o jakie miejsce chodzi?","t-address-done":"Dziękujemy! Poprawiliśmy adres na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-route-ask":"Dziękujemy za zgłoszenie! Skąd i dokąd była trasa i którędy, twoim zdaniem, aplikacja powinna cię poprowadzić?","t-route-done":"Dziękujemy za zgłoszenie! Sprawdziliśmy mapę w tym miejscu i wszystko się zgadza. Aplikacja wybiera trasę na podstawie bieżącego ruchu, więc może się ona różnić z dnia na dzień.","t-roundabout-ask":"Dziękujemy za zgłoszenie! Które skrzyżowanie powinno być rondem? Nazwy ulic, które się tam spotykają, pomogą nam je znaleźć.","t-roundabout-done":"Dziękujemy! Dodaliśmy rondo do mapy. Aplikacja pokaże je po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-general-ask":"Dziękujemy za zgłoszenie! Czy możesz napisać trochę więcej o tym, co było nie tak i gdzie dokładnie?","t-junction-ask":"Dziękujemy za zgłoszenie! O które skrzyżowanie, zjazd lub most chodzi i w którym kierunku jazdy?","t-junction-done":"Dziękujemy! Poprawiliśmy skrzyżowanie na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-direction-ask":"Dziękujemy za zgłoszenie! O którą ulicę chodzi i w którym kierunku ruch jest na niej faktycznie dozwolony?","t-direction-done":"Dziękujemy! Poprawiliśmy kierunek ruchu na mapie. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-road-ask":"Dziękujemy za zgłoszenie! Jak nazywa się ta droga, gdzie się zaczyna i kończy i czy jest dostępna dla wszystkich?","t-road-done":"Dziękujemy! Dodaliśmy drogę do mapy. Aplikacja pokaże ją po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-landmark-ask":"Dziękujemy za zgłoszenie! Jak nazywa się to miejsce i gdzie dokładnie się znajduje?","t-landmark-done":"Dziękujemy! Dodaliśmy to miejsce do mapy. Pojawi się w aplikacji po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","t-blocked-ask":"Dziękujemy za zgłoszenie! Czy droga jest zamknięta na stałe, czy tymczasowo? Jeśli wiesz, do kiedy, bardzo nam to pomoże.","t-blocked-done":"Dziękujemy! Dodaliśmy zamknięcie do mapy, więc aplikacja będzie je omijać.","t-speed-ask":"Dziękujemy za zgłoszenie! Jakie ograniczenie prędkości jest tam na znaku i dla którego kierunku?","t-speed-done":"Dziękujemy! Zaktualizowaliśmy ograniczenie prędkości na mapie. Aplikacja pokaże je po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","nothing":"Dziękujemy za zgłoszenie! Sprawdziliśmy mapę w tym miejscu i nie znaleźliśmy błędu, więc zostawiliśmy ją bez zmian. Jeśli to się powtórzy, wyślij nowe zgłoszenie z tego miejsca.","mm-ask":"Dziękujemy za zgłoszenie! Czy możesz napisać trochę więcej: gdzie dokładnie to jest i w którym kierunku jazdy?","mm-bump-done":"Dziękujemy! Dodaliśmy próg zwalniający do mapy, więc aplikacja ostrzeże przed nim kierowców.","mm-bump-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie widzimy tu progu zwalniającego, więc zostawiliśmy mapę bez zmian.","mm-light-done":"Dziękujemy! Dodaliśmy sygnalizację świetlną do mapy.","mm-light-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie widzimy tu sygnalizacji świetlnej, więc zostawiliśmy mapę bez zmian.","mm-curve-done":"Dziękujemy! Oznaczyliśmy na mapie niebezpieczny zakręt, więc aplikacja ostrzeże przed nim kierowców.","mm-curve-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy ten zakręt i nie znaleźliśmy powodu, by zmieniać mapę, więc zostawiliśmy ją bez zmian.","mm-rail-done":"Dziękujemy! Dodaliśmy przejazd kolejowy do mapy, więc aplikacja ostrzeże przed nim kierowców.","mm-rail-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie widzimy tu przejazdu kolejowego, więc zostawiliśmy mapę bez zmian.","mm-camera-done":"Dziękujemy! Dodaliśmy fotoradar do mapy.","mm-camera-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy i nie udało nam się potwierdzić, że jest tu fotoradar, więc zostawiliśmy mapę bez zmian.","mm-done":"Dziękujemy! Zaktualizowaliśmy mapę w tym miejscu. Aplikacja pokaże zmianę po najbliższej aktualizacji mapy, zwykle w ciągu kilku dni.","mm-none":"Dziękujemy za zgłoszenie! Sprawdziliśmy mapę w tym miejscu i nie znaleźliśmy nic do zmiany, więc zostawiliśmy ją bez zmian."},"uk":{"t-turn-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, про який поворот ідеться: з якої вулиці на яку і в якому напрямку ви їхали?","t-turn-done":"Дякуємо! Ми виправили цей поворот на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-address-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, яка правильна адреса чи назва вулиці і куди саме ви хотіли потрапити?","t-address-done":"Дякуємо! Ми виправили адресу на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-route-ask":"Дякуємо за повідомлення! Звідки й куди ви їхали і яким шляхом, на вашу думку, мав вести застосунок?","t-route-done":"Дякуємо за повідомлення! Ми перевірили карту в цьому місці, і з нею все гаразд. Застосунок обирає маршрут з урахуванням поточного трафіку, тому він може відрізнятися з дня на день.","t-roundabout-ask":"Дякуємо за повідомлення! Яке перехрестя має бути з круговим рухом? Назви вулиць, що там сходяться, допоможуть нам його знайти.","t-roundabout-done":"Дякуємо! Ми позначили на карті перехрестя з круговим рухом. Воно з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-general-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, трохи докладніше, що саме було не так і де саме?","t-junction-ask":"Дякуємо за повідомлення! Про яке перехрестя, з’їзд чи міст ідеться і в якому напрямку ви їхали?","t-junction-done":"Дякуємо! Ми виправили перехрестя на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-direction-ask":"Дякуємо за повідомлення! Про яку вулицю йдеться і в якому напрямку рух нею насправді дозволений?","t-direction-done":"Дякуємо! Ми виправили напрямок руху на карті. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-road-ask":"Дякуємо за повідомлення! Як називається дорога, де вона починається й закінчується і чи відкрита вона для всіх?","t-road-done":"Дякуємо! Ми додали дорогу на карту. Вона з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-landmark-ask":"Дякуємо за повідомлення! Як називається це місце і де саме воно розташоване?","t-landmark-done":"Дякуємо! Ми додали це місце на карту. Воно з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","t-blocked-ask":"Дякуємо за повідомлення! Дорогу закрито назовсім чи тимчасово? Якщо знаєте, до якого часу, це дуже допоможе.","t-blocked-done":"Дякуємо! Ми додали перекриття на карту, тож застосунок прокладатиме маршрут в об’їзд.","t-speed-ask":"Дякуємо за повідомлення! Яке обмеження швидкості вказано на знаку і для якого напрямку?","t-speed-done":"Дякуємо! Ми оновили обмеження швидкості на карті. Воно з’явиться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","nothing":"Дякуємо за повідомлення! Ми перевірили карту в цьому місці й не знайшли помилок, тому залишили все як є. Якщо це повториться, надішліть, будь ласка, нове повідомлення з того місця.","mm-ask":"Дякуємо за повідомлення! Підкажіть, будь ласка, трохи більше: де саме це місце і в якому напрямку ви їхали?","mm-bump-done":"Дякуємо! Ми додали «лежачого поліцейського» на карту, тож застосунок попереджатиме про нього водіїв.","mm-bump-none":"Дякуємо за повідомлення! Ми перевірили й не побачили тут «лежачого поліцейського», тому залишили карту без змін.","mm-light-done":"Дякуємо! Ми додали світлофор на карту.","mm-light-none":"Дякуємо за повідомлення! Ми перевірили й не побачили тут світлофора, тому залишили карту без змін.","mm-curve-done":"Дякуємо! Ми позначили на карті небезпечний поворот, тож застосунок попереджатиме про нього водіїв.","mm-curve-none":"Дякуємо за повідомлення! Ми перевірили цей поворот і не знайшли причин змінювати карту, тому залишили все як є.","mm-rail-done":"Дякуємо! Ми додали залізничний переїзд на карту, тож застосунок попереджатиме про нього водіїв.","mm-rail-none":"Дякуємо за повідомлення! Ми перевірили й не побачили тут залізничного переїзду, тому залишили карту без змін.","mm-camera-done":"Дякуємо! Ми додали камеру контролю швидкості на карту.","mm-camera-none":"Дякуємо за повідомлення! Ми перевірили й не змогли підтвердити, що тут є камера контролю швидкості, тому залишили карту без змін.","mm-done":"Дякуємо! Ми оновили карту в цьому місці. Зміни з’являться в застосунку після наступного оновлення карти, зазвичай протягом кількох днів.","mm-none":"Дякуємо за повідомлення! Ми перевірили карту в цьому місці й не знайшли, що змінювати, тому залишили все як є."},"ro":{"t-turn-ask":"Mulțumim pentru raportare! Despre ce viraj e vorba: de pe ce stradă pe ce stradă și în ce direcție mergeai?","t-turn-done":"Mulțumim! Am corectat virajul pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-address-ask":"Mulțumim pentru raportare! Care este adresa sau numele corect al străzii și unde voiai să ajungi?","t-address-done":"Mulțumim! Am corectat adresa pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-route-ask":"Mulțumim pentru raportare! De unde ai plecat, unde mergeai și pe ce traseu te așteptai să te ducă aplicația?","t-route-done":"Mulțumim pentru raportare! Am verificat harta aici și este corectă. Aplicația alege traseul în funcție de traficul în timp real, așa că poate diferi de la o zi la alta.","t-roundabout-ask":"Mulțumim pentru raportare! Ce intersecție ar trebui să fie sens giratoriu? Numele străzilor care se întâlnesc acolo ne ajută să o găsim.","t-roundabout-done":"Mulțumim! Am adăugat sensul giratoriu pe hartă. Aplicația îl va arăta după următoarea actualizare a hărții, de obicei în câteva zile.","t-general-ask":"Mulțumim pentru raportare! Ne poți spune puțin mai multe despre ce nu era în regulă și unde exact?","t-junction-ask":"Mulțumim pentru raportare! Despre ce intersecție, ieșire sau pod e vorba și în ce direcție mergeai?","t-junction-done":"Mulțumim! Am corectat intersecția pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-direction-ask":"Mulțumim pentru raportare! Despre ce stradă e vorba și în ce sens se circulă de fapt pe ea?","t-direction-done":"Mulțumim! Am corectat sensul de circulație pe hartă. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","t-road-ask":"Mulțumim pentru raportare! Cum se numește drumul, unde începe și unde se termină și este deschis tuturor?","t-road-done":"Mulțumim! Am adăugat drumul pe hartă. Aplicația îl va arăta după următoarea actualizare a hărții, de obicei în câteva zile.","t-landmark-ask":"Mulțumim pentru raportare! Cum se numește locul și unde exact se află?","t-landmark-done":"Mulțumim! Am adăugat locul pe hartă. Va apărea în aplicație după următoarea actualizare a hărții, de obicei în câteva zile.","t-blocked-ask":"Mulțumim pentru raportare! Drumul este închis definitiv sau temporar? Dacă știi până când, ne ajută mult.","t-blocked-done":"Mulțumim! Am adăugat închiderea pe hartă, așa că aplicația o va ocoli.","t-speed-ask":"Mulțumim pentru raportare! Ce limită de viteză este afișată acolo și pentru ce sens?","t-speed-done":"Mulțumim! Am actualizat limita de viteză pe hartă. Aplicația o va arăta după următoarea actualizare a hărții, de obicei în câteva zile.","nothing":"Mulțumim pentru raportare! Am verificat harta aici și nu am găsit nicio problemă, așa că am lăsat-o așa cum este. Dacă se întâmplă din nou, te rugăm să trimiți un raport nou chiar din locul respectiv.","mm-ask":"Mulțumim pentru raportare! Ne poți spune puțin mai multe: unde exact este și în ce direcție mergeai?","mm-bump-done":"Mulțumim! Am adăugat limitatorul de viteză pe hartă, așa că aplicația îi va avertiza pe șoferi.","mm-bump-none":"Mulțumim pentru raportare! Am verificat și nu am văzut niciun limitator de viteză aici, așa că am lăsat harta așa cum este.","mm-light-done":"Mulțumim! Am adăugat semaforul pe hartă.","mm-light-none":"Mulțumim pentru raportare! Am verificat și nu am văzut niciun semafor aici, așa că am lăsat harta așa cum este.","mm-curve-done":"Mulțumim! Am marcat curba periculoasă pe hartă, așa că aplicația îi va avertiza pe șoferi.","mm-curve-none":"Mulțumim pentru raportare! Am verificat această curbă și nu am găsit niciun motiv să modificăm harta, așa că am lăsat-o așa cum este.","mm-rail-done":"Mulțumim! Am adăugat trecerea la nivel cu calea ferată pe hartă, așa că aplicația îi va avertiza pe șoferi.","mm-rail-none":"Mulțumim pentru raportare! Am verificat și nu am văzut nicio trecere la nivel cu calea ferată aici, așa că am lăsat harta așa cum este.","mm-camera-done":"Mulțumim! Am adăugat radarul pe hartă.","mm-camera-none":"Mulțumim pentru raportare! Am verificat și nu am putut confirma un radar aici, așa că am lăsat harta așa cum este.","mm-done":"Mulțumim! Am actualizat harta aici. Aplicația va arăta schimbarea după următoarea actualizare a hărții, de obicei în câteva zile.","mm-none":"Mulțumim pentru raportare! Am verificat harta aici și nu am găsit nimic de schimbat, așa că am lăsat-o așa cum este."},"sl":{"t-turn-ask":"Hvala za prijavo! Za kateri zavoj gre: s katere ulice na katero in v katero smer ste vozili?","t-turn-done":"Hvala! Ta zavoj smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-address-ask":"Hvala za prijavo! Kateri je pravilni naslov ali ime ulice in kam ste želeli priti?","t-address-done":"Hvala! Naslov smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-route-ask":"Hvala za prijavo! Od kod ste šli, kam ste bili namenjeni in po kateri poti ste pričakovali, da vas bo vodila aplikacija?","t-route-done":"Hvala za prijavo! Zemljevid smo na tem mestu preverili in je pravilen. Aplikacija izbira pot glede na promet v živo, zato se lahko iz dneva v dan razlikuje.","t-roundabout-ask":"Hvala za prijavo! Katero križišče bi moralo biti krožišče? Imena ulic, ki se tam stikajo, nam pomagajo najti mesto.","t-roundabout-done":"Hvala! Krožišče smo dodali na zemljevid. Aplikacija ga bo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-general-ask":"Hvala za prijavo! Nam lahko poveste malo več o tem, kaj je bilo narobe in kje točno?","t-junction-ask":"Hvala za prijavo! Za katero križišče, izvoz ali most gre in v katero smer ste vozili?","t-junction-done":"Hvala! Križišče smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-direction-ask":"Hvala za prijavo! Za katero ulico gre in v katero smer je promet po njej v resnici dovoljen?","t-direction-done":"Hvala! Smer vožnje smo na zemljevidu popravili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-road-ask":"Hvala za prijavo! Kako se cesta imenuje, kje se začne in konča ter ali je odprta za vse?","t-road-done":"Hvala! Cesto smo dodali na zemljevid. Aplikacija jo bo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-landmark-ask":"Hvala za prijavo! Kako se imenuje ta lokacija in kje točno se nahaja?","t-landmark-done":"Hvala! Lokacijo smo dodali na zemljevid. V aplikaciji bo vidna po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","t-blocked-ask":"Hvala za prijavo! Je cesta zaprta za stalno ali začasno? Če veste, do kdaj, nam to zelo pomaga.","t-blocked-done":"Hvala! Zaporo smo dodali na zemljevid, zato jo aplikacija zdaj obide.","t-speed-ask":"Hvala za prijavo! Kakšna omejitev hitrosti je tam označena in za katero smer?","t-speed-done":"Hvala! Omejitev hitrosti smo na zemljevidu posodobili. Aplikacija jo bo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","nothing":"Hvala za prijavo! Zemljevid smo na tem mestu preverili in nismo našli napake, zato smo ga pustili, kot je. Če se ponovi, pošljite novo prijavo kar s tistega mesta.","mm-ask":"Hvala za prijavo! Nam lahko poveste malo več: kje točno je to in v katero smer ste vozili?","mm-bump-done":"Hvala! Hitrostno oviro smo dodali na zemljevid, zato bo aplikacija nanjo opozorila voznike.","mm-bump-none":"Hvala za prijavo! Preverili smo in tu nismo videli hitrostne ovire, zato smo zemljevid pustili, kot je.","mm-light-done":"Hvala! Semafor smo dodali na zemljevid.","mm-light-none":"Hvala za prijavo! Preverili smo in tu nismo videli semaforja, zato smo zemljevid pustili, kot je.","mm-curve-done":"Hvala! Nevaren ovinek smo označili na zemljevidu, zato bo aplikacija nanj opozorila voznike.","mm-curve-none":"Hvala za prijavo! Ta ovinek smo preverili in nismo našli razloga za spremembo zemljevida, zato smo ga pustili, kot je.","mm-rail-done":"Hvala! Železniški prehod smo dodali na zemljevid, zato bo aplikacija nanj opozorila voznike.","mm-rail-none":"Hvala za prijavo! Preverili smo in tu nismo videli železniškega prehoda, zato smo zemljevid pustili, kot je.","mm-camera-done":"Hvala! Radar smo dodali na zemljevid.","mm-camera-none":"Hvala za prijavo! Preverili smo, a radarja tu nismo mogli potrditi, zato smo zemljevid pustili, kot je.","mm-done":"Hvala! Zemljevid smo na tem mestu posodobili. Aplikacija bo spremembo pokazala po naslednji posodobitvi zemljevida, običajno v nekaj dneh.","mm-none":"Hvala za prijavo! Zemljevid smo na tem mestu preverili in nismo našli ničesar za spremembo, zato smo ga pustili, kot je."},"zh":{"t-turn-ask":"感谢您的报告！是哪个转弯：从哪条街转到哪条街，您当时往哪个方向行驶？","t-turn-done":"谢谢！我们已在地图上修正了这个转弯。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-address-ask":"感谢您的报告！正确的地址或街道名称是什么？您当时想去哪个地方？","t-address-done":"谢谢！我们已在地图上修正了地址。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-route-ask":"感谢您的报告！您从哪里出发、要去哪里，原本希望应用带您走哪条路线？","t-route-done":"感谢您的报告！我们检查了这里的地图，没有问题。应用会根据实时路况选择路线，所以每天的路线可能不同。","t-roundabout-ask":"感谢您的报告！哪个路口应该是环岛？在那里交汇的街道名称能帮助我们找到位置。","t-roundabout-done":"谢谢！我们已在地图上添加了环岛。下次地图更新后，应用中就会显示，通常在几天内。","t-general-ask":"感谢您的报告！能否再详细说说是哪里有问题、具体在什么位置？","t-junction-ask":"感谢您的报告！是哪个路口、出口或桥梁？您当时往哪个方向行驶？","t-junction-done":"谢谢！我们已在地图上修正了这个路口。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-direction-ask":"感谢您的报告！是哪条街道？它实际允许往哪个方向通行？","t-direction-done":"谢谢！我们已在地图上修正了行驶方向。下次地图更新后，应用中就会显示这项更改，通常在几天内。","t-road-ask":"感谢您的报告！这条道路叫什么名字，起点和终点在哪里，是否对所有人开放？","t-road-done":"谢谢！我们已在地图上添加了这条道路。下次地图更新后，应用中就会显示，通常在几天内。","t-landmark-ask":"感谢您的报告！这个地点叫什么名字，具体在哪里？","t-landmark-done":"谢谢！我们已在地图上添加了这个地点。下次地图更新后，应用中就会显示，通常在几天内。","t-blocked-ask":"感谢您的报告！这条路是永久封闭还是临时封闭？如果您知道封到什么时候，会对我们很有帮助。","t-blocked-done":"谢谢！我们已在地图上添加了封路信息，应用会绕开这里规划路线。","t-speed-ask":"感谢您的报告！那里标示的限速是多少，适用于哪个方向？","t-speed-done":"谢谢！我们已在地图上更新了限速。下次地图更新后，应用中就会显示，通常在几天内。","nothing":"感谢您的报告！我们检查了这里的地图，没有发现问题，所以保持原样。如果再次发生，请在现场重新提交报告。","mm-ask":"感谢您的报告！能否再告诉我们一些细节：具体位置在哪里，您当时往哪个方向行驶？","mm-bump-done":"谢谢！我们已在地图上添加了减速带，应用会提醒驾驶员注意。","mm-bump-none":"感谢您的报告！我们检查后没有发现这里有减速带，所以地图保持原样。","mm-light-done":"谢谢！我们已在地图上添加了红绿灯。","mm-light-none":"感谢您的报告！我们检查后没有发现这里有红绿灯，所以地图保持原样。","mm-curve-done":"谢谢！我们已在地图上标出了这个危险弯道，应用会提醒驾驶员注意。","mm-curve-none":"感谢您的报告！我们检查了这个弯道，没有发现需要修改地图的理由，所以保持原样。","mm-rail-done":"谢谢！我们已在地图上添加了铁路道口，应用会提醒驾驶员注意。","mm-rail-none":"感谢您的报告！我们检查后没有发现这里有铁路道口，所以地图保持原样。","mm-camera-done":"谢谢！我们已在地图上添加了测速摄像头。","mm-camera-none":"感谢您的报告！我们检查后无法确认这里有测速摄像头，所以地图保持原样。","mm-done":"谢谢！我们已在此处修正了地图。下次地图更新后，应用中就会显示这项更改，通常在几天内。","mm-none":"感谢您的报告！我们检查了这里的地图，没有发现需要修改的地方，所以保持原样。"},"no":{"t-turn-ask":"Takk for rapporten! Hvilken sving gjelder det: fra hvilken gate inn på hvilken, og hvilken retning kjørte du?","t-turn-done":"Takk! Vi har rettet svingen på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-address-ask":"Takk for rapporten! Hva er riktig adresse eller gatenavn, og hvilket sted prøvde du å komme til?","t-address-done":"Takk! Vi har rettet adressen på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-route-ask":"Takk for rapporten! Hvor startet du, hvor skulle du, og hvilken vei forventet du at appen skulle sende deg?","t-route-done":"Takk for rapporten! Vi har sjekket kartet her, og det stemmer. Appen velger rute ut fra trafikken i sanntid, så den kan variere fra dag til dag.","t-roundabout-ask":"Takk for rapporten! Hvilket kryss skal være en rundkjøring? Navnene på gatene som møtes der, hjelper oss å finne det.","t-roundabout-done":"Takk! Vi har lagt rundkjøringen inn på kartet. Den vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-general-ask":"Takk for rapporten! Kan du fortelle oss litt mer om hva som var feil, og nøyaktig hvor?","t-junction-ask":"Takk for rapporten! Hvilket kryss, hvilken avkjørsel eller bro gjelder det, og hvilken retning kjørte du?","t-junction-done":"Takk! Vi har rettet krysset på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-direction-ask":"Takk for rapporten! Hvilken gate gjelder det, og i hvilken retning er den egentlig åpen for trafikk?","t-direction-done":"Takk! Vi har rettet kjøreretningen på kartet. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-road-ask":"Takk for rapporten! Hva heter veien, hvor starter og slutter den, og er den åpen for alle?","t-road-done":"Takk! Vi har lagt veien inn på kartet. Den vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-landmark-ask":"Takk for rapporten! Hva heter stedet, og nøyaktig hvor ligger det?","t-landmark-done":"Takk! Vi har lagt stedet inn på kartet. Det vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","t-blocked-ask":"Takk for rapporten! Er veien stengt for godt eller bare en periode? Hvis du vet til når, hjelper det mye.","t-blocked-done":"Takk! Vi har lagt stengingen inn på kartet, så appen leder trafikken utenom.","t-speed-ask":"Takk for rapporten! Hvilken fartsgrense er skiltet der, og for hvilken retning?","t-speed-done":"Takk! Vi har oppdatert fartsgrensen på kartet. Den vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","nothing":"Takk for rapporten! Vi har sjekket kartet her og fant ingen feil, så vi lot det være som det er. Hvis det skjer igjen, send gjerne en ny rapport fra stedet.","mm-ask":"Takk for rapporten! Kan du fortelle oss litt mer: nøyaktig hvor det er, og hvilken retning du kjørte?","mm-bump-done":"Takk! Vi har lagt fartsdumpen inn på kartet, så appen varsler sjåførene om den.","mm-bump-none":"Takk for rapporten! Vi har sjekket og fant ingen fartsdump her, så vi lot kartet være som det er.","mm-light-done":"Takk! Vi har lagt trafikklysene inn på kartet.","mm-light-none":"Takk for rapporten! Vi har sjekket og fant ingen trafikklys her, så vi lot kartet være som det er.","mm-curve-done":"Takk! Vi har markert den farlige svingen på kartet, så appen varsler sjåførene om den.","mm-curve-none":"Takk for rapporten! Vi har sjekket denne svingen og fant ingen grunn til å endre kartet, så vi lot det være som det er.","mm-rail-done":"Takk! Vi har lagt planovergangen inn på kartet, så appen varsler sjåførene om den.","mm-rail-none":"Takk for rapporten! Vi har sjekket og fant ingen planovergang her, så vi lot kartet være som det er.","mm-camera-done":"Takk! Vi har lagt fotoboksen inn på kartet.","mm-camera-none":"Takk for rapporten! Vi har sjekket, men kunne ikke bekrefte noen fotoboks her, så vi lot kartet være som det er.","mm-done":"Takk! Vi har oppdatert kartet her. Endringen vises i appen etter neste kartoppdatering, vanligvis i løpet av noen dager.","mm-none":"Takk for rapporten! Vi har sjekket kartet her og fant ingenting å endre, så vi lot det være som det er."},"lv":{"t-turn-ask":"Paldies par ziņojumu! Par kuru pagriezienu ir runa: no kuras ielas uz kuru, un kurā virzienā braucāt?","t-turn-done":"Paldies! Mēs izlabojām šo pagriezienu kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-address-ask":"Paldies par ziņojumu! Kāda ir pareizā adrese vai ielas nosaukums, un uz kuru vietu vēlējāties nokļūt?","t-address-done":"Paldies! Mēs izlabojām adresi kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-route-ask":"Paldies par ziņojumu! No kurienes braucāt, uz kurieni devāties un pa kuru ceļu gaidījāt, ka lietotne jūs vedīs?","t-route-done":"Paldies par ziņojumu! Mēs pārbaudījām karti šajā vietā, un tā ir pareiza. Lietotne izvēlas maršrutu pēc satiksmes reāllaikā, tāpēc tas var atšķirties no dienas uz dienu.","t-roundabout-ask":"Paldies par ziņojumu! Kuram krustojumam vajadzētu būt aplim? Ielu nosaukumi, kas tur krustojas, palīdzēs mums to atrast.","t-roundabout-done":"Paldies! Mēs pievienojām kartei apli. Lietotnē tas būs redzams pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-general-ask":"Paldies par ziņojumu! Vai varat pastāstīt mazliet vairāk par to, kas bija nepareizi, un kur tieši?","t-junction-ask":"Paldies par ziņojumu! Par kuru krustojumu, nobrauktuvi vai tiltu ir runa, un kurā virzienā braucāt?","t-junction-done":"Paldies! Mēs izlabojām krustojumu kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-direction-ask":"Paldies par ziņojumu! Par kuru ielu ir runa, un kurā virzienā pa to patiesībā drīkst braukt?","t-direction-done":"Paldies! Mēs izlabojām braukšanas virzienu kartē. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-road-ask":"Paldies par ziņojumu! Kā sauc šo ceļu, kur tas sākas un beidzas, un vai tas ir atvērts visiem?","t-road-done":"Paldies! Mēs pievienojām kartei šo ceļu. Lietotnē tas būs redzams pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-landmark-ask":"Paldies par ziņojumu! Kā sauc šo vietu, un kur tieši tā atrodas?","t-landmark-done":"Paldies! Mēs pievienojām kartei šo vietu. Lietotnē tā būs redzama pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","t-blocked-ask":"Paldies par ziņojumu! Vai ceļš ir slēgts pavisam vai uz laiku? Ja zināt, līdz kuram laikam, tas ļoti palīdzēs.","t-blocked-done":"Paldies! Mēs atzīmējām slēgto ceļu kartē, tāpēc lietotne maršrutu veidos tam apkārt.","t-speed-ask":"Paldies par ziņojumu! Kāds ātruma ierobežojums tur norādīts, un kuram braukšanas virzienam?","t-speed-done":"Paldies! Mēs atjauninājām ātruma ierobežojumu kartē. Lietotnē tas būs redzams pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","nothing":"Paldies par ziņojumu! Mēs pārbaudījām karti šajā vietā un neatradām nekādu kļūdu, tāpēc atstājām to kā ir. Ja tas atkārtosies, lūdzu, nosūtiet jaunu ziņojumu no tās vietas.","mm-ask":"Paldies par ziņojumu! Vai varat pastāstīt mazliet vairāk: kur tieši tas ir un kurā virzienā braucāt?","mm-bump-done":"Paldies! Mēs pievienojām kartei ātrumvalni, tāpēc lietotne par to brīdinās vadītājus.","mm-bump-none":"Paldies par ziņojumu! Mēs pārbaudījām un šeit ātrumvalni neredzējām, tāpēc atstājām karti kā ir.","mm-light-done":"Paldies! Mēs pievienojām kartei luksoforu.","mm-light-none":"Paldies par ziņojumu! Mēs pārbaudījām un šeit luksoforu neredzējām, tāpēc atstājām karti kā ir.","mm-curve-done":"Paldies! Mēs atzīmējām kartē bīstamo līkumu, tāpēc lietotne par to brīdinās vadītājus.","mm-curve-none":"Paldies par ziņojumu! Mēs pārbaudījām šo līkumu un neatradām iemeslu mainīt karti, tāpēc atstājām to kā ir.","mm-rail-done":"Paldies! Mēs pievienojām kartei dzelzceļa pārbrauktuvi, tāpēc lietotne par to brīdinās vadītājus.","mm-rail-none":"Paldies par ziņojumu! Mēs pārbaudījām un šeit dzelzceļa pārbrauktuvi neredzējām, tāpēc atstājām karti kā ir.","mm-camera-done":"Paldies! Mēs pievienojām kartei fotoradaru.","mm-camera-none":"Paldies par ziņojumu! Mēs pārbaudījām, bet nevarējām apstiprināt, ka šeit ir fotoradars, tāpēc atstājām karti kā ir.","mm-done":"Paldies! Mēs atjauninājām karti šajā vietā. Lietotnē izmaiņas būs redzamas pēc nākamā kartes atjauninājuma, parasti dažu dienu laikā.","mm-none":"Paldies par ziņojumu! Mēs pārbaudījām karti šajā vietā un neatradām neko, ko mainīt, tāpēc atstājām to kā ir."},"th":{"t-turn-ask":"ขอบคุณสำหรับการรายงาน! ช่วยบอกเราได้ไหมว่าเป็นการเลี้ยวจากถนนไหนเข้าถนนไหน และคุณขับมาทางทิศไหน?","t-turn-done":"ขอบคุณ! เราแก้ไขจุดเลี้ยวนี้บนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-address-ask":"ขอบคุณสำหรับการรายงาน! ที่อยู่หรือชื่อถนนที่ถูกต้องคืออะไร และคุณกำลังจะไปที่ไหน?","t-address-done":"ขอบคุณ! เราแก้ไขที่อยู่บนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-route-ask":"ขอบคุณสำหรับการรายงาน! คุณเริ่มต้นจากที่ไหน กำลังจะไปที่ไหน และคิดว่าแอปควรพาไปทางไหน?","t-route-done":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแผนที่ตรงนี้แล้วและถูกต้อง แอปเลือกเส้นทางตามสภาพการจราจรแบบเรียลไทม์ จึงอาจต่างกันไปในแต่ละวัน","t-roundabout-ask":"ขอบคุณสำหรับการรายงาน! ทางแยกไหนที่ควรเป็นวงเวียน? ชื่อถนนที่มาบรรจบกันตรงนั้นจะช่วยให้เราหาตำแหน่งได้","t-roundabout-done":"ขอบคุณ! เราเพิ่มวงเวียนลงในแผนที่แล้ว แอปจะแสดงวงเวียนนี้หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-general-ask":"ขอบคุณสำหรับการรายงาน! ช่วยเล่าเพิ่มเติมอีกนิดได้ไหมว่ามีอะไรผิดพลาด และอยู่ตรงไหนกันแน่?","t-junction-ask":"ขอบคุณสำหรับการรายงาน! เป็นทางแยก ทางออก หรือสะพานไหน และคุณขับมาทางทิศไหน?","t-junction-done":"ขอบคุณ! เราแก้ไขทางแยกนี้บนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-direction-ask":"ขอบคุณสำหรับการรายงาน! เป็นถนนเส้นไหน และจริง ๆ แล้วเปิดให้รถวิ่งไปทิศทางไหน?","t-direction-done":"ขอบคุณ! เราแก้ไขทิศทางการเดินรถบนแผนที่แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-road-ask":"ขอบคุณสำหรับการรายงาน! ถนนเส้นนี้ชื่ออะไร เริ่มต้นและสิ้นสุดที่ไหน และเปิดให้ทุกคนใช้ได้หรือไม่?","t-road-done":"ขอบคุณ! เราเพิ่มถนนเส้นนี้ลงในแผนที่แล้ว แอปจะแสดงถนนเส้นนี้หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-landmark-ask":"ขอบคุณสำหรับการรายงาน! สถานที่นี้ชื่ออะไร และอยู่ตรงไหนกันแน่?","t-landmark-done":"ขอบคุณ! เราเพิ่มสถานที่นี้ลงในแผนที่แล้ว แอปจะแสดงสถานที่นี้หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","t-blocked-ask":"ขอบคุณสำหรับการรายงาน! ถนนปิดถาวรหรือปิดชั่วคราว? ถ้าคุณรู้ว่าจะปิดถึงเมื่อไร จะช่วยเราได้มาก","t-blocked-done":"ขอบคุณ! เราเพิ่มการปิดถนนลงในแผนที่แล้ว แอปจึงจะพาเลี่ยงจุดนี้","t-speed-ask":"ขอบคุณสำหรับการรายงาน! ป้ายจำกัดความเร็วตรงนั้นระบุไว้เท่าไร และสำหรับทิศทางไหน?","t-speed-done":"ขอบคุณ! เราอัปเดตความเร็วจำกัดบนแผนที่แล้ว แอปจะแสดงความเร็วจำกัดใหม่หลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","nothing":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแผนที่ตรงนี้แล้วไม่พบสิ่งผิดปกติ จึงคงไว้ตามเดิม หากเกิดขึ้นอีก กรุณาส่งรายงานใหม่จากจุดนั้น","mm-ask":"ขอบคุณสำหรับการรายงาน! ช่วยบอกรายละเอียดเพิ่มอีกนิดได้ไหมว่าอยู่ตรงไหนกันแน่ และคุณขับมาทางทิศไหน?","mm-bump-done":"ขอบคุณ! เราเพิ่มลูกระนาดลงในแผนที่แล้ว แอปจะได้แจ้งเตือนผู้ขับขี่","mm-bump-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วไม่พบลูกระนาดตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-light-done":"ขอบคุณ! เราเพิ่มสัญญาณไฟจราจรลงในแผนที่แล้ว","mm-light-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วไม่พบสัญญาณไฟจราจรตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-curve-done":"ขอบคุณ! เราทำเครื่องหมายโค้งอันตรายบนแผนที่แล้ว แอปจะได้แจ้งเตือนผู้ขับขี่","mm-curve-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบโค้งนี้แล้วไม่พบเหตุผลที่ต้องแก้ไขแผนที่ จึงคงไว้ตามเดิม","mm-rail-done":"ขอบคุณ! เราเพิ่มจุดตัดทางรถไฟลงในแผนที่แล้ว แอปจะได้แจ้งเตือนผู้ขับขี่","mm-rail-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วไม่พบจุดตัดทางรถไฟตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-camera-done":"ขอบคุณ! เราเพิ่มกล้องตรวจจับความเร็วลงในแผนที่แล้ว","mm-camera-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแล้วแต่ยืนยันไม่ได้ว่ามีกล้องตรวจจับความเร็วตรงนี้ จึงคงแผนที่ไว้ตามเดิม","mm-done":"ขอบคุณ! เราอัปเดตแผนที่ตรงนี้แล้ว แอปจะแสดงการเปลี่ยนแปลงหลังการอัปเดตแผนที่ครั้งถัดไป ซึ่งโดยปกติจะภายในไม่กี่วัน","mm-none":"ขอบคุณสำหรับการรายงาน! เราตรวจสอบแผนที่ตรงนี้แล้วไม่พบสิ่งที่ต้องแก้ไข จึงคงไว้ตามเดิม"}}/*@@END@@*/;
+    const MORE_REPLIES = studioPart('MORE_REPLIES') || {};
     for (const [lang, set] of Object.entries(MORE_REPLIES)) if (REPLIES[lang]) Object.assign(REPLIES[lang], set);
     for (const set of Object.values(REPLIES)) for (const [key, text] of Object.entries(MORE_REPLIES.en || {})) if (!set[key]) set[key] = text;
     const TYPE_GROUPS = { 6: 'turn', 11: 'turn', 7: 'address', 21: 'address', 22: 'address', 8: 'route', 9: 'roundabout', 10: 'general',
@@ -7460,10 +7661,16 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       ['camera', /camera|radar|blitzer|autovelox|cámara|câmara|flitspaal|fotoradar|камер|kamera|κάμερ|კამერ/i],
       ['light', /traffic ?lights?|traffic signal|feux?\b|ampel|semafor|semáforo|stoplicht|verkeerslicht|sygnaliz|светофор|trafik ışı|φανάρ|შუქნიშ/i],
       ['curve', /curve|bend|virage|kurve|curva|bocht|zakręt|поворот|viraj|στροφ|მოსახვ/i]];
+    const MAP_MATE_KEYS = { SPEED_BUMP: { kind: 'bump' }, MISSING_TRAFFIC_LIGHT: { kind: 'light' }, DANGEROUS_CURVE: { kind: 'curve' }, RAILROAD_CROSSING: { kind: 'rail' },
+      MISSING_STATIC_SPEED_CAMERA: { kind: 'camera' }, INCORRECT_SPEED_LIMIT: { group: 'speed' }, INACCURATE_INSTRUCTIONS: { group: 'junction' }, INCORRECT_ROUTE: { group: 'route' },
+      INCORRECT_ADDRESS: { group: 'address' }, INCORRECT_TURN: { group: 'turn' }, MISSING_ROUNDABOUT: { group: 'roundabout' }, MISSING_ROAD: { group: 'road' },
+      SCHOOL_ZONE: { name: 'School zone' }, TOLL_BOOTH: { name: 'Tollbooth' }, COMPLEX_INTERSECTION: { name: 'Complex intersection' }, MULTIPLE_LANES_MERGING: { name: 'Multiple lanes merging' }, GENERAL_MAP_UPDATE: {} };
     function mapMateOf(data, description, reporter) {
+      const keyed = /^\s*([A-Z][A-Z0-9_]{2,}):\s*([\s\S]*)$/.exec(description || ''), known = keyed && MAP_MATE_KEYS[keyed[1]];
+      if (known || (keyed && Number(data.type) === 10)) return { kind: known?.kind || '', group: known?.group || '', name: known?.name || '', key: keyed[1], said: keyed[2].trim() };
       const words = `${data.title || ''} ${reporter || ''} ${description || ''}`;
       if (!/map\s*-?\s*mate/i.test(words)) return null;
-      return { kind: MAP_MATE_KINDS.find(([, pattern]) => pattern.test(description || data.title || ''))?.[0] || '' };
+      return { kind: MAP_MATE_KINDS.find(([, pattern]) => pattern.test(description || data.title || ''))?.[0] || '', group: '', name: '', key: '', said: '' };
     }
 
     const ISO3 = { eng: 'en', ell: 'el', gre: 'el', spa: 'es', por: 'pt', fra: 'fr', fre: 'fr', deu: 'de', ger: 'de', ita: 'it', nld: 'nl', dut: 'nl', pol: 'pl', rus: 'ru', tur: 'tr', kat: 'ka', geo: 'ka',
@@ -7487,8 +7694,28 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const alias = { nb: 'no', nn: 'no', iw: 'he', in: 'id' }[code] || code;
       return REPLIES[alias] ? alias : '';
     }
-    function reporterLanguage(texts, appLanguage) {
-      const own = texts.join(' '), app = appLanguageCode(appLanguage);
+    const SMALL_WORDS = { en: 'the and is are to of in it you this that was not there with for', fr: 'le la les de des du est et à au un une pas que qui il je vous sur dans pour', es: 'el la los las de del es y en un una no que por para con hay está',
+      pt: 'o os as de do da é e em um uma não que por para com há está', de: 'der die das und ist nicht ein eine ich sie es zu mit auf für', it: 'il lo la gli le di del è e un una non che per con sono',
+      nl: 'de het een en is niet van op te ik er dat met voor', pl: 'i w na nie się jest to że do z jak tu', tr: 've bir bu da de için ile çok yok var değil' };
+    const smallWords = Object.fromEntries(Object.entries(SMALL_WORDS).map(([code, words]) => [code, new Set(words.split(' '))]));
+    function latinLanguage(text) {
+      const words = String(text || '').toLowerCase().split(/[^\p{L}]+/u).filter(Boolean), score = {};
+      for (const word of words) for (const [code, set] of Object.entries(smallWords)) if (set.has(word)) score[code] = (score[code] || 0) + 1;
+      for (const word of String(text || '').toLowerCase().match(/\b[ldjnqsc]['’]\p{L}/gu) || []) score.fr = (score.fr || 0) + 1;
+      const [best, next] = Object.entries(score).sort((a, b) => b[1] - a[1]);
+      return best && best[1] >= 3 && (!next || best[1] >= next[1] * 2) ? best[0] : '';
+    }
+    const COUNTRY_LANGUAGE = Object.fromEntries('US,GB,IE,AU,NZ,JM,BS,BB:en GR,CY:el ES,MX,AR,CL,CO,PE,VE,UY,PY,BO,EC,CR,PA,GT,HN,SV,NI,DO,CU:es PT,BR,AO,MZ:pt FR,MC:fr DE,AT,LI:de IT,SM:it NL:nl PL:pl RU,BY:ru TR:tr GE:ka UA:uk CZ:cs SK:sk HU:hu RO,MD:ro BG:bg RS:sr HR:hr SI:sl IL:he IR:fa SA,AE,EG,JO,KW,QA:ar CN,TW:zh JP:ja KR:ko SE:sv NO:no DK:da FI:fi LT:lt LV:lv EE:et ID:id MY:ms TH:th VN:vi'
+      .split(' ').flatMap(part => { const [codes, language] = part.split(':'); return codes.split(',').map(code => [code, language]); }));
+    function reporterLanguage(texts, appLanguage, more = {}) {
+      const written = texts.join(' '), app = appLanguageCode(appLanguage), description = String(more.description || '');
+      const scripted = text => byLetters(text, app);
+      return scripted(written) || latinLanguage(written) || scripted(description) || latinLanguage(description) || app || COUNTRY_LANGUAGE[more.country] || ownLanguage() || 'en';
+    }
+    function ownLanguage() {
+      try { const code = String(uiLocale() || '').slice(0, 2).toLowerCase(); return REPLIES[code] ? code : ''; } catch (_) { return ''; }
+    }
+    function byLetters(own, app) {
       if (/[Ͱ-Ͽἀ-῿]/.test(own)) return 'el';
       if (/[Ⴀ-ჿ]/.test(own)) return 'ka';
       if (/[Ѐ-ӿ]/.test(own)) return /[іїєґІЇЄҐ]/.test(own) ? 'uk' : ['uk', 'bg', 'sr', 'ru'].includes(app) ? app : 'ru';
@@ -7499,7 +7726,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (/[\uAC00-\uD7AF]/.test(own)) return 'ko';
       if (/[\u3040-\u30FF]/.test(own)) return 'ja';
       if (/[\u4E00-\u9FFF]/.test(own)) return app === 'ja' ? 'ja' : 'zh';
-      return app || 'en';
+      return '';
     }
     const chosenLanguage = new Map();
     const COUNTRY_ALIASES = { 'czech republic': 'CZ', turkey: 'TR', russia: 'RU', 'south korea': 'KR', 'korea south': 'KR', 'north korea': 'KP', 'ivory coast': 'CI',
@@ -7576,7 +7803,7 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       const closedAs = /not[\s_-]*identified|unidentified|not-?identif/.test(closeWords) ? 'not-identified' : /solved|resolved/.test(closeWords) ? 'solved' : '';
       const resolution = attrs.resolution === 0 || checked === 'solved' ? 'solved' : attrs.resolution === 1 || checked === 'not-identified' ? 'not-identified' : closedAs;
       return { header, id, title: match ? match[1] : subtitle, type: Number(attrs.type), city: attrs.cityName || '', driveTime: Number(attrs.driveDate) || NaN, messages, closed, resolution,
-        ...(() => { const own = reporterLanguage(messages.filter(message => message.side === 'reporter').map(message => message.text), attrs.reporterLanguage); return { ownLanguage: own, language: (Number.isFinite(id) && chosenLanguage.get(id)) || own }; })() };
+        ...(() => { const own = reporterLanguage(messages.filter(message => message.side === 'reporter').map(message => message.text), attrs.reporterLanguage, { description: attrs.description || panel.querySelector('.description')?.textContent || '', country: Number.isFinite(id) ? requestCountry(id) : '' }); return { ownLanguage: own, language: (Number.isFinite(id) && chosenLanguage.get(id)) || own }; })() };
     }
 
     function standing(data) {
@@ -7609,25 +7836,43 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       return element;
     };
 
+    function clockText(text, format) {
+      if (format === '12') return String(text).replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b(?!\s*[ap]\.?\s?m)/gi, (all, h, m) => `${Number(h) % 12 || 12}:${m} ${Number(h) < 12 ? 'AM' : 'PM'}`);
+      if (format === '24') return String(text).replace(/\b(1[0-2]|0?[1-9]):([0-5]\d)\s*([ap])\.?\s?m\.?/gi, (all, h, m, half) => `${String((Number(h) % 12) + (half.toLowerCase() === 'p' ? 12 : 0)).padStart(2, '0')}:${m}`);
+      return String(text);
+    }
     function paintHead(state, data) {
       const who = data.header?.querySelector?.('[class*="username--"]');
       if (who && who.getAttribute('data-ws-label') !== tr('Reporter')) who.setAttribute('data-ws-label', tr('Reporter'));
-      const wmeWhen = String(data.header?.querySelector?.('[class*="reported--"]')?.textContent || '').replace(/^[^:]*:\s*/, '').replace(/\s+/g, ' ').trim();
-      const key = `${data.type}|${data.title}|${data.id}|${data.city}|${data.driveTime}|${wmeWhen}`;
+      const wmeWhen = String(data.header?.querySelector?.('[class*="reported--"]')?.textContent || '').trim().replace(/^[^:\p{N}]+:\s*/u, '');
+      const list = data.header?.querySelector?.('[class*="attributesList--"]');
+      const source = list ? [...list.children].filter(node => !/username--|reported--|dot--/.test(String(node.className || '')) && !node.matches('.ws-case-head')).map(node => node.textContent.replace(/\s+/g, ' ').trim()).filter(text => text && text !== wmeWhen && !wmeWhen.includes(text)).join(' ') : '';
+      const key = `${data.type}|${data.title}|${data.id}|${data.city}|${data.driveTime}|${wmeWhen}|${source}|${settings.clockFormat}`;
       if (state.head?.isConnected && state.headKey === key) return;
       state.head?.remove();
       const head = document.createElement('div'); head.className = 'ws-case-head'; head.setAttribute('data-ws-keep', '');
-      head.innerHTML = `<span class="ws-case-type">${svg(TYPE_ICONS[typeIcon(data.type)])}</span><span class="ws-case-names"><strong></strong><small></small><small class="ws-case-when"></small></span>`;
+      head.innerHTML = `<span class="ws-case-type">${svg(TYPE_ICONS[typeIcon(data.type)])}</span><span class="ws-case-names"><strong></strong><small></small><small class="ws-case-source"></small><small class="ws-case-when"></small></span>`;
       head.querySelector('strong').textContent = data.title;
-      head.querySelector('small').textContent = [Number.isFinite(data.id) ? `#${data.id}` : '', data.city].filter(Boolean).join(' · ');
-      const when = head.querySelector('.ws-case-when'), time = Number.isFinite(data.driveTime) ? data.driveTime : wmeWhen ? Date.parse(wmeWhen) : NaN;
-      const format = (value, options) => { try { return new Intl.DateTimeFormat(uiLocale(), options).format(new Date(value)); } catch (_) { return new Date(value).toLocaleString(); } };
-      if (Number.isFinite(time)) {
-        const thisYear = new Date(time).getFullYear() === new Date().getFullYear();
+      const place = head.querySelector('small'), from = head.querySelector('.ws-case-source');
+      place.textContent = place.title = data.city || ''; place.hidden = !data.city;
+      from.textContent = from.title = source; from.hidden = !source;
+      const when = head.querySelector('.ws-case-when');
+      if (wmeWhen) {
         when.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" style="margin-right:4px;vertical-align:-1px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
-        when.append(format(time, { day: 'numeric', month: 'short', ...(thisYear ? {} : { year: 'numeric' }), hour: '2-digit', minute: '2-digit' }));
-        when.title = tr('Reported {0}', format(time, { dateStyle: 'full', timeStyle: 'short' }));
-      } else if (wmeWhen) { when.textContent = wmeWhen; when.title = tr('Reported {0}', wmeWhen); }
+        const shown = clockText(wmeWhen, settings.clockFormat);
+        when.append(shown);
+        when.title = `${tr('Reported {0}', shown)}\n${tr('Click to switch between a 12- and 24-hour clock')}`;
+        when.setAttribute('role', 'button'); when.tabIndex = 0;
+        const flip = event => {
+          if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault(); event.stopPropagation();
+          const next = /\d:\d\d\s*[ap]\.?\s?m\.?/i.test(shown) ? '24' : '12';
+          settings = { ...settings, clockFormat: next }; state.headKey = '';
+          try { Promise.resolve(globalThis.WMEStudioSettings?.write?.({ clockFormat: next })).catch(error => reportStudioError('clock', error)); } catch (error) { reportStudioError('clock', error); }
+          paintHead(state, data);
+        };
+        when.addEventListener('click', flip); when.addEventListener('keydown', flip);
+      }
       else when.remove();
       data.header.prepend(head);
       state.head = head; state.headKey = key;
@@ -7657,59 +7902,20 @@ html[data-wme-studio-chat="on"] div:has(> [data-testid="conversation-list"]) + d
       if (late) {
         const replies = REPLIES[data.language] || REPLIES.en, actions = document.createElement('div'); actions.className = 'ws-case-next-actions';
         const ready = key => { try { return quickReplies.readyText(state.panel, data.language, key, replies[key]); } catch (_) { return replies[key]; } };
-        actions.append(button('ws-case-primary', tr('Close with a note'), () => fillReply(state.panel, ready('close'))), button('ws-case-quiet', tr('Remind once'), () => fillReply(state.panel, ready('remind'))));
+        const use = key => { fillReply(state.panel, ready(key)); try { quickReplies.picked(state.panel); quickReplies.readyAction(state.panel, key); } catch (studioError) { reportStudioError('caseFile action', studioError); } };
+        actions.append(button('ws-case-primary', tr('Close with a note'), () => use('close')), button('ws-case-quiet', tr('Remind once'), () => use('remind')));
         status.append(actions);
       }
       data.header.append(status);
       state.status = status; state.statusKey = key;
     }
-    GM_addStyle(`html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data,
-html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data > .section[class*="description"]:not([class*="collapsed"]),
-html[data-wme-studio="on"] :is(.problem-edit,.place-update-edit) .problem-data > .section[class*="description"]:not([class*="collapsed"]) > :is(.content,.collapsible,div):not([class*="collapsed"]) {
-  max-height: none !important; overflow: visible !important; }
-html[data-wme-studio="on"] [data-ws-desc-free] { max-height: none !important; height: auto !important; overflow: visible !important; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] { --ws-case-tone: #30a46c !important; }
-html[data-wme-studio="on"][data-wme-studio-theme="light"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] { --ws-case-tone: #1f8a55 !important; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .ws-case-status[data-tone="done"][data-resolution="solved"] .ws-case-bars span { background-color: var(--ws-case-tone) !important; }`);
-    GM_addStyle(`html[data-wme-studio="on"] .ws-reply-buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px var(--ws-pad, 12px) 4px; }
-html[data-wme-studio="on"] .ws-reply-buttons .ws-rb { display: inline-flex; align-items: center; gap: 6px; max-width: 190px; height: 28px; margin: 0; padding: 0 11px 0 9px; border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--c) 15%, transparent); color: var(--wme-studio-text, inherit); font: 600 12px/1 var(--ws-font, inherit); cursor: pointer; }
-html[data-wme-studio="on"] .ws-reply-buttons .ws-rb:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
-html[data-wme-studio="on"] .ws-reply-buttons .ws-rb:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 2px; }
-html[data-wme-studio="on"] .ws-reply-buttons .ws-rb svg { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--c); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-html[data-wme-studio="on"] .ws-reply-buttons .ws-rb span { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
-html[data-wme-studio="on"] .ws-suggested { display: flex; align-items: center; gap: 8px; min-height: 26px; margin: 4px var(--ws-pad, 12px) 0; padding: 0 4px 0 10px; border-radius: 8px; background: color-mix(in srgb, #f5b94c 16%, transparent); color: var(--wme-studio-text, inherit); font: 600 12px/1.2 var(--ws-font, inherit); }
-html[data-wme-studio="on"] .ws-suggested span { flex: 1; min-width: 0; }
-html[data-wme-studio="on"] .ws-suggested button { display: inline-flex; align-items: center; height: 22px; margin: 0; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--wme-studio-accent, #0099ff); font: 600 12px/1 var(--ws-font, inherit); cursor: pointer; }`);
-    GM_addStyle(`html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"][data-ws-tr]:not([data-ws-orig]) > [data-ws-tr-src] { display: none !important; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"][data-ws-orig] .ws-case-tr-text { display: none !important; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] > .ws-case-tr { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding-right: 30px; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] .ws-case-tr-text { color: var(--wme-studio-text); font: 13px/18px var(--ws-font); white-space: pre-line; overflow-wrap: anywhere; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] .ws-case-tr-switch { display: inline-flex; align-items: center; height: 16px; margin: 2px 0 0; padding: 0; border: 0; background: none !important; color: var(--wme-studio-accent, #0099ff); font: 600 11px/16px var(--ws-font); cursor: pointer; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] .ws-case-tr-switch:hover { text-decoration: underline; }`);
+    GM_addStyle(studioPart('p430L8320'));
+    GM_addStyle(studioPart('p430L8306'));
+    GM_addStyle(studioPart('p430L8330'));
     const DESC_KEY = 'wmeStudio.descriptionFolded';
     let descFolded = (() => { try { return localStorage.getItem(DESC_KEY) === '1'; } catch (_) { return false; } })();
     const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>';
-    GM_addStyle(`html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] { position: relative !important; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] > .content { padding-right: 30px !important; }
-html[data-wme-studio="on"] .ws-desc-fold { position: absolute; top: 0; right: var(--ws-pad, 12px); z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 24px; height: 24px; margin: 0; padding: 0; border: 0; border-radius: 999px; background: var(--wme-studio-input); color: var(--wme-studio-text-muted); font: 12px/16px var(--ws-font); cursor: pointer; }
-html[data-wme-studio="on"] .ws-desc-fold:hover { background: var(--wme-studio-hover); color: var(--wme-studio-text); }
-html[data-wme-studio="on"] .ws-desc-fold:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 2px; }
-html[data-wme-studio="on"] .ws-desc-fold svg { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s ease; }
-html[data-wme-studio="on"] .ws-desc-fold span { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
-html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .problem-data > .section[class*="description"] > :not(.ws-desc-fold):not(#ws-none) { display: none !important; }
-html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .ws-desc-fold { position: static; justify-content: flex-start; width: 100%; height: 26px; padding: 0 10px 0 6px; border-radius: 8px; text-align: left; }
-html[data-wme-studio="on"] .problem-edit[data-ws-desc-folded] .ws-desc-fold svg { transform: rotate(180deg); }
-
-/* Keep the description inside the panel and leave a separate lane for its fold button. */
-html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] { box-sizing: border-box; padding: 4px var(--ws-pad, 12px) 10px !important; }
-html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"] .problem-data > .section[class*="description"] > :is(.content, .ws-case-tr) { box-sizing: border-box; min-width: 0; padding: 0 !important; padding-right: 34px !important; overflow-wrap: anywhere; }
-html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"] .ws-desc-fold { top: 4px; }
-/* Position the native Driver settings heading only once its anchor has a valid layout. */
-html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"]:not([data-ws-drive-positioned]) .problem-data > .more-info.section + .reporter-preferences.section > .title { position: static !important; margin: 0 0 6px !important; }
-html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"]:not([data-ws-drive-positioned]) .problem-data > .more-info.section + .reporter-preferences.section.collapsed { padding: 6px var(--ws-pad, 12px) 10px !important; }
-html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[data-wme-studio-case="on"][data-ws-drive-positioned] .problem-data > .more-info.section + .reporter-preferences.section > .title { position: absolute !important; top: var(--ws-drive-top) !important; left: var(--ws-drive-left) !important; margin: 0 !important; }
-
-@media (prefers-reduced-motion: reduce) { html[data-wme-studio="on"] .ws-desc-fold svg { transition: none; } }`);
+    GM_addStyle(studioPart('p430L8444'));
     function foldDescription(panel) {
       const description = panel.querySelector('.problem-data > .section[class*="description"]');
       let button = description?.querySelector(':scope > .ws-desc-fold');
@@ -7748,22 +7954,7 @@ html[data-wme-studio="on"][data-wme-studio-requests="compact"] .problem-edit[dat
         if (/^(auto|scroll|hidden|clip)$/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 2) node.setAttribute('data-ws-desc-free', '');
       }
     }
-    GM_addStyle(`html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment[data-ws-side="editor"][data-ws-who="other"] {
-  background: color-mix(in srgb, #9b6bff 24%, var(--wme-studio-input)) !important;
-  background: color-mix(in srgb, oklch(from var(--wme-studio-accent, #0099ff) l c calc(h + 110)) 24%, var(--wme-studio-input)) !important; }
-/* Names you can read (4.0.2): bold, in the accent (a little lighter or darker toward the text so it reads on the bubbles)
-   like the reporter's name at the top, instead of the muted grey. The bubble's color tells who's who. */
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment[data-ws-side] .comment-title .username {
-  color: color-mix(in srgb, var(--wme-studio-accent, #0099ff) 78%, var(--wme-studio-text)) !important; font-weight: 700 !important; }
-/* The reporter's name at the top and its icons in the accent too. */
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] [class*="issuePanelHeader--"] [class*="username--"] wz-a {
-  --wz-a-color: var(--wme-studio-accent, #0099ff) !important; color: var(--wme-studio-accent, #0099ff) !important; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] [class*="issuePanelHeader--"] [class*="username--"] :is(.w-icon,i,svg) {
-  color: var(--wme-studio-accent, #0099ff) !important; fill: currentColor; }
-/* An editor's name opens their editor profile. */
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment [data-ws-profile] { cursor: pointer !important; border-radius: 4px; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment [data-ws-profile]:hover { text-decoration: underline !important; text-underline-offset: 2px; }
-html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversation-view .comment [data-ws-profile]:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff) !important; outline-offset: 1px; }`);
+    GM_addStyle(studioPart('p430L8371'));
     const profileOf = node => node?.closest?.('.problem-edit[data-wme-studio-case="on"] .comment[data-ws-side] [data-ws-profile]');
     const openProfile = node => {
       if (node.getAttribute('data-ws-profile') === '@reporter') {
@@ -7785,6 +7976,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       if (label.getAttribute('data-ws-profile') === name) return;
       label.setAttribute('data-ws-profile', name); label.setAttribute('role', 'link'); label.tabIndex = 0;
       label.title = tr('Open {0}’s editor profile', name);
+      globalThis.WMEStudioProfiles?.want(name, label);
     }
     function linkReporter(item, name) {
       const label = item.querySelector('.username.reporter') || item.querySelector('.comment-title .username'); if (!label) return;
@@ -7846,8 +8038,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       if (!settings.compactRequests || !data || !title || !data.offsetWidth || !data.offsetHeight || !drive.offsetHeight) {
         panel.removeAttribute('data-ws-drive-positioned'); return;
       }
-      // offsetParent can skip problem-data while the request is opening. Rectangles share
-      // one coordinate system; undo the panel's zoom/scale before writing CSS pixels.
       const box = data.getBoundingClientRect(), anchor = drive.getBoundingClientRect();
       const sx = box.width / data.offsetWidth, sy = box.height / data.offsetHeight;
       if (!(sx > 0 && sy > 0 && anchor.width > 0 && anchor.height > 0)) {
@@ -7855,7 +8045,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       }
       const left = (anchor.right - box.left) / sx - data.clientLeft + data.scrollLeft + 6;
       const top = (anchor.top - box.top) / sy - data.clientTop + data.scrollTop;
-      // Long translated headings can use their own row rather than overlap the edge.
       const width = Math.max(title.offsetWidth, title.scrollWidth);
       if (left + width + 12 > data.clientWidth) { panel.removeAttribute('data-ws-drive-positioned'); return; }
       for (const [name, value] of [['--ws-drive-w', anchor.width / sx], ['--ws-drive-left', left], ['--ws-drive-top', top]]) {
@@ -7892,7 +8081,6 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         if (section.classList.contains('collapsed') === driverOpen) { title?.click(); opened = true; }
       }
       if (drive) measureDrive(panel, drive); else panel.removeAttribute('data-ws-drive-positioned');
-      // WME can commit the collapsed state and its panel styles after this first pass.
       if (changed || opened) queueDriveMeasure(state, panel);
     }
     const translators = new Map();
@@ -7979,35 +8167,42 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
     function startDetector() {
       const D = pageApi('LanguageDetector');
       if (!D || detector) return detector;
-      detector = Promise.resolve().then(() => (typeof D.availability === 'function' ? D.availability() : 'available')).then(availability => {
-        if (availability === 'unavailable') return null;
-        if (availability !== 'available') {
-          Promise.resolve(D.create()).then(found => { detector = Promise.resolve(found); }).catch(() => { detector = null; });
-          return null;
-        }
-        return D.create();
-      }).catch(() => { detector = null; return null; });
+      try {
+        detector = patient(Promise.resolve(D.create())).catch(() => null).then(found => { if (!found) detector = null; return found; });
+      } catch (_) { detector = null; }
       return detector;
     }
-    async function detect(text) {
+    const CATALAN = /(?:^|[^\p{L}])(?:amb|què|perquè|també|això|aquest|aquesta|aquí|carrer|gràcies|molt|però|els|fins|hem|sóc|vaig|meu|meva)(?![\p{L}])|l·l|[èò]/iu;
+    async function detect(text, hint = '') {
       try {
-        const found = await startDetector(); if (!found) return '';
-        const [best] = await found.detect(text);
-        return best && best.detectedLanguage !== 'und' && best.confidence >= .5 ? shortLang(best.detectedLanguage) : '';
+        const brief = [...String(text).replace(/[^\p{L}]/gu, '')].length < 20;
+        const found = await patient(Promise.resolve(startDetector()), brief ? Math.min(1500, STALL) : STALL); if (!found) return '';
+        const list = await patient(Promise.resolve(found.detect(text))), best = list?.[0];
+        const confidence = brief ? .9 : .5;
+        const code = best && best.detectedLanguage !== 'und' && best.confidence >= confidence ? shortLang(best.detectedLanguage) : '';
+        return code === 'es' && (hint === 'ca' || CATALAN.test(text) || (list || []).slice(1, 3).some(one => shortLang(one.detectedLanguage) === 'ca' && one.confidence >= .15)) ? 'ca' : code;
       } catch (_) { return ''; }
     }
     function translatorFor(T, source, target) {
       const key = `${source}>${target}`;
-      if (!translators.has(key)) translators.set(key, (async () => {
-        const availability = typeof T.availability === 'function' ? await T.availability({ sourceLanguage: source, targetLanguage: target }) : 'available';
-        if (availability === 'unavailable') return null;
-        return await new Promise((resolve, reject) => {
-          let stall = setTimeout(() => reject(new Error('stalled')), STALL);
-          const moved = event => { clearTimeout(stall); stall = setTimeout(() => reject(new Error('stalled')), STALL); downloadProgress(event.loaded); };
-          Promise.resolve(T.create({ sourceLanguage: source, targetLanguage: target, monitor(monitor) { monitor.addEventListener('downloadprogress', moved); } }))
-            .then(found => { clearTimeout(stall); downloadProgress(1); resolve(found); }, error => { clearTimeout(stall); reject(error); });
+      if (!translators.has(key)) {
+        const job = new Promise((resolve, reject) => {
+          let settled = false, stall = 0;
+          const fail = error => { if (settled) return; settled = true; clearTimeout(stall); reject(error); };
+          const reset = () => { clearTimeout(stall); stall = setTimeout(() => fail(new Error('stalled')), STALL); };
+          const moved = event => { if (settled) return; reset(); downloadProgress(event.loaded); };
+          reset();
+          try {
+            Promise.resolve(T.create({ sourceLanguage: source, targetLanguage: target, monitor(monitor) { monitor.addEventListener('downloadprogress', moved); } }))
+              .then(found => { if (settled) return; settled = true; clearTimeout(stall); downloadProgress(1); resolve(found); }, fail);
+          } catch (error) { fail(error); }
+        }).catch(() => null).then(found => {
+          if (!found && translators.get(key) === job) translators.delete(key);
+          if (!found) downloadProgress(1);
+          return found;
         });
-      })().catch(() => { translators.delete(key); downloadProgress(1); return null; }));
+        translators.set(key, job);
+      }
       return translators.get(key);
     }
     function translateMessages(state) {
@@ -8018,7 +8213,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         for (const { item, box, text } of translateParts(state.panel)) {
           if (state.translate === 'off') return 'done';
           if (item.hasAttribute('data-ws-tr') || item.hasAttribute('data-ws-tr-same')) continue;
-          const source = await detect(text) || fallback;
+          const source = await detect(text, fallback) || fallback;
           if (!source || source === target) { item.setAttribute('data-ws-tr-same', ''); continue; }
           const translator = await translatorFor(T, source, target);
           if (state.translate === 'off') return 'done';
@@ -8151,6 +8346,7 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       const stand = standing(data);
       try { paintHead(state, data); paintStatus(state, data, stand); paintMessages(state, data, stand); paintDriver(state, panel); paintTranslate(state); }
       catch (studioError) { reportStudioError('caseFile', studioError); }
+      try { quickReplies.repaint(panel); } catch (_) {   }
     }
     function queue() {
       if (frame) return;
@@ -8188,7 +8384,8 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
         if (!source || source === target) return { same: true, target };
         const translator = await translatorFor(T, source, target);
         if (!translator) return { failed: true, target };
-        try { return { text: await patient(Promise.resolve(translator.translate(text)), 60000), source, target }; } catch (_) { return { failed: true, target }; }
+        const cached = translators.get(`${source}>${target}`);
+        try { return { text: await patient(Promise.resolve(translator.translate(text)), 60000), source, target }; } catch (_) { if (translators.get(`${source}>${target}`) === cached) translators.delete(`${source}>${target}`); return { failed: true, target }; }
       },
       replyTarget: panel => { try { const language = shortLang(read(panel).language || 'en'); return { language, name: languageName(language), can: !!pageApi('Translator'), mine: shortLang(uiLocale()) }; } catch (_) { return null; } },
       downloadShare: () => (Date.now() - download.at < 8000 && download.share < 1 ? download.share : 1),
@@ -8384,39 +8581,16 @@ html[data-wme-studio="on"] .problem-edit[data-wme-studio-case="on"] .conversatio
       inbox: '<path d="M4 13h4l2 3h4l2-3h4"/><path d="M5 6h14l1 7v5H4v-5z"/>', flag: '<path d="M5 21V4h10l-1 4h5v8h-9l1-4H5"/>'
     };
     const svg = path => `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
-    const QR_RAIL_CSS = `.panel{width:min(400px,calc(100vw - 24px))}.qsplit{flex:1;min-height:0;display:flex}.rail{flex:none;width:56px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;border-right:1px solid var(--wme-studio-border,#3d444b)}.rail::-webkit-scrollbar{display:none}.rail .chip.ri{position:relative;display:flex;align-items:center;justify-content:center;flex:none;width:42px;height:42px;margin:0;padding:0;gap:0;border-radius:12px}.rail .chip.ri .mark{display:flex;align-items:center;justify-content:center}.rail .chip.ri .mark svg{width:18px;height:18px}.mark.logo img{display:block;width:16px;height:14px;object-fit:contain}.rail .chip.ri .mark.logo img{width:24px;height:21px}.rail .chip.ri b{position:absolute;right:1px;top:2px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:color-mix(in srgb,var(--wme-studio-text,#edf1f4) 16%,var(--wme-studio-bg,#202326));color:var(--wme-studio-text,#edf1f4);font-size:9.5px;font-weight:700;line-height:1}.rail .chip.ri{box-shadow:none;color:var(--wme-studio-text-secondary,#c6ccd2)}.rail .chip.ri[aria-pressed="true"]{background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 18%,transparent);box-shadow:none;color:var(--wme-studio-accent,#0099ff)}.rail .chip.ri[aria-pressed="true"] b{opacity:1}.rail .rf{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:7px;background:var(--c);color:#fff;font-size:11.5px;font-weight:800;line-height:1}.rail .rf.icon{background:color-mix(in srgb,var(--c) 22%,transparent);color:var(--c)}.rail .rf.icon svg{width:14px;height:14px}.rsep{flex:none;width:26px;height:1px;margin:3px 0;background:var(--wme-studio-border,#3d444b)}.qmain{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}.qtitle{display:flex;align-items:center;gap:6px;min-height:22px;margin:9px 14px 2px;color:var(--wme-studio-text-muted,#9aa3ad);font-size:12px;line-height:16px}.qtitle strong{min-width:0;overflow:hidden;color:var(--wme-studio-text,#edf1f4);font-size:13px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}.qtitle .qm{flex:none;white-space:nowrap}.qtitle .qm::before{content:'·';margin-right:6px}.qtitle .qlang{display:inline-flex;align-items:center;gap:4px;flex:none;height:20px;margin-left:auto;padding:0 7px;border:1px solid var(--wme-studio-border,#3d444b);border-radius:10px;font-size:11px;font-weight:600;line-height:1;white-space:nowrap}.qmain .item{height:auto;min-height:48px}.qmain .row{padding:6px 8px}.qmain .words{flex-wrap:wrap;align-content:center;row-gap:1px}.qmain .words b{flex:0 1 auto;max-width:100%}.qmain .words .x{flex:1 0 100%;order:9}.qmain .qtag:not(.act){display:none}.qmain .item+.item::before{content:'';position:absolute;top:0;left:38px;right:8px;height:1px;background:color-mix(in srgb,var(--wme-studio-text,#edf1f4) 9%,transparent);pointer-events:none}.qmain .item:hover::before,.qmain .item:hover+.item::before,.qmain .item:focus-within::before,.qmain .item:focus-within+.item::before{opacity:0}.qmain .gh{position:relative}.qmain .body>.gh:not(:first-child){margin-top:14px}.qmain .body>.gh:not(:first-child)::before{content:'';position:absolute;top:-8px;left:6px;right:6px;height:1px;background:color-mix(in srgb,var(--wme-studio-text,#edf1f4) 16%,transparent);pointer-events:none}.num{box-sizing:border-box;padding:1px 0 0;font-variant-numeric:tabular-nums}.mbox{display:flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;width:16px;height:16px;border:1.5px solid var(--wme-studio-text-muted,#9aa3ad);border-radius:4px}.mo[aria-checked="true"] .mbox{border-color:var(--wme-studio-accent,#0099ff);background:var(--wme-studio-accent,#0099ff);color:#fff}.mo .mbox svg{width:12px;height:12px;margin:0;fill:none;stroke:#fff!important;color:#fff!important;opacity:1!important;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}.mo[role="menuitemcheckbox"]::after{content:none;display:none}.menu:has(.mo[role="menuitemcheckbox"]){width:max-content;min-width:min(240px,calc(100% - 16px));max-width:calc(100% - 16px)}.mo[role="menuitemcheckbox"]>span:last-child{white-space:nowrap}.mo[role="menuitemcheckbox"][aria-checked="true"]{font-weight:inherit}.mo.off{opacity:.45;cursor:default}.menu .mo>.dot{margin:0 4.5px}.menu .mo>.fmark{width:16px}.mo .mark.logo img{width:16px;height:14px}`;
+    const QR_RAIL_CSS = studioPart('p430L9225');
     const CSS = studioPart('CSS', { studioStripCSS }) + QR_RAIL_CSS;
     GM_addStyle(`html[data-wme-studio="on"][data-wme-studio-compact="on"] #panel-container > :has(> .ws-quick-replies) { overflow: visible !important; }
 html[data-wme-studio="on"][data-wme-studio-compact="on"] #panel-container > :has(> .ws-quick-replies) > wz-card { border-radius: 17px !important; overflow: clip !important; }`);
     GM_addStyle(`html[data-wme-studio="on"] :is(.ws-quick-replies,.ws-reply-details) { visibility: inherit !important; }
 html[data-wme-studio-layout-editing="on"] :is(.ws-quick-replies,.ws-reply-details) { display: none !important; }`);
-    GM_addStyle(`@supports selector(::-webkit-scrollbar) {
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) :is(.problem-edit,.problem-edit *):not(#ws-sb-a):not(#ws-sb-b) { scrollbar-width: auto !important; scrollbar-color: auto !important; }
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit::-webkit-scrollbar,
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit ::-webkit-scrollbar { width: 6px !important; height: 6px !important; background: transparent !important; }
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit::-webkit-scrollbar-track,
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit ::-webkit-scrollbar-track,
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit ::-webkit-scrollbar-corner { background: transparent !important; }
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit::-webkit-scrollbar-button,
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit ::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit::-webkit-scrollbar-thumb,
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit ::-webkit-scrollbar-thumb { min-height: 28px; border: 1px solid transparent !important; border-radius: 999px !important; background: var(--wme-studio-border-strong) padding-box !important; }
-html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PROBLEM) .problem-edit ::-webkit-scrollbar-thumb:hover { background: var(--wme-studio-text-muted) padding-box !important; }
-}`);
+    GM_addStyle(studioPart('p430L9102'));
     function windows() { return [...document.querySelectorAll(WINDOW)].filter(win => win.querySelector('.problem-edit') && !win.closest('#wme-studio-compact-layout-editor')); }
-    // Temporary map placement belongs to this open panel only. Never put it in Studio storage.
     let mapPinnedState = null;
-    const QR_FLOAT_CSS = `
-      .head{cursor:grab;touch-action:none;user-select:none;flex:none}
-      .head .icon{cursor:pointer;touch-action:manipulation}
-      .head:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-offset:-3px}
-      .map-pin[aria-pressed="true"]{color:var(--wme-studio-accent,#0099ff);background:color-mix(in srgb,var(--wme-studio-accent,#0099ff) 15%,transparent)}
-      .qr-context{flex:none;margin:0;padding:9px 14px;border-bottom:1px solid var(--wme-studio-border,#3d444b);color:var(--wme-studio-text-muted,#9aa3ad);font-size:12px;line-height:1.5}
-      :host([data-floating]){position:fixed!important;inset:0 auto auto 0!important;width:0!important;height:0!important;z-index:10040!important;pointer-events:none}
-      :host([data-floating]) .panel{position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;width:var(--ws-qr-float-width)!important;max-height:var(--ws-qr-float-max)!important;pointer-events:auto}
-      :host([data-dragging]) .head{cursor:grabbing}
-      :host([data-dragging]) .panel{will-change:transform}
-    `;
+    const QR_FLOAT_CSS = studioPart('p430L9106');
     function requestPanel(state) {
       const win = state?.win;
       return win?.isConnected && win.getClientRects().length ? win.querySelector('.problem-edit') : null;
@@ -8493,7 +8667,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       endPanelDrag(state);
       state.panel.style.removeProperty('transform');
       if (state.floatHost) { state.shadow.append(state.panel); state.floatHost.remove(); }
-      state.floatHost = null; state.floatShadow = null; state.floatPoint = null; state.contextKey = undefined;
+      state.floatHost = null; state.floatShadow = null; state.floatPoint = null; state.contextKey = undefined; state.overPanels = false;
       state.panel.querySelector('.qr-context')?.remove(); paintMapPin(state);
     }
     function pinPanel(state) {
@@ -8503,7 +8677,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         dockPanel(state); place(state); return;
       }
       if (mapPinnedState && mapPinnedState !== state) close(mapPinnedState);
-      floatPanel(state); state.mapPinned = true; mapPinnedState = state; paintMapPin(state);
+      floatPanel(state); leaveOverPanels(state); state.mapPinned = true; mapPinnedState = state; paintMapPin(state);
     }
     function paintMapPin(state) {
       for (const button of state.panel.querySelectorAll('.map-pin')) {
@@ -8521,7 +8695,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         const dx = next.clientX - drag.x, dy = next.clientY - drag.y;
         if (!drag.moved && Math.hypot(dx, dy) < 4) return;
         if (!drag.moved) {
-          drag.moved = true; floatPanel(state, drag.rect);
+          drag.moved = true; floatPanel(state, drag.rect); leaveOverPanels(state);
           try { handle.setPointerCapture(drag.id); } catch (_) {}
           state.floatHost.setAttribute('data-dragging', '');
           drag.geometry = { bounds: floatingBounds(), box: state.panel.getBoundingClientRect() };
@@ -8556,7 +8730,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       state.observer?.disconnect(); state.size?.disconnect();
       const refresh = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; for (const one of states.values()) { place(one); refreshPinnedContext(one); } }); };
       state.observer = new MutationObserver(refresh);
-      state.observer.observe(state.win, { attributes: true, attributeFilter: ['style', 'class'] });
+      state.observer.observe(state.win, { attributes: true, attributeFilter: ['style', 'class', 'data-wme-studio-panel-dragging', 'data-wme-studio-panel-moving'] });
       if (typeof ResizeObserver === 'function') {
         state.size = new ResizeObserver(refresh);
         for (const node of [state.win, state.shadow.querySelector('.stack'), state.panel]) if (node) state.size.observe(node);
@@ -8698,11 +8872,33 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       item.uses = (item.uses || 0) + 1; item.lastUsed = Date.now(); save(); notifyManagers();
       logUse(id, chars || item.text.length, lang);
     }
+    const typedAt = new WeakMap(), REPLY_BOX = 'wz-textarea.new-comment-text, .new-comment-form textarea';
+    document.addEventListener('input', event => {
+      if (!event.isTrusted) return;
+      const box = event.composedPath().find(node => node?.matches?.(REPLY_BOX));
+      if (box) typedAt.set(box.closest?.('wz-textarea.new-comment-text') || box, performance.now());
+    }, true);
+    const lastQuick = new Map();
+    const pickKey = panel => { try { return String(caseFile.facts(panel)?.id || '') || panel; } catch (_) { return panel; } };
+    const replyBox = panel => panel.querySelector('wz-textarea.new-comment-text') || panel.querySelector('.new-comment-form textarea');
+    function lastPick(panel) {
+      const previous = lastQuick.get(pickKey(panel)); if (!previous) return null;
+      const box = replyBox(panel), typedSince = one => (typedAt.get(one) || 0) > previous.at;
+      return typedSince(previous.box) || (box && typedSince(box)) ? null : previous;
+    }
+    function rememberPick(panel, before) {
+      const key = pickKey(panel);
+      lastQuick.delete(key); lastQuick.set(key, { before, at: performance.now(), box: replyBox(panel) });
+      if (lastQuick.size > 30) lastQuick.delete(lastQuick.keys().next().value);
+    }
     function insert(state, text, item = null) {
       const panel = requestPanel(state); if (!panel) return;
       let now = replyText(panel).trimEnd(); const filled = fillVariables(text, panel);
       if (state.suggestedText && now.trim() === state.suggestedText.trim()) { now = ''; panel.querySelector('.ws-suggested')?.remove(); }
       state.suggestedText = '';
+      const previous = lastPick(panel);
+      if (previous && now.trim()) now = previous.before;
+      rememberPick(panel, now);
       const lang = (() => { try { return caseFile.facts(panel).language || ''; } catch (_) { return ''; } })();
       if (item?.id && !item.builtIn) noteUse(item.id, filled.length, lang); else logUse(item?.builtIn && item.key ? 'b:' + item.key : '', filled.length, lang);
       caseFile.fill(panel, now ? `${now}\n\n${filled}` : filled);
@@ -8723,10 +8919,20 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (state.drag?.moved) return;
       if (state.floatHost) { placeFloating(state); if (!state.win.isConnected) return; }
       const rect = state.win.getBoundingClientRect();
-      const open = !state.panel.hidden, need = 34 + (open ? Math.min(320, innerWidth - 24) + 8 : 0);
-      const side = rect.right + need > innerWidth - 8 && rect.left - need > 8 ? 'left' : 'right';
+      const open = !state.panel.hidden, need = 34 + (open ? Math.min(state.overBase?.width || state.panel.offsetWidth || 320, innerWidth - 24) + 8 : 0);
+      let side = rect.right + need > innerWidth - 8 && rect.left - need > 8 ? 'left' : 'right';
+      const panels = open && (!state.floatHost || state.overPanels) ? shownSidePanels() : [];
+      const covers = (left, right) => panels.some(box => left < box.right && right > box.left && rect.top < box.bottom && rect.bottom > box.top);
+      const zone = which => (which === 'right' ? [rect.right, rect.right + need] : [rect.left - need, rect.left]);
+      if (panels.length && covers(...zone(side))) {
+        const other = side === 'right' ? 'left' : 'right', [left, right] = zone(other);
+        if (left > 8 && right < innerWidth - 8 && !covers(left, right)) side = other;
+      }
+      const moving = state.win.matches(WINDOW_MOVING);
+      if (moving && state.host.dataset.side) side = state.host.dataset.side;
       if (state.host.dataset.side !== side) state.host.dataset.side = side;
-      const max = `${Math.max(220, Math.min(560, rect.bottom - 64 - 12))}px`;
+      overPanels(state, moving ? state.overPanels : panels.length > 0 && covers(...zone(side)), side);
+      const max = `${Math.max(180, Math.min(560, rect.bottom - 64 - listCeiling(state, rect, side, need)))}px`;
       if (state.host.style.getPropertyValue('--ws-qr-max') !== max) state.host.style.setProperty('--ws-qr-max', max);
       const zoom = state.win.currentCSSZoom || 1, height = rect.height / zoom, stack = state.shadow.querySelector('.stack');
       if (!height || !stack) return;
@@ -8752,6 +8958,56 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         if (tab.style.getPropertyValue('--ws-tab-paint-size') !== size) tab.style.setProperty('--ws-tab-paint-size', size);
         if (tab.style.getPropertyValue('--ws-tab-paint-pos') !== pos) tab.style.setProperty('--ws-tab-paint-pos', pos);
       }
+    }
+    const WINDOW_MOVING = '[data-wme-studio-panel-dragging],[data-wme-studio-panel-moving],.react-draggable-dragging';
+    function shownSidePanels() {
+      const boxes = [];
+      for (const node of document.querySelectorAll('#sidebar,#filter-panel-region')) {
+        if (node.id === 'sidebar' && !node.closest('.app.show-sidebar')) continue;
+        const box = compactVisibleRect(node);
+        if (!box || box.width <= 40 || box.height <= 40) continue;
+        if (node.checkVisibility && !node.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+        if (node.id === 'filter-panel-region' && ![...node.children].some(child => compactVisibleRect(child))) continue;
+        boxes.push({ left: box.left, top: box.top, right: box.left + box.width, bottom: box.top + box.height, width: box.width, height: box.height });
+      }
+      return boxes;
+    }
+    function listCeiling(state, rect, side, need) {
+      const left = side === 'right' ? rect.right : rect.left - need;
+      try { return Math.max(12, headerPanelLimits(left, need, 8).top + 6); } catch (_) { return 12; }
+    }
+    function overPanels(state, on, side) {
+      if (state.mapPinned || state.drag || (state.floatHost && !state.overPanels)) return;
+      if (!on) { if (state.overPanels) dockPanel(state); return; }
+      if (!state.floatHost) {
+        state.overBase = { width: state.panel.offsetWidth || 400 };
+        floatPanel(state); state.overPanels = true; state.floatHost.setAttribute('data-over-panels', '');
+      }
+      const point = state.floatPoint, scale = point.scale, at = state.host.getBoundingClientRect(), gap = 34 * scale;
+      const win = state.win.getBoundingClientRect(), wide = state.overBase.width * scale + gap;
+      const ceiling = listCeiling(state, win, side, wide);
+      point.maxHeight = Math.max(180, Math.min(560, win.bottom - 64 - ceiling)) / scale;
+      placeFloating(state);
+      const height = state.panel.getBoundingClientRect().height, top = Math.max(ceiling, at.top - height);
+      let width = state.overBase.width * scale;
+      const near = [...document.querySelectorAll(ISLAND_ELEMENTS)].filter(node => !node.matches('#sidebar,#filter-panel-region'))
+        .map(node => node.getBoundingClientRect()).filter(box => box.width && box.height && box.top < top + height && box.bottom > top);
+      if (side === 'right') {
+        const stop = Math.min(innerWidth, ...near.filter(box => box.left >= at.left + gap).map(box => box.left)) - 8;
+        width = Math.max(Math.min(width, 260 * scale), Math.min(width, stop - at.left - gap));
+        point.x = at.left + gap;
+      } else {
+        const stop = Math.max(0, ...near.filter(box => box.right <= at.left - gap).map(box => box.right)) + 8;
+        width = Math.max(Math.min(width, 260 * scale), Math.min(width, at.left - gap - stop));
+        point.x = at.left - gap - width;
+      }
+      point.width = width / scale; point.y = top;
+      placeFloating(state);
+    }
+    function leaveOverPanels(state) {
+      if (!state.overPanels) return;
+      state.overPanels = false; state.floatHost?.removeAttribute('data-over-panels');
+      if (state.floatPoint && state.overBase) state.floatPoint.width = state.overBase.width;
     }
     function close(state, focus = false) {
       if (state.panel.hidden) return;
@@ -9035,8 +9291,9 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       const names = folderNames();
       let facts = {}; try { facts = caseFile.facts(panel) || {}; } catch (_) { facts = {}; }
       const mm = facts.mapMate || null;
-      const typeLabel = mm ? (mm.kind ? `Map Mate · ${tr(MAP_MATE_KIND_NAMES[mm.kind])}` : 'Map Mate') : type;
-      const typeKeys = mm ? [['mm-ask'], ...(MAP_MATE_BUILT[mm.kind] || MAP_MATE_BUILT[''])] : (TYPE_BUILT[facts.group] || []);
+      const mmName = mm && (MAP_MATE_KIND_NAMES[mm.kind] || TYPE_GROUP_NAMES[mm.group] || mm.name);
+      const typeLabel = mm ? (mmName ? `Map Mate · ${tr(mmName)}` : 'Map Mate') : type;
+      const typeKeys = mm ? [['mm-ask'], ...((mm.kind && MAP_MATE_BUILT[mm.kind]) || TYPE_BUILT[mm.group] || MAP_MATE_BUILT[''])] : (TYPE_BUILT[facts.group] || []);
       const typeBuilt = typeKeys.filter(([key]) => set[key]).map(([key]) => ({ ...builtReply(language, key, set), pinned: view.builtPins.includes(key) })).filter(item => !item.hidden);
       const pinned = [...mine.filter(item => item.pinned), ...shownBuilt.filter(item => item.pinned), ...typeBuilt.filter(item => item.pinned)];
       const forMe = item => sameType(item.type, type) || (!!mm && /map\s*-?\s*mate/i.test(item.type || ''));
@@ -9336,6 +9593,15 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       state.panel.replaceChildren(head(state, item ? tr('Edit reply') : tr('New reply')), body, foot);
       title.focus({ preventScroll: true });
     }
+    const growField = (() => {
+      let native = null;
+      return field => {
+        native ??= (() => { try { return CSS.supports('field-sizing', 'content'); } catch (_) { return false; } })();
+        if (native) return;
+        const fit = () => { field.style.height = 'auto'; field.style.height = `${Math.min(field.scrollHeight + 2, 126)}px`; };
+        field.addEventListener('input', fit); requestAnimationFrame(fit);
+      };
+    })();
     function renderVars(state, back = () => renderList(state)) {
       state.view = 'vars'; freeHeight(state);
       const form = el('form'); form.noValidate = true;
@@ -9346,7 +9612,8 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         const name = el('label', 'name'); const nameInput = el('input'); nameInput.maxLength = 20; nameInput.value = item.name; nameInput.placeholder = tr('name'); nameInput.spellcheck = false; nameInput.setAttribute('aria-label', tr('Variable name'));
         nameInput.addEventListener('input', () => { const clean = nameInput.value.toLowerCase().replace(/[^a-z]/g, ''); if (clean !== nameInput.value) nameInput.value = clean; });
         name.append('{', nameInput, '}');
-        const value = el('input'); value.maxLength = 500; value.value = item.value; value.placeholder = placeholder || tr('What it puts in'); value.setAttribute('aria-label', tr('Text it puts in'));
+        const value = el('textarea', 'val'); value.rows = 1; value.maxLength = 500; value.value = item.value; value.placeholder = placeholder || tr('What it puts in'); value.setAttribute('aria-label', tr('Text it puts in'));
+        growField(value);
         row.append(name, value, iconButton('remove', tr('Remove'), () => { row.remove(); if (!rows.children.length) addRow(); }));
         rows.append(row);
         return nameInput;
@@ -9364,7 +9631,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       foot.append(el('span', 'grow'), cancel, saveButton);
       const submit = event => {
         event?.preventDefault(); error.textContent = '';
-        const list = [...rows.children].map(row => { const [nameInput, value] = row.querySelectorAll('input'); return { name: nameInput.value.trim(), value: value.value.trim(), nameInput }; }).filter(item => item.name || item.value);
+        const list = [...rows.children].map(row => { const nameInput = row.querySelector('input'), value = row.querySelector('textarea'); return { name: nameInput.value.trim(), value: value.value.trim(), nameInput }; }).filter(item => item.name || item.value);
         for (const item of list) {
           if (!item.name) { error.textContent = tr('Give each variable a name.'); item.nameInput.focus(); return; }
           if (BUILT_IN_NAMES.has(item.name)) { error.textContent = tr('{{0}} is already one of Studio’s variables. Pick another name.', item.name); item.nameInput.focus(); return; }
@@ -9464,6 +9731,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       .tip:hover,.tip:focus-visible{border-color:var(--wme-studio-accent,#0099ff);color:var(--wme-studio-accent,#0099ff);outline:none}
       .tip .bubble{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:6;display:block;visibility:hidden;opacity:0;transition:visibility 0s,opacity .1s;padding:9px 11px;border:1px solid var(--wme-studio-border,#3d444b);border-radius:10px;background:var(--ws-window-paint,var(--wme-studio-surface,#292d31));-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 10px 28px rgba(0,0,0,.35);color:var(--wme-studio-text,#edf1f4);font-size:12px;font-weight:500;line-height:1.45;text-align:left;cursor:default;pointer-events:none}
       .tip:hover .bubble,.tip:focus .bubble{visibility:visible;opacity:1;transition-delay:${STUDIO_TOOLTIP_DELAY}ms}
+      :host-context(html[data-wme-studio-tooltips="off"]) .tip > .bubble{visibility:hidden!important;pointer-events:none!important}
       .chip .label{max-width:120px;padding:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:16px}.chip[data-key="type"] .label{max-width:96px}
       .dd{position:relative}
       .dd-btn{display:flex;align-items:center;gap:8px;box-sizing:border-box;width:100%;height:36px;margin:0;padding:0 10px;border:1px solid var(--wme-studio-border,#3d444b);border-radius:10px;background:var(--wme-studio-input,#23272b);color:var(--wme-studio-text,#fff);font:inherit;font-size:12.5px;font-weight:600;line-height:1;text-align:left;cursor:pointer}
@@ -9502,7 +9770,12 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       if (!items.length || panel.querySelector('.actions .close-details, .close-details')) { bar?.remove(); return; }
       const key = `${language}|${activeTheme()}|` + items.map(item => `${item.id || item.key}:${item.title}:${item.action}:${item.group || ''}`).join('~');
       if (bar && bar.dataset.key === key && bar.nextElementSibling === form) return;
-      if (!bar) { bar = el('div', 'ws-reply-buttons'); bar.setAttribute('data-ws-keep', ''); bar.setAttribute('role', 'group'); }
+      if (!bar) {
+        bar = el('div', 'ws-reply-buttons'); bar.setAttribute('data-ws-keep', ''); bar.setAttribute('role', 'group');
+        bar.addEventListener('scroll', () => fadeButtons(bar), { passive: true });
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => { alignButtons(bar); fadeButtons(bar); }).observe(bar);
+        bar.addEventListener('wheel', event => { if (bar.scrollWidth > bar.clientWidth + 1 && Math.abs(event.deltaY) > Math.abs(event.deltaX)) { event.preventDefault(); bar.scrollLeft += event.deltaY; } }, { passive: false });
+      }
       bar.setAttribute('aria-label', tr('Reply buttons'));
       bar.dataset.key = key;
       bar.replaceChildren(...items.map(item => {
@@ -9516,6 +9789,20 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         return button;
       }));
       if (bar.nextElementSibling !== form) form.before(bar);
+      alignButtons(bar); fadeButtons(bar);
+    }
+    function alignButtons(bar) {
+      const form = bar.nextElementSibling, field = form?.querySelector('wz-textarea.new-comment-text, textarea');
+      if (!field?.offsetWidth) return;
+      const zoom = bar.currentCSSZoom || 1, row = bar.getBoundingClientRect(), box = field.getBoundingClientRect(), end = [...form.querySelectorAll('wz-button, button')].reduce((most, node) => Math.max(most, node.offsetWidth ? node.getBoundingClientRect().right : 0), box.right);
+      const left = `${Math.max(0, Math.round((box.left - row.left) / zoom))}px`, right = `${Math.max(0, Math.round((row.right - Math.min(row.right, end)) / zoom))}px`;
+      if (bar.style.paddingLeft !== left) bar.style.paddingLeft = left;
+      if (bar.style.paddingRight !== right) bar.style.paddingRight = right;
+    }
+    function fadeButtons(bar) {
+      const room = bar.scrollWidth - bar.clientWidth, left = room > 1 && bar.scrollLeft > 1, right = room > 1 && bar.scrollLeft < room - 1;
+      const more = left && right ? 'both' : left ? 'left' : right ? 'right' : '';
+      if ((bar.dataset.more || '') !== more) { if (more) bar.dataset.more = more; else delete bar.dataset.more; }
     }
     function suggestFirst(state) {
       const panel = requestPanel(state); if (!panel) return;
@@ -9526,7 +9813,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       state.suggestedFor = facts.id;
       if (replyText(panel).trim()) return;
       const { set, language } = caseFile.replies(panel);
-      const key = facts.mapMate ? 'mm-ask' : TYPE_BUILT[facts.group]?.[0]?.[0] || 'spot';
+      const key = facts.mapMate ? (TYPE_BUILT[facts.mapMate.group]?.[0]?.[0] || 'mm-ask') : TYPE_BUILT[facts.group]?.[0]?.[0] || 'spot';
       if (!set?.[key]) return;
       const text = fillVariables(builtReply(language, key, set).text, panel);
       caseFile.fill(panel, text); state.suggestedText = text;
@@ -9646,6 +9933,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     }
     function urceMode(state) {
       const lead = urceLeads(), icon = lead ? String(globalThis.WMEStudioScriptIcon?.('375430') || '') : '';
+      if (lead) Promise.resolve(studioKeep.get('wmeStudio.urceHandoff')).then(saved => { if (saved === undefined) globalThis.WMEStudioTip?.('urce'); }, () => {});
       const key = lead ? 'urce:' + icon : '';
       if (state.urce === key) return;
       state.urce = key;
@@ -9671,21 +9959,39 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       return null;
     }
     function fitReply(state) {
+      if (state.resizing) { state.fitLater = true; return; }
       const panel = requestPanel(state), list = panel?.querySelector('.conversation-view .comment-list');
       const box = list && scroller(list, state.win);
       if (!list || !box) return;
+      const listTop = list.scrollTop, boxTop = box.scrollTop;
       list.style.removeProperty('max-height');
       const over = box.scrollHeight - box.clientHeight;
       if (over > 1) list.style.setProperty('max-height', `${Math.max(72, Math.floor(list.getBoundingClientRect().height - over))}px`, 'important');
       const still = box.scrollHeight - box.clientHeight;
       const inner = state.reply?.shadowRoot?.querySelector('textarea') || panel.querySelector('.new-comment-form textarea');
       if (still > 1 && inner?.style.height) inner.style.height = `${Math.max(32, Math.floor(inner.getBoundingClientRect().height - still))}px`;
+      if (list.scrollTop !== listTop) list.scrollTop = listTop;
+      if (box.scrollTop !== boxTop) box.scrollTop = boxTop;
     }
     function watchReply(state) {
       const field = requestPanel(state)?.querySelector('wz-textarea.new-comment-text');
       if (field === state.reply) return;
       state.replyWatch?.disconnect(); state.reply = field;
       if (!field || typeof ResizeObserver !== 'function') return;
+      if (!field.hasAttribute('data-ws-resize-watch')) {
+        field.setAttribute('data-ws-resize-watch', '');
+        field.addEventListener('pointerdown', event => {
+          const inner = field.shadowRoot?.querySelector('textarea') || field, rect = inner.getBoundingClientRect();
+          if (event.button !== 0 || event.clientX < rect.right - 18 || event.clientY < rect.bottom - 18) return;
+          state.resizing = true;
+          const done = () => {
+            removeEventListener('pointerup', done, true); removeEventListener('pointercancel', done, true);
+            state.resizing = false;
+            if (state.fitLater) { state.fitLater = false; requestAnimationFrame(() => fitReply(state)); }
+          };
+          addEventListener('pointerup', done, true); addEventListener('pointercancel', done, true);
+        });
+      }
       let pending = 0, last = 0;
       state.replyWatch = new ResizeObserver(entries => {
         const height = Math.round(entries[0]?.contentRect?.height || 0);
@@ -9715,7 +10021,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     addEventListener('resize', () => { for (const state of states.values()) place(state); }, { passive: true });
     load(); loadMine();
     const MANAGER_HTML = studioPart('MANAGER_HTML');
-    const MANAGER_STRINGS = ["1 folder", "1 reply", "1 selected", "<1 min", "A backup is one file with all your replies, folders, variables and changes to Studio’s replies.", "A code fits in a Discord message. A file is easier for many replies.", "A deleted reply", "Add", "Add 1 reply", "Add a country", "Add a tag", "Add a variable", "Add replies", "Add replies someone shared", "Add {0}", "Add {0} replies", "Added 1 reply", "Added to your replies", "Added {0} replies", "All my replies", "All replies", "All variables", "All {0} languages", "Answer requests in one click", "Ask for the exact spot", "Automatic", "Back", "Back to Studio’s", "Back to Studio’s wording", "Backup", "Backup saved", "Cancel", "Changed", "Choose what to share", "Clear the selection", "Close", "Code to import", "Code to share", "Color", "Connected to WME", "Conversation", "Copied", "Copy code", "Copy text", "Copy {0}", "Counted from the requests where you opened Quick replies in the last 30 days.", "Countries", "Countries (optional)", "Delete", "Delete folder", "Delete folder and replies", "Delete folder, keep replies", "Delete replies too", "Delete {0} replies", "Delete “{0}”?", "Delete “{0}”? It has 1 reply.", "Delete “{0}”? It has {1} replies.", "Delete “{0}”? Its {1} replies move to No folder.", "Details", "Did you mean {0}?", "Drag and right-click", "Drag replies onto a folder on the left to move them. Right-click a reply or a folder for more.", "Drag to reorder, or onto a folder", "Duplicate", "Edit", "Edit folder", "Edit reply", "Empty means everywhere.", "Everything in one file: your replies and folders, your changes to Studio’s replies and your variables. Keep it safe, or use it to move to another computer.", "Filled from #{0}", "Filled in from the open request, #{0}. Green parts come from variables.", "First in the list", "First in the list for", "Fixed, shows after the update", "Folder", "Folder actions", "Folder name", "Folders", "Folders group replies by subject, like Closures or Speed limits.", "Folders show as chips in WME, so the right reply is one click away.", "From its folder: {0}", "From {0}", "Getting started", "Give each variable a name.", "Give it a name.", "Greets the reporter in their language", "Have a look", "Hidden in WME", "Hide in WME", "Hide it from WME to keep your list short. It stays here.", "Hide this", "Icon", "Import replies", "Import replies a friend shared", "In #{0}", "In a reply, type { to pick a variable. {greeting} and {me} fill themselves in when you use it.", "Insert variable", "It goes in the reply box, filled in. Read it, then send.", "It says good morning or good evening in the reporter’s language, so every reply opens warmly.", "Its replies show only for requests in these countries, unless a reply has its own.", "Keep replies", "Keep their folders", "Last used", "Library", "Long for a phone: {0} characters. Under 320 reads best.", "Missing roundabout", "More", "Most of your reporters write in {0}", "Most used", "Most used: {0}", "Move down", "Move to", "Move to…", "Move up", "Moved out of folders", "Moved to {0}", "My variables they use", "Name", "New", "New folder", "New folder…", "New reply", "New reply here", "Next tip", "No answer, closing", "No backup yet", "No folder", "No greeting yet. {0} says good morning or good evening in the reporter’s language.", "No icon", "No replies of your own yet", "No reply matches “{0}”.", "None", "Not connected", "Not now", "Not used yet", "Nothing chosen yet", "Nothing here yet. New reply adds one, or drag replies onto a folder on the left.", "Nothing to tidy up. Your replies are in good shape.", "Nothing yet. Each reply you use in WME counts here.", "Now", "Off: it stays here but not in WME’s list. Searching there still finds it.", "On an open request in WME, press Q to open Quick replies, then 1 to 9 to put that reply in the box.", "On requests of this type, it comes first.", "One file with all your replies, folders and variables.", "Open", "Open a file", "Open a request in WME", "Open a request in WME, press Q, then the number of the reply.", "Open an update request in WME to see its details filled in.", "Open request", "Or start from one below and change the wording.", "Or start from one of these", "Or write a new one. It’s saved as soon as it has a name and some text.", "Paste a code here, or open a file", "Paste the code another editor shared, or open their file. The replies are added to yours; nothing is replaced.", "Paste their code or open their file. You choose which ones to add before anything changes.", "Pick a reply to edit it", "Pick them", "Pin", "Pin it, and it sits at the top of Quick replies.", "Pin or unpin", "Pin the replies you use most", "Pin the replies you use most: they show first in Quick replies.", "Pin to the top of Quick replies", "Pin your favourites and they sit at the top of Quick replies, so their numbers stay the same.", "Pinned", "Pinned replies come first", "Pinned replies sit at the top of Quick replies in WME, so they get the first numbers.", "Place variables can be empty when there’s no street nearby. Read the reply before you send it.", "Press 1 to use it", "Preview", "Preview for #{0}", "Previews use this request’s details", "Put it in a folder", "Put them in", "Q opens Quick replies", "Quick replies", "Ready replies for drivers, in the reporter’s language. Your wording is used instead of Studio’s, also by the case file’s buttons.", "Recently used", "Remind me after 2 weeks", "Remove", "Remove {0}", "Replace", "Replace everything with this backup: {0} replies, {1} folders, {2} variables?", "Replies to share", "Reply", "Reply check", "Reporter’s language", "Restore", "Restore a backup", "Restored", "Road closed for works", "Route depends on traffic", "Save", "Save a backup", "Save as file", "Saved", "Search", "Search replies", "Sections", "Select all", "Select {0}", "Send it", "Send this code to other editors, for example in Discord. They add it under Share and backup › Import replies.", "Share and backup", "Share replies", "Share with other editors", "Shared replies", "Shared {0}", "Short enough to read on a phone in the car", "Show first for (optional)", "Show in Quick replies", "Show in WME", "Show me", "Show suggestions", "Shown", "Shown in WME", "Shown only for requests in these countries. Leave it empty for everywhere.", "Sort", "Sort them", "Speed limit is already right", "Start", "Start from Studio’s", "Start your replies with {0}", "Studio speaks their language", "Studio’s", "Studio’s replies", "Studio’s replies already speak it. Have a look, and add your own wording if you like.", "Studio’s replies follow the reporter’s language. Change their wording under Studio’s replies.", "Studio’s variables", "Studio’s wording", "Tags", "Temporary closure", "Text", "Text it puts in", "They show under its name, at the top.", "That doesn’t look like shared quick replies.", "That isn’t a Quick replies backup.", "The Quick replies tab sits on the side of the request window.", "The reporter’s drive", "The situations editors answer most. Each one becomes yours to change.", "Their variables you don’t have yet are added too:", "There is already a folder called “{0}”.", "They paste the code in Share and backup › Add replies. Nothing of theirs is replaced.", "This request", "This week", "Tip", "Tip {0} of {1}", "Tip: {0}", "Tips show here as you write.", "Tips, never rules", "Type { for variables", "Unpin", "Use a reply on a request in WME", "Use this", "Used", "Used once", "Used {0} times", "Values from the request open in WME, in the reporter’s language.", "Variable", "Variable name", "Variables", "Variables, filled in when you pick the reply:", "WME is closed or was reloaded, so changes here can’t be saved. Open this page again from Quick replies in WME.", "We didn’t hear back, so I’m closing this report for now. If it happens again, send a new report from the spot. Thanks!", "What it puts in", "What the reporter sees", "Where it shows", "Words Studio fills in when you use a reply. Type { in a reply to pick one, or write your own below.", "Words that find this folder’s replies when you search, like “roadworks” or “closure”.", "Worth a look", "Write a reply first, then share it here.", "Write a reply here", "Write a request type under Where it shows, and the reply comes first on requests of that type.", "Write my first reply", "Write one", "Write the replies you send again and again once, then pick them in WME.", "Write the replies you send again and again once. Studio fills in the street, the date and a greeting in the reporter’s language each time you use one.", "Write the reply.", "Write your first reply", "Write your own wording, or start from Studio’s and change it", "You and now", "You have all the habits", "You have it", "You have this one", "You haven’t saved a backup yet", "You use “{0}” a lot", "You wrote 1 reply since.", "You wrote {0} replies since.", "Your last backup was {0}", "Your order", "Your own words to drop into replies, like a sign-off or a link to your community. Write the name in braces in a Quick reply, or pick it from the + in the reply box.", "Your own words, like a sign-off or a link to your community.", "Your replies", "Your replies are set up the way that saves the most time.", "Your replies at a glance, and a few habits that make answering requests faster.", "Your reply, with its variables filled in, shows here.", "Your reporters write in", "Your variables", "Your wording", "Your wording (empty: Studio’s)", "Yours · empty uses Studio’s", "choose", "insert", "language answered in", "languages answered in", "last {0}", "name", "of typing saved", "or type { anywhere", "replies used", "reply used", "{0} (copy)", "{0} / 2000", "{0} folders", "{0} found", "{0} isn’t a variable, so it stays as written.", "{0} min", "{0} of {1}", "{0} of {1} done", "{0} ready replies in {1} languages, picked by the reporter’s language. Leave them as they are, or write your own wording next to Studio’s. Yours is used in WME and by the case file’s buttons.", "{0} replies", "{0} replies aren’t in a folder", "{0} replies found.", "{0} selected", "{greeting}! Could you tell us exactly where the problem was? The street name or the junction helps us find it.", "{greeting}! Thanks for the report from {reportdate}. The road is closed for works until Friday, so the app avoids it. {me}", "{greeting}, I fixed the map at {junction}. It shows in the app after the next map update, usually within a few days.", "{greeting}, thanks for the report. The speed limit on {street} matches the signs, so I left it as it is.", "{greeting}, thanks! The roadworks on {street} are added as a closure until they end.", "{greeting}, the app picks the route from live traffic, so it can differ from day to day. The map here is right.", "{{0}} is already one of Studio’s variables. Pick another name.", "{{0}} is there twice.", "“{0}” hasn’t been used in 2 months", "Spreadsheet saved", "That isn’t a spreadsheet of Studio’s replies. Export one first: it has the columns Studio reads back.", "1 change taken from the spreadsheet.", "{0} changes taken from the spreadsheet.", "Nothing to change: the spreadsheet has the same wording.", "Your languages", "Add a language", "Only these are shown here. In WME a reporter who writes in another language still gets Studio’s reply in theirs.", "Picked from the languages your reporters write in. Add or remove any: only these are shown here.", "Spreadsheet", "Export your languages", "Export all {0} languages", "Import a spreadsheet…", "Undone", "Undo", "Your wording in {0} of {1}", "Shown in Quick replies, in every language", "What you added before and after Studio’s wording in {0} goes into the same place in your other languages.", "Added to 1 language", "Added to {0} languages", "Add the same to my other languages", "Chrome translates your wording in {0} into your other languages, on this computer. Read them over before you use them.", "Translate into my other languages", "Translating… {0} of {1}", "Chrome couldn’t translate into {0}. Those keep Studio’s wording.", "Translated. Read them over before you use them.", "Change the wording in one language, then bring it to the others.", "Your other languages all have your own wording.", "From {0}. Languages with your own wording are left as they are.", "Yours", "Studio’s {0} ready replies, in {1} languages. WME picks the one in the reporter’s language. Leave them as they are, or change the wording. Your own replies are in All replies.", "Free", "On a request in WME, Q opens Quick replies and a number puts that reply in the box. This is what each number put in last time, on #{0}. Pin a reply to move it up.", "On a request in WME, Q opens Quick replies and a number puts that reply in the box. Open Quick replies on a request, and what each number gives shows here.", "You put in {0} replies and saved about {1} of typing.", "Most went to reporters writing in {0}.", "Still to do", "Q, then a number", "Reporter", "You"];
+    const MANAGER_STRINGS = studioPart('MANAGER_STRINGS') || [];
     const managers = new Map();
     function managerState() {
       const panel = windows().at(-1)?.querySelector('.problem-edit') || null;
@@ -9738,6 +10044,7 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
         values: rows, request, limits: { replies: MAX, variables: MINE_MAX },
         coach: guide, usage: usageLog, seen: seenLog, user: (() => { try { return wmeUserName() || ''; } catch (_) { return ''; } })(),
         strings: Object.fromEntries(MANAGER_STRINGS.map(key => [key, tr(key)])),
+        page: qrPageWords(ui),
         theme: { scheme: activeTheme() === 'light' ? 'light' : 'dark', lang: ui },
         icon: (() => { try { return String(GM_info?.script?.icon || ''); } catch (_) { return ''; } })()
       };
@@ -9836,7 +10143,11 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
       return text.replace(/\{([a-z]+)\}/gi, (whole, name) => (Object.hasOwn(known, name.toLowerCase()) ? known[name.toLowerCase()] : whole));
     }
     return Object.freeze({ inspect: panel => { if (panel?.matches?.('.problem-edit')) queue(); }, refresh: queue, toggle, windows,
+      repaint: panel => { const state = states.get(panel?.closest?.(WINDOW)); if (!state) queue(); else load().then(() => paintButtons(state)); },
+      signature: panel => { loadMine(); const item = mineVars.find(one => one.name === 'signature'); if (!item?.value.trim()) return ''; try { return fillVariables(item.value, panel).trim(); } catch (_) { return item.value.trim(); } },
       mine: () => load().then(() => custom.map(item => ({ ...item }))), mineNow: () => custom.length, fillFor, noteUse, openManager: () => openManager(null), notifyManagers: () => { if (managers.size) notifyManagers(); },
+      picked: panel => rememberPick(panel, ''),
+      readyAction: (panel, key) => applyAction(panel, Object.hasOwn(view.builtActions || {}, key) ? view.builtActions[key] : builtDefaultAction(key)),
       readyText: (panel, lang, key, fallback) => { const edit = builtEdits[lang]?.[key]; const text = edit?.text?.trim() ? edit.text : fallback; try { return fillVariables(text, panel); } catch (_) { return text; } },
       details: panel => {
         const known = values(panel);
@@ -9852,20 +10163,8 @@ html[data-wme-studio="on"] :is(#ISSUE_WINDOW_UPDATE_REQUEST,#ISSUE_WINDOW_MAP_PR
     const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
     const keyName = shift => `${mac ? '⌘' : 'Ctrl+'}${shift ? (mac ? '⇧' : 'Shift+') : ''}${mac ? '↩' : 'Enter'}`;
     const svg = path => `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
-    const ICON = { translate: '<path d="M4 5h9M8.5 3v2M6 5c.7 3.3 2.8 6 6 7.5M11 5c-.8 3.6-3.4 6.6-7 8"/><path d="m12.5 21 4-10 4 10M14 17.5h5"/>', next: '<path d="M5 12h11M12 7l5 5-5 5M20 6v12"/>', undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>' };
-    GM_addStyle(`html[data-wme-studio="on"] .problem-edit .new-comment-form > .ws-reply-tools { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; margin: 0; padding: 0; }
-html[data-wme-studio="on"] .problem-edit .new-comment-form > .ws-reply-tools[hidden] { display: none !important; }
-html[data-wme-studio="on"] .ws-reply-tools > button.ws-reply-btn { display: inline-flex !important; align-items: center; justify-content: center; gap: 5px; height: 24px !important; min-width: 0; margin: 0 !important; padding: 0 9px !important; border: 1px solid var(--wme-studio-border) !important; border-radius: 999px !important; background: transparent !important; color: var(--wme-studio-text-secondary) !important; font: 600 12px/16px var(--ws-font) !important; white-space: nowrap; cursor: pointer; box-shadow: none !important; }
-html[data-wme-studio="on"] .ws-reply-tools > button.ws-reply-btn:hover:not(:disabled) { background: var(--wme-studio-hover) !important; color: var(--wme-studio-text) !important; }
-html[data-wme-studio="on"] .ws-reply-tools > button.ws-reply-btn:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 2px; }
-html[data-wme-studio="on"] .ws-reply-tools > button.ws-reply-btn:disabled { opacity: .45; cursor: default; }
-html[data-wme-studio="on"] .ws-reply-tools > button.ws-reply-btn[hidden] { display: none !important; }
-html[data-wme-studio="on"] .ws-reply-tools > button.ws-reply-btn[aria-pressed="true"] { border-color: color-mix(in srgb, var(--wme-studio-accent, #0099ff) 60%, var(--wme-studio-border)) !important; color: var(--wme-studio-accent, #0099ff) !important; }
-html[data-wme-studio="on"] .ws-reply-tools > button.ws-reply-btn svg { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-html[data-wme-studio="on"] .ws-reply-tools > button.ws-reply-next { margin-left: auto !important; }
-html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original { flex: 1 1 100%; order: 3; min-width: 0; margin: 0; color: var(--wme-studio-text-muted); font: 12px/16px var(--ws-font); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original b { font-weight: 600; color: var(--wme-studio-text-secondary); }
-html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { display: none !important; }`);
+    const ICON = { sign: '<path d="M3 17c3-4 5-9 7-9s-1 9 1 9 3-4 4-4 1 3 2 3 2-1 4-2"/><path d="M3 21h18"/>', translate: '<path d="M4 5h9M8.5 3v2M6 5c.7 3.3 2.8 6 6 7.5M11 5c-.8 3.6-3.4 6.6-7 8"/><path d="m12.5 21 4-10 4 10M14 17.5h5"/>', next: '<path d="M5 12h11M12 7l5 5-5 5M20 6v12"/>', undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>' };
+    GM_addStyle(studioPart('p430L10828'));
     const field = panel => panel?.querySelector('wz-textarea.new-comment-text') || panel?.querySelector('.new-comment-form textarea');
     const replyValue = panel => { const one = field(panel); return String(one?.value ?? one?.shadowRoot?.querySelector('textarea')?.value ?? ''); };
     const commentCount = panel => panel.querySelectorAll('.conversation-view .comment-list > :is(.comment, wz-list-item)').length;
@@ -9876,52 +10175,77 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
     function build(state) {
       const bar = make('div', 'ws-reply-tools'); bar.setAttribute('data-ws-keep', '');
       const translate = button('ws-reply-translate', ICON.translate), next = button('ws-reply-next', ICON.next);
+      const external = button('ws-reply-external', ICON.translate); external.hidden = true;
+      external.querySelector('span').textContent = tr('Google Translate'); external.title = tr('Open your reply in Google Translate');
+      external.addEventListener('click', () => openGoogleReply(state));
+      const sign = button('ws-reply-sign', ICON.sign); sign.hidden = true;
+      sign.querySelector('span').textContent = tr('Add signature'); sign.title = tr('Add your {signature} at the end of the reply');
+      sign.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); addSignature(state); });
       const original = make('p', 'ws-reply-original'); original.hidden = true;
       translate.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); translateReply(state); });
       next.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); sendAndNext(state.panel); });
       for (const type of ['pointerdown', 'mousedown']) bar.addEventListener(type, event => event.stopPropagation());
-      bar.append(translate, next, original);
-      Object.assign(state, { bar, translateButton: translate, nextButton: next, original });
+      bar.append(sign, translate, external, next, original);
+      Object.assign(state, { bar, signButton: sign, translateButton: translate, externalButton: external, nextButton: next, original });
     }
     const setText = (node, text) => { const span = node.querySelector('span'); if (span.textContent !== text) span.textContent = text; };
+    const setProp = (node, name, value) => { if (node[name] !== value) node[name] = value; };
     function paint(state) {
       const text = replyValue(state.panel).trim(), target = state.target;
       const show = !!(target?.can && (target.language !== target.mine || state.mine != null));
-      state.translateButton.hidden = !show;
+      setProp(state.translateButton, 'hidden', !show);
       if (show) {
-        if (state.busy) { const share = caseFile.downloadShare(); setText(state.translateButton, share < 1 ? tr('Downloading {0}%', Math.round(share * 100)) : tr('Translating…')); state.translateButton.title = tr('Click to stop'); }
-        else if (state.mine != null) { setText(state.translateButton, tr('Undo translation')); state.translateButton.title = tr('Back to what you wrote'); }
+        if (state.busy) { const share = caseFile.downloadShare(); setText(state.translateButton, share < 1 ? tr('Downloading {0}%', Math.round(share * 100)) : tr('Translating…')); setProp(state.translateButton, 'title', tr('Click to stop')); }
+        else if (state.mine != null) { setText(state.translateButton, tr('Undo translation')); setProp(state.translateButton, 'title', tr('Back to what you wrote')); }
         else if (Date.now() < (state.sameUntil || 0)) { setText(state.translateButton, tr('Already in {0}', target.name)); }
-        else if (state.failed && state.failed === text) { setText(state.translateButton, tr('Open in Google Translate')); state.translateButton.title = tr('Chrome couldn’t translate this here. Open your reply in Google Translate, then copy the translation back.'); }
-        else { setText(state.translateButton, tr('To {0}', target.name)); state.translateButton.title = tr('Translate your reply into {0}, the reporter’s language', target.name); }
+        else if (state.failed && state.failed === text) { setText(state.translateButton, tr('Retry translation')); setProp(state.translateButton, 'title', tr('Try translating your reply again')); }
+        else { setText(state.translateButton, tr('To {0}', target.name)); setProp(state.translateButton, 'title', tr('Translate your reply into {0}, the reporter’s language', target.name)); }
         if (state.failed && state.failed !== text) state.failed = null;
-        state.translateButton.querySelector('svg').innerHTML = state.mine != null && !state.busy ? ICON.undo : ICON.translate;
-        state.translateButton.disabled = !state.busy && state.mine == null && !text;
-        state.translateButton.setAttribute('aria-pressed', String(state.mine != null));
+        const art = state.mine != null && !state.busy ? 'undo' : 'translate', svgNode = state.translateButton.querySelector('svg');
+        if (svgNode.dataset.art !== art) { svgNode.innerHTML = ICON[art]; svgNode.dataset.art = art; }
+        setProp(state.translateButton, 'disabled', !state.busy && state.mine == null && !text);
+        if (state.translateButton.getAttribute('aria-pressed') !== String(state.mine != null)) state.translateButton.setAttribute('aria-pressed', String(state.mine != null));
       }
+      const signature = (() => { try { return quickReplies.signature(state.panel); } catch (_) { return ''; } })();
+      setProp(state.signButton, 'hidden', !signature);
+      setProp(state.signButton, 'disabled', !!signature && replyValue(state.panel).trimEnd().endsWith(signature));
+      setProp(state.externalButton, 'hidden', !text || !target || target.language === target.mine || state.busy || (target.can && state.failed !== text));
       setText(state.nextButton, text ? tr('Send & next') : tr('Next request'));
-      state.nextButton.title = (text ? tr('Send, then open the nearest open update request') : tr('Open the nearest open update request')) + ` (${keyName(true)})`;
-      state.nextButton.disabled = !!state.sending;
-      state.original.hidden = state.mine == null;
+      setProp(state.nextButton, 'title', (settings.requestNextInTracker ? tr(text ? 'Send, then open the next update request in the issue tracker' : 'Open the next update request in the issue tracker') : text ? tr('Send, then open the nearest open update request') : tr('Open the nearest open update request')) + ` (${keyName(true)})`);
+      setProp(state.nextButton, 'disabled', !!state.sending);
+      setProp(state.original, 'hidden', state.mine == null);
       if (state.mine != null && state.original.dataset.text !== state.mine) { state.original.dataset.text = state.mine; state.original.replaceChildren(); const label = document.createElement('b'); label.textContent = tr('You wrote:') + ' '; state.original.append(label, state.mine); }
+    }
+    function addSignature(state) {
+      const signature = (() => { try { return quickReplies.signature(state.panel); } catch (_) { return ''; } })();
+      if (!signature) return;
+      const text = replyValue(state.panel).trimEnd();
+      if (text.endsWith(signature)) return;
+      caseFile.fill(state.panel, text ? `${text}\n${signature}` : signature);
+      paint(state);
+    }
+    function replyContext(panel) {
+      try { return `${caseFile.facts(panel)?.id ?? ''}|${caseFile.replyTarget(panel)?.language || ''}`; } catch (_) { return ''; }
+    }
+    function openGoogleReply(state) {
+      const text = replyValue(state.panel).trim(); if (!text) return;
+      const url = `https://translate.google.com/?sl=auto&tl=${encodeURIComponent(state.target?.language || 'en')}&op=translate&text=${encodeURIComponent(text.slice(0, 4500))}`;
+      try { (typeof unsafeWindow === 'undefined' ? window : unsafeWindow).open(url, '_blank', 'noopener'); } catch (_) { window.open(url, '_blank', 'noopener'); }
     }
     async function translateReply(state) {
       const panel = state.panel;
-      if (state.busy) { state.busy = false; state.token = null; paint(state); return; }
+      if (state.busy) { state.busy = false; state.token = null; clearInterval(state.ticker); paint(state); return; }
       if (state.mine != null) { caseFile.fill(panel, state.mine); state.mine = null; paint(state); return; }
       const text = replyValue(panel); if (!text.trim()) return;
-      if (state.failed === text.trim()) {
-        const url = `https://translate.google.com/?sl=auto&tl=${encodeURIComponent(state.target?.language || 'en')}&op=translate&text=${encodeURIComponent(text.slice(0, 4500))}`;
-        try { (typeof unsafeWindow === 'undefined' ? window : unsafeWindow).open(url, '_blank', 'noopener'); } catch (_) { window.open(url, '_blank', 'noopener'); }
-        state.failed = null; paint(state); return;
-      }
-      const token = state.token = {}; state.busy = true; paint(state);
-      const ticker = setInterval(() => { if (state.busy) paint(state); }, 400);
+      const context = replyContext(panel), token = state.token = {}; state.busy = true; state.failed = null; state.sameUntil = 0; paint(state);
+      clearInterval(state.ticker);
+      const ticker = state.ticker = setInterval(() => { if (state.busy) paint(state); }, 400);
       let result = null;
       try { result = await caseFile.translateReply(panel, text); } catch (studioError) { reportStudioError('replyTools translate', studioError); }
       clearInterval(ticker);
       if (state.token !== token) return;
       state.busy = false;
+      if (!panel.isConnected || replyValue(panel) !== text || replyContext(panel) !== context) { if (panel.isConnected) paint(state); return; }
       if (result?.same) { state.sameUntil = Date.now() + 2500; setTimeout(() => paint(state), 2600); }
       else if (result?.text) { state.mine = text; caseFile.fill(panel, result.text); }
       else { state.sameUntil = 0; state.failed = text.trim(); }
@@ -9930,16 +10254,21 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
     async function autoTranslate(panel, before, added) {
       sync(panel);
       const state = states.get(panel);
-      if (!state || state.busy || !added.trim() || !state.target?.can) return;
+      if (!state || !added.trim() || !state.target?.can) return;
       const expected = before ? `${before}\n\n${added}` : added;
-      const token = state.token = {}; state.busy = true; paint(state);
-      const ticker = setInterval(() => { if (state.busy) paint(state); }, 400);
+      const together = state.busy, text = together ? expected : added, prefix = together ? '' : before;
+      const context = replyContext(panel), token = state.token = {}; state.busy = true; state.mine = null; state.failed = null; state.sameUntil = 0; paint(state);
+      clearInterval(state.ticker);
+      const ticker = state.ticker = setInterval(() => { if (state.busy) paint(state); }, 400);
       let result = null;
-      try { result = await caseFile.translateReply(panel, added); } catch (studioError) { reportStudioError('replyTools auto translate', studioError); }
+      try { result = await caseFile.translateReply(panel, text); } catch (studioError) { reportStudioError('replyTools auto translate', studioError); }
       clearInterval(ticker);
       if (state.token !== token) return;
       state.busy = false;
-      if (result?.text && panel.isConnected && replyValue(panel).trim() === expected.trim()) { state.mine = expected; caseFile.fill(panel, before ? `${before}\n\n${result.text}` : result.text); }
+      if (!panel.isConnected || replyValue(panel) !== expected || replyContext(panel) !== context) { if (panel.isConnected) paint(state); return; }
+      if (result?.text) { state.mine = expected; caseFile.fill(panel, prefix ? `${prefix}\n\n${result.text}` : result.text); }
+      else if (result?.same) state.sameUntil = Date.now() + 2500;
+      else state.failed = expected.trim();
       paint(state);
     }
     function send(panel) {
@@ -9950,6 +10279,7 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
     async function sendAndNext(panel) {
       const state = states.get(panel);
       if (state?.sending) return;
+      let trackerPlan = null; try { trackerPlan = requestMinimizer.trackerNext(panel); } catch (studioError) { reportStudioError('sendAndNext', studioError); }
       if (state) { state.sending = true; paint(state); }
       try {
         if (replyValue(panel).trim()) {
@@ -9958,11 +10288,11 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
           if (!await wait(() => !panel.isConnected || commentCount(panel) > before || !replyValue(panel).trim(), 6000)) return;
           await new Promise(done => setTimeout(done, 300));
         }
-        await requestMinimizer.openNext(panel);
+        await requestMinimizer.openNext(panel, trackerPlan);
       } finally { if (state) { state.sending = false; if (panel.isConnected) paint(state); } }
     }
     function sync(panel) {
-      if (!panel?.isConnected || !settings.enabled || !isUpdate(panel)) { const state = states.get(panel); state?.bar?.remove(); state?.observer?.disconnect(); states.delete(panel); return; }
+      if (!panel?.isConnected || !settings.enabled || !isUpdate(panel)) { const state = states.get(panel); if (state) { state.token = null; state.busy = false; clearInterval(state.ticker); } state?.bar?.remove(); state?.observer?.disconnect(); states.delete(panel); return; }
       const form = panel.querySelector('.new-comment-form');
       let state = states.get(panel);
       if (!state) {
@@ -10006,14 +10336,7 @@ html[data-wme-studio="on"] .ws-reply-tools > .ws-reply-original[hidden] { displa
     return Object.freeze({ inspect: panel => { if (panel?.matches?.('.problem-edit')) queue(); }, refresh: queue, autoTranslate: (panel, before, added) => autoTranslate(panel, before, added).catch(() => {}) });
   })();
 
-  GM_addStyle(`html[data-wme-studio="on"] .urceMaskLightbox:not(.text) { background: color-mix(in srgb, var(--ws-window-paint, var(--wme-studio-surface, #292d31)) 78%, transparent) !important; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); animation: ws-urce-in .18s ease both; }
-html[data-wme-studio="on"] .urceMaskLightbox.text { position: relative !important; inset: auto !important; width: auto !important; height: auto !important; display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 12px; max-width: 80%; margin: 0; padding: 0; background: transparent !important; color: var(--wme-studio-text-secondary, #c6ccd2) !important; font: 600 12.5px/1.35 var(--ws-font, system-ui, sans-serif) !important; text-align: center; }
-html[data-wme-studio="on"] .urceMaskLightbox.text::before { content: ""; flex: none; width: 22px; height: 22px; box-sizing: border-box; border: 2.5px solid color-mix(in srgb, var(--wme-studio-accent, #0099ff) 22%, transparent); border-top-color: var(--wme-studio-accent, #0099ff); border-radius: 50%; animation: ws-urce-spin .8s linear infinite; }
-html[data-wme-studio="on"] .urceMaskLightbox.text:empty::after { content: var(--ws-t-urce-wait, "Getting URC-E ready…"); }
-html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.text::before { animation-duration: 2.4s; }
-@keyframes ws-urce-spin { to { transform: rotate(360deg); } }
-@keyframes ws-urce-in { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { html[data-wme-studio="on"] .urceMaskLightbox.text::before { animation-duration: 2.4s; } html[data-wme-studio="on"] .urceMaskLightbox:not(.text) { animation: none; } }`);
+  GM_addStyle(studioPart('p430L10911'));
 
   const replyDetails = (() => {
     const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return text; } };
@@ -10061,11 +10384,11 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       mirror.style.boxSizing = 'content-box';
       mirror.style.width = `${Math.max(0, inner.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0))}px`;
     }
-    function caretPoint(state, inner) {
+    function caretPoint(state, inner, upto = null) {
       const style = getComputedStyle(inner), mirror = state.mirror;
       for (const name of ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'textTransform', 'tabSize', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'boxSizing']) mirror.style[name] = style[name];
       mirror.style.borderStyle = 'solid'; mirrorWidth(mirror, inner, style);
-      const value = inner.value, before = value || inner.placeholder || '';
+      const value = inner.value, before = upto === null ? value || inner.placeholder || '' : value.slice(0, upto);
       mirror.textContent = before;
       const marker = document.createElement('span'); marker.textContent = '​'; mirror.append(marker);
       const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.35 || 18;
@@ -10100,6 +10423,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       left -= inner.scrollLeft; top -= inner.scrollTop;
       if (top < 0 || top + 18 > inner.offsetHeight - 2) left = inner.clientWidth + border - 20;
       top = Math.max(2, Math.min(inner.offsetHeight - 20, top));
+      if (!rtl && top + 18 > inner.offsetHeight - 16 && left + 18 > inner.offsetWidth - 16) left = inner.offsetWidth - 16 - 22;
       const vx = box.left + left * innerZoom, vy = box.top + top * innerZoom;
       plus.style.left = `${Math.round((vx - hostRect.left) / zoom)}px`;
       plus.style.top = 'auto'; plus.style.bottom = `${Math.round((hostRect.bottom - vy) / zoom - 18)}px`;
@@ -10149,6 +10473,16 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     function placeMenu(state) {
       const inner = textareaOf(state.panel); if (!inner) return;
       const zoom = state.host.currentCSSZoom || 1, hostRect = state.host.getBoundingClientRect(), box = inner.getBoundingClientRect();
+      if (state.typing) {
+        const { x, y } = caretPoint(state, inner, state.typing.start), innerZoom = box.width / (inner.offsetWidth || box.width) || 1;
+        const wide = hostRect.width / zoom, width = Math.min(300, wide - 16);
+        const left = (box.left + (x - inner.scrollLeft) * innerZoom - hostRect.left) / zoom - 10;
+        const top = (box.top + (Math.max(0, y - inner.scrollTop)) * innerZoom - hostRect.top) / zoom;
+        Object.assign(state.menu.style, { left: `${Math.round(Math.max(8, Math.min(wide - width - 8, left)))}px`, right: 'auto', width: `${Math.round(width)}px`, height: 'auto',
+          bottom: `${Math.round(hostRect.height / zoom - top + 4)}px`, maxHeight: `${Math.round(Math.max(120, Math.min(262, top - 8)))}px` });
+        return;
+      }
+      Object.assign(state.menu.style, { left: '', right: '', width: '' });
       const above = (box.top - hostRect.top) / zoom, height = hostRect.height / zoom;
       state.menu.style.bottom = `${Math.round(height - above + 8)}px`;
       const size = Math.round(Math.max(220, Math.min(452, above - 12)));
@@ -10165,7 +10499,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
         const flat = String(row.value || '').replace(/\s+/g, ' ').trim();
         const same = flat && out.find(one => one.group === row.group && one.flat === flat);
         if (same) { same.names.push(row.name); same.labels.push(row.label); continue; }
-        out.push({ group: row.group, flat, names: [row.name], labels: [row.label] });
+        out.push({ group: row.group, flat, value: String(row.value || '').trim(), names: [row.name], labels: [row.label] });
       }
       return out;
     }
@@ -10179,7 +10513,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       button.title = flat ? `${about}\n${flat}` : `${about} · ${tr('Nothing to put in for this request')}`;
       button.disabled = !flat;
       if (state.replacing && row.names.includes(state.replacing.name)) button.setAttribute('aria-current', 'true');
-      button.addEventListener('click', () => pick(state, flat, row.names[0]));
+      button.addEventListener('click', () => pick(state, row.value || flat, row.names[0]));
       return button;
     }
     function paint(state) {
@@ -10214,7 +10548,14 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       }
       edges();
       const nodes = [];
-      if (words) {
+      if (state.typing) {
+        const named = row => { const best = row.names.find(name => fold(name).startsWith(words)) || row.names.find(name => fold(name).includes(words)); return best ? { ...row, names: [best, ...row.names.filter(name => name !== best)] } : row; };
+        const said = row => !words || row.names.some(name => fold(name).includes(words)) || fold(row.labels.join(' ')).split(/[^\p{L}\p{N}]+/u).some(word => word.startsWith(words));
+        const found = all.filter(row => row.flat && said(row)).map(named);
+        const rank = row => (fold(row.names[0]).startsWith(words) ? 0 : fold(row.names[0]).includes(words) ? 1 : 2);
+        for (const row of found.sort((a, b) => rank(a) - rank(b)).slice(0, 30)) nodes.push(rowButton(state, row));
+        if (!nodes.length) { const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = tr('Nothing matches “{0}”.', state.query.trim()); nodes.push(empty); }
+      } else if (words) {
         for (const [group, title] of GROUPS) {
           const members = all.filter(row => row.group === group && match(row)); if (!members.length) continue;
           const head = document.createElement('div'); head.className = 'group'; head.textContent = tr(title); nodes.push(head);
@@ -10234,7 +10575,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       if (state.query) { state.query = ''; if (input) input.value = ''; }
       paint(state);
     }
-    function open(state, mark = null, caret = null) {
+    function open(state, mark = null, caret = null, typing = false) {
       const inner = textareaOf(state.panel); if (!inner) return;
       const focused = inner.getRootNode()?.activeElement === inner;
       state.replacing = mark;
@@ -10251,6 +10592,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       closer.addEventListener('click', () => close(state, true));
       const input = menu.querySelector('input'); input.placeholder = tr('Search details'); input.setAttribute('aria-label', tr('Search details'));
       input.addEventListener('input', () => { state.query = input.value; paint(state); });
+      input.addEventListener('focus', () => { state.typing = null; state.menu.querySelector('.row.hot')?.classList.remove('hot'); });
       menu.querySelector('.tabs').setAttribute('aria-label', tr('Request details'));
       menu.querySelector('.foot p').textContent = mark ? tr('Pick another one to put in its place.') : tr('A click puts it where your cursor is.');
       const remove = menu.querySelector('.remove');
@@ -10258,10 +10600,30 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       const mine = menu.querySelector('.mine'); mine.textContent = tr('Your variables');
       mine.addEventListener('click', () => { const win = state.panel.closest(WINDOW); close(state); if (win) quickReplies.openVariables(win); });
       if (settings.motion && !reducedMotion.matches) state.host.setAttribute('data-motion', ''); else state.host.removeAttribute('data-motion');
+      if (typing !== false) { state.typing = { start: typing }; state.host.setAttribute('data-suggest', ''); } else state.host.removeAttribute('data-suggest');
       menu.hidden = false; state.plus.setAttribute('aria-expanded', 'true'); state.host.setAttribute('data-menu', '');
       paint(state); placeMenu(state);
       if (mark) { placePlusAt(state, mark); renderMarks(state, inner); }
-      input.focus({ preventScroll: true });
+      if (typing === false) input.focus({ preventScroll: true });
+    }
+    function hot(state, step = 0) {
+      const buttons = [...state.menu.querySelectorAll('.row:not(:disabled)')], now = buttons.findIndex(button => button.classList.contains('hot'));
+      for (const button of buttons) button.classList.remove('hot');
+      const next = buttons[step ? Math.max(0, Math.min(buttons.length - 1, now + step)) : 0];
+      next?.classList.add('hot'); next?.scrollIntoView({ block: 'nearest' });
+    }
+    function follow(state, inner) {
+      const start = state.typing.start, at = inner.selectionStart, text = inner.value, words = text.slice(start + 1, at);
+      if (text[start] !== '{' || at <= start || inner.selectionEnd !== at) { close(state); return; }
+      if (words.endsWith('}')) {
+        const name = words.slice(0, -1).toLowerCase(), row = rows(state).find(one => one.name.toLowerCase() === name && one.value);
+        if (row) { state.selection = [start, at]; pick(state, String(row.value), row.name); } else close(state);
+        return;
+      }
+      if (/[\s{]/.test(words) || words.length > 40) { close(state); return; }
+      state.selection = [start, at]; state.restore = [at, at]; state.query = words;
+      const input = state.menu.querySelector('input'); if (input) input.value = words;
+      paint(state); hot(state);
     }
     function placePlusAt(state, mark) {
       const inner = textareaOf(state.panel); if (!inner) return;
@@ -10292,7 +10654,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     function close(state, refocus = false) {
       if (state.menu.hidden) return;
       state.menu.hidden = true; state.plus.setAttribute('aria-expanded', 'false'); state.host.removeAttribute('data-menu');
-      state.replacing = null;
+      state.replacing = null; state.typing = null; state.host.removeAttribute('data-suggest');
       const back = state.restore || state.selection; state.restore = null;
       if (refocus) { const inner = textareaOf(state.panel); if (inner && back) { try { inner.focus({ preventScroll: true }); inner.setSelectionRange(...back); } catch (_) {   } } }
       queue();
@@ -10302,7 +10664,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       const text = inner.value, [start, end] = state.selection || [text.length, text.length];
       const before = text.slice(0, start), after = text.slice(end);
       const replacing = !!state.replacing;
-      const lead = !replacing && before && !/\s$/.test(before) ? ' ' : '', tail = replacing || (after && /^\s/.test(after)) ? '' : ' ';
+      const lines = value.includes('\n');
+      const lead = replacing || !before ? '' : lines ? (/\n\s*$/.test(before) ? '' : '\n') : !/\s$/.test(before) ? ' ' : '';
+      const tail = replacing || (after && /^\s/.test(after)) || (lines && !after.trim()) ? '' : ' ';
       const next = before + lead + value + tail + after, caret = (before + lead + value + tail).length;
       const from = start + lead.length;
       shiftMarks(state, start, end, next.length - text.length, { start: from, end: from + value.length, name, text: value });
@@ -10364,13 +10728,35 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       const win = state.panel.closest(WINDOW);
       let firstSize = true, typedAt = 0;
       inner.addEventListener('input', () => { typedAt = performance.now(); });
+      inner.addEventListener('input', event => {
+        if (state.typing && !state.menu.hidden) { follow(state, inner); return; }
+        if (event.inputType !== 'insertText' || !state.menu.hidden) return;
+        const at = inner.selectionStart, text = inner.value;
+        if (event.data === '{' && text[at - 1] === '{') { open(state, null, null, at - 1); state.selection = [at - 1, at]; state.restore = [at, at]; hot(state); return; }
+        const typed = event.data === '}' && /\{([a-z0-9_]+)\}$/i.exec(text.slice(0, at));
+        const row = typed && rows(state).find(one => one.name.toLowerCase() === typed[1].toLowerCase() && one.value);
+        if (row) { state.selection = [at - typed[0].length, at]; pick(state, String(row.value), row.name); }
+      });
+      inner.addEventListener('keydown', event => {
+        if (!state.typing || state.menu.hidden || event.isComposing) return;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); hot(state, event.key === 'ArrowDown' ? 1 : -1); return; }
+        const lit = state.menu.querySelector('.row.hot');
+        if ((event.key === 'Enter' || event.key === 'Tab') && lit && !event.shiftKey) { event.preventDefault(); event.stopPropagation(); lit.click(); return; }
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(state); }
+      }, true);
+      inner.addEventListener('blur', () => { if (state.typing) setTimeout(() => { if (state.typing && !state.menu.matches(':hover') && state.shadow.activeElement == null && inner.getRootNode()?.activeElement !== inner) close(state); }, 150); });
       const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
         if (firstSize) { firstSize = false; return; }
         if (performance.now() - typedAt < 400) { update(); return; }
         state.resizing = true; state.host.setAttribute('data-resizing', '');
         clearTimeout(state.resizeTimer);
-        state.resizeTimer = setTimeout(() => { state.resizing = false; state.host.removeAttribute('data-resizing'); update(); }, 180);
+        state.resizeTimer = setTimeout(() => { state.resizing = false; state.host.removeAttribute('data-resizing'); update(); repaint(win); }, 180);
       }) : null;
+      const repaint = node => {
+        if (!node?.isConnected || node.style.willChange) return;
+        node.style.willChange = 'transform';
+        requestAnimationFrame(() => requestAnimationFrame(() => { if (node.style.willChange === 'transform') node.style.removeProperty('will-change'); }));
+      };
       if (win) resize?.observe(win);
       const timers = [120, 400, 1000].map(ms => setTimeout(update, ms));
       state.innerCleanup = () => { for (const type of events) inner.removeEventListener(type, update); inner.removeEventListener('click', pickMark); field.removeEventListener('pointerenter', enter); field.removeEventListener('pointerleave', leave); inner.removeEventListener('focus', focus); inner.removeEventListener('blur', blur); clearTimeout(state.showTimer); size?.disconnect(); resize?.disconnect(); clearTimeout(state.resizeTimer); state.resizing = false; state.host?.removeAttribute('data-resizing'); timers.forEach(clearTimeout); };
@@ -10460,7 +10846,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     function stepAt(event) { return event.target?.closest?.('.zs-step') || null; }
     function preview(step) {
       if (!scale) return;
-      for (const old of scale.querySelectorAll('.zs-step.hover')) { old.classList.remove('hover'); old.querySelector(':scope > b.hb')?.remove(); }
+      for (const old of scale?.querySelectorAll('.zs-step.hover') || []) { old.classList.remove('hover'); old.querySelector(':scope > b.hb')?.remove(); }
       picked = step ? Number(step.dataset.zoom) : null;
       if (!step) return;
       step.classList.add('hover');
@@ -10861,7 +11247,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
     const cleanHours = value => (Array.isArray(value) ? value : []).filter(item => item && Array.isArray(item.days) && /^\d{1,2}:\d\d$/.test(item.fromHour) && /^\d{1,2}:\d\d$/.test(item.toHour))
       .slice(0, 14).map(item => ({ days: [...new Set(item.days.map(Number).filter(day => day >= 0 && day <= 6))].sort(), fromHour: item.fromHour, toHour: item.toHour })).filter(item => item.days.length);
     const clean = value => (Array.isArray(value) ? value : []).filter(item => item && typeof item === 'object').slice(0, MAX).map(item => {
-      const one = { id: String(item.id || Math.random().toString(36).slice(2, 10)).slice(0, 20), name: String(item.name || '').trim().slice(0, 50) };
+      const one = { id: String(item.id || Math.random().toString(36).slice(2, 10)).slice(0, 20), name: String(item.name || '').trim().slice(0, 50), quick: item.quick === true, shortcut: [...String(item.shortcut || '').replace(/[^\p{L}\p{N}]/gu, '').toLocaleUpperCase()].slice(0, 3).join('') };
       if (typeof item.url === 'string') one.url = item.url.slice(0, 512);
       if (typeof item.phone === 'string') one.phone = item.phone.slice(0, 100);
       if (Array.isArray(item.services)) one.services = [...new Set(item.services.map(String))].slice(0, 40);
@@ -10869,7 +11255,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       return one;
     }).filter(item => item.name && FIELDS.some(field => field in item));
     async function load() { if (!list) { try { list = clean(await Promise.resolve(studioKeep.get(KEY, []))); } catch (_) { list = []; } } return list; }
-    const save = () => { try { Promise.resolve(studioKeep.set(KEY, list)).catch(error => reportStudioError('place templates save', error)); } catch (error) { reportStudioError('place templates save', error); } };
+    const save = () => { try { Promise.resolve(studioKeep.set(KEY, list)).catch(error => reportStudioError('place templates save', error)); } catch (error) { reportStudioError('place templates save', error); } queue(); };
     const sdk = () => studioSDK.get();
     function selected() {
       try { const selection = sdk()?.Editing?.getSelection?.(); return selection?.objectType === 'venue' ? (selection.ids || []).map(String) : []; } catch (_) { return []; }
@@ -10891,38 +11277,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .urceMaskLightbox.t
       const days = runs.map(([from, to]) => (from === to ? day(from) : to === from + 1 ? `${day(from)} ${day(to)}` : `${day(from)}–${day(to)}`)).join(' ');
       return `${days} ${first.fromHour}–${first.toHour}${hours.length > 1 ? ' +' + (hours.length - 1) : ''}`;
     }
-    GM_addStyle(`html[data-wme-studio="on"] .ws-ptpl { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; padding: 8px; border: 1px solid var(--wme-studio-border); border-radius: 12px; background: color-mix(in srgb, var(--wme-studio-accent, #0099ff) 7%, transparent); font: 12.5px/1.3 var(--ws-font); color: var(--wme-studio-text); }
-html[data-wme-studio="on"] .ws-ptpl > .ws-ptpl-title { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; font-weight: 700; }
-html[data-wme-studio="on"] .ws-ptpl svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-html[data-wme-studio="on"] .ws-ptpl button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; margin: 0; padding: 0 10px; border: 1px solid var(--wme-studio-border); border-radius: 999px; background: var(--wme-studio-input); color: var(--wme-studio-text); font: 600 12px/1 var(--ws-font); white-space: nowrap; cursor: pointer; }
-html[data-wme-studio="on"] .ws-ptpl button:hover:not(:disabled) { background: var(--wme-studio-hover); }
-html[data-wme-studio="on"] .ws-ptpl button.primary { border-color: transparent; background: var(--wme-studio-accent, #0099ff); color: #fff; }
-html[data-wme-studio="on"] .ws-ptpl button:disabled { opacity: .45; cursor: default; }
-html[data-wme-studio="on"] .ws-ptpl button:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 2px; }
-html[data-wme-studio="on"] .ws-ptpl-note { flex: 1 1 100%; margin: 0; color: var(--wme-studio-text-muted); font-size: 12px; line-height: 16px; }
-html[data-wme-studio="on"] .ws-ptpl-note[data-tone="ok"] { color: #30a46c; } html[data-wme-studio="on"] .ws-ptpl-note[data-tone="err"] { color: var(--ws-change-alert, #e5484d); }
-html[data-wme-studio="on"] .ws-ptpl-menu { position: absolute; left: 6px; right: 6px; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow: auto; padding: 4px; border: 1px solid var(--wme-studio-border); border-radius: 12px; background: var(--ws-window-paint, var(--wme-studio-surface, #292d31)); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); box-shadow: 0 14px 34px rgba(0,0,0,.4); }
-html[data-wme-studio="on"] .ws-ptpl-menu[hidden], html[data-wme-studio="on"] .ws-ptpl-form[hidden] { display: none; }
-html[data-wme-studio="on"] .ws-ptpl-item { display: flex; align-items: center; gap: 4px; border-radius: 9px; }
-html[data-wme-studio="on"] .ws-ptpl-item:hover { background: var(--wme-studio-hover); }
-html[data-wme-studio="on"] .ws-ptpl .ws-ptpl-apply { flex: 1; justify-content: flex-start; min-width: 0; height: auto; min-height: 40px; padding: 5px 8px; border: 0; border-radius: 9px; background: transparent; text-align: left; flex-direction: column; align-items: flex-start; gap: 2px; }
-html[data-wme-studio="on"] .ws-ptpl .ws-ptpl-apply:hover:not(:disabled) { background: transparent; }
-html[data-wme-studio="on"] .ws-ptpl-apply b, html[data-wme-studio="on"] .ws-ptpl-apply small { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
-html[data-wme-studio="on"] .ws-ptpl-apply small { color: var(--wme-studio-text-muted); font-weight: 500; font-size: 11.5px; }
-html[data-wme-studio="on"] .ws-ptpl .ws-ptpl-del { flex: none; width: 28px; padding: 0; border: 0; background: transparent; color: var(--wme-studio-text-muted); }
-html[data-wme-studio="on"] .ws-ptpl .ws-ptpl-del[data-sure] { width: auto; padding: 0 10px; color: #fff; background: var(--ws-change-alert, #e5484d); }
-html[data-wme-studio="on"] .ws-ptpl-empty { margin: 0; padding: 10px; color: var(--wme-studio-text-muted); font-size: 12px; }
-html[data-wme-studio="on"] .ws-ptpl-form { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
-html[data-wme-studio="on"] .ws-ptpl-form input[type="text"] { box-sizing: border-box; width: 100%; height: 32px; margin: 0; padding: 0 10px; border: 1px solid var(--wme-studio-border); border-radius: 9px; background: var(--wme-studio-input); color: var(--wme-studio-text); font: 13px/1 var(--ws-font); }
-html[data-wme-studio="on"] .ws-ptpl-form input[type="text"]:focus { outline: none; border-color: var(--wme-studio-accent, #0099ff); }
-html[data-wme-studio="on"] .ws-ptpl-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; }
-html[data-wme-studio="on"] .ws-ptpl-fields label { display: flex; align-items: center; gap: 7px; min-height: 24px; color: var(--wme-studio-text); font-size: 12.5px; line-height: 16px; cursor: pointer; }
-html[data-wme-studio="on"] .ws-ptpl-fields input { width: 15px; height: 15px; margin: 0; flex: none; accent-color: var(--wme-studio-accent, #0099ff); }
-html[data-wme-studio="on"] .ws-ptpl-fields label { min-width: 0; }
-html[data-wme-studio="on"] .ws-ptpl-fields label > span { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-html[data-wme-studio="on"] .ws-ptpl-fields label > span > span { font-weight: 600; }
-html[data-wme-studio="on"] .ws-ptpl-fields label small { display: block; max-width: 100%; color: var(--wme-studio-text-muted); font-size: 11px; line-height: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-end; gap: 6px; }`);
+    GM_addStyle(studioPart('p430L11976'));
     const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
     const button = (text, icon, className = '') => { const node = el('button', className); node.type = 'button'; node.innerHTML = icon ? svg(icon) : ''; node.append(el('span', '', text)); return node; };
     function note(bar, text, tone = '') {
@@ -10945,6 +11300,21 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
       note(bar, failed ? (done === 1 ? tr('Put on 1 place. {0} couldn’t be changed: {1}', failed, why) : done ? tr('Put on {0} places. {1} couldn’t be changed: {2}', done, failed, why) : tr('This place couldn’t be changed: {0}', why))
         : done === 1 ? tr('“{0}” put on this place. Save in WME to keep it.', item.name) : tr('“{0}” put on {1} places. Save in WME to keep it.', item.name, done), failed ? 'err' : 'ok');
     }
+    function paintShortcuts(bar) {
+      const quick = bar.wsQuick;
+      const pinned = (list || []).filter(item => item.quick).slice(0, 5);
+      const key = JSON.stringify(pinned.map(item => [item.id, item.name, item.shortcut]));
+      if (bar.wsQuickKey === key) return;
+      bar.wsQuickKey = key;
+      quick.replaceChildren(); quick.hidden = !pinned.length;
+      for (const item of pinned) {
+        const words = item.name.trim().split(/\s+/), initials = words.length > 1 ? words.map(word => [...word][0]).join('') : item.name;
+        const label = item.shortcut || [...initials.toLocaleUpperCase()].slice(0, 3).join('');
+        const use = button(label, '', 'ws-ptpl-shortcut');
+        use.title = item.name; use.setAttribute('aria-label', tr('Apply {0}', item.name));
+        use.addEventListener('click', () => { const current = list?.find(one => one.id === item.id); if (current) apply(bar, current); }); quick.append(use);
+      }
+    }
     function paintMenu(bar, menu) {
       menu.replaceChildren();
       if (!list.length) { menu.append(el('p', 'ws-ptpl-empty', tr('No templates yet. Fill in a place, then save it as a template.'))); return; }
@@ -10959,13 +11329,22 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
           if (!del.hasAttribute('data-sure')) { del.setAttribute('data-sure', ''); del.textContent = tr('Delete'); setTimeout(() => { if (del.isConnected && del.hasAttribute('data-sure')) { del.removeAttribute('data-sure'); del.innerHTML = svg(ICON.x); } }, 3000); return; }
           list = list.filter(one => one.id !== item.id); save(); paintMenu(bar, menu);
         });
-        row.append(use, del); menu.append(row);
+        const pin = button(item.quick ? '★' : '☆', '', 'ws-ptpl-pin');
+        pin.title = tr(item.quick ? 'Remove quick button' : 'Add quick button'); pin.setAttribute('aria-label', tr(item.quick ? 'Remove quick button for {0}' : 'Add quick button for {0}', item.name)); pin.setAttribute('aria-pressed', String(item.quick));
+        pin.addEventListener('click', () => {
+          if (!item.quick && list.filter(one => one.quick).length >= 5) { note(bar, tr('You can keep up to 5 quick buttons. Remove one first.'), 'err'); return; }
+          item.quick = !item.quick; save(); paintShortcuts(bar); paintMenu(bar, menu);
+          menu.querySelectorAll('.ws-ptpl-pin')[list.indexOf(item)]?.focus({ preventScroll: true });
+        });
+        row.append(use, pin, del); menu.append(row);
       }
     }
     function openForm(bar, form) {
       const ids = selected(), one = ids.length === 1 ? venue(ids[0]) : null; if (!one) return;
       form.replaceChildren();
       const name = el('input'); name.type = 'text'; name.maxLength = 50; name.placeholder = tr('Template name, e.g. {0}', one.name || tr('Coffee shop chain')); name.value = one.name || '';
+      const shortLabel = el('label', 'ws-ptpl-short-label', tr('Quick button label (1–3 letters)'));
+      const shortcut = el('input'); shortcut.type = 'text'; shortcut.maxLength = 3; shortcut.placeholder = tr('Auto'); shortLabel.append(shortcut);
       const fields = el('div', 'ws-ptpl-fields'), checks = {};
       const describe = { url: [tr('Website'), one.url || tr('empty')], phone: [tr('Phone'), one.phone || tr('empty')], services: [tr('Services'), one.services?.length ? String(one.services.length) : tr('none')], openingHours: [tr('Open hours'), one.openingHours?.length ? hoursText(cleanHours(one.openingHours)) : tr('none')] };
       for (const field of FIELDS) {
@@ -10983,16 +11362,16 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
         if (!label) { name.focus(); return; }
         const picked = FIELDS.filter(field => checks[field].checked);
         if (!picked.length) { note(bar, tr('Tick at least one thing to keep.'), 'err'); return; }
-        const item = { id: Math.random().toString(36).slice(2, 10), name: label };
+        const item = { id: Math.random().toString(36).slice(2, 10), name: label, shortcut: shortcut.value };
         for (const field of picked) item[field] = field === 'openingHours' ? cleanHours(one.openingHours) : field === 'services' ? [...(one.services || [])] : String(one[field] || '');
         const same = list.findIndex(other => other.name.toLowerCase() === label.toLowerCase());
-        if (same >= 0) list[same] = { ...item, id: list[same].id }; else list = [item, ...list].slice(0, MAX);
+        if (same >= 0) list[same] = { ...item, id: list[same].id, quick: list[same].quick, shortcut: item.shortcut || list[same].shortcut }; else list = [item, ...list].slice(0, MAX);
         list = clean(list); save(); form.hidden = true;
         note(bar, tr('Saved “{0}”. Pick it under Templates on any other place.', label), 'ok');
       });
       name.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); keep.click(); } if (event.key === 'Escape') { event.preventDefault(); form.hidden = true; } });
       row.append(cancel, keep);
-      form.append(name, fields, row); form.hidden = false;
+      form.append(name, shortLabel, fields, row); form.hidden = false;
       name.focus(); name.select();
     }
     function build() {
@@ -11001,12 +11380,14 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
       const pick = button(tr('Use a template'), ICON.chev), keep = button(tr('Save as template'), ICON.save);
       const menu = el('div', 'ws-ptpl-menu'); menu.hidden = true;
       const form = el('div', 'ws-ptpl-form'); form.hidden = true;
+      const quick = el('div', 'ws-ptpl-quick'); quick.hidden = true; quick.setAttribute('role', 'group'); quick.setAttribute('aria-label', tr('Quick templates'));
       pick.addEventListener('click', event => { event.stopPropagation(); load().then(() => { paintMenu(bar, menu); menu.hidden = !menu.hidden; form.hidden = true; }); });
       keep.addEventListener('click', () => { menu.hidden = true; load().then(() => openForm(bar, form)); });
       document.addEventListener('pointerdown', event => { if (!menu.hidden && !event.composedPath().includes(bar)) menu.hidden = true; }, true);
       for (const type of ['keydown', 'keyup', 'keypress']) bar.addEventListener(type, event => event.stopPropagation());
-      bar.append(title, pick, keep, menu, form);
-      Object.assign(bar, { wsPick: pick, wsKeep: keep, wsTitle: title });
+      bar.append(title, pick, keep, quick, menu, form);
+      Object.assign(bar, { wsPick: pick, wsKeep: keep, wsTitle: title, wsQuick: quick });
+      load().then(() => { if (bar.isConnected) paintShortcuts(bar); });
       return bar;
     }
     function sync() {
@@ -11020,6 +11401,7 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
       bar.wsKeep.title = ids.length === 1 ? tr('Keep this place’s website, phone, services and open hours as a template') : tr('Select one place to save it as a template');
       const label = ids.length > 1 ? tr('Templates · {0} places', ids.length) : tr('Templates');
       const span = bar.wsTitle.querySelector('span'); if (span.textContent !== label) span.textContent = label;
+      if (list) paintShortcuts(bar);
     }
     const queue = () => { if (!frame) frame = requestAnimationFrame(sync); };
     (function hook() {
@@ -11031,11 +11413,641 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     })();
     return Object.freeze({ refresh: queue });
   })();
+  const closureColors = (() => {
+    if (window.top !== window.self || editorProfile || standaloneSignin) return Object.freeze({ refresh() {} });
+    const LAYER = 'wme-studio-closure-status', KINDS = ['active', 'upcoming', 'ended'];
+    const SHOW = { active: 'closureShowActive', upcoming: 'closureShowUpcoming', ended: 'closureShowEnded' };
+    const COLOR = { active: 'closureActiveColor', upcoming: 'closureUpcomingColor', ended: 'closureEndedColor' };
+    const LABEL = { active: 'Active', upcoming: 'Upcoming', ended: 'Ended' };
+    const DASH = { active: 'solid', upcoming: 'dash', ended: 'solid' }, LINE = { active: 'solid', upcoming: 'dash', ended: 'thin' };
+    const MARKER = { active: '[class*="statusActive"]', upcoming: '[class*="statusNotStarted"]', ended: '[class*="statusFinished"]' };
+    const pageWin = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
+    const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } };
+    let styled = false, layerKey = '', drawnKey = '', frame = 0, island = null, markerStyle = null, hookedModel = null, counts = { active: 0, upcoming: 0, ended: 0 };
+    const day = 86400000;
+    const when = text => { const time = Date.parse(String(text || '').replace(' ', 'T')); return Number.isFinite(time) ? time : NaN; };
+    const SLACK = 14 * 3600000;
+    function kindOf(status, start, end, now = Date.now()) {
+      status = String(status || '');
+      if (/^FINISHED/.test(status) || status === 'FAILED' || end < now - SLACK) return 'ended';
+      if (status === 'NOT_STARTED' || start > now + SLACK) return 'upcoming';
+      return status === 'ACTIVE' || !status ? 'active' : null;
+    }
+    const on = () => settings.enabled && settings.closureColors;
+    const shown = kind => settings[SHOW[kind]] !== false;
+    function wmeLayer() {
+      try { return (pageWin.W?.map?.getLayers?.() || pageWin.W?.map?.layers || []).find(layer => layer.name === 'closures') || null; } catch (_) { return null; }
+    }
+    const layerOn = () => { const layer = wmeLayer(); if (!layer) return false; try { return typeof layer.getVisibility === 'function' ? !!layer.getVisibility() : !!layer.visibility; } catch (_) { return false; } };
+    function closures() {
+      try { return pageWin.W?.model?.roadClosures?.getObjectArray?.() || []; } catch (_) { return []; }
+    }
+    function makeLayer(api) {
+      const key = KINDS.map(kind => settings[COLOR[kind]]).join(',');
+      if (layerKey === key) return true;
+      try { if (layerKey) api.Map.removeLayer({ layerName: LAYER }); } catch (_) {   }
+      layerKey = ''; drawnKey = '';
+      try {
+        api.Map.addLayer({
+          layerName: LAYER,
+          styleRules: KINDS.map(kind => ({ predicate: properties => properties?.kind === kind, style: { strokeColor: settings[COLOR[kind]], strokeWidth: kind === 'ended' ? '${thin}' : '${width}', strokeOpacity: kind === 'ended' ? 0.85 : 0.95, strokeDashstyle: DASH[kind], strokeLinecap: 'round', label: '${label}', fontColor: '#111111', fontSize: '11px', fontWeight: '700', labelOutlineColor: settings[COLOR[kind]], labelOutlineWidth: 5 } })),
+          styleContext: {
+            width: ({ zoomLevel }) => (zoomLevel >= 18 ? 7 : zoomLevel >= 16 ? 5 : 4),
+            thin: ({ zoomLevel }) => (zoomLevel >= 18 ? 4 : 3),
+            label: ({ feature, zoomLevel }) => (zoomLevel >= 18 && feature?.properties?.kind !== 'ended' ? feature?.properties?.label || '' : '')
+          }
+        });
+        layerKey = key;
+      } catch (error) { reportStudioError('closure colours layer', error); }
+      return !!layerKey;
+    }
+    function drawMap() {
+      const api = studioSDK.get();
+      const active = on() && layerOn();
+      paintMarkers(active);
+      if (!api) return;
+      if (!active) {
+        if (drawnKey) { try { api.Map.removeAllFeaturesFromLayer({ layerName: LAYER }); } catch (_) {   } drawnKey = ''; }
+        return;
+      }
+      if (!makeLayer(api)) return;
+      const now = Date.now(), minute = Math.floor(now / 60000), features = [], seen = new Set();
+      counts = { active: 0, upcoming: 0, ended: 0 };
+      for (const model of closures()) {
+        const a = model?.attributes; if (!a) continue;
+        const kind = kindOf(a.closureStatus, when(a.startDate), when(a.endDate), now);
+        if (!kind) continue;
+        const event = `${a.segID}|${a.startDate}|${a.endDate}`;
+        if (!seen.has(event)) { seen.add(event); counts[kind]++; }
+        const geometry = a.geoJSONGeometry;
+        if (!shown(kind) || a.closureType !== 'SEGMENT' || geometry?.type !== 'LineString' || !Array.isArray(geometry.coordinates)) continue;
+        features.push({ type: 'Feature', id: `ws-closure-${a.id}`, geometry, properties: { kind, label: tr(LABEL[kind]) } });
+      }
+      const key = `${minute}|${KINDS.map(shown).join('')}|${features.length}|${features.map(feature => feature.id).join(',').length}|${features[0]?.id || ''}|${features.at(-1)?.id || ''}`;
+      if (key === drawnKey) return;
+      drawnKey = key;
+      try {
+        api.Map.removeAllFeaturesFromLayer({ layerName: LAYER });
+        if (features.length) api.Map.addFeaturesToLayer({ layerName: LAYER, features });
+      } catch (error) { reportStudioError('closure colours', error); }
+    }
+    function paintMarkers(active) {
+      const css = active ? KINDS.filter(kind => !shown(kind)).map(kind => `html[data-wme-studio="on"] .olLayerDiv [class*="roadClosure--"]${MARKER[kind]}{display:none!important}`).join('') : '';
+      if (!css) { markerStyle?.remove(); markerStyle = null; return; }
+      if (!markerStyle) { markerStyle = document.createElement('style'); markerStyle.id = 'wme-studio-closure-markers'; (document.head || document.documentElement).append(markerStyle); }
+      if (markerStyle.textContent !== css) markerStyle.textContent = css;
+    }
+    function chips(withCounts) {
+      return KINDS.map(kind => `<button type="button" class="ws-cl-chip" data-kind="${kind}" aria-pressed="${shown(kind)}" style="--c:${settings[COLOR[kind]]}"><i class="ws-cl-line ${LINE[kind]}"></i><span>${tr(LABEL[kind])}</span>${withCounts ? `<b>${counts[kind]}</b>` : ''}</button>`).join('');
+    }
+    function toggle(kind) {
+      const key = SHOW[kind]; if (!key) return;
+      Promise.resolve(config.write({ [key]: !shown(kind) })).catch(error => reportStudioError('closure filter', error));
+    }
+    function onChip(event) {
+      const chip = event.target.closest?.('.ws-cl-chip'); if (!chip) return;
+      event.preventDefault(); event.stopPropagation();
+      toggle(chip.dataset.kind);
+    }
+    const PLACE_KEY = 'wmeStudio.closureFilterPlace';
+    const PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6Z"/><path d="M12 15v5"/></svg>';
+    const GRIP = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7" r="1.4"/><circle cx="15" cy="7" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="17" r="1.4"/><circle cx="15" cy="17" r="1.4"/></svg>';
+    const closuresOpen = () => [...document.querySelectorAll('#edit-panel .closures-list')].some(list => list.offsetWidth > 0 && list.offsetHeight > 0);
+    function readPlace() { try { const place = JSON.parse(localStorage.getItem(PLACE_KEY) || 'null'); return Number.isFinite(place?.x) && Number.isFinite(place?.y) ? place : null; } catch (_) { return null; } }
+    function placeIsland() {
+      if (!island) return;
+      const place = readPlace();
+      if (place) {
+        const box = island.getBoundingClientRect();
+        const x = Math.max(8, Math.min(innerWidth - box.width - 8, place.x)), y = Math.max(8, Math.min(innerHeight - box.height - 8, place.y));
+        island.dataset.placed = '';
+        island.style.left = `${Math.round(x)}px`; island.style.top = `${Math.round(y)}px`; island.style.bottom = 'auto';
+        return;
+      }
+      delete island.dataset.placed;
+      island.style.left = ''; island.style.top = '';
+      const head = document.getElementById('app-head')?.getBoundingClientRect();
+      const low = head?.height && head.top + head.height / 2 > innerHeight / 2;
+      const bottom = low ? Math.round(innerHeight - head.top + 10) : 40;
+      if (island.style.bottom !== `${bottom}px`) island.style.bottom = `${bottom}px`;
+    }
+    function dragIsland(event) {
+      if (event.button !== 0 || !event.target.closest?.('.ws-cl-grip')) return;
+      event.preventDefault();
+      const box = island.getBoundingClientRect(), dx = event.clientX - box.left, dy = event.clientY - box.top;
+      island.setPointerCapture?.(event.pointerId); island.classList.add('dragging');
+      const move = e => { try { localStorage.setItem(PLACE_KEY, JSON.stringify({ x: e.clientX - dx, y: e.clientY - dy })); } catch (_) {   } placeIsland(); };
+      const up = () => { island.removeEventListener('pointermove', move); island.removeEventListener('pointerup', up); island.removeEventListener('pointercancel', up); island.classList.remove('dragging'); };
+      island.addEventListener('pointermove', move); island.addEventListener('pointerup', up); island.addEventListener('pointercancel', up);
+    }
+    function onIsland(event) {
+      if (event.target.closest?.('.ws-cl-pin')) { event.preventDefault(); event.stopPropagation(); Promise.resolve(config.write({ closureFilterPinned: !settings.closureFilterPinned })).catch(error => reportStudioError('closure filter', error)); return; }
+      onChip(event);
+    }
+    function paintIsland() {
+      const want = on() && layerOn() && (settings.closureFilterPinned || closuresOpen());
+      if (!want) { island?.remove(); island = null; return; }
+      if (!island) {
+        island = document.createElement('div'); island.id = 'ws-closure-filter'; island.setAttribute('role', 'group');
+        island.addEventListener('click', onIsland); island.addEventListener('pointerdown', dragIsland);
+        document.body.append(island);
+      }
+      island.setAttribute('aria-label', tr('Road closures'));
+      const pinned = !!settings.closureFilterPinned, pinLabel = tr('Keep on the map');
+      const html = `<span class="ws-cl-grip" title="${tr('Move')}" aria-hidden="true">${GRIP}</span>${chips(true)}<button type="button" class="ws-cl-pin" aria-pressed="${pinned}" title="${pinLabel}" aria-label="${pinLabel}">${PIN}</button>`;
+      if (island.dataset.html !== html) { island.innerHTML = html; island.dataset.html = html; }
+      placeIsland();
+    }
+    function cardKind(card) {
+      const key = Object.keys(card).find(name => name.startsWith('__reactFiber$'));
+      for (let fiber = key ? card[key] : null, hop = 0; fiber && hop < 8; fiber = fiber.return, hop++) {
+        const model = fiber.memoizedProps?.model;
+        if (model && 'startDate' in model && Array.isArray(model.closures)) {
+          const first = model.closures[0], status = first?.attributes?.closureStatus ?? first?.closureStatus;
+          return { kind: kindOf(status, when(model.startDate), when(model.endDate)), start: when(model.startDate), end: when(model.endDate) };
+        }
+      }
+      return null;
+    }
+    function relative(found) {
+      const now = Date.now(), dayOf = time => Math.floor((time - new Date(time).getTimezoneOffset() * 60000) / day);
+      if (found.kind === 'active' && Number.isFinite(found.end)) { const left = dayOf(found.end) - dayOf(now); return left <= 0 ? tr('Ends today') : left === 1 ? tr('Ends tomorrow') : tr('Ends in {0} days', left); }
+      if (found.kind === 'upcoming' && Number.isFinite(found.start)) { const left = dayOf(found.start) - dayOf(now); return left <= 0 ? tr('Starts today') : left === 1 ? tr('Starts tomorrow') : tr('Starts in {0} days', left); }
+      if (found.kind === 'ended' && Number.isFinite(found.end)) { try { return tr('Ended {0}', new Intl.DateTimeFormat(document.documentElement.lang || undefined, { day: 'numeric', month: 'short' }).format(new Date(found.end))); } catch (_) { return ''; } }
+      return '';
+    }
+    function paintList() {
+      const panel = document.getElementById('edit-panel');
+      const lists = panel ? [...panel.querySelectorAll('.closures-list')] : [];
+      for (const list of lists) {
+        const cards = [...list.querySelectorAll('[class*="closureCard--"]')];
+        let bar = list.querySelector(':scope > .ws-cl-filter');
+        if (!on() || !cards.length) {
+          bar?.remove();
+          for (const card of cards) { card.removeAttribute('data-ws-closure'); card.removeAttribute('data-ws-cl-hidden'); card.style.removeProperty('--ws-cl'); card.querySelector('.ws-cl-when')?.remove(); }
+          continue;
+        }
+        if (!bar) { bar = document.createElement('div'); bar.className = 'ws-cl-filter'; bar.setAttribute('role', 'group'); bar.addEventListener('click', onChip); list.prepend(bar); }
+        const html = chips(false);
+        if (bar.dataset.html !== html) { bar.innerHTML = html; bar.dataset.html = html; }
+        for (const card of cards) {
+          const found = cardKind(card);
+          if (!found?.kind) continue;
+          if (card.getAttribute('data-ws-closure') !== found.kind) card.setAttribute('data-ws-closure', found.kind);
+          const color = settings[COLOR[found.kind]];
+          if (card.style.getPropertyValue('--ws-cl') !== color) card.style.setProperty('--ws-cl', color);
+          card.toggleAttribute('data-ws-cl-hidden', !shown(found.kind));
+          const text = relative(found);
+          let line = card.querySelector('.ws-cl-when');
+          if (!text) { line?.remove(); continue; }
+          if (!line) { line = document.createElement('div'); line.className = 'ws-cl-when'; (card.querySelector('[class*="subheadline--"]') || card.firstElementChild || card).after(line); }
+          if (line.textContent !== text) line.textContent = text;
+        }
+      }
+    }
+    let watchedPanel = null, panelWatch = null;
+    function watchPanel() {
+      const panel = document.getElementById('edit-panel');
+      if (panel === watchedPanel) return;
+      panelWatch?.disconnect(); watchedPanel = panel; panelWatch = null;
+      if (!panel) return;
+      panelWatch = new MutationObserver(records => { if (!settings.closureColors) return; if ((island && records.some(record => record.removedNodes.length)) || records.some(record => [...record.addedNodes].some(node => node.nodeType === 1 && (String(node.className).includes('closure') || node.querySelector?.('[class*="closureCard--"],.closures-list'))))) queue(); });
+      panelWatch.observe(panel, { childList: true, subtree: true });
+      panel.addEventListener('click', () => { if (settings.closureColors) setTimeout(queue, 60); }, true);
+    }
+    function sync() {
+      frame = 0;
+      watchPanel();
+      if (on() && !styled) { styled = true; GM_addStyle(studioPart('closureCSS')); }
+      hookModel();
+      drawMap(); paintIsland(); paintList();
+    }
+    const queue = () => { if (!frame) frame = requestAnimationFrame(sync); };
+    function hookModel() {
+      const model = (() => { try { return pageWin.W?.model?.roadClosures || null; } catch (_) { return null; } })();
+      if (!model || model === hookedModel || typeof model.on !== 'function') return;
+      hookedModel = model;
+      for (const name of ['objectsadded', 'objectsremoved', 'objectschanged', 'objectssynced']) { try { model.on(name, queue); } catch (_) {   } }
+    }
+    GM_addStyle('html[data-wme-studio="on"] #edit-panel .closures-list wz-alert.closure-alert{display:block;margin-bottom:12px}');
+    const start = () => {
+      if (!document.body) { setTimeout(start, 500); return; }
+      document.addEventListener('change', event => { if (event.target?.id === 'layer-switcher-item_closures') setTimeout(queue, 300); }, true);
+      watchPanel();
+      setInterval(() => { if (on()) queue(); }, 30000);
+      const hookSelection = () => { const api = studioSDK.get(); if (!api?.Events?.on) { setTimeout(hookSelection, 2000); return; } try { api.Events.on({ eventName: 'wme-selection-changed', eventHandler: () => { setTimeout(queue, 80); setTimeout(queue, 700); } }); } catch (_) {   } };
+      hookSelection();
+      addEventListener('resize', () => { if (island) placeIsland(); }, { passive: true });
+      queue();
+    };
+    start();
+    return Object.freeze({ refresh: queue });
+  })();
+  const saveList = (() => {
+    if (window.top !== window.self || editorProfile || standaloneSignin) return Object.freeze({ refresh() {}, keep() {}, offer() {} });
+    const KEY = 'wmeStudio.saveList', POS_KEY = 'wmeStudio.saveListPlace';
+    const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } };
+    const read = (key, fallback) => { try { const value = JSON.parse(localStorage.getItem(key) || 'null'); return value ?? fallback; } catch (_) { return fallback; } };
+    const write = (key, value) => { try { if (value == null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(value)); } catch (_) {   } };
+    let state = read(KEY, null), root = null, styled = false, drag = null, going = 0;
+    if (!state || !Array.isArray(state.items) || !state.items.length) state = null;
+    const save = () => write(KEY, state);
+    const WARN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="#f5b323" aria-hidden="true"><path d="M12 3 2 21h20L12 3Zm-1 6h2v6h-2V9Zm0 8h2v2h-2v-2Z"/></svg>';
+    const TICK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+    const SHRINK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>';
+    const GROW = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
+    const esc = text => String(text ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+    const left = () => state ? state.items.filter(item => !item.done).length : 0;
+
+    const pageWin = () => (typeof unsafeWindow === 'undefined' ? window : unsafeWindow);
+    const idsOf = item => (Array.isArray(item.ids) && item.ids.length ? item.ids : [item.id]).filter(id => id != null);
+    function modelOf(api, item) {
+      const id = idsOf(item)[0]; if (id == null) return null;
+      try {
+        if (item.type === 'segment') return api.DataModel.Segments.getById({ segmentId: Number(id) });
+        if (item.type === 'node') return api.DataModel.Nodes.getById({ nodeId: Number(id) });
+        if (item.type === 'venue') return api.DataModel.Venues.getById({ venueId: String(id) });
+      } catch (_) { return null; }
+      return undefined;
+    }
+    function centreOf(geometry) {
+      const points = []; const walk = value => { if (Array.isArray(value) && typeof value[0] === 'number') points.push(value); else if (Array.isArray(value)) value.forEach(walk); };
+      walk(geometry?.coordinates);
+      if (!points.length) return null;
+      if (geometry.type === 'LineString') { const mid = points[Math.floor(points.length / 2)], prev = points[Math.max(0, Math.floor(points.length / 2) - 1)]; return points.length % 2 ? { lon: mid[0], lat: mid[1] } : { lon: (mid[0] + prev[0]) / 2, lat: (mid[1] + prev[1]) / 2 }; }
+      const sum = points.reduce((all, point) => [all[0] + point[0], all[1] + point[1]], [0, 0]);
+      return { lon: sum[0] / points.length, lat: sum[1] / points.length };
+    }
+    function select(api, item) {
+      const ids = idsOf(item).map(id => item.type === 'venue' ? String(id) : Number(id));
+      try { api.Editing.setSelection({ selection: { ids, objectType: item.type || 'segment' } }); return true; } catch (_) { return false; }
+    }
+    function go(index) {
+      const item = state?.items[index]; if (!item) return;
+      state.current = index; save(); render();
+      const ticket = ++going;
+      studioSDK.value(api => {
+        const loaded = modelOf(api, item);
+        const where = (item.lon != null && item.lat != null) ? { lon: item.lon, lat: item.lat } : loaded ? centreOf(loaded.geometry) : null;
+        if (where) { try { api.Map.setMapCenter({ lonLat: where, zoomLevel: 20 }); } catch (_) {   } }
+        else { try { api.Map.setZoomLevel({ zoomLevel: 20 }); } catch (_) {   } }
+        let tries = 0;
+        const attempt = () => {
+          if (ticket !== going) return;
+          if (modelOf(api, item) !== null && select(api, item)) {
+            if (!where) { const found = centreOf(modelOf(api, item)?.geometry); if (found) try { api.Map.setMapCenter({ lonLat: found, zoomLevel: 20 }); } catch (_) {   } }
+            return;
+          }
+          if (++tries < 25) setTimeout(attempt, 300);
+        };
+        attempt();
+        return true;
+      }, null);
+    }
+    function next() {
+      if (!state) return;
+      const now = state.items[state.current];
+      if (now) now.done = true;
+      const count = state.items.length, from = Number.isInteger(state.current) ? state.current : -1;
+      let target = -1;
+      for (let step = 1; step <= count; step++) { const index = (from + step) % count; if (!state.items[index].done) { target = index; break; } }
+      save();
+      if (target >= 0) go(target); else { state.current = -1; save(); render(); }
+    }
+    function clear() { state = null; save(); going++; render(); }
+    function toggle(index) { const item = state?.items[index]; if (!item) return; item.done = !item.done; save(); render(); }
+
+    function place() {
+      if (!root) return;
+      const spot = read(POS_KEY, null), rect = root.getBoundingClientRect();
+      let x = spot?.x, y = spot?.y;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) { x = innerWidth - rect.width - 72; y = 84; }
+      x = Math.max(8, Math.min(innerWidth - rect.width - 8, x)); y = Math.max(8, Math.min(innerHeight - rect.height - 8, y));
+      root.style.left = `${Math.round(x)}px`; root.style.top = `${Math.round(y)}px`;
+    }
+    function render() {
+      const show = settings.enabled && !!state;
+      if (!show) { root?.remove(); root = null; return; }
+      if (!styled) { styled = true; GM_addStyle(studioPart('saveListCSS')); }
+      if (!root) {
+        root = document.createElement('div'); root.id = 'ws-save-list';
+        root.addEventListener('click', onClick); root.addEventListener('pointerdown', onDown);
+        document.body.append(root);
+      }
+      const all = state.items.length, rest = left();
+      root.classList.toggle('pill', !!state.small);
+      const rows = state.items.map((item, index) => `<div class="wsl-row${item.done ? ' done' : ''}${index === state.current ? ' cur' : ''}" data-index="${index}"><button type="button" class="wsl-check" data-act="tick" aria-label="${esc(tr('Checked'))}">${TICK}</button><div class="wsl-text"><b>${esc(item.title)}</b>${item.detail ? `<span>${esc(item.detail)}</span>` : ''}</div><button type="button" class="wsl-btn wsl-go${index === state.current && !item.done ? ' pri' : ''}" data-act="go">${esc(tr('Go'))}</button></div>`).join('');
+      const count = rest ? (state.small ? tr('{0} to check', rest) : tr('{0} of {1} left', rest, all)) : tr('All checked');
+      root.innerHTML = `<div class="wsl-head"><span class="wsl-warn">${WARN}</span><span class="wsl-dot"></span><span class="wsl-title">${esc(tr('To check after saving'))}</span><span class="wsl-left${rest ? '' : ' all'}">${esc(count)}</span><button type="button" class="wsl-icon" data-act="size" aria-label="${esc(state.small ? tr('Show the list') : tr('Make it small'))}" title="${esc(state.small ? tr('Show the list') : tr('Make it small'))}">${state.small ? GROW : SHRINK}</button></div><div class="wsl-rows">${rows}</div><div class="wsl-foot"><button type="button" class="wsl-btn" data-act="clear">${esc(tr('Clear the list'))}</button><button type="button" class="wsl-btn pri" data-act="next"${rest ? '' : ' disabled'}>${esc(Number.isInteger(state.current) && state.current >= 0 ? tr('Next') : tr('Start'))}</button></div>`;
+      globalThis.WMEStudioI18n?.localize?.(root);
+      place();
+    }
+    function onClick(event) {
+      const button = event.target.closest('[data-act]'); if (!button || drag?.moved) return;
+      const index = Number(button.closest('.wsl-row')?.dataset.index);
+      const act = button.dataset.act;
+      if (act === 'go') go(index);
+      else if (act === 'tick') toggle(index);
+      else if (act === 'next') { if (Number.isInteger(state.current) && state.current >= 0) next(); else { const first = state.items.findIndex(item => !item.done); if (first >= 0) go(first); } }
+      else if (act === 'clear') clear();
+      else if (act === 'size') { state.small = !state.small; save(); render(); }
+    }
+    function onDown(event) {
+      if (event.button !== 0 || !event.target.closest('.wsl-head') || event.target.closest('button')) return;
+      const rect = root.getBoundingClientRect();
+      drag = { id: event.pointerId, dx: event.clientX - rect.left, dy: event.clientY - rect.top, x0: event.clientX, y0: event.clientY, moved: false };
+      root.setPointerCapture?.(event.pointerId); root.classList.add('dragging');
+      const move = e => {
+        if (!drag || e.pointerId !== drag.id) return;
+        if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 4) return;
+        drag.moved = true;
+        write(POS_KEY, { x: e.clientX - drag.dx, y: e.clientY - drag.dy }); place();
+      };
+      const up = e => {
+        if (!drag || e.pointerId !== drag.id) return;
+        root.removeEventListener('pointermove', move); root.removeEventListener('pointerup', up); root.removeEventListener('pointercancel', up);
+        root.classList.remove('dragging');
+        const was = drag; setTimeout(() => { if (drag === was) drag = null; }, 0);
+      };
+      root.addEventListener('pointermove', move); root.addEventListener('pointerup', up); root.addEventListener('pointercancel', up);
+    }
+    addEventListener('resize', () => place(), { passive: true });
+
+    function keep(items) {
+      const list = (items || []).filter(item => item && item.title);
+      if (!list.length) return;
+      const old = state?.items || [];
+      const key = item => `${item.type}:${idsOf(item).join(',')}:${item.title}`;
+      const seen = new Set(old.map(key));
+      const added = list.filter(item => { const k = key(item); if (seen.has(k)) return false; seen.add(k); return true; }).map(item => ({ ...item, done: false }));
+      state = { items: [...old, ...added], current: state?.current ?? -1, small: false };
+      save(); render();
+    }
+    function warningOf(row) {
+      const key = Object.keys(row).find(name => name.startsWith('__reactFiber$'));
+      let model = null;
+      for (let fiber = key ? row[key] : null, hop = 0; fiber && hop < 4 && !model; fiber = fiber.return, hop++) {
+        const value = fiber.memoizedProps?.model; if (value && Array.isArray(value.objects)) model = value;
+      }
+      const lines = row.querySelector('.content')?.innerText.split('\n').map(line => line.trim()).filter(Boolean) || [];
+      if (!lines.length) return null;
+      const objects = model?.objects || [], type = objects[0]?.objectType || null;
+      const ids = objects.filter(object => object.objectType === type).map(object => object.id);
+      const where = model?.geometry ? centreOf(model.geometry) : null;
+      return { title: lines[0], detail: lines.slice(1).join(' '), type, ids, id: ids[0] ?? null, lon: where?.lon ?? null, lat: where?.lat ?? null };
+    }
+    function offer(box) {
+      const popover = box?.querySelector?.('.save-popover');
+      const buttons = popover?.querySelector('.button-container');
+      if (!buttons || !settings.enabled) { box?.querySelector?.('.ws-save-keep')?.remove(); return; }
+      const rows = [...popover.querySelectorAll('.error-list .error-item')];
+      const wmeButtons = [...buttons.children].filter(node => node.matches('wz-button,button') && !node.classList.contains('ws-save-keep'));
+      if (!rows.length || wmeButtons.length < 2) { buttons.querySelector('.ws-save-keep')?.remove(); return; }
+      if (buttons.querySelector('.ws-save-keep')) return;
+      if (!styled) { styled = true; GM_addStyle(studioPart('saveListCSS')); }
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'ws-save-keep'; button.textContent = tr('Save and keep a list');
+      button.addEventListener('click', event => {
+        event.preventDefault(); event.stopPropagation();
+        const found = [...popover.querySelectorAll('.error-list .error-item')].map(warningOf).filter(Boolean);
+        const saveButton = [...buttons.children].filter(node => node.matches('wz-button,button') && !node.classList.contains('ws-save-keep')).pop();
+        keep(found);
+        saveButton?.click();
+      });
+      const saveButton = wmeButtons[wmeButtons.length - 1];
+      saveButton.before(button);
+    }
+    if (document.body) render(); else addEventListener('DOMContentLoaded', render, { once: true });
+    return Object.freeze({ refresh: render, keep, offer });
+  })();
+  const savePopoverPlacer = (() => {
+    if (window.top !== window.self || editorProfile || standaloneSignin) return Object.freeze({ refresh() {} });
+    let box = null, shift = 0, frame = 0, watching = null, logStyled = false;
+    const headLow = () => { const head = document.getElementById('app-head')?.getBoundingClientRect(); return !!head?.height && head.top + head.height / 2 > innerHeight / 2; };
+    function flipLogs() {
+      const logs = document.querySelectorAll('#app-head [class*="changesLog--"]');
+      if (!logs.length) return;
+      if (!logStyled) { logStyled = true; GM_addStyle('html[data-wme-studio="on"] [class*="changesLog--"][data-ws-above]{top:auto!important;bottom:100%!important}html[data-wme-studio="on"] [class*="changesLog--"][data-ws-above]>*{margin:0 0 15px!important;max-height:calc(100vh - 120px);overflow:auto}'); }
+      const low = settings.enabled && headLow();
+      for (const log of logs) if (log.hasAttribute('data-ws-above') !== low) log.toggleAttribute('data-ws-above', low);
+    }
+    const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => queue()) : null;
+    const clear = () => {
+      if (!box || !shift && !box.hasAttribute('data-ws-save-above')) return;
+      shift = 0; box.style.removeProperty('translate'); box.style.removeProperty('transform-origin'); box.removeAttribute('data-ws-save-above');
+    };
+    function place() {
+      frame = 0;
+      const pop = box?.isConnected ? box.firstElementChild : null;
+      const save = pop && settings.enabled ? document.getElementById('save-button')?.getBoundingClientRect() : null;
+      if (!pop || !save?.height) { clear(); return; }
+      const zoom = box.currentCSSZoom || 1, height = pop.offsetHeight;
+      if (!height) { clear(); return; }
+      const top = (box.offsetTop + pop.offsetTop) * zoom, bottom = top + height * zoom;
+      const low = save.top + save.height / 2 > innerHeight / 2;
+      let want = 0;
+      if (low && top >= save.top && bottom > innerHeight - 8) want = Math.max(8 - top, save.top - 8 - bottom);
+      if (Math.abs(want - shift) < 0.5) return;
+      if (!want) { clear(); return; }
+      shift = want;
+      box.style.setProperty('translate', `0 ${Math.round(want / zoom)}px`, 'important');
+      box.style.setProperty('transform-origin', 'bottom right', 'important');
+      box.setAttribute('data-ws-save-above', '');
+    }
+    function syncHeadLow() {
+      const low = settings.enabled && headLow(), root = document.documentElement;
+      if ((root.getAttribute('data-wme-studio-head-low') === 'on') !== low) { if (low) root.setAttribute('data-wme-studio-head-low', 'on'); else root.removeAttribute('data-wme-studio-head-low'); }
+    }
+    setInterval(syncHeadLow, 1500); addEventListener('resize', syncHeadLow, { passive: true });
+    function queue() { if (!frame) frame = requestAnimationFrame(() => { place(); flipLogs(); syncHeadLow(); }); }
+    function attach() {
+      const found = document.querySelector('body > .save-popover-container');
+      if (found === box) return;
+      if (box) { clear(); resize?.unobserve(box); watching?.disconnect(); }
+      box = found; shift = 0;
+      if (!box) return;
+      watching = new MutationObserver(queue);
+      watching.observe(box, { attributes: true, attributeFilter: ['style', 'class'] });
+      new MutationObserver(() => { saveList.offer(box); queue(); }).observe(box, { childList: true, subtree: true });
+      resize?.observe(box);
+      queue();
+    }
+    const watchHead = () => {
+      const head = document.getElementById('app-head'); if (!head) { setTimeout(watchHead, 1000); return; }
+      new MutationObserver(records => { if (records.some(record => [...record.addedNodes].some(node => node.nodeType === 1 && (String(node.className).includes('changesLog--') || node.querySelector?.('[class*="changesLog--"]'))))) flipLogs(); }).observe(head, { childList: true, subtree: true });
+    };
+    watchHead();
+    const start = () => {
+      if (!document.body) { setTimeout(start, 500); return; }
+      new MutationObserver(records => { if (records.some(record => [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1 && node.classList.contains('save-popover-container')))) attach(); }).observe(document.body, { childList: true });
+      attach();
+    };
+    start();
+    return Object.freeze({ refresh: queue });
+  })();
+  const zoneSchedule = (() => {
+    if (window.top !== window.self || editorProfile || standaloneSignin) return Object.freeze({ refresh() {} });
+    const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return text; } };
+    const uiLocale = () => { try { return globalThis.WMEStudioI18n?.current?.() || document.documentElement.lang || 'en'; } catch (_) { return 'en'; } };
+    const page = () => (typeof unsafeWindow === 'undefined' ? window : unsafeWindow);
+    const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; };
+    const DAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+    let frame = 0, waiting = 0, styled = false;
+    const selectedZone = () => {
+      try {
+        const W = page().W, picked = W?.selectionManager?.getSelectedDataModelObjects?.() || [];
+        if (picked.length !== 1 || picked[0]?.type !== 'permanentHazard') return null;
+        return picked[0];
+      } catch (_) { return null; }
+    };
+    const scheduleOf = id => { try { return page().W?.model?.schedules?.getObjectById?.(id) || page().W?.model?.schedules?.objects?.[id] || null; } catch (_) { return null; } };
+    function parseCalendar(text) {
+      const events = [];
+      for (const block of String(text || '').split(/BEGIN:VEVENT/).slice(1)) {
+        const field = name => (block.match(new RegExp(`(?:^|\\r?\\n)${name}(?:;[^:\\r\\n]*)?:([^\\r\\n]*)`)) || [])[1] || '';
+        const when = value => { const m = /^(\d{4})(\d\d)(\d\d)(?:T(\d\d)(\d\d)(\d\d)?)?/.exec(value || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)) : null; };
+        const start = when(field('DTSTART')), allDay = !/T/.test(field('DTSTART'));
+        if (!start) continue;
+        let end = when(field('DTEND'));
+        if (!end) { end = new Date(start); if (allDay) end.setDate(end.getDate() + 1); }
+        const rule = Object.fromEntries(field('RRULE').split(';').filter(Boolean).map(part => part.split('=')));
+        const weekly = rule.FREQ === 'WEEKLY' || rule.FREQ === 'DAILY';
+        const days = weekly ? (rule.BYDAY ? rule.BYDAY.split(',').map(day => day.slice(-2)).filter(day => DAYS.includes(day)) : DAYS.slice()) : null;
+        events.push({ start, end, days, until: when(rule.UNTIL), yearly: rule.FREQ === 'YEARLY', allDay, summary: field('SUMMARY').replace(/\\,/g, ',').trim() });
+      }
+      return events;
+    }
+    function eventsOf(schedule, seen = new Set()) {
+      const out = { includes: [], excludes: [], names: [] };
+      if (!schedule || seen.has(schedule.attributes?.id) || seen.size > 12) return out;
+      seen.add(schedule.attributes?.id);
+      for (const frame of (Array.isArray(schedule.attributes?.timeframes) ? schedule.attributes.timeframes : [])) {
+        const exclude = frame.relationType === 'EXCLUDE';
+        if (frame.inline?.calendar) {
+          for (const event of parseCalendar(frame.inline.calendar)) (exclude ? out.excludes : out.includes).push({ ...event, yearly: event.yearly || frame.inline.repeatsYearly === true, label: event.summary || frame.name || '' });
+        } else if (frame.reference?.scheduleId) {
+          const other = scheduleOf(frame.reference.scheduleId);
+          if (!other) return null;
+          const inner = eventsOf(other, seen);
+          if (!inner) return null;
+          if (other.attributes?.name) out.names.push(other.attributes.name);
+          out.includes.push(...(exclude ? [] : inner.includes)); out.excludes.push(...inner.excludes, ...(exclude ? inner.includes : []));
+          out.names.push(...inner.names);
+        }
+      }
+      return out;
+    }
+    const minutes = date => date.getHours() * 60 + date.getMinutes();
+    function clock(mins) {
+      const date = new Date(2026, 0, 1, Math.floor(mins / 60) % 24, mins % 60);
+      const format = settings.clockFormat;
+      try { return new Intl.DateTimeFormat(uiLocale(), { hour: 'numeric', minute: '2-digit', hour12: format === '12' ? true : format === '24' ? false : undefined }).format(date); } catch (_) { return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`; }
+    }
+    const span = event => (event.allDay ? '' : `${clock(minutes(event.start))}–${clock(minutes(event.end) || 1440)}`);
+    const dayName = index => { try { return new Intl.DateTimeFormat(uiLocale(), { weekday: 'short' }).format(new Date(2026, 0, 5 + index)); } catch (_) { return DAYS[index]; } };
+    const dateText = (date, withYear = true) => { try { return new Intl.DateTimeFormat(uiLocale(), { day: 'numeric', month: 'short', year: withYear ? 'numeric' : undefined }).format(date); } catch (_) { return date.toLocaleDateString(); } };
+    function occurrence(event, now) {
+      let start = event.start, end = event.end;
+      if (event.yearly) {
+        const shift = year => { const a = new Date(start); a.setFullYear(year); const b = new Date(end); b.setFullYear(year + (end.getFullYear() - start.getFullYear())); return [a, b]; };
+        [start, end] = shift(now.getFullYear());
+        if (end <= now) [start, end] = shift(now.getFullYear() + 1);
+      }
+      return { start, end };
+    }
+    function onNow(event, now = new Date()) {
+      const t = minutes(now), from = minutes(event.start), to = minutes(event.end) || 1440;
+      if (event.days) {
+        const day = DAYS[(now.getDay() + 6) % 7], dayFrom = new Date(event.start); dayFrom.setHours(0, 0, 0, 0);
+        if (!event.days.includes(day) || now < dayFrom || (event.until && now > event.until)) return false;
+        return event.allDay || (t >= from && t < to);
+      }
+      const { start, end } = occurrence(event, now);
+      return now >= start && now < end;
+    }
+    function build(zone, schedule, found) {
+      const box = el('div', 'ws-zone-sched'), { includes, excludes, names } = found;
+      const now = new Date();
+      const active = includes.some(event => onNow(event, now)) && !excludes.some(event => onNow(event, now));
+      const head = el('div', 'ws-zs-head');
+      const title = el('b', '', schedule.attributes?.name || names[0] || tr('Schedule')); title.title = names.join('\n');
+      const state = el('span', `ws-zs-state${active ? ' on' : ''}`); state.append(el('i'), el('span', '', active ? tr('Active now') : tr('Closed now')));
+      head.append(title, state); box.append(head);
+      const weekly = includes.filter(event => event.days);
+      if (weekly.length) {
+        const hoursOf = key => weekly.filter(event => event.days.includes(key)).map(event => (event.allDay ? tr('All day') : span(event))).join(', ');
+        const runs = [];
+        DAYS.forEach((key, index) => { const hours = hoursOf(key), last = runs[runs.length - 1]; if (last && last.hours === hours && last.to === index - 1) last.to = index; else runs.push({ from: index, to: index, hours }); });
+        const today = (now.getDay() + 6) % 7, week = el('div', 'ws-zs-week');
+        for (const run of runs) {
+          const row = el('div', `ws-zs-row${run.hours ? '' : ' off'}${today >= run.from && today <= run.to ? ' today' : ''}`);
+          row.append(el('span', 'ws-zs-dn', run.from === run.to ? dayName(run.from) : `${dayName(run.from)}–${dayName(run.to)}`), el('span', 'ws-zs-h', run.hours || tr('Closed')));
+          week.append(row);
+        }
+        box.append(week);
+        const spans = weekly.map(event => (event.until ? tr('{0} – {1}', dateText(event.start), dateText(event.until)) : tr('From {0}', dateText(event.start))));
+        box.append(el('p', 'ws-zs-line', [...new Set(spans)].join(' · ')));
+      }
+      const dates = event => { const { start, end } = occurrence(event, now); const last = new Date(end); if (event.allDay) last.setDate(last.getDate() - 1); const one = event.allDay ? last <= start : last.toDateString() === start.toDateString(); return `${dateText(start, !event.yearly)}${one ? '' : ` – ${dateText(last, !event.yearly)}`}${event.allDay ? '' : ` ${span(event)}`}`; };
+      const rowsOf = (list, cls) => { const group = el('div', `ws-zs-week ${cls}`); for (const event of list) { const row = el('div', 'ws-zs-row'); row.append(el('span', 'ws-zs-dn', dates(event)), el('span', 'ws-zs-h', event.label || '')); group.append(row); } return group; };
+      const singles = includes.filter(event => !event.days);
+      if (singles.length) { box.append(el('p', 'ws-zs-cap', tr('Also on'))); box.append(rowsOf(singles.slice(0, 6), 'ws-zs-on')); }
+      const ahead = excludes.filter(event => !event.days).map(event => ({ event, at: occurrence(event, now) })).filter(({ at }) => at.end > now).sort((a, b) => a.at.start - b.at.start);
+      const weeklyOff = excludes.filter(event => event.days);
+      if (ahead.length || weeklyOff.length) {
+        const shown = ahead.slice(0, 4);
+        box.append(el('p', 'ws-zs-cap', tr('Days off')));
+        const list = [...weeklyOff.map(event => ({ label: event.label, days: event.days, dates: `${event.days.map(day => dayName(DAYS.indexOf(day))).join(', ')}${event.allDay ? '' : ` ${span(event)}`}` })), ...shown.map(({ event }) => ({ label: event.label, dates: dates(event) }))];
+        const group = el('div', 'ws-zs-week ws-zs-off');
+        for (const item of list) { const row = el('div', 'ws-zs-row off'); row.append(el('span', 'ws-zs-dn', item.dates), el('span', 'ws-zs-h', item.label || '')); group.append(row); }
+        box.append(group);
+        if (ahead.length > shown.length) box.append(el('p', 'ws-zs-line', tr('{0} more days off, in the schedule window.', ahead.length - shown.length)));
+      }
+      if (!includes.length && !excludes.length) box.append(el('p', 'ws-zs-line', tr('No times in this schedule.')));
+      box.dataset.key = `${zone.attributes.id}|${schedule.attributes?.updatedOn || ''}|${active}|${includes.length}|${excludes.length}|${settings.clockFormat}|${uiLocale()}`;
+      return box;
+    }
+    function sync() {
+      frame = 0;
+      const panel = document.querySelector('#edit-panel .permanent-hazard-feature-editor');
+      const old = panel?.querySelector('.ws-zone-sched') || document.querySelector('#edit-panel .ws-zone-sched');
+      const zone = settings.enabled ? selectedZone() : null;
+      if (!panel || !zone || !zone.attributes?.scheduleId) { old?.remove(); return; }
+      const card = [...panel.querySelectorAll('wz-card')].find(node => node.querySelector('.w-icon-calendar-fill'));
+      if (!card) { old?.remove(); return; }
+      const schedule = scheduleOf(zone.attributes.scheduleId), found = schedule ? eventsOf(schedule) : null;
+      if (!found) {
+        old?.remove();
+        if (!waiting) waiting = setTimeout(() => { waiting = 0; queue(); }, 400);
+        return;
+      }
+      if (!styled) { styled = true; GM_addStyle(studioPart('zoneScheduleCSS')); }
+      const fresh = build(zone, schedule, found);
+      if (old && old.dataset.key === fresh.dataset.key && old.previousElementSibling === card) return;
+      old?.remove(); card.after(fresh);
+    }
+    const queue = () => { if (!frame) frame = requestAnimationFrame(sync); };
+    (function hook() {
+      const api = studioSDK.get();
+      if (!api) { setTimeout(hook, 1000); return; }
+      try { api.Events?.on?.({ eventName: 'wme-selection-changed', eventHandler: queue }); } catch (studioError) { reportStudioError('school zone schedule', studioError); }
+      const watch = () => {
+        const panel = document.querySelector('#edit-panel'); if (!panel) { setTimeout(watch, 1000); return; }
+        new MutationObserver(records => { if (records.some(record => ![...record.addedNodes, ...record.removedNodes].every(node => node.nodeType === 1 && node.classList?.contains('ws-zone-sched')))) queue(); }).observe(panel, { childList: true, subtree: true });
+      };
+      watch();
+      setInterval(() => { if (document.querySelector('#edit-panel .ws-zone-sched')) queue(); }, 60000);
+    })();
+    return Object.freeze({ refresh: queue });
+  })();
   const tooltipControl = (() => {
-    if (window.top !== window.self) return Object.freeze({ refresh() {} });
-    GM_addStyle(`html[data-wme-studio="on"][data-wme-studio-tooltips="off"] :is([role="tooltip"],wz-tooltip-content):not(:has(button,wz-button,a[href],input,select,textarea,wz-menu,wz-select,wz-checkbox,wz-toggle-switch,[role="button"],[role="menu"],[role="listbox"],[contenteditable="true"])) { visibility:hidden!important;pointer-events:none!important; }`);
-    GM_addStyle(`.ws-tip{--ws-tip-paint:var(--wme-studio-surface-3,#30353a);--ws-tip-ink:var(--wme-studio-text,#edf1f4);--ws-tip-line:var(--wme-studio-border,rgba(255,255,255,.12));position:fixed;left:0;top:0;z-index:2147483000;display:flex;align-items:center;box-sizing:border-box;width:max-content;max-width:min(320px,calc(100vw - 16px));min-height:28px;margin:0;padding:6px 10px;border:1px solid var(--ws-tip-line);border-radius:var(--wme-studio-panel-radius,10px);background:var(--ws-tip-paint);color:var(--ws-tip-ink);box-shadow:var(--wme-studio-shadow,0 6px 18px rgba(0,0,0,.28));font:500 12px/16px var(--ws-font,inherit);white-space:pre-line;overflow-wrap:break-word;pointer-events:none}html[data-wme-studio-compact="on"][data-wme-studio-island-ink] .ws-tip{--ws-tip-paint:var(--ws-island-paint-solid,var(--ws-island-a));--ws-tip-ink:var(--ws-island-ink);--ws-tip-line:color-mix(in srgb,var(--ws-island-ink) 18%,transparent)}.ws-tip[hidden]{display:none}html[data-wme-studio="on"] [data-wme-studio-tooltip-replaced]{visibility:hidden!important;pointer-events:none!important}`);
+    if (window.top !== window.self || editorProfile) return Object.freeze({ refresh() {} });
+    GM_addStyle(studioPart('p430L12073'));
     const INTERACTIVE = 'button,wz-button,a[href],input,select,textarea,wz-menu,wz-select,wz-checkbox,wz-toggle-switch,[role="button"],[role="menu"],[role="listbox"],[contenteditable="true"]';
+    const RICH = 'img,svg,canvas,video,picture,[style*="background-image"],wz-rich-tooltip';
+    const keepNative = content => !content || content.matches?.('wz-rich-tooltip *') || !!content.querySelector(`${INTERACTIVE},${RICH}`) || content.querySelectorAll('div').length >= 3;
+    const active = () => settings.enabled && settings.showTooltips === true && document.documentElement.dataset.wmeStudio === 'on';
+    const nativeChart = path => path.some(node => node?.matches?.('#editing-activity,#edits-by-type'));
     let tip = null, over = null, lastPath = [], hoverTimer = 0, hoverStart = 0, hoverDismissed = false, currentText = '', currentSide = 'below';
     const replaced = new Set();
     const suppressed = new Map();
@@ -11073,7 +12085,6 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     }
     function refresh() {
       hide(); restoreTitles(); hoverDismissed = true;
-      if (settings.enabled && settings.showTooltips !== true) suppressTitles(lastPath.filter(node => node?.isConnected));
     }
     const clean = text => String(text || '').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
     function tooltipText(content) {
@@ -11098,7 +12109,10 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     function hide(restore = true) {
       clearTimeout(hoverTimer); hoverTimer = 0; over = null; currentText = '';
       if (restore) {
-        for (const content of replaced) content.removeAttribute('data-wme-studio-tooltip-replaced');
+        for (const content of replaced) {
+          content.removeAttribute('data-wme-studio-tooltip-replaced');
+          markPassiveTooltip(content);
+        }
         replaced.clear(); restoreTitles();
       }
       if (tip) tip.hidden = true;
@@ -11116,18 +12130,18 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
       const target = over;
       hoverTimer = setTimeout(() => {
         hoverTimer = 0;
-        if (over === target && target?.isConnected && settings.enabled && settings.showTooltips === true && document.documentElement.dataset.wmeStudio === 'on') show(target, currentText, currentSide);
+        if (over === target && target?.isConnected && active()) show(target, currentText, currentSide);
       }, Math.max(0, STUDIO_TOOLTIP_DELAY - (performance.now() - hoverStart)));
     }
     function nativeOpened(event) {
+      if (!active() || nativeChart(lastPath)) return;
       const instance = event.detail?.tooltipInstance;
       if (!instance) return;
       const content = toolTooltipContent(instance);
       markPassiveTooltip(content);
-      if (!content || content.querySelector(INTERACTIVE)) {
+      if (instance.localName === 'wz-rich-tooltip' || keepNative(content)) {
         content?.removeAttribute('data-wme-studio-tooltip-replaced'); replaced.delete(content); return;
       }
-      if (!settings.enabled || settings.showTooltips !== true || document.documentElement.dataset.wmeStudio !== 'on') return;
       const source = instance.source || instance.querySelector?.('wz-tooltip-source') || instance.target || instance;
       if (!source?.isConnected || !lastPath.some(node => node === instance || node === source || (node?.nodeType && (source.contains?.(node) || instance.contains?.(node))))) return;
       const text = tooltipText(content);
@@ -11157,8 +12171,7 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     document.addEventListener('pointerover', event => {
       if (event.pointerType === 'touch') return;
       const path = event.composedPath(); lastPath = path;
-      if (document.documentElement.dataset.wmeStudio !== 'on') { hide(); restoreTitles(); return; }
-      if (settings.showTooltips !== true) { hide(); suppressTitles(path); return; }
+      if (!active() || nativeChart(path)) { hide(); return; }
       if (path.some(node => node?.classList?.contains('ws-quick-replies-map') && node.hasAttribute('data-dragging'))) { hide(false); return; }
       if (over && path.includes(over)) return;
       hide(); hoverStart = performance.now(); hoverDismissed = false;
@@ -11175,7 +12188,7 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
         }
         if (node.localName === 'wz-tooltip' || node.localName === 'wz-basic-tooltip' || node.localName === 'wz-rich-tooltip') {
           const content = toolTooltipContent(node);
-          text = content && !content.querySelector(INTERACTIVE) ? tooltipText(content) : '';
+          text = node.localName !== 'wz-rich-tooltip' && !keepNative(content) ? tooltipText(content) : '';
           if (text) { target = node.querySelector(':scope > wz-tooltip-source') || node; wme = content; }
           break;
         }
@@ -11184,7 +12197,7 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
           text = clean(title); target = node;
           for (const up of path.slice(path.indexOf(node) + 1)) {
             if (!up || up === document.body) break;
-            if (up.localName === 'wz-tooltip' || up.localName === 'wz-basic-tooltip') { const content = toolTooltipContent(up); wme = content && !content.querySelector(INTERACTIVE) ? content : null; break; }
+            if (up.localName === 'wz-tooltip' || up.localName === 'wz-basic-tooltip') { const content = toolTooltipContent(up); wme = !keepNative(content) ? content : null; break; }
           }
           break;
         }
@@ -11209,27 +12222,121 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
   })();
   (() => {
     const FRAMES = '[id^="ISSUE_WINDOW"],[data-testid="floating-window"],#sidebar,#panel-container > *';
+    const LIFT = 'data-wme-studio-menu-open';
     let frame = 0;
     function fit() {
       frame = 0;
-      if (!settings.enabled) return;
+      const lifted = new Set();
+      if (!settings.enabled) { for (const node of document.querySelectorAll(`[${LIFT}]`)) node.removeAttribute(LIFT); return; }
       for (const menu of document.querySelectorAll('wz-menu')) {
         const inner = menu.shadowRoot?.querySelector('.wz-menu'); if (!inner) continue;
-        if (!menu.hasAttribute('expanded')) { if (inner.style.translate) inner.style.translate = ''; continue; }
-        if (menu.hasAttribute('fixed')) { if (inner.style.translate) inner.style.translate = ''; continue; }
+        if (!menu.hasAttribute('expanded')) { if (inner.style.marginLeft) inner.style.marginLeft = ''; continue; }
+        if (menu.hasAttribute('fixed')) {
+          if (inner.style.marginLeft) inner.style.marginLeft = '';
+          const box = menu.closest(FRAMES), own = inner.getBoundingClientRect(), edge = box?.getBoundingClientRect();
+          if (box && own.width && (own.right > edge.right || own.left < edge.left || own.bottom > edge.bottom || own.top < edge.top)) lifted.add(box);
+          continue;
+        }
         const box = menu.closest(FRAMES); if (!box) continue;
-        inner.style.translate = '';
+        inner.style.marginLeft = '';
         const edge = box.getBoundingClientRect(), own = inner.getBoundingClientRect();
         let dx = 0;
         if (own.right > edge.right - 6) dx = Math.max(edge.left + 6 - own.left, edge.right - 6 - own.right);
         else if (own.left < edge.left + 6) dx = Math.min(edge.right - 6 - own.right, edge.left + 6 - own.left);
-        if (dx) inner.style.translate = `${Math.round(dx)}px 0`;
+        if (dx) inner.style.marginLeft = `${Math.round(dx)}px`;
       }
+      for (const node of document.querySelectorAll(`[${LIFT}]`)) if (!lifted.has(node)) lower(node);
+      for (const node of lifted) if (!node.hasAttribute(LIFT)) lift(node);
     }
+    const kept = new WeakMap();
+    function lift(node) {
+      kept.set(node, ['overflow', 'overflow-x', 'overflow-y'].map(name => [name, node.style.getPropertyValue(name), node.style.getPropertyPriority(name)]));
+      node.setAttribute(LIFT, ''); node.style.setProperty('overflow', 'visible', 'important');
+    }
+    function lower(node) {
+      node.removeAttribute(LIFT); node.style.removeProperty('overflow');
+      for (const [name, value, priority] of kept.get(node) || []) if (value) node.style.setProperty(name, value, priority);
+      kept.delete(node);
+    }
+    GM_addStyle(`html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[id^="ISSUE_WINDOW"],[data-testid="floating-window"])[${LIFT}],html[data-wme-studio="on"] :is(#ISSUE_WINDOW_MAP_SUGGESTION,[id^="ISSUE_WINDOW"],[data-testid="floating-window"])[${LIFT}] [data-wme-studio-request-body="on"] { overflow: visible !important; }`);
     const queue = () => { if (!frame) frame = requestAnimationFrame(fit); };
     new MutationObserver(records => { if (records.some(record => record.target.localName === 'wz-menu')) queue(); })
       .observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['expanded'] });
   })();
+  (() => {
+    const tr = text => { try { return globalThis.WMEStudioI18n?.t?.(text) ?? text; } catch (_) { return text; } };
+    let button = null, strip = null, frame = 0, roomNode = null, tabsNode = null;
+    GM_addStyle(studioPart('p430L12325'));
+    function make() {
+      const node = document.createElement('button');
+      node.type = 'button'; node.className = 'ws-rail-close';
+      node.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+      node.addEventListener('click', event => {
+        event.preventDefault(); event.stopPropagation();
+        document.querySelector('#drawer wz-navigation-item[selected]')?.shadowRoot?.querySelector('button')?.click();
+      });
+      return node;
+    }
+    function paintUnder(sidebar, panel) {
+      const x = panel.left + panel.width / 2, y = panel.top + 26;
+      let node = document.elementFromPoint(x, y);
+      for (let depth = 0; node?.shadowRoot && depth < 6; depth++) { const inner = node.shadowRoot.elementFromPoint(x, y); if (!inner || inner === node) break; node = inner; }
+      for (let hops = 0; node && node !== sidebar && hops < 14; hops++) {
+        if (node.nodeType === 1) {
+          const style = getComputedStyle(node);
+          if (style.backgroundImage !== 'none' || !/^(?:transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor)) {
+            const box = node.getBoundingClientRect(), gap = box.top - panel.top - 22;
+            const square = parseFloat(style.borderTopLeftRadius) < 2 && parseFloat(style.borderTopRightRadius) < 2;
+            return gap > -3 && gap < 4 && box.width >= panel.width - 4 && square ? { color: style.backgroundColor, image: style.backgroundImage, w: box.width, h: box.height, x: box.left } : null;
+          }
+        }
+        node = node.parentElement || node.parentNode?.host || null;
+      }
+      return null;
+    }
+    const mark = (node, before, side = 'right') => { if (before && before !== node) before.removeAttribute('data-ws-rail-room'); if (node && node.getAttribute('data-ws-rail-room') !== side) node.setAttribute('data-ws-rail-room', side); return node; };
+    function sync() {
+      frame = 0;
+      const sidebar = document.getElementById('sidebar'), item = document.querySelector('#drawer wz-navigation-item[selected]');
+      const editPanel = document.getElementById('edit-panel');
+      if (editPanel) {
+        const head = settings.enabled ? [...editPanel.querySelectorAll('wz-section-header')].find(node => node.offsetHeight && node.getBoundingClientRect().top - editPanel.getBoundingClientRect().top < 40) : null;
+        const want = head ? `${Math.round(head.getBoundingClientRect().height)}px` : '';
+        if (editPanel.style.getPropertyValue('--ws-head-h') !== want) { if (want) editPanel.style.setProperty('--ws-head-h', want); else editPanel.style.removeProperty('--ws-head-h'); }
+      }
+      const on = settings.enabled && settings.compactMode && !!item && !!sidebar && sidebar.offsetWidth > 0;
+      if (!on) { button?.remove(); strip?.remove(); roomNode = mark(null, roomNode); tabsNode = mark(null, tabsNode); sidebar?.removeAttribute('data-ws-rail-x'); return; }
+      button ||= make();
+      const label = tr('Close');
+      if (button.title !== label) { button.title = label; button.setAttribute('aria-label', label); }
+      if (button.parentElement !== sidebar) sidebar.append(button);
+      if (!strip || strip.parentElement !== sidebar) { strip ||= Object.assign(document.createElement('div'), { className: 'ws-rail-strip' }); strip.setAttribute('aria-hidden', 'true'); button.before(strip); }
+      const rail = document.getElementById('drawer')?.getBoundingClientRect(), panel = sidebar.getBoundingClientRect();
+      const side = rail?.width && rail.left + rail.width / 2 > panel.left + panel.width / 2 ? 'left' : 'right';
+      if (button.dataset.side !== side) button.dataset.side = side;
+      roomNode = mark(null, roomNode); tabsNode = mark(null, tabsNode);
+      if (sidebar.getAttribute('data-ws-rail-x') !== side) sidebar.setAttribute('data-ws-rail-x', side);
+      const under = paintUnder(sidebar, panel);
+      const paint = under ? [under.color, under.image, `${Math.round(under.w)}px ${Math.round(under.h)}px`, `${Math.round(under.x - panel.left)}px 0`] : ['', '', '', ''];
+      ['--ws-rail-strip-color', '--ws-rail-strip-image', '--ws-rail-strip-size', '--ws-rail-strip-at'].forEach((name, index) => {
+        if (sidebar.style.getPropertyValue(name) === paint[index]) return;
+        if (paint[index]) sidebar.style.setProperty(name, paint[index]); else sidebar.style.removeProperty(name);
+      });
+      const at = 5;
+      if (button.style.top !== `${at}px`) button.style.top = `${at}px`;
+    }
+    const queue = () => { if (!frame) frame = requestAnimationFrame(sync); };
+    const watch = () => {
+      const drawer = document.getElementById('drawer'), sidebar = document.getElementById('sidebar');
+      if (!drawer || !sidebar) { setTimeout(watch, 2000); return; }
+      new MutationObserver(queue).observe(drawer, { subtree: true, attributes: true, attributeFilter: ['selected'] });
+      new MutationObserver(records => { if (records.some(record => record.target !== button && !button?.contains(record.target))) queue(); }).observe(sidebar, { childList: true, subtree: true });
+      queue();
+    };
+    watch();
+    chrome.storage.onChanged.addListener(queue);
+  })();
+  GM_addStyle(studioPart('p430L12384'));
   const chatPlus = (() => {
     const tr = (text, ...values) => { try { return globalThis.WMEStudioI18n?.t?.(text, ...values) ?? values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text); } catch (_) { return text; } };
     const uiLocale = () => { try { return globalThis.WMEStudioI18n?.current?.() || document.documentElement.lang || 'en'; } catch (_) { return 'en'; } };
@@ -11248,33 +12355,9 @@ html[data-wme-studio="on"] .ws-ptpl-row { display: flex; justify-content: flex-e
     const dateText = time => { try { return new Intl.DateTimeFormat(uiLocale(), { month: 'short', day: 'numeric' }).format(new Date(time)); } catch (_) { return new Date(time).toDateString().slice(4, 10); } };
     const make = (doc, tag, className, text) => { const node = doc.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
 
-    const CHAT_CSS = `
-.wss-body{padding:0!important;text-align:start}
-.wss-list{display:flex;flex-direction:column;align-items:stretch;box-sizing:border-box;width:100%;padding:4px 0 16px;text-align:start}
-.wss-hint{margin:12px 16px 6px;color:var(--content_p2);font-size:13px;line-height:18px}
-.wss-group{margin:16px 16px 4px;color:var(--content_p3);font-size:12px;font-weight:600;line-height:16px;letter-spacing:.04em;text-transform:uppercase}
-.wss-row{display:flex;align-items:center;gap:12px;box-sizing:border-box;width:100%;min-height:60px;margin:0;padding:10px 16px;border:0;border-radius:0;background:transparent;color:var(--content_default);font:inherit;text-align:left;cursor:pointer}
-.wss-row:hover{background:var(--surface_variant,rgba(127,127,127,.14))}
-.wss-row:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
-.wss-dot{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:50%}
-.wss-dot svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.wss-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.wss-title{overflow:hidden;font-size:15px;font-weight:600;line-height:20px;text-overflow:ellipsis;white-space:nowrap}
-.wss-sub{display:-webkit-box;overflow:hidden;color:var(--content_p2);font-size:13px;line-height:18px;overflow-wrap:anywhere;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.wss-search{display:flex;align-items:center;gap:8px;box-sizing:border-box;height:40px;margin:8px 16px;padding:0 14px;border:1px solid var(--hairline);border-radius:20px;background:var(--surface_default);color:var(--content_p3)}
-.wss-search:focus-within{border-color:var(--primary)}
-.wss-search svg{flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.wss-search input{flex:1;min-width:0;height:38px;margin:0;padding:0;border:0;outline:0;background:transparent;color:var(--content_default);font:inherit;font-size:14px;line-height:20px}
-.wss-search input::placeholder{color:var(--content_p3)}
-.wss-search input::-webkit-search-cancel-button{filter:grayscale(1)}`;
+    const CHAT_CSS = studioPart('p430L12392');
 
-    GM_addStyle(`html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm { display: inline-flex !important; align-items: center !important; justify-content: center !important; flex: none !important; width: 20px !important; height: 16px !important; min-width: 0 !important; margin: 0 0 0 2px !important; padding: 0 !important; border: 0 !important; border-radius: 5px !important; background: transparent !important; color: var(--wme-studio-text-muted) !important; box-shadow: none !important; cursor: pointer; vertical-align: middle; transition: opacity .12s ease, color .12s ease, background-color .12s ease; }
-html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm:hover { background: var(--wme-studio-hover) !important; color: var(--wme-studio-accent, #0099ff) !important; }
-html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm:focus-visible { outline: 2px solid var(--wme-studio-accent, #0099ff); outline-offset: 1px; }
-html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm.ws-dm.ws-dm.ws-dm[data-busy] { color: var(--wme-studio-accent, #0099ff) !important; animation: ws-dm-busy .8s ease-in-out infinite alternate; }
-html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > button.ws-dm svg { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws-dm-note.ws-dm-note.ws-dm-note.ws-dm-note { display: block !important; flex: 1 1 100% !important; order: 9; height: auto !important; margin: 2px 0 0 !important; color: var(--ws-change-alert, #e5484d) !important; font: 600 12px/16px var(--ws-font) !important; white-space: normal !important; }
-@keyframes ws-dm-busy { to { opacity: .35; } }`);
+    GM_addStyle(studioPart('p430L12361'));
 
     const find = () => { try { return pageWindow.WazeChatPlus || null; } catch (_) { return null; } };
     function register(api) {
@@ -11669,34 +12752,7 @@ html[data-wme-studio="on"] .problem-edit .conversation-view .comment-title > .ws
     }, true);
     addEventListener('resize', soon, { passive: true });
     setInterval(soon, 1000);
-    GM_addStyle(`
-html[data-wme-studio="on"]:not([data-wme-studio-compact="on"]) .online-editors-bubble[data-wme-studio-me] { position: relative; }
-html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me] > img[slot="left-icon"] { transition: opacity 240ms ease !important; }
-html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me="invisible"] > img[slot="left-icon"] { opacity: .5 !important; }
-/* WME's own little dot in the standard layout gives way to the badge. */
-html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me] > .online-icon { opacity: 0 !important; }
-/* The badge: a green dot while others see you; a grey badge with a crossed-out eye while you are invisible. It grows
-   from the dot to the badge (and back) with a small spring, ringed in the button's own colour so it stands clear of
-   the icon on any theme. */
-html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me]::before {
-  --ws-me-badge: max(8px, calc(var(--ws-me-icon, 20px) * .42));
-  content: ''; position: absolute; z-index: 2; left: var(--ws-me-x, 70%); top: var(--ws-me-y, 70%);
-  width: var(--ws-me-badge); height: var(--ws-me-badge); box-sizing: border-box; border-radius: 50%; pointer-events: none;
-  translate: -50% -50%; background: #34c759 center / 0 no-repeat;
-  box-shadow: 0 0 0 2px var(--wme-studio-surface, #fff), 0 1px 3px #0000004d;
-  transition: width 260ms cubic-bezier(.34, 1.56, .64, 1), height 260ms cubic-bezier(.34, 1.56, .64, 1),
-    background-color 200ms ease, background-size 260ms cubic-bezier(.34, 1.56, .64, 1);
-  animation: ws-me-in 320ms cubic-bezier(.34, 1.56, .64, 1) backwards;
-}
-html[data-wme-studio="on"] .online-editors-bubble[data-wme-studio-me="invisible"]::before {
-  --ws-me-badge: max(13px, calc(var(--ws-me-icon, 20px) * .74));
-  background-color: color-mix(in srgb, var(--wme-studio-text-muted, #7c838c) 88%, #000);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.7 5.1A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.7 2.7'/%3E%3Cpath d='M6.6 6.6A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.4-1.6'/%3E%3Cpath d='M9.9 9.9a3 3 0 0 0 4.2 4.2'/%3E%3Cpath d='M2 2l20 20'/%3E%3C/svg%3E"); background-size: 64%;
-}
-@keyframes ws-me-in { from { scale: 0; } }
-html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bubble[data-wme-studio-me]::before,
-html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bubble[data-wme-studio-me] > img[slot="left-icon"] { transition: none !important; animation: none !important; }
-`);
+    GM_addStyle(studioPart('p430L12854'));
     return Object.freeze({ sync: soon, state: () => document.querySelector('.online-editors-bubble')?.getAttribute('data-wme-studio-me') || null });
   })();
   const requestReveal = (() => {
@@ -12115,7 +13171,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     } else {
       element.removeAttribute('data-wme-studio-request-limited');
       restoreHeaderGuardProperty(state,'--ws-request-body-max-height');
-      write('overflow-y','auto');
+      if (!element.hasAttribute('data-wme-studio-menu-open')) write('overflow-y','auto');
     }
   }
   function resetHeaderGuard(state) {
@@ -12192,11 +13248,12 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const newOpeningPoint = savedPoint && signature !== state.appliedPopupPoint;
       if (newOpeningPoint) state.requestPoint = null;
       if (state.cap == null || rect.height < state.cap - 2) state.naturalHeight = rect.height;
-      const suggestionBody = popupKind === 'mapSuggestion' ? requestWindowBody(state) : null;
+      const suggestionBody = popupKind === 'mapSuggestion' || isRequestPopup(element) ? requestWindowBody(state) : null;
       const suggestionOverflow = suggestionBody ? Math.max(0,suggestionBody.container.scrollHeight - suggestionBody.container.clientHeight) + Math.max(0,suggestionBody.content.scrollHeight - suggestionBody.content.clientHeight) : 0;
-      const savedHeight = sizeKey ? Number(panelSizes[sizeKey]?.height) : 0;
+      const requestOverflow = isRequestPopup(element) && state.cap != null ? Math.max(suggestionOverflow, ...[...element.querySelectorAll('.problem-data')].map(node => Math.max(0, node.scrollHeight - node.clientHeight))) : suggestionOverflow;
+      const savedHeight = sizeKey && !panelSizes[sizeKey]?.fit ? Number(panelSizes[sizeKey]?.height) : 0;
       const userHeight = Number.isFinite(savedHeight) && savedHeight > 0 ? savedHeight * (element.currentCSSZoom || 1) : 0;
-      const desiredHeight = userHeight || Math.max(rect.height + suggestionOverflow * (element.currentCSSZoom || 1),state.naturalHeight || rect.height);
+      const desiredHeight = userHeight || Math.max(rect.height + requestOverflow * (element.currentCSSZoom || 1),state.naturalHeight || rect.height);
       const preferredHeightLimit=popupKind==='mapSuggestion' ? userHeight || 520 : Infinity;
       const preferred = newOpeningPoint
         ? compactIslandPixels(compactIslandSpec(popupKind),savedPoint,{width:rect.width,height:desiredHeight}) : {left:state.requestPoint?.left ?? rect.left,top:state.requestPoint?.top ?? rect.top,width:rect.width,height:desiredHeight};
@@ -12211,7 +13268,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
           if (userHeight && wanted.top + wanted.height > lowest) wanted.top = Math.max(pillLimits.top, 12, lowest - wanted.height);
           if (wanted.top + wanted.height > pillLimits.bottom) wanted.height = Math.max(200, pillLimits.bottom - wanted.top);
         }
-        const placed = (state.requestPoint && compactFitInPlace(wanted,occupied)) || compactFitPanel(wanted,occupied);
+        const placed = isRequestPopup(element) ? compactFitRequest(wanted,occupied) : (state.requestPoint && compactFitInPlace(wanted,occupied)) || compactFitPanel(wanted,occupied);
         if (placed) {
           if (element.hasAttribute('data-wme-studio-request-raised')) element.removeAttribute('data-wme-studio-request-raised');
           const pillTop = areaPillLimits({ top: -Infinity, bottom: Infinity }, placed.left, placed.width).top;
@@ -12386,7 +13443,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     }
     document.addEventListener('pointermove', event => {
       if (drag || event.buttons || event.pointerType === 'touch') return;
-      const edge = edgeAt(event.clientX, event.clientY) && !pointOverPopup(event.clientX, event.clientY) ? edgeAt(event.clientX, event.clientY) : '';
+      const near = edgeAt(event.clientX, event.clientY), edge = near && !pointOverPopup(event.clientX, event.clientY) ? near : '';
       if (edge) showGrip(edge, event.clientX, event.clientY);
       else if (grip && !grip.hidden && event.target !== grip) grip.hidden = true;
     }, { capture: true, passive: true });
@@ -12600,16 +13657,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
             !doc.querySelector('[data-wme-studio-chat-resize]')) return;
         if (!doc.getElementById('wme-studio-resize-hint-style')) {
           const style = doc.createElement('style'); style.id = 'wme-studio-resize-hint-style';
-          style.textContent = `
-            @keyframes wme-studio-resize-hint { 0%,100% { opacity:1; } 50% { opacity:.35; } }
-            html[data-wme-studio-resize-hint="on"] [data-wme-studio-chat-resize] > span {
-              background:var(--wme-studio-accent,#0099ff)!important; opacity:1;
-              animation:wme-studio-resize-hint 1.5s ease-in-out 7;
-            }
-            html[data-wme-studio-resize-hint="on"] [data-wme-studio-chat-resize="bottom"] > span { width:60px!important; height:5px!important; }
-            html[data-wme-studio-motion="reduced"] [data-wme-studio-chat-resize] > span { animation:none!important; }
-            @media (prefers-reduced-motion:reduce) { [data-wme-studio-chat-resize] > span { animation:none!important; } }
-          `;
+          style.textContent = studioPart('p430L13818');
           (doc.head || doc.documentElement).append(style);
         }
         doc.documentElement.setAttribute('data-wme-studio-resize-hint', 'on');
@@ -12649,10 +13697,9 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const point = resizeHoverPoint; resizeHoverPoint = null;
       if (!point || windowResize || requestHeaderDrag) return;
       if (point.target?.closest?.('#wme-studio-userscript-ui,#wme-studio-minimized-requests')) { hideResizeGrip(); return; }
-      if (pointOverPopup(point.x, point.y)) { hideResizeGrip(); return; }
       const hit = windowEdgeAt(point.x, point.y);
-      if (hit) showResizeGrip(hit);
-      else if (resizeGrip && !resizeGrip.hidden && point.target !== resizeGrip) hideResizeGrip();
+      if (hit) { if (pointOverPopup(point.x, point.y)) hideResizeGrip(); else showResizeGrip(hit); }
+      else if (resizeGrip && !resizeGrip.hidden && (point.target !== resizeGrip || pointOverPopup(point.x, point.y))) hideResizeGrip();
     });
   }
   const POPUP_OVER_EDGE = '.options-wrapper,.options-container,[role="menu"],[role="listbox"],[role="dialog"]:not(#sidebar),wz-menu-item,.tippy-box,.dropdown-menu,.select2-drop,[popover]:popover-open,wz-dialog,.ws-quick-replies';
@@ -12677,7 +13724,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const floatingSide = element.id === 'sidebar' && compactLayoutActive();
       if (rect.width < 80 || rect.height < 80 || x < rect.left - 7 - slack || x > rect.right + 7 + slack || y < rect.top - (floatingSide ? 6 + slack : 0) || y > rect.bottom + 7 + slack) continue;
       if (element.checkVisibility && !element.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true })) continue;
-      const inSpan = x >= rect.left + 12 && x <= rect.right - 12, inColumn = y >= rect.top + 14 && y <= rect.bottom - 12;
+      const columnTop = element.id === 'sidebar' && element.hasAttribute('data-ws-rail-x') ? 34 : 14;
+      const inSpan = x >= rect.left + 12 && x <= rect.right - 12, inColumn = y >= rect.top + columnTop && y <= rect.bottom - 12;
       const dockedSide = element.id==='sidebar' && !compactLayoutActive();
       const inner = slack / 2;
       if (floatingSide && inSpan && y >= rect.top - 6 - slack && y <= rect.top + 9 + inner) return { element, edge: 'move', rect };
@@ -12710,9 +13758,10 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     if (resizeGrip.target && resizeGrip.target !== element) resizeGrip.target.removeAttribute('data-wme-studio-resize-edge');
     resizeGrip.target = element; resizeGrip.edge = edge; resizeGrip.hidden = false;
     if (element.getAttribute('data-wme-studio-resize-edge') !== edge) element.setAttribute('data-wme-studio-resize-edge', edge);
+    const gripTop = element.id === 'sidebar' && element.hasAttribute('data-ws-rail-x') ? 34 : 14;
     const box = edge === 'move' ? [rect.left + 12, rect.top - 6, rect.width - 24, 15]
       : edge === 'bottom' ? [rect.left + 12, rect.bottom - 6, rect.width - 24, 13]
-      : edge === 'right' ? [rect.right - 4, rect.top + 14, 11, rect.height - 26] : [rect.left - 7, rect.top + 14, 11, rect.height - 26];
+      : edge === 'right' ? [rect.right - 4, rect.top + gripTop, 11, rect.height - gripTop - 12] : [rect.left - 7, rect.top + gripTop, 11, rect.height - gripTop - 12];
     const cursor = edge === 'move' ? (windowResize ? 'grabbing' : 'grab') : edge === 'bottom' ? 'ns-resize' : 'ew-resize';
     Object.assign(resizeGrip.style, { left: `${box[0]}px`, top: `${box[1]}px`, width: `${box[2]}px`, height: `${box[3]}px`, cursor });
   }
@@ -13648,7 +14697,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     tip.style.top = `${Math.round(below ? at.bottom + 12 : Math.max(8, at.top - 12 - box.height))}px`;
   }
   function showAreaManagerTip(anchor, delayed = false) {
-    if (settings.showTooltips !== true) return;
+    if (!settings.enabled || settings.showTooltips !== true) return;
     if (!delayed) {
       clearTimeout(areaManagerTip.timer);
       areaManagerTip.timer = setTimeout(() => { areaManagerTip.timer = 0; if (anchor.isConnected) showAreaManagerTip(anchor, true); }, STUDIO_TOOLTIP_DELAY);
@@ -15646,20 +16695,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     queueMicrotask(() => globalThis.WMEStudioI18n?.localize(shadow));
     shadow.innerHTML = studioPart('part19371', { studioButtonMotionCSS, studioControlsCSS, studioRangeCSS });
     const contextStyle = document.createElement('style');
-    contextStyle.textContent = `
-      .ctx{flex-direction:column;align-items:stretch;gap:1px;width:216px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;padding:6px;border-radius:11px;white-space:normal;touch-action:pan-y}
-      .ctx-name{padding:5px 8px;overflow-wrap:anywhere}
-      .ctx-rename{width:100%;min-width:0;margin:0;flex:none}
-      .ctx-sep{width:auto;height:1px;min-height:1px;margin:4px 3px;flex:none}
-      .ctx-action{width:100%;height:auto;min-height:29px;flex:none;justify-content:flex-start;padding:5px 8px;gap:8px;text-align:start;line-height:17px;border-radius:6px;white-space:normal;overflow-wrap:anywhere}
-      .ctx-action.ctx-icon{width:100%;justify-content:flex-start;padding:5px 8px}
-      .ctx-hint{padding:5px 8px;font-size:11px;line-height:16px}
-      .ctx-width{display:grid;grid-template-columns:1fr auto;gap:5px;height:auto;padding:5px 8px;white-space:normal;flex:none}
-      .ctx-width input{grid-column:1 / -1;grid-row:2;width:100%;min-width:0}
-      .ctx-width output{min-width:0;text-align:end;font-size:11px}
-      .replace-menu{max-width:calc(100vw - 24px)}
-      @media(pointer:coarse){.ctx-action{min-height:36px}}
-    `;
+    contextStyle.textContent = studioPart('p430L17151');
     shadow.append(contextStyle);
     (document.documentElement || document).append(host);
     const grid = document.createElement('div');
@@ -15667,32 +16703,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     grid.setAttribute('aria-hidden', 'true'); grid.hidden = true;
     const highlightStyle = document.createElement('style');
     highlightStyle.dataset.wmeStudioLayoutTargets = '1';
-    highlightStyle.textContent = `
-      #wme-studio-compact-layout-grid{
-        position:fixed;inset:0;z-index:506;pointer-events:none;background-color:#0000004d;
-        background-image:linear-gradient(to right,color-mix(in srgb,var(--wme-studio-accent,#0099ff) 62%,transparent) 1px,#1018209c 1px 2px,transparent 2px),linear-gradient(to bottom,color-mix(in srgb,var(--wme-studio-accent,#0099ff) 62%,transparent) 1px,#1018209c 1px 2px,transparent 2px),linear-gradient(to right,#ffffff66 1px,#1018208c 1px 2px,transparent 2px),linear-gradient(to bottom,#ffffff66 1px,#1018208c 1px 2px,transparent 2px);
-        background-size:240px 240px,240px 240px,48px 48px,48px 48px;
-      }
-      #wme-studio-compact-layout-grid[hidden]{display:none!important}
-      html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layout-editing="on"] .layer-switcher .menu[data-wme-studio-layout-target="layers"]{
-        max-height:min(560px,calc(100vh - 200px))!important;
-      }
-      html[data-wme-studio-layout-editing="on"] [data-wme-studio-layout-target]{
-        outline:none!important;cursor:grab!important;touch-action:none!important;user-select:none!important;
-        box-shadow:0 3px 12px #0004!important;
-      }
-      html[data-wme-studio="on"][data-wme-studio-compact="on"][data-wme-studio-layout-editing="on"] #tile-build-status[data-wme-studio-layout-target="tile"]{border-radius:50%!important;box-shadow:none!important}
-      html[data-wme-studio-layout-editing="on"] [data-wme-studio-layout-target] *{cursor:inherit!important}
-      html[data-wme-studio-layout-editing="on"] :is(#app-head,#drawer,#sidebar,#overlay-buttons,.layer-switcher .menu,iframe[data-wme-studio-chat-panel="on"],[data-wme-studio-online-editors-status="on"],.wz-map-ol-footer),
-      html[data-wme-studio-layout-editing="on"] #overlay-buttons::before{
-        transition:none!important;animation:none!important;
-      }
-      html[data-wme-studio-layout-editing="on"] [data-wme-studio-layout-dragging="on"]{
-        cursor:grabbing!important;user-select:none!important;z-index:2147483500!important;
-      }
-      /* A Studio island is only the glass behind its controls, which stay in WME's own layers: lifted above
-         everything while it is dragged, the glass would cover them and the island would look empty. */
-      html[data-wme-studio-layout-editing="on"] .ws-custom-island[data-wme-studio-layout-dragging="on"]{z-index:506!important}`;
+    highlightStyle.textContent = studioPart('p430L17158');
     (document.head || root).append(highlightStyle);
     const q = selector => shadow.querySelector(selector);
     const labels = q('.labels'), shields = q('.shields'), toolbar = q('.toolbar'), dock = q('.dock');
@@ -16719,7 +17730,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       Object.assign(element.style,{left:`${placed.left / zoom}px`,top:`${placed.top / zoom}px`,width:`${size.width / zoom}px`,height:`${size.height / zoom}px`});
       if (own) requestHomes.set(element, { left: placed.left, top: placed.top });
     }
-    const REQUEST_PREVIEWS = new Set(['updateRequest', 'mapUpdateRequest']);
+    const REQUEST_PREVIEWS = new Set(['updateRequest']);
     const REQUEST_LIMITS = { minWidth: 300, maxWidth: 640, minHeight: 220, autoWidth: 330, autoHeight: 640 };
     let requestSize = null, sizeFrame = 0;
     const requestHomes = new WeakMap();
@@ -16787,12 +17798,13 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
         if (!requestHomes.has(element)) requestHomes.set(element, { left: rect.left, top: rect.top });
         const home = requestHomes.get(element), width = size.width * zoom;
         const left = Math.max(12, Math.min(home.left, innerWidth - 12 - width));
-        const floor = Math.min(innerHeight - 12, (sizeBar.hidden ? toolbar : sizeBar).getBoundingClientRect().top - 14) - 36;
+        const below = [toolbar, sizeBar.hidden ? null : sizeBar].map(node => node?.getBoundingClientRect()).filter(box => box?.width && box.left < left + width && box.right > left);
+        const floor = Math.min(innerHeight - 12, ...below.map(box => box.top - 14)) - 36;
         const head = document.getElementById('app-head')?.getBoundingClientRect();
         const under = !!head && head.width > 0 && head.bottom < innerHeight / 2 && head.left < left + width && head.right > left;
         const ceiling = under ? Math.round(head.bottom) + 10 : 12;
         const minimum = REQUEST_LIMITS.minHeight * zoom;
-        const top = Math.max(ceiling, Math.min(home.top, floor - minimum));
+        const top = Math.max(ceiling, Math.min(home.top, floor - Math.max(minimum, size.height * zoom)));
         const height = Math.max(Math.min(minimum, floor - ceiling), Math.min(size.height * zoom, floor - top));
         Object.assign(element.style, { left: `${left / zoom}px`, top: `${top / zoom}px`, width: `${size.width}px`, height: `${height / zoom}px` });
         paintRequestSizeTag(element);
@@ -18067,12 +19079,47 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     userBoxes.add(host);
     new MutationObserver(() => syncUserBoxEmail(host)).observe(host, { attributes: true, attributeFilter: ['user-email'] });
     syncUserBoxEmail(host);
+    let freed = null;
+    const free = () => {
+      const header = document.getElementById('app-head');
+      if (!header || freed) return;
+      const style = getComputedStyle(header);
+      if (style.transform === 'none' && style.translate === 'none') return;
+      const rect = header.getBoundingClientRect(), zoom = Number.parseFloat(style.zoom) || 1;
+      freed = { header, left: header.style.getPropertyValue('left'), leftPriority: header.style.getPropertyPriority('left'), transform: header.style.getPropertyValue('transform'), transformPriority: header.style.getPropertyPriority('transform') };
+      header.style.setProperty('left', `${Math.round(rect.left / zoom * 100) / 100}px`, 'important');
+      header.style.setProperty('transform', 'none', 'important');
+      header.style.setProperty('translate', 'none', 'important');
+    };
+    const restore = () => {
+      if (!freed) return;
+      const { header, left, leftPriority, transform, transformPriority } = freed; freed = null;
+      if (left) header.style.setProperty('left', left, leftPriority); else header.style.removeProperty('left');
+      if (transform) header.style.setProperty('transform', transform, transformPriority); else header.style.removeProperty('transform');
+      header.style.removeProperty('translate');
+    };
+    host.addEventListener('dialogShown', free);
+    host.addEventListener('dialogHidden', restore);
+    const dialog = () => host.shadowRoot?.querySelector('wz-dialog');
+    const check = () => { const d = dialog(); const open = !!d?.shadowRoot?.querySelector('.wz-dialog-wrapper, .wz-dialog'); if (open) free(); else restore(); };
+    const watch = () => { const d = dialog(); if (d?.shadowRoot && !d.__wsWatched) { d.__wsWatched = true; new MutationObserver(check).observe(d.shadowRoot, { childList: true }); } };
+    if (host.shadowRoot) new MutationObserver(watch).observe(host.shadowRoot, { childList: true, subtree: true });
+    watch();
   }
   const profileMenus = new Map();
   let profileMenuFrame = 0;
   function clearProfileMenuOffset(state) {
     state.container?.style.removeProperty('--ws-user-menu-offset');
     state.container?.style.removeProperty('--ws-user-menu-height');
+    state.container?.style.removeProperty('--ws-user-menu-x');
+    if (state.panel) { state.panel.style.removeProperty('translate'); state.panel.style.removeProperty('max-height'); }
+  }
+  function profileMenuZoom(panel) {
+    const live = panel.currentCSSZoom;
+    if (Number.isFinite(live) && live > 0) return live;
+    let zoom = 1;
+    for (let node = panel; node && node.nodeType === 1; node = composedParent(node)) zoom *= Number.parseFloat(getComputedStyle(node).zoom) || 1;
+    return zoom > 0 ? zoom : 1;
   }
   function syncProfileMenus() {
     profileMenuFrame = 0;
@@ -18084,22 +19131,39 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
       const container = state.shadow.querySelector('.wz-menu > .options-container');
       const panel = container?.querySelector('.options-wrapper');
       if (!container || !panel) continue;
-      if (state.container !== container) {
-        clearProfileMenuOffset(state); state.container = container;
+      if (state.container !== container || state.panel !== panel) {
+        clearProfileMenuOffset(state); state.container = container; state.panel = panel;
         state.resize?.disconnect(); state.resize?.observe(panel); state.resize?.observe(header);
       }
-      const style = getComputedStyle(container), rect = panel.getBoundingClientRect();
+      const style = getComputedStyle(container), panelStyle = getComputedStyle(panel), rect = panel.getBoundingClientRect();
       if (style.display === 'none' || style.visibility === 'hidden' || rect.width < 1 || rect.height < 1) continue;
-      const shift = Number.parseFloat(style.translate.split(/\s+/)[1]) || 0;
-      const nativeTop = rect.top - shift;
-      const gap = Number.parseFloat(getComputedStyle(panel).marginTop) || 15;
-      const limits = headerPanelLimits(rect.left,rect.width,gap);
+      const zoom = profileMenuZoom(panel);
+      const moved = String(panelStyle.translate || '').split(/\s+/);
+      const shiftX = Number.parseFloat(moved[0]) || 0, shiftY = Number.parseFloat(moved[1]) || 0;
+      const nativeTop = rect.top - shiftY * zoom, nativeLeft = rect.left - shiftX * zoom;
+      const gap = (Number.parseFloat(panelStyle.marginTop) || 15) * zoom;
+      const anchor = state.owner.getBoundingClientRect();
+      const edge = 8, left = Math.max(edge, Math.min((anchor.width ? anchor.right : nativeLeft + rect.width) - rect.width, innerWidth - edge - rect.width));
+      const limits = headerPanelLimits(left,rect.width,gap);
       const capacity = Math.max(1,limits.bottom - limits.top), height = Math.min(rect.height,capacity);
-      const cap = `${Math.floor(capacity)}px`;
+      const cap = `${Math.floor(capacity / zoom)}px`;
       if (container.style.getPropertyValue('--ws-user-menu-height') !== cap) container.style.setProperty('--ws-user-menu-height',cap);
+      if (panel.style.getPropertyValue('max-height') !== cap) panel.style.setProperty('max-height', cap, 'important');
       const top = Math.max(limits.top,Math.min(header.getBoundingClientRect().bottom + gap,limits.bottom - height));
-      const offset = Math.round((top - nativeTop) * 100) / 100 + 'px';
-      if (container.style.getPropertyValue('--ws-user-menu-offset') !== offset) container.style.setProperty('--ws-user-menu-offset', offset);
+      const round = value => Math.round(value * 100) / 100;
+      let x = round((left - nativeLeft) / zoom), y = round((top - nativeTop) / zoom);
+      const place = () => {
+        const moveTo = `${x}px ${y}px`;
+        if (panel.style.getPropertyValue('translate') !== moveTo || panel.style.getPropertyPriority('translate') !== 'important') panel.style.setProperty('translate', moveTo, 'important');
+      };
+      place();
+      const landed = panel.getBoundingClientRect(), missX = left - landed.left, missY = top - landed.top;
+      if (Math.abs(missX) > 1 || Math.abs(missY) > 1) {
+        const rateX = x !== shiftX ? (landed.left - rect.left) / (x - shiftX) : zoom, rateY = y !== shiftY ? (landed.top - rect.top) / (y - shiftY) : zoom;
+        if (Math.abs(missX) > 1 && rateX > .2 && rateX < 6) x = round(x + missX / rateX);
+        if (Math.abs(missY) > 1 && rateY > .2 && rateY < 6) y = round(y + missY / rateY);
+        place();
+      }
     }
   }
   function queueProfileMenus() {
@@ -18110,7 +19174,7 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     let owner = composedParent(host);
     while (owner && owner.localName !== 'wz-user-box') owner = composedParent(owner);
     if (!owner) return;
-    const state = { host, shadow, container: null, observer: new MutationObserver(queueProfileMenus), resize: null };
+    const state = { host, shadow, owner, container: null, observer: new MutationObserver(queueProfileMenus), resize: null };
     if (typeof ResizeObserver === 'function') state.resize = new ResizeObserver(queueProfileMenus);
     state.observer.observe(host, { attributes: true, attributeFilter: ['expanded'] });
     state.observer.observe(shadow, { childList: true, subtree: true });
@@ -19484,12 +20548,8 @@ html[data-wme-studio="on"][data-wme-studio-motion="reduced"] .online-editors-bub
     });
     state.handle=grip; surface.append(grip);
   }
-  GM_addStyle(`html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header { background-color: var(--wme-studio-surface-2) !important; color: var(--wme-studio-text) !important; box-shadow: inset 0 -1px 0 var(--wme-studio-border); }
-html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header .selection { color: var(--wme-studio-text-secondary) !important; }
-html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header .text { color: var(--wme-studio-text-secondary) !important; }
-html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header .city-name { color: var(--wme-studio-text) !important; }
-html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header .edit-button,
-html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-header .edit-button i { color: var(--wme-studio-accent) !important; }`);
+  GM_addStyle(studioPart('p430L21093'));
+  GM_addStyle(`html[data-wme-studio="on"] .map-comment-feature-editor .conversation-view > wz-list.comment-list::-webkit-scrollbar-track { margin-block: 10px; }`);
   GM_addStyle(`html[data-wme-studio="on"] .map-comment-feature-editor :is(.map-comment-name-editor, .conversation-view > wz-list.comment-list) { border: 1px solid var(--wme-studio-border) !important; border-radius: var(--wme-studio-radius, 10px) !important; background: transparent !important; }`);
   function placeSearchResults(field) {
     if (!field?.isConnected) return;
@@ -19511,17 +20571,7 @@ html[data-wme-studio="on"] #edit-panel .city-feature-editor .feature-editor-head
     if (host.querySelector('form.add-opening-hour')) return true;
     return /^(add|edit)\s+open(ing)?\s+hours$/i.test(host.querySelector(':scope > wz-dialog-header')?.textContent?.trim() || '');
   }
-  GM_addStyle(`
-html[data-wme-studio="on"] form.add-opening-hour .hours.section { display: flow-root !important; }
-html[data-wme-studio="on"] form.add-opening-hour .hours.section > .clearfix { display: flex !important; flex-wrap: wrap; align-items: center; }
-html[data-wme-studio="on"] form.add-opening-hour .hours.section > .clearfix::before, html[data-wme-studio="on"] form.add-opening-hour .hours.section > .clearfix::after { display: none !important; }
-html[data-wme-studio="on"] form.add-opening-hour .hours.section > .clearfix > :is(.labels, .inputs) { display: contents !important; }
-html[data-wme-studio="on"] form.add-opening-hour .hours.section :is(.col-xs-2, .col-xs-4) { float: none !important; display: flex !important; align-items: center; min-height: 32px; }
-html[data-wme-studio="on"] form.add-opening-hour .hours.section label.radio { display: inline-flex !important; align-items: center; gap: 6px; min-height: 32px; margin: 0 !important; padding-left: 0 !important; }
-html[data-wme-studio="on"] form.add-opening-hour .hours.section label.radio > input[type="radio"] { position: static !important; flex: none; margin: 0 !important; }
-html[data-wme-studio="on"] form.add-opening-hour .hours.section .to-label { float: none !important; display: inline-flex !important; align-items: center; height: 32px; margin: 0 8px 0 0 !important; padding: 0 !important; }
-html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { flex: 1 1 auto; min-width: 0; }
-`);
+  GM_addStyle(studioPart('p430L21094'));
   function schoolZoneDialog(host) {
     if (host?.localName !== 'wz-dialog' || host.classList.contains('restrictions-modal')) return false;
     const title=host.querySelector(':scope > wz-dialog-header')?.textContent?.trim() || '';
@@ -19741,7 +20791,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     const gripIcon='<svg viewBox="0 0 8 14" aria-hidden="true"><circle cx="2" cy="2" r="1.3"/><circle cx="6" cy="2" r="1.3"/><circle cx="2" cy="7" r="1.3"/><circle cx="6" cy="7" r="1.3"/><circle cx="2" cy="12" r="1.3"/><circle cx="6" cy="12" r="1.3"/></svg>';
     const BAR_CHROME=49, TAB_STEP=34, PILL_MIN=116, WIDE_MIN=240;
     const SOURCES='#sidebar :is(.userscripts-drawer-tabs,#user-tabs) > .nav-tabs';
-    let preferences=null, loaded=false, saving=Promise.resolve(), popup=null, positionFrame=0, serial=0;
+    let preferences=null, loaded=false, saving=Promise.resolve(), popup=null, positionFrame=0, serial=0, scriptNamesTold=false;
     const enabled=()=>ready && settings.enabled && settings.addons;
     const text=value=>String(value || '').replace(/\s+/g,' ').trim();
     const searchText=value=>text(value).normalize('NFKD').replace(/\p{M}/gu,'').toLocaleLowerCase();
@@ -20168,6 +21218,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (state.host.hidden) { state.source.removeAttribute('data-wme-studio-script-tabs');close(state);return; }
       for (const item of state.items) if(!item.nativeIconURL)ensureIcon(item.sourceURL);
       state.source.setAttribute('data-wme-studio-script-tabs','on');
+      if (settings.scriptTabNames && !scriptNamesTold) { scriptNamesTold=true; globalThis.WMEStudioTip?.('scriptNames'); }
       if (!preferences) save(state.items.filter(item=>!item.disabled).slice(0,DEFAULT_PINS).map(item=>item.key));
       rekeyPins();
       openFirstPinned(state);
@@ -20179,7 +21230,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (!state.width) state.width=state.host.clientWidth;
       const tucked=[], visible=shown;
       const wide=!pinned.length && !(state.width>0 && state.width<WIDE_MIN);
-      const signature=JSON.stringify([selected.key,wide,state.items.length,tucked.map(item=>item.label),visible.map(item=>[item.key,item.label,item.short,item.iconURL,item.disabled,pinSet.has(item.key)])]);
+      const names=!!settings.scriptTabNames;
+      const signature=JSON.stringify([selected.key,wide,names,state.items.length,tucked.map(item=>item.label),visible.map(item=>[item.key,item.label,item.short,item.iconURL,item.disabled,pinSet.has(item.key)])]);
       if (signature!==state.signature) {
         state.signature=signature;state.hideTip();
         const focused=state.shadow.activeElement, focusKey=focused?.classList.contains('tab') ? focused.dataset.key : null;
@@ -20190,10 +21242,11 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           button.tabIndex=open ? 0 : -1;button.disabled=item.disabled;
           button.draggable=pinSet.has(item.key);button.dataset.tip=item.label;
           button.setAttribute('aria-label',item.label);button.append(makeIcon(item));
-          if (open) {const label=document.createElement('span');label.className='label';label.textContent=shortName(item.label);button.append(label);}
+          if (open || names) {const label=document.createElement('span');label.className='label';label.textContent=shortName(item.label);button.append(label);}
           return button;
         });
         state.tabs.replaceChildren(...buttons);
+        state.tabs.toggleAttribute('data-names', names);
         if (focusKey) buttons.find(button=>button.dataset.key===focusKey)?.focus({preventScroll:true});
         state.chip.hidden=!tucked.length;state.chip.textContent=`+${tucked.length}`;
         if (tucked.length) {
@@ -20266,7 +21319,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       };
       function showTip(target) {
         tipTimer=0;
-        if (settings.showTooltips !== true) return;
+        if (!settings.enabled || settings.showTooltips !== true) return;
         if (tipTarget!==target || !target.isConnected || !target.dataset.tip || state.open || typeof state.tip.showPopover!=='function') return;
         state.tip.textContent=target.dataset.tip;
         try { state.tip.showPopover(); } catch (_) { return; }
@@ -20466,7 +21519,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     if ((tag === 'wz-dialog-header' || tag === 'wz-dialog-content') && (schoolZoneDialog(host.parentElement) || openingHoursDialog(host.parentElement))) trackRestrictionPanel(host.parentElement);
     if (classes.contains('nav-tabs')) scriptTabPicker.inspect(host);
     if (classes.contains('tab-pane') && host.closest('#sidebar')) scriptTabPicker.refresh();
-    if (classes.contains('new-comment-form')) trackRequestReply(host);
+    if (classes.contains('new-comment-form')) { trackRequestReply(host); quickReplies.inspect(host.closest('.problem-edit')); }
     if (tag === 'wz-textarea') trackRequestReply(host.closest('.new-comment-form'));
     if (BETA_TOOLTIP_IDS.has(id)) queueBetaVersionTooltip();
     if (tag === 'input' && host.matches('input[type="range"]')) enhanceStudioRange(host);
@@ -20828,7 +21881,153 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     const studio = state.studio.off && forThisVersion && !lifted.studio;
     return { studio, sd: studio || (state.screenDisplays.off && !lifted.sd && !lifted.studio) };
   }
+  const localDay = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const HALLOWEEN_SHOWN = false;
+  const halloweenDate = () => `${new Date().getFullYear()}-10-31`;
+  const halloweenSeason = () => { if (!HALLOWEEN_SHOWN) return false; const today = localDay(); return today >= `${today.slice(0, 4)}-10-24` && today <= halloweenDate(); };
+  function halloweenOn(value) {
+    if (!HALLOWEEN_SHOWN) return false;
+    const today = localDay(), last = String(value?.halloweenDay || '');
+    if (last && today <= last && today.slice(0, 4) === last.slice(0, 4) && halloweenSeason()) return true;
+    return !!value?.halloweenAuto && today === halloweenDate() && value.halloweenAsked !== today;
+  }
+  const halloween = { on: false, layer: null, root: null, watch: null, frame: 0, tries: 0, retry: 0, fog: null, bats: 0, asked: false, day: '', art: {} };
+  const XLINK = 'http://www.w3.org/1999/xlink';
+  function halloweenPart() { const part = studioPart('halloween'); return part && typeof part === 'object' ? part : null; }
+  function syncHalloween() {
+    const part = halloweenPart();
+    const on = !!(part && ready && settings.enabled && !standaloneSignin && !editorProfile && (halloween.trying || halloweenOn(realSettings)));
+    halloween.on = on;
+    attr('season', on ? 'halloween' : null);
+    attr('halloween-extras', on && realSettings.halloweenExtras ? 'on' : null);
+    if (on && !document.getElementById('ws-halloween-style')) { const style = GM_addStyle(part.css); if (style) style.id = 'ws-halloween-style'; }
+    const fogOn = on && realSettings.halloweenFog, map = document.getElementById('WazeMap');
+    if (fogOn && map && !halloween.fog?.isConnected) { halloween.fog = document.createElement('div'); halloween.fog.id = 'ws-halloween-fog'; halloween.fog.setAttribute('aria-hidden', 'true'); map.append(halloween.fog); }
+    if (!fogOn && halloween.fog) { halloween.fog.remove(); halloween.fog = null; }
+    if (on && realSettings.halloweenExtras) { if (!halloween.bats) halloween.bats = setTimeout(flyBats, 8000); }
+    else { clearTimeout(halloween.bats); halloween.bats = 0; document.getElementById('ws-halloween-bats')?.remove(); }
+    syncPumpkins(on && realSettings.halloweenPumpkins);
+    halloween.day = localDay(); scheduleHalloweenDay();
+    if (part) askHalloween();
+  }
+  function scheduleHalloweenDay() {
+    clearTimeout(halloween.midnight);
+    const now = new Date(), next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+    halloween.midnight = setTimeout(newHalloweenDay, Math.max(1000, next - now));
+  }
+  function newHalloweenDay() {
+    if (halloween.day === localDay()) { scheduleHalloweenDay(); return; }
+    document.getElementById('ws-halloween-ask')?.remove(); halloween.trying = false;
+    if (!ready) return;
+    settings = effectiveSettings(realSettings);
+    try { apply(); } catch (error) { reportStudioError('halloween day', error); }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && halloween.day && halloween.day !== localDay()) newHalloweenDay(); });
+  function pumpkinURL(kind) { return halloween.art[kind] ||= 'data:image/svg+xml,' + encodeURIComponent(halloweenPart()?.pumpkins?.[kind] || ''); }
+  function queuePumpkins() { if (!halloween.frame) halloween.frame = requestAnimationFrame(paintPumpkins); }
+  function paintPumpkins() {
+    halloween.frame = 0;
+    const layer = halloween.layer;
+    if (!layer || !halloween.watch) return;
+    const root = layer.renderer?.vectorRoot || document.getElementById(`${layer.id}_vroot`);
+    if (root && root !== halloween.root) { halloween.watch.disconnect(); halloween.root = root; halloween.watch.observe(root, { childList: true, subtree: true, attributes: true }); }
+    for (const feature of layer.features || []) {
+      const image = feature?.geometry?.id ? document.getElementById(feature.geometry.id) : null;
+      if (!image || image.localName !== 'image') continue;
+      const waze = feature.attributes?.wazeFeature || {};
+      let model = null; try { model = pageWindow.W?.model?.mapUpdateRequests?.getObjectById?.(waze.id)?.attributes || null; } catch (_) { model = null; }
+      const closed = model ? model.open === false || model.resolution != null : /closed|solved|resolved/i.test(String(waze.status || ''));
+      const kind = closed ? 'closed' : waze.isSelected ? 'face' : 'open', url = pumpkinURL(kind);
+      if (image.getAttributeNS(XLINK, 'href') !== url) image.setAttributeNS(XLINK, 'href', url);
+      if (image.getAttribute('data-ws-pumpkin') !== kind) image.setAttribute('data-ws-pumpkin', kind);
+    }
+  }
+  function syncPumpkins(on) {
+    if (on && !halloween.watch) {
+      let layer = null; try { layer = pageWindow.W?.map?.getLayersByName?.('update_requests')?.[0] || null; } catch (_) { layer = null; }
+      if (!layer) { if (halloween.tries++ < 30) { clearTimeout(halloween.retry); halloween.retry = setTimeout(() => syncPumpkins(halloween.on && realSettings.halloweenPumpkins), 2000); } return; }
+      halloween.layer = layer; halloween.root = null;
+      halloween.watch = new MutationObserver(queuePumpkins);
+      try { for (const type of ['featuresadded', 'featuresremoved', 'moveend']) layer.events?.register?.(type, null, queuePumpkins); } catch (_) {   }
+      queuePumpkins();
+    } else if (!on && halloween.watch) {
+      halloween.watch.disconnect(); halloween.watch = null;
+      try { for (const type of ['featuresadded', 'featuresremoved', 'moveend']) halloween.layer?.events?.unregister?.(type, null, queuePumpkins); } catch (_) {   }
+      for (const image of halloween.root?.querySelectorAll?.('[data-ws-pumpkin]') || []) image.removeAttribute('data-ws-pumpkin');
+      try { halloween.layer?.redraw?.(); } catch (error) { reportStudioError('pumpkins', error); }
+      halloween.layer = halloween.root = null;
+    }
+    if (!on) { clearTimeout(halloween.retry); halloween.tries = 0; }
+  }
+  function flyBats() {
+    halloween.bats = setTimeout(flyBats, 45000 + Math.random() * 30000);
+    if (document.hidden || !settings.motion || reducedMotion.matches || !halloween.on) return;
+    let box = document.getElementById('ws-halloween-bats');
+    if (!box) { box = document.createElement('div'); box.id = 'ws-halloween-bats'; box.setAttribute('aria-hidden', 'true'); box.setAttribute('data-ws-keep', ''); document.body.append(box); }
+    const art = halloweenPart()?.bat || '', top = 12 + Math.random() * 36, width = innerWidth;
+    for (let index = 0; index < 3; index++) {
+      const holder = document.createElement('div'); holder.innerHTML = art;
+      const bat = holder.firstElementChild; if (!bat) continue;
+      bat.style.width = `${30 - index * 7}px`; bat.style.opacity = String(0.9 - index * 0.2);
+      box.append(bat);
+      const y = top + index * 16;
+      bat.animate([{ transform: `translate(${width + 40}px, ${y}px)` }, { transform: `translate(${width * 0.55}px, ${y + 14}px)`, offset: 0.45 }, { transform: `translate(-80px, ${y - 8}px)` }],
+        { duration: 7000 + index * 900, delay: index * 350, easing: 'linear', fill: 'both' }).finished.then(() => bat.remove(), () => bat.remove());
+    }
+  }
+  function askHalloween() {
+    if (!HALLOWEEN_SHOWN || halloween.asked || !ready || !settings.enabled || standaloneSignin || editorProfile || window.top !== window.self || !uiRouteAllowed()) return;
+    const today = localDay();
+    let preview = false; try { preview = localStorage.getItem('wmeStudio.halloweenPreview') === '1'; } catch (_) { preview = false; }
+    if ((!preview && today !== halloweenDate()) || halloweenOn(realSettings) || realSettings.halloweenAsked === today) return;
+    halloween.asked = true;
+    setTimeout(() => (window.requestIdleCallback || setTimeout)(showHalloweenAsk, { timeout: 3000 }), 4000);
+  }
+  function showHalloweenAsk() {
+    const part = halloweenPart();
+    if (!part || halloweenOn(realSettings) || document.getElementById('ws-halloween-ask') || !settings.enabled) return;
+    const t = text => { try { return globalThis.WMEStudioI18n?.t?.(text) ?? text; } catch (_) { return text; } };
+    const host = document.createElement('div'); host.id = 'ws-halloween-ask'; host.setAttribute('data-ws-keep', '');
+    host.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:2147482500;max-width:calc(100vw - 24px)';
+    const shadow = host.attachShadow({ mode: 'open' });
+    const repaint = () => { settings = effectiveSettings(realSettings); try { apply(); } catch (error) { reportStudioError('halloween', error); } };
+    const answer = yes => {
+      host.remove();
+      const today = localDay(), trying = halloween.trying;
+      halloween.trying = false;
+      Promise.resolve(config.write(yes ? { halloweenDay: halloweenDate(), halloweenAsked: today } : { halloweenAsked: today })).catch(error => reportStudioError('halloween', error));
+      if (trying && !yes) repaint();
+    };
+    const fill = () => {
+      shadow.innerHTML = part.ask;
+      for (const node of shadow.querySelectorAll('[data-t]')) node.textContent = t(node.dataset.t);
+      for (const node of shadow.querySelectorAll('[data-t-label]')) node.setAttribute('aria-label', t(node.dataset.tLabel));
+      shadow.querySelector('[data-id="yes"]').addEventListener('click', () => answer(true));
+      shadow.querySelector('[data-id="no"]').addEventListener('click', () => answer(false));
+      shadow.querySelector('[data-id="try"]')?.addEventListener('click', tryIt);
+      shadow.querySelector('[data-id="close"]').addEventListener('click', () => answer(false));
+    };
+    const goBack = () => {
+      halloween.trying = false; repaint(); fill();
+      shadow.querySelector('[data-id="try"]')?.focus({ preventScroll: true });
+    };
+    const tryIt = () => {
+      halloween.trying = true; repaint();
+      const say = (selector, text) => { const node = shadow.querySelector(selector); if (node) node.textContent = t(text); };
+      say('strong', 'This is the Halloween theme'); say('.words span', 'Keep it for today? It goes away by itself tomorrow.');
+      say('[data-id="yes"]', 'Keep it for today');
+      const no = shadow.querySelector('[data-id="no"]');
+      if (no) { const back = no.cloneNode(false); back.textContent = t('Go back'); back.addEventListener('click', goBack); no.replaceWith(back); }
+      shadow.querySelector('[data-id="try"]')?.remove();
+      shadow.querySelector('[data-id="yes"]')?.focus({ preventScroll: true });
+    };
+    fill();
+    (document.body || document.documentElement).append(host);
+    if (settings.motion && !reducedMotion.matches) host.animate([{ opacity: 0, translate: '0 16px' }, { opacity: 1, translate: '0 0' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
+  globalThis.WMEStudioHalloween = Object.freeze({ on: halloweenOn, season: halloweenSeason, date: halloweenDate, day: localDay, part: halloweenPart });
   function effectiveSettings(value) {
+    if (halloween.trying || halloweenOn(value)) value = { ...value, theme: 'dark', themeSchedule: 'off', accent: '#ff7a1a', islandFill: 'gradient', islandColor: '#2e1546', islandColor2: '#1a0f2a', islandAngle: '135', islandIntensity: 100 };
     const rules = remoteRules();
     if (!rules.studio && !rules.sd) return value;
     return { ...value, enabled: rules.studio ? false : value.enabled, screenDisplays: rules.sd ? false : value.screenDisplays };
@@ -20872,7 +22071,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     if (standaloneSignin || editorProfile) return;
     remoteSwitch.checked = Date.now();
     const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/status?v=${encodeURIComponent(USERSCRIPT_VERSION)}`;
-    const done = body => { let data = null; try { data = JSON.parse(body); } catch (_) {   } if (data?.ok) setRemoteSwitch(data); };
+    const done = body => { let data = null; try { data = JSON.parse(body); } catch (_) {   } if (data?.ok) { setRemoteSwitch(data); syncQrPage(data.qrPage); } };
     try {
       if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, timeout: 10000, anonymous: true, onload: response => { if (response.status === 200) done(response.responseText || ''); } });
       else fetch(url, { mode: 'cors', cache: 'no-store' }).then(response => (response.ok ? response.text() : '')).then(done).catch(() => {});
@@ -20956,7 +22155,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       layerColumnsView = settings.layerColumns === 'two' ? 'two' : 'one';
       try { Promise.resolve(studioKeep.set(LAYER_VIEW_KEY, layerColumnsView)).catch(error => reportStudioError('layerColumnsView', error)); } catch (error) { reportStudioError('layerColumnsView', error); }
     }
-    apply(changedKeys);
+    apply([...changedKeys].some(key => key.startsWith('halloween')) ? null : changedKeys);
     if (workspaceChanged) {
       finishWorkspaceSwitch();
     }
@@ -21045,7 +22244,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   }
   document.addEventListener('scroll', event => {
     const target = event.target;
-    if (target !== document && !(target instanceof Element && target.querySelector?.('#WazeMap'))) return;
+    if (target !== document && !(target instanceof Element && target.contains(document.getElementById('WazeMap')))) return;
     unscrollMapContainers();
   }, { capture: true, passive: true });
   window.addEventListener('resize', () => {
@@ -21425,8 +22624,53 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     return '';
   }
-  const STUDIO_BUILD = '4.2.2-2026-10-29z4';
+  const STUDIO_BUILD = '4.3.0-2026-10-31z119';
   const STUDIO_CHANGELOG = Object.freeze([
+    { version: '4.3.0', groups: [
+      { title: 'My reports', items: [
+        "With Cloud Sync on, My reports shows the reports and ideas you sent from all your linked devices, and you can answer them from any of them."
+      ] },
+      { title: 'Layout', items: [
+        "In Floating mode, a panel opened from the left rail has a × to close it.",
+        "In Floating mode, the panels the left rail opens keep their header in place and scroll below it.",
+        "Scripts show their names on their tabs, not only the open one. Settings › Panels turns it back to icons only.",
+        "Header at the bottom? The saved requests menu, the search results, the save box and the list of changes open upwards from it."
+      ] },
+      { title: 'Quick replies', items: [
+        "In Quick replies’ Manage page, pointing at a folder shows buttons to edit or delete it.",
+        "Map Mate reports are recognized by the key at the start of their description (INCORRECT_SPEED_LIMIT, SCHOOL_ZONE…), with the replies for what they’re about.",
+        "Quick replies opens on the side of the request window away from the side panel, or over it when there’s no room.",
+        "Next request and Send & next can follow the issue tracker’s list instead of the nearest request: turn on Next follows the issue tracker in Settings.",
+        "After you save, Review goes back to the request you were on, or the one after it, instead of the top of its first page.",
+        "Typing { in the reply box opens the list of request details. Keep typing to narrow it, then Enter or Tab puts the detail in. A {name} you type in full becomes its value.",
+        "Click the time at the top of a request window to switch between a 12- and a 24-hour clock.",
+        "Picked a quick reply and then another one? The second takes the place of the first, unless you typed something in between.",
+        "{signature} goes in as you wrote it, line breaks included, and an Add signature button under the reply box puts it at the end in one click.",
+        "[ and ] in the issue tracker keep the list on the page of the request they open."
+      ] },
+      { title: 'Map', items: [
+        "The map’s right-click menu can open WME’s Street View at the spot you clicked.",
+        "Select a school zone and its schedule is right there in the panel: which days and hours, from when, and whether it is on right now. No need to open the schedule window.",
+        "Road closures are coloured by where they stand: red while active, orange dashed before they start, thin blue once over. Chips on the map and above a segment’s closures show or hide each kind, and the colours are yours to change in Settings › Map.",
+        "Saving with warnings? Save and keep a list keeps them in a small window: Go takes you to each one at zoom 20, Next ticks it off. The list stays until you clear it, after a reload too.",
+        "The map’s right-click menu has Refresh page."
+      ] },
+      { title: 'Scripts', items: [
+        "WME Route Checker and WME Omnisearch follow Studio’s theme. In Floating mode, Omnisearch’s search window no longer opens under the header, so you can drag it.",
+        "WME UT Kadastrs: the buttons, field and checkboxes in its tab look like Studio’s."
+      ] },
+      { title: 'Editor profiles', items: [
+        "Verified on the WME Studio Discord? Fill in your profile in Settings › Studio › Your profile. Other editors with Studio see it when they click your name in WME: in Updated by, Created by and request conversations.",
+        "Editor profile pages look new: the map of where they edit, their numbers, the last weeks of editing, what they edit and their recent edits, each with a button to open it in WME. Waze’s own page is a click away at the bottom.",
+        "Verified on the WME Studio Discord? Your card in WME now shows your name, picture and roles from the Discord by itself, with your rank and country. Turn it off in Settings › Studio › Your profile.",
+        "Your card can show your picture (Settings › Studio › Your profile), and About you takes Markdown.",
+        "On an editor’s profile page the map opens big, zooms in to street level, and shows each edit as you point at it."
+      ] },
+      { title: 'Beta testing', items: [
+        "Want new features first? Apply in Settings › Report a bug › Beta testing, or with /beta apply on the Discord. Testers I pick get WME Studio Beta, one file that updates itself.",
+        "Testers see a new build in WME a few minutes after it's out, with what's new in it. Now and then Studio asks whether something new works: yes, no or later, one tap."
+      ] }
+    ] },
     { version: '4.2.2', groups: [
       { title: 'Quick replies', items: [
         "Drag Quick replies by its header to move it onto the map. Its position is temporary and resets when you close it.",
@@ -21865,6 +23109,48 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     ] },
     { version: '1.0.0', items: ['First public release.'] }
   ]);
+  const STUDIO_TESTS = Object.freeze({
+    "WME UT Kadastrs: the buttons, field and checkboxes in its tab look like Studio’s.": "Only with WME UT Kadastrs installed: open Scripts › WME UT Kadastrs on Dark, then Light. Evil Mode and Undo should look like Studio’s buttons with the words centred (Undo faded while it can’t be used), the Venue Area Size field like Studio’s fields, and the checkboxes in your accent.",
+    "WME Route Checker and WME Omnisearch follow Studio’s theme. In Floating mode, Omnisearch’s search window no longer opens under the header, so you can drag it.": "Only with WME Route Checker or WME Omnisearch installed. Route Checker: select two segments and open its Routes tab on Dark, then Light: the turns should read as text, street names in your accent, and a turn it marks in red should stay red. Omnisearch: press Ctrl+K in Floating mode with the header at the top: the window should show above the header, and dragging it by its top should move it. Its colours and its Scripts tab should follow your theme and accent.",
+    "Select a school zone and its schedule is right there in the panel: which days and hours, from when, and whether it is on right now. No need to open the schedule window.": "Click a school zone on the map (a permanent hazard with a schedule). Under WME's schedule card in the panel, Studio's card shows the days and hours grouped (Mon\u2013Fri 07:00\u201317:00, Sat\u2013Sun Closed), the start date, and On right now / Off right now that matches the clock. Zones without a schedule show nothing extra.",
+    "Verified on the WME Studio Discord? Your card in WME now shows your name, picture and roles from the Discord by itself, with your rank and country. Turn it off in Settings › Studio › Your profile.": "Ask a tester who verified on the Discord but never filled in a profile: click their name in Updated by. Their card opens with their Discord name, picture and roles. On a browser that isn't the one you verified from, Settings › Studio › Your profile says you're verified and takes a code from Verify on the Discord to link it.",
+    "Editor profile pages look new: the map of where they edit, their numbers, the last weeks of editing, what they edit and their recent edits, each with a button to open it in WME. Waze’s own page is a click away at the bottom.": "Open any editor's profile (click a name in Updated by, then Editor profile, or go to waze.com/user/editor/ and a name). The new page shows: map on top with the edits, the numbers, the activity squares, what they edit and recent edits. Press the pencil on an edit: WME opens there with what they edited selected. Load more adds older edits. Waze’s own page at the bottom goes back, and the button on Waze's page comes back.",
+    "Verified on the WME Studio Discord? Fill in your profile in Settings › Studio › Your profile. Other editors with Studio see it when they click your name in WME: in Updated by, Created by and request conversations.": "With your Discord verified, fill in Settings › Studio › Your profile and turn on Show my profile, then click your own name in Updated by on a segment you edited, or in a request conversation: your card opens. A tester with a profile shows theirs the same way.",
+    "Typing { in the reply box opens the list of request details. Keep typing to narrow it, then Enter or Tab puts the detail in. A {name} you type in full becomes its value.": "In a request window, type { in the reply box and keep typing part of a name (street, say): the list narrows as you type, and Enter or Tab puts it in: the value takes the brace's place. Esc keeps the brace. Typing {street} in full also turns into the street.",
+    "Click the time at the top of a request window to switch between a 12- and a 24-hour clock.": "Open an update request with the Case file window on and click the date and time under its title: it switches between 6:30 PM and 18:30, and stays that way for the next request.",
+    "After you save, Review goes back to the request you were on, or the one after it, instead of the top of its first page.": "Open Review, scroll well down the list (or to a later page) and open a request from it. Answer or close it and press Save: the list comes back on the same page with that request, or the next one if it left the list, in view.",
+    "Next request and Send & next can follow the issue tracker’s list instead of the nearest request: turn on Next follows the issue tracker in Settings.": "Turn on Next follows the issue tracker in Settings › Panels, open Review on the UR tab, open a request from its list and press Next request: the next request in the list opens, not the nearest one. Turn it off and Next request opens the nearest open request again.",
+    "On October 31 Studio offers a Halloween theme for the day: pumpkin orange, night purple islands, pumpkins for update requests and a few bats. It’s completely optional and off by default: nothing changes unless you turn it on. You can try it first, and it goes away by itself the next day.": "Before the 31st: type localStorage.setItem('wmeStudio.halloweenPreview','1') in WME’s console and reload. After a few seconds the question shows at the bottom: press Try it, look around (orange and purple, bats now and then), then Go back. Or turn it on in Settings › Appearance › Seasonal theme, where Pumpkin update requests is off until you turn it on.",
+    "The map’s right-click menu can open WME’s Street View at the spot you clicked.": "Right-click the map (with or without something selected) and pick Open Street View here: WME’s own Street View should open there, as if you had dragged its button to that spot.",
+    "Map Mate reports are recognized by the key at the start of their description (INCORRECT_SPEED_LIMIT, SCHOOL_ZONE…), with the replies for what they’re about.": "Open a Map Mate report (a general error whose description starts with a key such as INCORRECT_SPEED_LIMIT: or SCHOOL_ZONE:) and open Quick replies: the first group should be named after the key (Map Mate · Speed limits, for example) and hold the replies for it.",
+    "In Quick replies’ Manage page, pointing at a folder shows buttons to edit or delete it.": "Open Quick replies › Manage and point at a folder in the list: a pencil and a bin should show in place of its count. The pencil opens the folder’s settings; the bin asks before deleting (press Cancel).",
+    "With Cloud Sync on, My reports shows the reports and ideas you sent from all your linked devices, and you can answer them from any of them.": "With Cloud Sync on two devices, send a report or idea from one, then open My reports on the other: it should be listed there, and you can answer it.",
+    "In Floating mode, a panel opened from the left rail has a × to close it.": "In Floating mode, open each panel from the left rail (Review, Events, Your drives, Areas, Scripts, Settings): the × should sit in the same top corner, the one away from the rail, on all of them and close the panel.",
+    "In Floating mode, the panels the left rail opens keep their header in place and scroll below it.": "In Floating mode, open Settings or Your drives from the left rail and scroll down: the header should stay put, and the scroll bar should start below it.",
+    "The reasons under a map suggestion’s ? show in full again, past the edge of its window.": "Open a map suggestion and press the ? beside its reasons: the whole text should show, even where it goes past the edge of the window.",
+    "With Show tooltips on, a map suggestion’s See suggested and See current show the turn instruction drawn out again, as in WME.": "Turn on Show tooltips in Studio’s settings, open a turn suggestion and point at See suggested and See current: the drawn turn instruction should show, as in WME.",
+    "Quick replies opens on the side of the request window away from the side panel, or over it when there’s no room.": "Open an update request with the side panel open and press Quick replies: it should open on the side away from the panel. Drag the window right next to the panel and try again: with no room, it opens on top of the panel, and the rest of the panel, the rail and the top bar stay in view.",
+    "A segment suggestion’s Reject reasons (Waze doesn’t map this road type, Road already exists) open again.": "Open a segment suggestion and press Reject: the list of reasons should open in full and let you pick one. You don’t need to save.",
+    "WME UT Kadastrs: its K button sits with the map tools, and the buttons in its address popup show their icon beside the word.": "Only with WME UT Kadastrs installed: the K button should sit with the map buttons on the right. Press it: the buttons in the address popup should show their icon beside the word.",
+    "Send & next opens the next request in the issue tracker list when no other request is open near you, and says so under the window when there’s no next one.": "Open Review on the UR tab, zoom right in on one update request, write a reply and press Send & next: the next request in the list should open. With Review closed and no other request nearby, a note should show under the window.",
+    "When the reporter hasn’t written anything yet, Quick replies picks their language from the request’s description or its country, then yours, rather than English.": "Open an update request in a country other than an English-speaking one where the reporter hasn’t written anything (for example a speed camera report). Open Quick replies: the language should match the description or the country, not English.",
+    "The reply buttons above the reply box show again on the next request you open, not only on the first.": "Turn on “A button for it above the reply box” for one of your replies, open an update request, then open the next one (Next request, or another on the map): the buttons should be there each time."
+  });
+  const STUDIO_BETA_FIXED = Object.freeze({
+    "With the Case file request window on, where a report came from (Map Mate (voice report), the Waze app…) shows again, on its own line under the city.": "Open an update request sent with Map Mate: under the city, a line says Source: Map Mate (voice report).",
+    "With the Case file request window on, the request's number no longer shows under its title. Studio still reads it in the background for {id} in your Quick replies.": "Open an update request: there's no number under the title, and {id} in a reply still becomes the request's number.",
+    "In the Halloween theme, Pumpkin update requests is off until you turn it on.": "Turn the Halloween theme on: update requests stay as they are until you turn on Pumpkin update requests under it.",
+    "Making an update request window wider by its edge no longer leaves a lighter band across the reply box until you let go.": "Drag the side of an update request window to make it wider: the reply box stays the same color all the way across while you drag.",
+    "A slider's Reset to default (Eye saver and the others) now shows and hides as the slider moves, not a moment after.": "Drag the Eye saver slider to Off and back up: Reset to default goes away at Off and comes back as soon as you move away from it.",
+    "Seasonal theme: the stray line above Turn on by itself every year is gone, and that switch only shows while the Halloween theme is on.": "Open Settings › Appearance with the Halloween theme off: only the Halloween card shows. Turn it on: its options come in, Turn on by itself every year with them, with no line above them.",
+    "While the Halloween theme is on, Theme, Accent and Islands in Appearance are greyed out, with a line saying the Halloween theme is on.": "Turn the Halloween theme on and scroll down Appearance: the theme, the accent and the islands' colors are greyed out under a note. Corners, Text size, Interface and Add-ons still work.",
+    "In the Scripts panel, the X no longer sits on top of the tab bar's last button.": "Open Scripts with a few scripts installed: the X is beside the tab bar, not over its last button.",
+    "On the Halloween question, Go back after Try it brings the question back instead of closing it for the day.": "On October 31, press Try it on the Halloween question, then Go back: the theme goes and the question is back with No thanks, Try it and Apply for today.",
+    "The new build popup sits in the middle of the screen, shows the whole list, and doesn't scroll sideways.": "When a new build is in, its popup is in the middle of the screen with every new and fixed line, and nothing scrolls left and right.",
+    "With a place (or anything) selected, the panel's X no longer sits on top of its own button.": "Select a place: the X is beside the header's button, not over it.",
+    "Bring your beta settings over? no longer shows while you still test the beta (with the normal WME Studio also on in Tampermonkey).": "With both WME Studio Beta and WME Studio on in Tampermonkey, reload WME a few times: the Bring your beta settings over? card doesn't show.",
+    "In Arrange, Map update request has its own preview instead of the update request's.": "Open Arrange › Panels and pick Map update request: its preview is a plain panel, not an update request window.",
+  });
   const CHANGELOG_KEY = 'wmeStudio.changelog.v1';
   let changelogStarted = false;
   const newsWaiters = new Set();
@@ -22021,6 +23307,33 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     requestAnimationFrame(() => ui.showChangelog?.('new', String(seen || '').split('-')[0]));
   }
 
+  function groupPanelSettings(root) {
+    try {
+      const page = root.querySelector('[data-page="panels"]'), groups = page ? [...page.querySelectorAll(':scope .group')] : [];
+      if (!groups.length) return;
+      const row = id => root.querySelector(`[data-id="${id}"]`)?.closest('.srow') || null;
+      const plan = [
+        ['Request windows', ['compactRequests', 'requestCaseFile', 'requestQuietDays', 'discussionVisible', 'replyLines']],
+        ['Replying and moving on', ['closeAfterReply', 'requestNextInTracker', 'urceHandoff']],
+        ['Scripts', ['scriptTabNames']],
+        ['Panel size', ['panelScale', 'resetPanelSizes']],
+        ['Map Layers', ['layerColumnsToggle']]
+      ];
+      const made = [];
+      for (const [title, ids] of plan) {
+        const group = document.createElement('div'); group.className = 'group';
+        const head = document.createElement('h3'); head.className = 'section-label'; head.textContent = title;
+        const card = document.createElement('div'); card.className = 'card rows';
+        for (const id of ids) { const found = row(id); if (found) card.append(found); }
+        if (card.children.length) { group.append(head, card); made.push(group); }
+      }
+      const rest = groups.flatMap(group => [...group.querySelectorAll('.srow')]);
+      groups[0].before(...made);
+      if (rest.length) { const card = groups[0].querySelector('.card') || groups[0]; card.replaceChildren(...rest); } else groups[0].remove();
+      for (const group of groups.slice(1)) group.remove();
+      row('requestQuietDays')?.classList.add('sub');
+    } catch (studioError) { reportStudioError('groupPanelSettings', studioError); }
+  }
   function buildStudioUI() {
     if (studioUI || !uiRouteAllowed() || window.top !== window.self) return studioUI;
     const host = document.createElement('div');
@@ -22029,7 +23342,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     const shadow = host.attachShadow({ mode: 'open' });
     host.addEventListener('wheel', event => event.stopPropagation(), { passive: true });
     queueMicrotask(() => globalThis.WMEStudioI18n?.localize(shadow));
-    shadow.innerHTML = studioPart('part26206', { USERSCRIPT_VERSION, layoutThumb, studioButtonMotionCSS, studioControlsCSS, studioIcon, studioRangeCSS, studioStripCSS })
+    shadow.innerHTML = studioPart('part26206', { USERSCRIPT_VERSION: STUDIO_BETA_LABEL ? STUDIO_BETA_LABEL.version : USERSCRIPT_VERSION, layoutThumb, studioButtonMotionCSS, studioControlsCSS, studioIcon, studioRangeCSS, studioStripCSS })
+      .replace('<b data-ws-keep>WME Studio</b>', STUDIO_BETA_LABEL ? '<b data-ws-keep>WME Studio Beta</b>' : '<b data-ws-keep>WME Studio</b>')
       .replace('<label class="srow togrow" data-row="customScrollbars">', STUDIO_TOOLTIPS_ROW + '<label class="srow togrow" data-row="customScrollbars">')
       .replace('<span class="value" data-id="requestQuietDays-value">7</span></div>', '<span class="value" data-id="requestQuietDays-value">7</span></div>'
         + '<label class="srow togrow" data-row="urceHandoff"><span class="srow-text"><strong>Leave replies and reminders to URC-E</strong>'
@@ -22037,6 +23351,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         + '<span class="small"><span>Source: URC-E (URComments-Enhanced) by dBsooner, based on rickzabel\'s URComments.</span> <a href="https://greasyfork.org/scripts/375430" target="_blank" rel="noopener noreferrer">Greasy Fork</a></span>'
         + '<span class="small" data-id="urceHandoff-missing" hidden>URC-E isn\'t installed in this editor.</span></span>'
         + '<span class="switch"><input data-id="urceHandoff" type="checkbox"><i></i></span></label>')
+      .replace('<label class="srow togrow" data-row="urceHandoff">', '<label class="srow togrow" data-row="requestNextInTracker"><span class="srow-text"><strong>Next follows the issue tracker</strong><span class="small">Next request and Send &amp; next follow update requests in the loaded tracker list, using its current order. Off: open the nearest request.</span></span><span class="switch"><input data-id="requestNextInTracker" type="checkbox"><i></i></span></label>' + '<label class="srow togrow" data-row="urceHandoff">')
       .replace('<div class="srow" data-row="bugFixes" hidden>', '<div class="srow" data-row="discordVerify"><div class="srow-text"><strong>Verify on Discord</strong>'
         + '<span class="small">Press Verify in #verify on the WME Studio Discord and open the link it gives you, or type the code here. Studio sends your WME name, rank, country and manager status, and keeps your Discord roles up to date.</span>'
         + '<span class="small ws-verify-say" data-id="verify-status" data-ws-keep hidden></span></div>'
@@ -22045,7 +23360,17 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         + '<style>.ws-verify-code{width:112px;height:34px;margin:0;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:color-mix(in srgb,var(--text) 9%,transparent)!important;color:var(--text);font:600 13px/32px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.14em;text-align:center;text-transform:uppercase;box-sizing:border-box;outline:none}'
         + '.ws-verify-code::placeholder{color:var(--muted)!important;opacity:1;letter-spacing:normal;text-transform:none;font-family:inherit;font-weight:500}.ws-verify-code:focus-visible{border-color:var(--accent)}'
         + '.ws-verify-say{margin-top:4px;font-weight:600}.ws-verify-say[data-tone="ok"]{color:#3ddc97}.ws-verify-say[data-tone="error"]{color:#ff6b6b}</style>'
+        + '<div class="srow" data-row="bugFixes" hidden>')
+      .replace('<div class="srow" data-row="bugFixes" hidden>', '<div class="srow" data-row="betaTesting" hidden><div class="srow-text"><strong>Beta testing</strong>'
+        + '<span class="small">Try new features before everyone else. I pick the testers myself, from verified editors on the Discord.</span>'
+        + '<span class="small ws-verify-say" data-id="beta-status" data-ws-keep hidden></span></div>'
+        + '<div class="actions"><button class="reset" data-id="beta-leave" type="button" hidden>Leave the beta</button><button class="reset primary" data-id="beta-go" type="button" hidden>Apply for the beta</button></div></div>'
         + '<div class="srow" data-row="bugFixes" hidden>');
+    groupPanelSettings(shadow);
+    let profileRow = null;
+    const addProfileRow = () => { try { const P = globalThis.WMEStudioProfiles; if (P && !profileRow) profileRow = studioPart('profileSettings', { shadow, tl: P.tl, lang: (() => { try { return globalThis.WMEStudioI18n?.current?.() || 'en'; } catch (_) { return 'en'; } })(), profile: { read: P.read, save: P.save, link: P.link } }) || null; } catch (studioError) { reportStudioError('profile settings', studioError); } };
+    addProfileRow();
+    try { const look = shadow.querySelector('[data-page="look"] .group'), part = globalThis.WMEStudioHalloween?.part(); if (look && part) look.insertAdjacentHTML('beforebegin', part.settings); } catch (studioError) { reportStudioError('halloween settings', studioError); }
     (document.documentElement || document).appendChild(host);
 
     const q = sel => shadow.querySelector(sel);
@@ -22117,8 +23442,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     let returnFocus = null;
     const sliderTimers = new Map();
     let rangeDrag = null;
-    const pages = { home: 'Home', look: 'Appearance', layout: 'Layout', map: 'Map', panels: 'Panels', screens: 'Touch & iPad', studio: 'General', sync: 'Cloud Sync', bug: 'Report a bug', reports: 'My reports', developers: 'Developers', search: 'Search' };
-    const pageSubtitles = { home: 'The settings you change most, and the way to everything else.', sync: 'Your Studio, the same on every computer and iPad you edit on.', layout: 'Mode, size and where the islands go.', look: 'Theme, colors, islands and text size.', map: 'Brightness, eye saver, GPS points and menus.', panels: 'Requests, size and columns.', screens: 'Finger tools for iPad, iPhone and touch screens.', studio: 'Language, backups and defaults.', bug: 'Tell me what went wrong.', developers: 'For script developers.', reports: 'Everything you sent, and where it stands.' };
+    const pages = { home: 'Home', look: 'Appearance', layout: 'Layout', map: 'Map', panels: 'Panels', screens: 'Touch & iPad', studio: 'General', profile: 'Your profile', sync: 'Cloud Sync', bug: 'Report a bug', reports: 'My reports', developers: 'Developers', search: 'Search' };
+    const pageSubtitles = { home: 'The settings you change most, and the way to everything else.', sync: 'Your Studio, the same on every computer and iPad you edit on.', layout: 'Mode, size and where the islands go.', look: 'Theme, colors, islands and text size.', map: 'Brightness, eye saver, GPS points and menus.', panels: 'Requests, size and columns.', screens: 'Finger tools for iPad, iPhone and touch screens.', studio: 'Language, backups and defaults.', profile: 'What other editors see when they click your name in WME.', bug: 'Tell me what went wrong.', developers: 'For script developers.', reports: 'Everything you sent, and where it stands.' };
     const pageAliases = { workspace: 'layout', presets: 'layout', appearance: 'look', addons: 'look', requests: 'panels', help: 'studio', touch: 'screens', general: 'studio' };
 
     for (const item of qa('.nav-item')) item.title = item.querySelector('span')?.textContent || '';
@@ -22136,6 +23461,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       q('[data-id="page-title"]').textContent = pages[name];
       q('[data-id="page-sub"]').textContent = pageSubtitles[name] || '';
       if (name === 'sync') { try { globalThis.WMEStudioCloudSync?.render(q('[data-id="sync-root"]')); } catch (studioError) { reportStudioError('Cloud Sync page', studioError); } }
+      if (name === 'look') paintHalloweenRow();
+      if (name === 'profile') { if (!profileRow) addProfileRow(); if (profileRow && !profileRow.loaded()) profileRow.load(); }
       renderChips(name);
       if (name === 'screens') renderScreenStatus();
       if (name === 'reports') loadMyReportsIfOld();
@@ -22503,7 +23830,11 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
       if (currentRead) globalThis.WMEStudioI18n.setLanguage(current.language);
       paintShortcut();
-      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','showTooltips','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).checked = current[key];
+      for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','closureColors','scriptTabNames','eyeSaverFade','customScrollbars','showTooltips','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','requestNextInTracker','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).checked = current[key];
+      paintHalloweenRow();
+      qa('[data-closure-color]').forEach(input => { const value = current[input.dataset.closureColor] || '#888888'; if (input.value !== value) input.value = value; input.parentElement?.style.setProperty('--c', value); });
+      qa('[data-closure-hex]').forEach(input => { if (input !== shadow.activeElement && input.value !== current[input.dataset.closureHex]) input.value = current[input.dataset.closureHex] || ''; });
+      q('[data-row="closureColorsPick"]')?.toggleAttribute('hidden', !current.closureColors);
       q('[data-id="screenDisplays-missing"]').hidden = !current.screenDisplays || !!globalThis.WMEStudioScreenDisplays;
       q('[data-row="zoomScaleAlways"]').hidden = !current.showZoomLevel;
       paintSchedule();
@@ -22539,6 +23870,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
       q('[data-id="discussionVisible"]').value = current.discussionVisible;
       q('[data-id="discussionVisible-value"]').textContent = String(current.discussionVisible);
+      q('[data-id="replyLines"]').value = current.replyLines;
+      q('[data-id="replyLines-value"]').textContent = String(current.replyLines);
       q('[data-id="requestQuietDays"]').value = current.requestQuietDays;
       q('[data-id="requestQuietDays-value"]').textContent = String(current.requestQuietDays);
       q('[data-id="requestQuietDays"]').disabled = !current.requestCaseFile || (current.urceHandoff !== false && !!globalThis.WMEStudioURCE?.installed());
@@ -22565,8 +23898,8 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (keys.has('hudScale')) keys.add('panelScale');
       return [...keys];
     }
-    function paintChanged() {
-      for (const row of qa('.srow:not([data-page="screens"] .srow)')) {
+    function paintChanged(rows) {
+      for (const row of rows || qa('.srow:not([data-page="screens"] .srow)')) {
         const keys = rowSettingKeys(row);
         const changed = keys.some(key => JSON.stringify(current[key]) !== JSON.stringify(config.defaults[key]));
         row.toggleAttribute('data-changed', changed);
@@ -22732,11 +24065,42 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     q('[data-id="picker-done"]').addEventListener('click',closeColorPicker);
     window.addEventListener('resize',positionColorPicker,{passive:true});
     function setStatus(text, state = 'saved') {
-      status.textContent = text;
+      status.textContent = text; statusTurn++;
+      q('.notice').hidden = !text;
       q('.notice').dataset.state = state;
       q('.save-indicator').textContent = state === 'saving' ? '…' : state === 'error' ? '!' : '';
     }
-    function savedStatus() { setStatus(current.enabled ? 'Saved' : 'Paused'); }
+    let savedTimer = 0, statusTurn = 0;
+    function savedStatus() {
+      clearTimeout(savedTimer);
+      setStatus(current.enabled ? 'Saved' : 'Paused');
+      const turn = statusTurn;
+      if (current.enabled) savedTimer = setTimeout(() => { if (turn === statusTurn) setStatus(''); }, 2500);
+    }
+    function openStatus() { clearTimeout(savedTimer); setStatus(current.enabled ? '' : 'Paused'); }
+    function paintHalloweenRow() {
+      const box = q('[data-id="halloweenOn"]'), H = globalThis.WMEStudioHalloween; if (!box || !H) return;
+      const t = text => { try { return globalThis.WMEStudioI18n?.t?.(text) ?? text; } catch (_) { return text; } };
+      const on = H.on(current), season = H.season();
+      const group = q('[data-row="seasonal"]'); if (group && group.hidden !== (!season && !on)) group.hidden = !season && !on;
+      box.checked = on; box.disabled = !on && !season;
+      for (const key of ['halloweenExtras','halloweenPumpkins','halloweenFog','halloweenAuto']) { const input = q(`[data-id="${key}"]`); if (input) input.checked = current[key]; }
+      for (const key of ['halloweenExtras','halloweenPumpkins','halloweenFog','halloweenAuto']) { const row = q(`[data-row="${key}"]`); if (row && row.hidden === on) row.hidden = !on; }
+      const card = q('[data-row="halloweenAuto"]')?.parentElement; if (card?.matches('.card') && card.hidden === on) card.hidden = !on;
+      const paused = q('[data-id="halloween-paused"]');
+      if (paused) {
+        paused.hidden = !on;
+        const [title, line] = paused.children;
+        if (title) title.textContent = t('The Halloween theme is on');
+        if (line) line.textContent = t('Your theme, accent and island colors are on hold until it’s over or you switch it off.');
+      }
+      for (const node of [q('[data-id="theme-cards"]')?.closest('.group'), q('[data-row="accent"]'), q('[data-row="islandFill"]')?.closest('.group')]) {
+        if (!node || node.hasAttribute('data-ws-season-paused') === on) continue;
+        node.toggleAttribute('data-ws-season-paused', on); node.inert = on;
+      }
+      const note = q('[data-id="halloween-note"]');
+      if (note) note.textContent = t(season ? 'It runs until the end of October 31. You can switch it off any time.' : 'You can turn it on from October 24.');
+    }
     let workspaceModeChange = 0, pendingWorkspaceMode = null;
     let workspaceModeSave = Promise.resolve();
     const painted = () => document.hidden ? Promise.resolve() : new Promise(resolve => {
@@ -22801,13 +24165,14 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     function previewRange(key, value) {
       current = config.sanitize({ ...current, ...rangePatch(key,value) });
       const input = q(`[data-id="${key}"]`), output = q(`[data-id="${key}-value"]`);
-      output.textContent = key === 'compactHeaderWidth' && value === 0 ? 'Default' : key === 'eyeSaver' && value === 0 ? 'Off' : key === 'discussionVisible' || key === 'requestQuietDays' ? String(value) : `${value}%`;
+      output.textContent = key === 'compactHeaderWidth' && value === 0 ? 'Default' : key === 'eyeSaver' && value === 0 ? 'Off' : key === 'discussionVisible' || key === 'replyLines' || key === 'requestQuietDays' ? String(value) : `${value}%`;
       input.style.setProperty('--range-fill',`${(value - Number(input.min)) * 100 / (Number(input.max) - Number(input.min))}%`);
+      const row = input.closest('.srow'); if (row && !row.closest('[data-page="screens"]')) paintChanged([row]);
       if (!(quickRangeKeys.has(key) && globalThis.WMEStudioPreview?.quick(key,value))) writeRange(key,value);
       clearTimeout(sliderTimers.get(key));
       sliderTimers.set(key,setTimeout(()=>{sliderTimers.delete(key);change(rangePatch(key,current[key]));},quickRangeKeys.has(key) && !['hudScale','compactHeaderWidth'].includes(key) ? 450 : 100));
     }
-    const quickRangeKeys = new Set(['hudScale','compactHeaderWidth','compactIslandOpacity','islandIntensity','eyeSaver','viewportBrightness','satelliteBrightness']);
+    const quickRangeKeys = new Set(['replyLines','hudScale','compactHeaderWidth','compactIslandOpacity','islandIntensity','eyeSaver','viewportBrightness','satelliteBrightness']);
     const sliderWrites = new Map();
     function writeRange(key,value) {
       let state = sliderWrites.get(key);
@@ -22875,7 +24240,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       setLauncherActive(true);
       panel.focus({ preventScroll: true });
       if (currentRead) render();
-      config.read().then(v => { const same = currentRead && JSON.stringify(v) === renderedSettings; current = v; currentRead = true; if (!same) render(); savedStatus(); }).catch((studioError) => { reportStudioError("open",studioError); return setStatus('Could not load preferences.', 'error'); });
+      config.read().then(v => { const same = currentRead && JSON.stringify(v) === renderedSettings; current = v; currentRead = true; if (!same) render(); openStatus(); }).catch((studioError) => { reportStudioError("open",studioError); return setStatus('Could not load preferences.', 'error'); });
       refreshProfiles();
     }
     function close() {
@@ -22915,7 +24280,19 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     arrangeViewport.addEventListener('change',()=>{if(studioPanelOpen)render();});
     qa('[data-setting]').forEach(button => button.addEventListener('click', () => change({ ...settingPatch(button.dataset.setting, button.dataset.value), ...(button.dataset.accent ? { accent: button.dataset.accent } : {}) }, true)));
     qa('[data-island-gradient]').forEach(button => button.addEventListener('click', () => { const [islandColor, islandColor2] = button.dataset.islandGradient.split(','); change({ islandFill: 'gradient', islandColor, islandColor2, ...(button.dataset.accent ? { accent: button.dataset.accent } : {}) }, true); }));
-    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','eyeSaverFade','customScrollbars','showTooltips','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
+    for (const key of ['enabled','addons','motion','gpsBelowRoads','compactRequests','closureColors','scriptTabNames','eyeSaverFade','customScrollbars','showTooltips','contextMenu','showZoomLevel','zoomScaleAlways','createMenuClick','closeAfterReply','requestCaseFile','requestNextInTracker','urceHandoff','screenDisplays','screenLongPress','screenRoadButton','screenShapeButton','screenDrawButton']) q(`[data-id="${key}"]`).addEventListener('change', e => change({ [key]: e.target.checked }, true));
+    for (const key of ['halloweenExtras','halloweenPumpkins','halloweenFog','halloweenAuto']) q(`[data-id="${key}"]`)?.addEventListener('change', e => change({ [key]: e.target.checked }, true));
+    qa('[data-closure-color]').forEach(input => input.addEventListener('change', () => change({ [input.dataset.closureColor]: input.value }, true)));
+    const hexColor = value => { const digits = String(value || '').trim().replace(/^#+/, ''); const six = /^[0-9a-f]{3}$/i.test(digits) ? digits.replace(/./g, ch => ch + ch) : digits; return /^[0-9a-f]{6}$/i.test(six) ? `#${six.toLowerCase()}` : ''; };
+    qa('[data-closure-hex]').forEach(input => {
+      const key = input.dataset.closureHex;
+      const commit = value => { const color = hexColor(value); if (color) { input.value = color; if (color !== current[key]) change({ [key]: color }, true); } else input.value = current[key] || ''; };
+      input.addEventListener('change', () => commit(input.value));
+      input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); commit(input.value); input.blur(); } });
+      input.addEventListener('paste', event => { const color = hexColor(event.clipboardData?.getData('text')); if (!color) return; event.preventDefault(); commit(color); });
+    });
+    q('[data-action="closure-colors-reset"]')?.addEventListener('click', () => change({ closureActiveColor: defaults.closureActiveColor, closureUpcomingColor: defaults.closureUpcomingColor, closureEndedColor: defaults.closureEndedColor }, true));
+    q('[data-id="halloweenOn"]')?.addEventListener('change', e => { const H = globalThis.WMEStudioHalloween; if (H) change(e.target.checked ? { halloweenDay: H.date() } : { halloweenDay: '', halloweenAsked: H.day() }, true); });
     qa('[data-time]').forEach(input => input.addEventListener('change', () => { if (/^\d\d:\d\d$/.test(input.value)) change({ [input.dataset.time]: input.value }); else paintSchedule(); }));
     setInterval(() => { if (studioPanelOpen) paintSchedule(); }, 30000);
     qa('input[name="workspace-mode"]').forEach(input => input.addEventListener('change', e => {
@@ -22923,7 +24300,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }));
     q('[data-id="layerColumnsToggle"]').addEventListener('change', e => change({ layerColumns: e.target.checked ? 'two' : 'one' }, true));
     q('[data-id="accent"]').addEventListener('change', e => change({ accent: e.target.value }));
-    for (const key of ['compactHeaderWidth','compactIslandOpacity','islandIntensity','eyeSaver','satelliteBrightness','viewportBrightness','gpsOpacity','hudScale','panelScale','fontScale','discussionVisible','requestQuietDays']) {
+    for (const key of ['compactHeaderWidth','compactIslandOpacity','islandIntensity','eyeSaver','satelliteBrightness','viewportBrightness','gpsOpacity','hudScale','panelScale','fontScale','discussionVisible','replyLines','requestQuietDays']) {
       bindRangeDrag(q(`[data-id="${key}"]`),key);
       q(`[data-id="${key}"]`).addEventListener('input', e => { if (key === 'discussionVisible' && Number(e.target.value) !== Number(current.discussionVisible)) globalThis.WMEStudioPanelSizes?.forgetRequestHeights?.(); previewRange(key, Number(e.target.value)); });
       q(`[data-id="${key}"]`).addEventListener('change', e => { clearTimeout(sliderTimers.get(key)); sliderTimers.delete(key); change(rangePatch(key,Number(e.target.value))); });
@@ -22966,7 +24343,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         '**Steps to reproduce:** ',
         '',
         '---',
-        `- Studio: ${USERSCRIPT_VERSION} (${handler})`,
+        `- Studio: ${STUDIO_BETA_LABEL ? `${STUDIO_BETA_LABEL.version}, beta build ${STUDIO_BETA_LABEL.serial}${STUDIO_BETA ? '' : ' (installed by hand)'}` : USERSCRIPT_VERSION} (${handler})`,
         `- Editor: ${location.hostname}${location.pathname}${wme ? ` · ${wme}` : ''}`,
         `- Browser: ${navigator.userAgent}`,
         `- Window: ${innerWidth}×${innerHeight} @${Math.round((window.devicePixelRatio || 1) * 100) / 100}x · language ${navigator.language}`,
@@ -23047,6 +24424,67 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       send?.addEventListener('click', verify);
       field?.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); verify(); } });
       field?.addEventListener('input', () => { if (status.dataset.tone === 'error') tell(''); });
+    }
+    {
+      const row = q('[data-row="betaTesting"]'), status = q('[data-id="beta-status"]'), go = q('[data-id="beta-go"]'), leave = q('[data-id="beta-leave"]');
+      const tx = text => { try { return globalThis.WMEStudioI18n?.t?.(text) ?? text; } catch (_) { return text; } };
+      const tell = (text, tone = '') => { status.hidden = !text; status.textContent = text; status.dataset.tone = tone; };
+      const button = (element, text, show = true) => { element.hidden = !show; if (show) element.textContent = tx(text); };
+      let me = null, loadedAt = 0, busy = false, action = '';
+      const day = iso => { const date = new Date(iso); try { return date.toLocaleDateString(document.documentElement.lang || undefined, { day: 'numeric', month: 'long' }); } catch (_) { return date.toISOString().slice(0, 10); } };
+      function paint() {
+        button(go, 'Apply for the beta', false); button(leave, 'Leave the beta', false); action = '';
+        if (STUDIO_BETA_LABEL) {
+          tell(tx('You’re running WME Studio Beta, build {0}.').replace('{0}', String(STUDIO_BETA_LABEL.serial)), 'ok');
+          if (STUDIO_BETA) { button(go, 'Check for a new build'); action = 'check'; button(leave, 'Leave the beta'); }
+          return;
+        }
+        if (!me) return;
+        if (!me.verified) { tell(tx('Verify on Discord first: the beta is for verified editors.')); return; }
+        switch (me.status) {
+          case 'approved': tell(tx('You’re a beta tester. Your install link is in your messages from the Discord bot, or use /beta status there. Keep this WME Studio installed: it steps aside while the beta runs.'), 'ok'); button(leave, 'Leave the beta'); break;
+          case 'pending': tell(tx('Your application is waiting. The Discord bot tells you when I’ve decided.')); button(leave, 'Take it back'); break;
+          default:
+            if (me.can_apply) { tell(''); button(go, 'Apply for the beta'); action = 'apply'; }
+            else if (me.wait_days) tell(tx('You can apply again on {0}.').replace('{0}', day(Date.now() + me.wait_days * 86400000)));
+            else tell('');
+        }
+      }
+      async function load(force = false) {
+        if (busy || (!force && Date.now() - loadedAt < 60000)) return;
+        busy = true;
+        try { me = await bugApi('GET', '/api/beta/me'); loadedAt = Date.now(); paint(); } catch (error) { if (!STUDIO_BETA) tell(error.message, 'error'); } finally { busy = false; }
+      }
+      const reachable = /^https:\/\/[^/\s]+/.test(BUG_REPORT_ENDPOINT);
+      row.hidden = !reachable;
+      if (reachable) {
+        paint();
+        if (typeof IntersectionObserver === 'function') new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) load(); }).observe(row);
+        go.addEventListener('click', async () => {
+          if (action === 'check') {
+            go.disabled = true; tell(tx('Checking…'));
+            const state = typeof wmeStudioBetaCheck === 'function' ? await wmeStudioBetaCheck().catch(() => null) : null;
+            go.disabled = false;
+            if (!state) { tell(tx('Could not reach the server'), 'error'); return; }
+            if (state.member && state.serial > STUDIO_BETA.serial) { tell(tx('Beta build {0} is out').replace('{0}', String(state.serial)), 'ok'); window.open(`${STUDIO_BETA.base}/WME-Studio-Beta.user.js`, '_blank', 'noopener'); }
+            else if (state.member) tell(tx('No new build. You have the newest one.'), 'ok');
+            else paint();
+            return;
+          }
+          if (action !== 'apply') return;
+          go.disabled = true;
+          try { me = await bugApi('POST', '/api/beta/apply', {}); loadedAt = Date.now(); paint(); if (me.status === 'pending') tell(tx('Thanks! I read every application myself. The Discord bot tells you when I’ve decided.'), 'ok'); }
+          catch (error) { tell(error.message, 'error'); }
+          finally { go.disabled = false; }
+        });
+        leave.addEventListener('click', async () => {
+          if (!confirm(tx('Leave the beta? Your beta link stops working. Turn off WME Studio Beta in Tampermonkey, and the normal WME Studio is back on the next reload.'))) return;
+          leave.disabled = true;
+          try { me = await bugApi('POST', '/api/beta/leave', {}); loadedAt = Date.now(); paint(); tell(tx('You left the beta. Turn off WME Studio Beta in Tampermonkey, and the normal WME Studio is back on the next reload.'), 'ok'); go.hidden = true; leave.hidden = true; }
+          catch (error) { tell(error.message, 'error'); }
+          finally { leave.disabled = false; }
+        });
+      }
     }
     function bugTitleField() {
       const what = q('[data-id="bug-what"]')?.closest('label'); if (!what) return document.createElement('input');
@@ -23152,6 +24590,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     function closeBugDialog() {
       if (bug.sending) return;
+      bug.previewClose?.();
       bug.backdrop.hidden = true;
       bug.opener?.focus?.({ preventScroll: true });
     }
@@ -23161,6 +24600,14 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     const BUG_IMAGES_MAX = 4, BUG_VIDEO_MAX = 25 * 1024 * 1024;
     const isBugVideo = file => Boolean(file) && (file.type === 'video/mp4' || (!file.type && /\.mp4$/i.test(file.name || '')));
+    function previewBugScreenshot(shot, opener) {
+      bug.previewClose?.();
+      if (!shadow.querySelector('style[data-mine-media]')) {
+        const style = document.createElement('style'); style.setAttribute('data-mine-media', ''); style.textContent = MINE_MEDIA_CSS + '.bug-thumb-open{display:block;width:100%;height:100%;margin:0;padding:0;border:0;background:transparent;cursor:zoom-in}.bug-thumb-open:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}'; shadow.append(style);
+      }
+      const image = document.createElement('img'); image.src = shot.data; image.alt = shot.name || translate('Screenshot');
+      bug.previewClose = mineLight(image, opener, () => { bug.previewClose = null; });
+    }
     function renderAttachments() {
       const nodes = [];
       const remove = (label, run) => {
@@ -23171,7 +24618,10 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       bug.shots.forEach((shot, index) => {
         const figure = document.createElement('figure'); figure.className = 'bug-thumb';
         const image = document.createElement('img'); image.src = shot.data; image.alt = shot.name;
-        figure.append(image, remove(translate('Remove'), () => { bug.shots.splice(index, 1); renderAttachments(); }));
+        const preview = document.createElement('button'); preview.type = 'button'; preview.className = 'bug-thumb-open'; preview.style.cssText = 'display:block;width:100%;height:100%;margin:0;padding:0;border:0;background:transparent;cursor:zoom-in';
+        preview.setAttribute('aria-label', translate('Preview screenshot {0}: {1}').replace('{0}', String(index + 1)).replace('{1}', shot.name));
+        preview.append(image); preview.addEventListener('click', () => previewBugScreenshot(shot, preview));
+        figure.append(preview, remove(translate('Remove'), () => { bug.previewClose?.(); bug.shots.splice(index, 1); renderAttachments(); }));
         nodes.push(figure);
       });
       if (bug.clip) {
@@ -23196,6 +24646,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (bug.clipUrl) { URL.revokeObjectURL(bug.clipUrl); bug.clipUrl = ''; }
     }
     function clearScreenshot() {
+      bug.previewClose?.();
       bug.shots = []; bug.file.value = '';
       clearVideo();
       renderAttachments();
@@ -23246,7 +24697,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       const key = await studioReporterKey();
       return new Promise((resolve, reject) => {
         const body = payload ? JSON.stringify(payload) : undefined, url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`;
-        const headers = { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(key ? { 'X-Reporter-Token': key } : {}) };
+        const headers = { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(key ? { 'X-Reporter-Token': key, ...reporterKeysHeader() } : {}) };
         const guard = setTimeout(() => reject(new Error(translate('The server took too long'))), 25000);
         const finish = (status, text) => {
           clearTimeout(guard);
@@ -23276,7 +24727,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
           else reject(new Error(data?.error || (status ? `${translate('The server answered')} ${status}` : translate('No answer from the server'))));
         };
         const headers = { 'Content-Type': 'video/mp4', 'X-File-Name': encodeURIComponent(file.name || 'video.mp4') };
-        if (key) headers['X-Reporter-Token'] = key;
+        if (key) Object.assign(headers, { 'X-Reporter-Token': key }, reporterKeysHeader());
         if (typeof GM_xmlhttpRequest === 'function') {
           GM_xmlhttpRequest({ method: 'POST', url, data: file, headers, timeout: limit, anonymous: true,
             onload: response => finish(response.status, response.responseText || ''),
@@ -23305,7 +24756,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       }
       bug.sending = true; bug.send.disabled = true; bug.send.textContent = translate('Sending…');
       try {
-        const result = await bugApi('POST', '/api/report', { report: text, version: USERSCRIPT_VERSION, editor: `${location.hostname}${location.pathname}`, browser: navigator.userAgent,
+        const result = await bugApi('POST', '/api/report', { report: text, version: STUDIO_BETA_LABEL ? STUDIO_BETA_LABEL.version : USERSCRIPT_VERSION, editor: `${location.hostname}${location.pathname}`, browser: navigator.userAgent,
           summary: name.slice(0, 120), contact: bug.contact.value.trim().slice(0, 120), username: wmeUserName(), category: bug.mode === 'feature' ? 'feature' : bug.category.value, screenshot: bug.shots[0]?.data || '', screenshots: bug.shots.map(shot => shot.data), token: await studioReporterKey() });
         let doneText = (bug.mode === 'feature' ? (result.id ? translate('Got your idea #{0}. Thanks, I\'ll read it.') : translate('Got your idea. Thanks, I\'ll read it.'))
           : (result.id ? translate('Got your report #{0}. Thanks, I\'ll take a look.') : translate('Got your report. Thanks, I\'ll take a look.'))).replace('{0}', String(result.id || ''));
@@ -23451,9 +24902,13 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     fix.update.addEventListener('click', () => { window.open('https://greasyfork.org/scripts/599569', '_blank', 'noopener'); dismissFixNotice(); });
     q('[data-id="bug-check"]').addEventListener('click', () => { checkBugFixes(true); });
     studioUIFixes = { check: checkBugFixes };
-    const UPDATE_KEY = 'wmeStudio.updateCheck.v1', UPDATE_META_URL = 'https://update.greasyfork.org/scripts/599569/WME%20Studio.meta.js';
-    const UPDATE_EVERY = 3 * 3600e3, UPDATE_LATER = 24 * 3600e3;
+    const UPDATE_KEY = STUDIO_BETA ? 'wmeStudio.updateCheck.beta.v1' : 'wmeStudio.updateCheck.v1', UPDATE_META_URL = 'https://update.greasyfork.org/scripts/599569/WME%20Studio.meta.js';
+    const UPDATE_EVERY = STUDIO_BETA ? 3600e3 : 3 * 3600e3, UPDATE_LATER = STUDIO_BETA ? 6 * 3600e3 : 24 * 3600e3;
+    const OWN_VERSION = STUDIO_BETA ? STUDIO_BETA.version : USERSCRIPT_VERSION;
+    const tl = text => { try { return globalThis.WMEStudioI18n?.t?.(text) ?? text; } catch (_) { return text; } };
+    const betaSerial = version => Number(/-beta\.(\d+)$/.exec(String(version || ''))?.[1]) || 0;
     const upd = { box: q('[data-id="update-notice"]'), title: q('[data-id="update-title"]'), text: q('[data-id="update-text"]'), later: q('[data-id="update-later"]'), now: q('[data-id="update-now"]'), latest: '', push: '' };
+    const betaPop = { check: () => {} };
     function compareVersions(a, b) {
       const parse = value => { const [main, pre = ''] = String(value || '').trim().split('-', 2); return { parts: main.split('.').map(part => parseInt(part, 10) || 0), pre }; };
       const x = parse(a), y = parse(b);
@@ -23476,12 +24931,14 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     }
     function showUpdateNotice(version, message = '', push = '') {
       if (!fix.box.hidden || !q('[data-id="log-notice"]').hidden || !q('[data-id="log-backdrop"]')?.hidden) { setTimeout(() => showUpdateNotice(version, message, push), 60000); return; }
-      upd.latest = version; upd.push = push;
+      upd.latest = version; upd.push = push; upd.note = null;
+      upd.later.hidden = false; upd.now.textContent = translate('Update now');
       upd.title.textContent = translate('WME Studio {0} is out').replace('{0}', version);
       upd.text.textContent = message || translate('You have {0}. The update brings the latest fixes and features.').replace('{0}', USERSCRIPT_VERSION);
       upd.box.hidden = false;
     }
     async function pushUpdate(update, stamp) {
+      if (STUDIO_BETA) return;
       if (!update?.on || !update.version || compareVersions(update.version, USERSCRIPT_VERSION) <= 0) return;
       if (document.documentElement.getAttribute('data-wme-studio') !== 'on' || !upd.box.hidden) return;
       const state = await readUpdateState(), key = `${update.version}@${stamp}`;
@@ -23492,18 +24949,20 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     if (globalThis.WMEStudioPushedUpdate) setTimeout(() => pushUpdate(globalThis.WMEStudioPushedUpdate, globalThis.WMEStudioPushedUpdate.pushed_at).catch(error => reportStudioError('update push', error)), 8000);
     async function checkForUpdate(force = false) {
       if (document.documentElement.getAttribute('data-wme-studio') !== 'on') return;
+      if (STUDIO_BETA) { betaPop.check(force); return; }
       const state = await readUpdateState();
       if (force || !state.checked || Date.now() - state.checked >= UPDATE_EVERY) {
         const version = await latestVersion();
         state.checked = Date.now(); if (version) state.latest = version;
         writeUpdateState(state);
       }
-      if (!state.latest || compareVersions(state.latest, USERSCRIPT_VERSION) <= 0) return;
+      if (!state.latest || compareVersions(state.latest, OWN_VERSION) <= 0) return;
       if (state.laterFor === state.latest && Date.now() - (Number(state.laterAt) || 0) < UPDATE_LATER) return;
       if (upd.box.hidden) showUpdateNotice(state.latest);
     }
     upd.later.addEventListener('click', async () => {
       upd.box.hidden = true;
+      if (upd.note) { upd.note = null; return; }
       const state = await readUpdateState();
       if (upd.push) { state.pushLaterFor = upd.push; state.pushLaterAt = Date.now(); }
       else { state.laterFor = upd.latest; state.laterAt = Date.now(); }
@@ -23511,10 +24970,49 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     });
     upd.now.addEventListener('click', () => {
       upd.box.hidden = true;
-      try { window.open(STUDIO_USER_FILE_URL, '_blank', 'noopener'); } catch (error) { reportStudioError('Opening the update', error); }
+      if (upd.note) { const run = upd.note.run; upd.note = null; upd.later.hidden = false; upd.now.textContent = translate('Update now'); run?.(); return; }
+      try { window.open(STUDIO_BETA ? `${STUDIO_BETA.base}/WME-Studio-Beta.user.js` : STUDIO_USER_FILE_URL, '_blank', 'noopener'); } catch (error) { reportStudioError('Opening the update', error); }
     });
+    const betaStored = () => (typeof wmeStudioBetaState === 'function' ? wmeStudioBetaState() : {});
+    function betaNote(key, title, text, label = tl('Got it'), run = null) {
+      try { if (localStorage.getItem('wmeStudio.betaNoted') === key) return; localStorage.setItem('wmeStudio.betaNoted', key); } catch (_) {   }
+      if (!upd.box.hidden || !fix.box.hidden || !q('[data-id="log-notice"]').hidden) { try { localStorage.removeItem('wmeStudio.betaNoted'); } catch (_) {   } setTimeout(() => betaNote(key, title, text, label, run), 60000); return; }
+      upd.note = { run }; upd.latest = ''; upd.push = '';
+      upd.title.textContent = title; upd.text.textContent = text;
+      upd.later.hidden = !run; upd.now.textContent = label;
+      upd.box.hidden = false;
+    }
+    function betaState(state = betaStored()) {
+      if (document.documentElement.getAttribute('data-wme-studio') !== 'on') return;
+      const said = state.message ? `\n${state.message}` : '', stamp = `${state.status}|${state.paused}|${state.member}|${state.ended}`;
+      const reload = () => location.reload();
+      const getStudio = () => { try { window.open('https://greasyfork.org/scripts/599569', '_blank', 'noopener'); } catch (_) {   } };
+      if (STUDIO_BETA) {
+        if (state.ended) betaNote(`ended|${stamp}`, tl('The WME Studio beta has ended'), tl('Thanks for testing! Turn WME Studio back on in Tampermonkey (or install it), then remove WME Studio Beta and reload WME.') + said, tl('Get WME Studio'), getStudio);
+        else if (state.member === false) betaNote(`out|${stamp}`, tl('You’re no longer a beta tester'), tl('Turn WME Studio back on in Tampermonkey (or install it), then remove WME Studio Beta and reload WME.'), tl('Get WME Studio'), getStudio);
+        else if (state.paused) betaNote(`paused|${state.at}`, tl('WME Studio Beta is paused'), tl('Turn WME Studio back on in Tampermonkey to use it meanwhile, then reload WME.') + said);
+        return;
+      }
+      const channel = document.documentElement.getAttribute('data-wme-studio-channel');
+      let installed = false; try { installed = localStorage.getItem('wmeStudio.betaInstalled') === '1'; } catch (_) { installed = false; }
+      if (!installed) return;
+      if (state.member === false) return;
+      if (state.ended) betaNote(`ended|${stamp}`, tl('The WME Studio beta has ended'), tl('Thanks for testing! You can remove WME Studio Beta from Tampermonkey.') + said);
+      else if (state.paused) betaNote(`paused|${stamp}`, tl('WME Studio Beta is paused'), tl('WME Studio Beta is paused for now, so the normal WME Studio is running.') + said);
+      else if (state.was?.paused && state.member) betaNote(`back|${state.at}`, tl('The beta is back on'), tl('Reload WME to use WME Studio Beta.'), tl('Reload'), reload);
+      else if (channel === 'stable' && state.member !== false) betaNote(`installed|${state.serial || 0}`, tl('WME Studio Beta is installed'), tl('Reload WME to use WME Studio Beta.'), tl('Reload'), reload);
+    }
+    if (STUDIO_BETA) setTimeout(() => {
+      if (document.querySelectorAll('style#wme-studio-compatibility').length > 1) betaNote(`double|${Date.now()}`, tl('The normal WME Studio is still on'), tl('Turn off WME Studio in Tampermonkey while you test the beta, then reload WME. Turn it back on when you leave the beta.'), tl('Got it'));
+    }, 8000);
+    document.addEventListener('wme-studio-beta-state', event => { let state = null; try { state = JSON.parse(event.detail); } catch (_) { state = null; } if (state) setTimeout(() => betaState(state), 3000); });
+    setTimeout(() => betaState(), 12000);
     setTimeout(() => { checkForUpdate().catch(error => reportStudioError('update check', error)); }, 20000);
     setInterval(() => { if (!document.hidden) checkForUpdate().catch(error => reportStudioError('update check', error)); }, 30 * 60e3);
+    studioPart('studioTip', { q, tl, upd, fix, open, reveal });
+    if (studioKeep.fromBeta && !editorProfile && !standaloneSignin) studioPart('betaImport', { q, tl, shadow, keep: studioKeep, settingKeys: Object.keys(config.defaults) });
+    if (STUDIO_BETA) studioPart('betaPop', { q, tl, upd, fix, bug, shadow, openBugDialog, reportStudioError, STUDIO_BETA, betaPop, betaStored, wmeStudioBetaCheck: typeof wmeStudioBetaCheck === 'function' ? wmeStudioBetaCheck : null,
+      request: typeof GM_xmlhttpRequest === 'function' ? GM_xmlhttpRequest : typeof GM === 'object' && typeof GM?.xmlHttpRequest === 'function' ? GM.xmlHttpRequest.bind(GM) : null });
     const mine = { backdrop: q('[data-id="mine-backdrop"]'), body: q('[data-id="reports-body"]'), sub: q('[data-id="reports-sub"]'), opener: null, loading: false, focus: null, reports: null, user: '', loadedAt: 0, filter: 'all', kind: 'all' };
     q('[data-row="bugMine"]').hidden = !endpointReady;
     const mineDate = iso => { const date = new Date(iso); if (Number.isNaN(date.getTime())) return ''; try { return date.toLocaleDateString(document.documentElement.lang || undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch (_) { return date.toISOString().slice(0, 10); } };
@@ -23617,7 +25115,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     function bugBlob(path, asData = false) {
       if (mineMediaCache.has(path)) return mineMediaCache.get(path);
       const job = Promise.resolve(studioReporterKey()).then(key => new Promise((resolve, reject) => {
-        const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`, headers = key ? { 'X-Reporter-Token': key } : {};
+        const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`, headers = key ? { 'X-Reporter-Token': key, ...reporterKeysHeader() } : {};
         const failed = status => reject(new Error(status ? `${translate('The server answered')} ${status}` : translate('Could not reach the server')));
         if (typeof GM_xmlhttpRequest === 'function') {
           GM_xmlhttpRequest({ method: 'GET', url, headers, responseType: 'arraybuffer', timeout: 60000, anonymous: true,
@@ -23636,28 +25134,25 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       job.catch(() => mineMediaCache.delete(path));
       return job;
     }
-    const MINE_MEDIA_CSS = `.mine-media{display:flex;flex-direction:column;gap:8px;margin-top:8px}
-.mine-media-chip{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;height:26px;margin:0;padding:0 10px;border:1px solid var(--line);border-radius:13px;background:transparent;color:var(--text);font:inherit;font-size:12px;font-weight:600;line-height:1;cursor:pointer}
-.mine-media-chip svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-.mine-media-chip:hover{background:var(--surface2)}.mine-media-chip[aria-expanded="true"]{border-color:var(--accent)}
-.mine-media-row{display:flex;flex-wrap:wrap;gap:8px}
-.mine-shot{position:relative;display:grid;place-items:center;width:96px;height:64px;margin:0;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:var(--muted);font:inherit;font-size:11px;line-height:1.2;cursor:zoom-in}
-.mine-shot img{display:block;width:100%;height:100%;object-fit:cover}.mine-shot.video{cursor:pointer}
-.mine-shot.video svg{width:26px;height:26px;fill:currentColor;stroke:none}
-.mine-light{position:fixed;inset:0;z-index:2147483000;pointer-events:auto;display:flex;align-items:center;justify-content:center;padding:28px;background:rgba(5,7,10,.78);cursor:zoom-out}
-.mine-light img,.mine-light video{max-width:100%;max-height:100%;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);cursor:default;background:#000}
-.mine-light-close{position:absolute;top:12px;right:12px;display:grid;place-items:center;width:36px;height:36px;margin:0;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:20px;line-height:1;cursor:pointer}`;
-    function mineLight(node) {
+    const MINE_MEDIA_CSS = studioPart('p430L25679');
+    function mineLight(node, opener = shadow.activeElement, onClose = () => {}) {
       const root = mine.body.getRootNode();
       const light = document.createElement('div'); light.className = 'mine-light'; light.setAttribute('role', 'dialog'); light.setAttribute('aria-modal', 'true');
+      light.setAttribute('aria-label', node.alt || translate('Attachment preview'));
       const close = document.createElement('button'); close.type = 'button'; close.className = 'mine-light-close'; close.setAttribute('aria-label', translate('Close')); close.textContent = '×';
-      const escape = event => { if (event.key !== 'Escape' || !light.isConnected) return; event.preventDefault(); event.stopImmediatePropagation(); done(); };
-      const done = () => { light.remove(); window.removeEventListener('keydown', escape, true); if (node.tagName === 'VIDEO') node.pause(); };
+      const escape = event => {
+        if (!light.isConnected) return;
+        if (event.key === 'Tab' && node.tagName !== 'VIDEO') { event.preventDefault(); event.stopImmediatePropagation(); close.focus({ preventScroll: true }); }
+        if (event.key !== 'Escape') return;
+        event.preventDefault(); event.stopImmediatePropagation(); done();
+      };
+      const done = () => { if (!light.isConnected) return; light.remove(); window.removeEventListener('keydown', escape, true); if (node.tagName === 'VIDEO') node.pause(); onClose(); if (opener?.isConnected) opener.focus({ preventScroll: true }); };
       window.addEventListener('keydown', escape, true);
       light.addEventListener('click', event => { if (event.target === light) done(); });
       close.addEventListener('click', done);
       light.append(node, close); (root.host ? root : document.body).append(light);
       close.focus({ preventScroll: true });
+      return done;
     }
     function mineAttachments(report, user) {
       const images = Array.isArray(report.media?.images) ? report.media.images.filter(n => Number.isInteger(n) && n >= 0).slice(0, 8) : [], video = !!report.media?.video;
@@ -23838,6 +25333,12 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       if (at < text.length) node.append(text.slice(at));
       return node;
     }
+    function changelogDiscord() {
+      const foot = logEl('div', 'log-discord'), go = logEl('a', 'log-discord-go', logT('Join the Discord'));
+      go.href = globalThis.WMEStudioDiscord?.invite || `${BUG_REPORT_ENDPOINT}/discord`; go.target = '_blank'; go.rel = 'noopener';
+      foot.append(logEl('span', '', logT('News, help and the beta are on the WME Studio Discord.')), go); foot.setAttribute('data-ws-keep', '');
+      return foot;
+    }
     function changelogItems(list, items) {
       list.replaceChildren(...items.map(text => { const item = logEl('li', 'log-li'); item.setAttribute('data-ws-keep', ''); return richLine(item, logT(text)); }));
     }
@@ -23915,8 +25416,10 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         const list = logEl('ul'); changelogItems(list, group.items); section.append(list);
         nodes.push(section);
       }
+      nodes.push(changelogDiscord());
       log.body.replaceChildren(...nodes);
       log.body.setAttribute('data-ws-keep', '');
+      if (log.body.style.position !== 'relative') log.body.style.position = 'relative';
       log.body.scrollTop = 0;
       const strip = log.body.querySelector('.log-chips');
       if (strip) { const api = studioChipStrip(strip, { backLabel: globalThis.WMEStudioI18n?.translate?.('Back') || 'Back', nextLabel: globalThis.WMEStudioI18n?.translate?.('More') || 'More' }); if (sameVersion) strip.scrollLeft = keepLeft; api.centre(strip.querySelector('[aria-pressed="true"]'), sameVersion); }
@@ -23980,7 +25483,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         log.version.textContent = `WME Studio ${USERSCRIPT_VERSION}`;
         log.list.replaceChildren(...releases.flatMap(release => releases.length > 1
           ? [Object.assign(document.createElement('h4'), { className: 'log-version', textContent: release.version }), ...changelogRelease(release)]
-          : changelogRelease(release)));
+          : changelogRelease(release)), changelogDiscord());
         log.box.hidden = false;
         placeChangelog();
         return;
@@ -24151,7 +25654,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
     });
     if (endpointReady) setTimeout(() => { checkBugFixes(false).catch(error => reportStudioError('bug fixes check', error)); }, 12000);
     function bugDialogSending() { return !!bug.sending; }
-    function hideBugDialog() { if (!bug.backdrop.hidden) bug.backdrop.hidden = true; }
+    function hideBugDialog() { bug.previewClose?.(); if (!bug.backdrop.hidden) bug.backdrop.hidden = true; }
     q('[data-id="bug-report"]').addEventListener('click', () => openBugDialog('bug'));
     q('[data-id="feature-request"]').addEventListener('click', () => openBugDialog('feature'));
     q('[data-id="bug-close"]').addEventListener('click', closeBugDialog);
@@ -24339,9 +25842,9 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         const setting = (label,target,section,keywords)=>({label:translate(label),category:sections[target],keywords,run:()=>openStudioUI(target,section)});
         commands = [page('Open settings','home','settings options preferences'),page('Saved workspaces','layout','profiles presets layouts save','workspace-profiles'),page('Backup & restore','studio','import export backup restore','backup-tools'),page('Report a bug','bug','bug report issue problem feedback support help','bugReport'),page('Verify on Discord','bug','discord verify verification code editor roles rank','discordVerify'),...(globalThis.WMEStudioDiscord?.invite ? [{label:translate('Join the Discord'),category:'Studio',keywords:'discord chat community server help questions',run:()=>window.open(globalThis.WMEStudioDiscord.invite,'_blank','noopener')}] : []),
           setting('Presets','layout','preset-current','starting layout balanced left-handed review desk wide header'),setting('Header width','layout','compactHeaderWidth','floating header extend full page'),setting('HUD size','layout','hudScale','floating scale islands header'),
-          setting('Accent colour','look','accent','color highlight custom'),setting('Island color','look','islandFill','islands background colour gradient custom contrast'),setting('Color intensity','look','islandIntensity','island colour gradient strength strong soft muted vivid blend'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','map','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','map','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Show tooltips','look','showTooltips','hover hints labels buttons controls'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
+          setting('Accent colour','look','accent','color highlight custom'),setting('Island color','look','islandFill','islands background colour gradient custom contrast'),setting('Color intensity','look','islandIntensity','island colour gradient strength strong soft muted vivid blend'),setting('Corners','look','corners','flat soft round shape'),setting('Font size','look','fontScale','text scale'),setting('Eye saver','map','eyeSaver','warm night comfort'),setting('Dark at night','look','themeSchedule','automatic auto dark mode night sunset sunrise time light switch schedule'),setting('Eye saver schedule','map','eyeSaverSchedule','automatic night sunset sunrise time warm hours'),setting('Interface animations','look','motion','motion reduce'),setting('Show tooltips','look','showTooltips','hover hints labels buttons controls'),setting('Next follows the issue tracker','panels','requestNextInTracker','next request send order list nearest'),setting('Custom scrollbars','look','customScrollbars','scroll bar slim rounded'),setting('Glass opacity','look','compactIslandOpacity','transparency floating islands'),setting('Match supported add-ons','look','addons','scripts theme integration'),
           setting('Satellite brightness','map','satelliteBrightness','imagery dim'),setting('Viewport brightness','map','viewportBrightness','map dim'),setting('GPS points opacity','map','gpsOpacity','traces transparent'),setting('GPS points below roads','map','gpsBelowRoads','traces order layers'),setting('Open the + menu on click','map','createMenuClick','plus add create hover click menu roads places'),setting('Studio right-click menu','map','contextMenu','context menu right click mouse coordinates permalink copy'),setting('Show the zoom level','map','showZoomLevel','zoom level number scale plus minus buttons'),
-          setting('Case file request window','panels','requestCaseFile','ur update request case conversation status waiting reply'),setting('Quiet days before closing','panels','requestQuietDays','ur request quiet days close reminder reporter'),setting('Leave replies and reminders to URC-E','panels','urceHandoff','urce urcomments enhanced comments replies reminders close'),setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Enable Screen displays','screens','screenDisplays','touch screen tablet tap select multiple segments places nodes several'),setting('Draw a road','screens','screenDrawButton','touch draw new road segment create add points snap junction finish'),setting('Shape a road','screens','screenShapeButton','touch shape geometry points vertex vertices move add delete junction node drag snap undo redo'),setting('Road between two segments','screens','screenRoadButton','touch select road path street between segments'),setting('Long-press for the right-click menu','screens','screenLongPress','touch hold press context menu right click'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
+          setting('Case file request window','panels','requestCaseFile','ur update request case conversation status waiting reply'),setting('Quiet days before closing','panels','requestQuietDays','ur request quiet days close reminder reporter'),setting('Leave replies and reminders to URC-E','panels','urceHandoff','urce urcomments enhanced comments replies reminders close'),setting('Compact request panel','panels','compactRequests','ur update request window'),setting('Closure status colours','map','closureColors','road closures active upcoming ended colour color filter status'),setting('Script names on the tabs','panels','scriptTabNames','scripts userscripts tabs names icons full names bar'),setting('Close the request after replying','panels','closeAfterReply','ur request reply send comment close auto'),setting('Enable Screen displays','screens','screenDisplays','touch screen tablet tap select multiple segments places nodes several'),setting('Draw a road','screens','screenDrawButton','touch draw new road segment create add points snap junction finish'),setting('Shape a road','screens','screenShapeButton','touch shape geometry points vertex vertices move add delete junction node drag snap undo redo'),setting('Road between two segments','screens','screenRoadButton','touch select road path street between segments'),setting('Long-press for the right-click menu','screens','screenLongPress','touch hold press context menu right click'),setting('Visible discussion messages','panels','discussionVisible','ur comments conversation'),setting('Reply box height','panels','replyLines','ur reply comment box lines tall grow scroll textarea'),setting('Panel size','panels','panelScale','scale side panel'),setting('Reset panel sizes','panels','resetPanelSizes','dragged width height'),setting('Two-column Map Layers','panels','layerColumnsToggle','columns'),
           setting('Language','studio','language','locale translation'),setting('Command palette shortcut','studio','shortcut','keybind hotkey keyboard keys'),setting('Reset settings','studio','reset','defaults restore'),setting('Guide for script developers','developers','dev-tabs','developer api adapt compatibility script tab icon name theme variables css'),
           {label:translate('Arrange layout'),category:'Workspace',keywords:'move position panels islands controls hide split custom island buttons',disabled:!prefs.enabled || !matchMedia(globalThis.WMEStudioSafari.viewport).matches,run:async()=>{await cfg.write({compactMode:true});globalThis.WMEStudioCompactLayout.open();}},
           ...[['Standard',false],['Floating',true]].map(([label,value])=>({label:translate(label),category:'Workspace',keywords:'workspace mode layout',disabled:!prefs.enabled,run:()=>cfg.write({compactMode:value})})),
@@ -24394,6 +25897,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       gmaps: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.3"/>',
       beta: '<path d="M9 3.5h6M10 3.5v5.8L4.9 18.2A1.9 1.9 0 0 0 6.5 21h11a1.9 1.9 0 0 0 1.6-2.8L14 9.3V3.5"/><path d="M7.3 15h9.4"/>',
       stable: '<path d="M4 11.2 12 4.5l8 6.7"/><path d="M6.5 9.5v10h11v-10"/><path d="M10.2 19.5v-5h3.6v5"/>',
+      streetView: '<circle cx="12" cy="5" r="2.2"/><path d="M9.5 21v-6H8v-4.5A2.5 2.5 0 0 1 10.5 8h3a2.5 2.5 0 0 1 2.5 2.5V15h-1.5v6"/>',
       newTab: '<path d="M14 4h6v6M20 4l-8.5 8.5"/><path d="M18 14v3.5A2.5 2.5 0 0 1 15.5 20h-9A2.5 2.5 0 0 1 4 17.5v-9A2.5 2.5 0 0 1 6.5 6H10"/>',
       hash: '<path d="M9.5 4 8 20M16 4l-1.5 16M4.5 9h15M4 15h15"/>',
       street: '<path d="M8 3 5 21M16 3l3 18M12 4v3M12 10.5v3M12 17v3"/>',
@@ -24637,6 +26141,26 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
       items[next]?.focus();
     }
 
+    async function streetViewAt(x, y) {
+      const button = document.querySelector('wz-button.street-view-control'), map = document.getElementById('WazeMap');
+      if (!button || !map) return;
+      await new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)));
+      const from = button.getBoundingClientRect(), sx = from.left + from.width / 2, sy = from.top + from.height / 2;
+      const under = (cx, cy) => { const node = document.elementFromPoint(cx, cy); return node && map.contains(node) ? node : map.querySelector('.olMapViewport') || map; };
+      const fire = (node, type, cx, cy, buttons) => {
+        const options = { bubbles: true, cancelable: true, composed: true, clientX: cx, clientY: cy, button: 0, buttons };
+        node.dispatchEvent(new PointerEvent(type.replace('mouse', 'pointer'), { ...options, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+        node.dispatchEvent(new MouseEvent(type, options));
+      };
+      fire(button, 'mousedown', sx, sy, 1);
+      for (let step = 1; step <= 6; step++) {
+        const cx = sx + (x - sx) * step / 6, cy = sy + (y - sy) * step / 6;
+        fire(under(cx, cy), 'mousemove', cx, cy, 1); document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: cx, clientY: cy, buttons: 1 }));
+        await new Promise(done => setTimeout(done, 16));
+      }
+      fire(under(x, y), 'mouseup', x, y, 0); document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y }));
+    }
+
     function build(clientX, clientY, mode = 'auto') {
       const point = lonLatAt(clientX, clientY);
       let picked = mode === 'map' ? null : selection();
@@ -24671,6 +26195,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         sep();
         item('focus', 'Zoom to selection', () => { if (!zoomToSelection(picked)) toast(t('Selection is not loaded'), at.x, at.y, true); }, { disabled: !area });
         item('gmaps', 'Open in Google Maps', () => window.open(`https://www.google.com/maps/search/?api=1&query=${fmt(middle.lat)},${fmt(middle.lon)}`, '_blank', 'noopener'), { disabled: !middle });
+        item('streetView', 'Open Street View here', () => streetViewAt(at.x, at.y), { disabled: !point || !document.querySelector('wz-button.street-view-control') });
         item('deselect', 'Deselect', deselect, { kbd: 'Esc' });
       } else {
         item('copy', 'Copy coordinates', () => copied(`${fmt(point.lat)}, ${fmt(point.lon)}`, 'Coordinates copied'), { disabled: !point });
@@ -24678,6 +26203,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         item('center', 'Center map here', () => moveMap(point, zoomLevel()), { disabled: !point });
         item('zoomIn', 'Zoom in here', () => { const zoom = zoomLevel(); moveMap(point, zoom == null ? null : Math.min(22, zoom + 1)); }, { disabled: !point });
         item('gmaps', 'Open in Google Maps', () => window.open(`https://www.google.com/maps/search/?api=1&query=${fmt(point.lat)},${fmt(point.lon)}`, '_blank', 'noopener'), { disabled: !point });
+        item('streetView', 'Open Street View here', () => streetViewAt(at.x, at.y), { disabled: !point || !document.querySelector('wz-button.street-view-control') });
         item('newTab', 'Open here in a new tab', () => window.open(permalink(point, null, false), '_blank', 'noopener'), { disabled: !point });
       }
       const onBeta = /^beta\./i.test(location.hostname);
@@ -24694,8 +26220,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
         else location.assign(href);
       }, { side: { iconName: 'newTab', text: onBeta ? 'Open WME in a new tab' : 'Open WME Beta in a new tab', run: () => window.open(otherEditor(), '_blank', 'noopener') } });
       sep();
-      if (refresh) item('refresh', 'Refresh map data', refresh);
-      else item('refresh', 'Reload editor here', () => location.assign(permalink(point || null, picked)));
+      item('refresh', 'Refresh page', () => location.reload());
       if (picked) { sep(); item('map', 'Map options here', () => open(clientX, clientY, 'map'), { keepOpen: true, chevron: true }); }
       rows.push({ kind: 'bar', theme, tools: [
         { iconName: 'arrange', text: 'Arrange layout', disabled: !canArrange, run: async () => { if (!floating) await globalThis.WMEStudioSettings.write({ compactMode: true }); globalThis.WMEStudioCompactLayout.open(); } },
@@ -25257,7 +26782,7 @@ html[data-wme-studio="on"] form.add-opening-hour .hours.section wz-text-input { 
   }
 
   function createStudioLauncher() {
-    const toolbar = document.querySelector('.overlay-buttons-container') || document.getElementById('overlay-buttons');
+    const toolbar = document.querySelector('#overlay-buttons .overlay-buttons-container') || document.getElementById('overlay-buttons');
     const loading = document.querySelector('.app-loading');
     if (!toolbar || !document.getElementById('app-head') || !document.getElementById('WazeMap') ||
       loading && !loading.classList.contains('hide') && !loading.hidden && getComputedStyle(loading).display !== 'none') {
@@ -25357,6 +26882,21 @@ ${studioControlsCSS()}
       return key;
     })();
   }
+  const REPORTER_KEYS_STORE = 'wmeStudio.reporterKeys.v1';
+  let reporterKeysOther = [];
+  const cleanReporterKeys = value => [...new Set((Array.isArray(value) ? value : []).filter(key => typeof key === 'string' && /^[a-f0-9]{48}$/.test(key)))].slice(0, 12);
+  async function shareReporterKey(value) {
+    const own = await studioReporterKey().catch(() => '');
+    if (!own) return;
+    const list = cleanReporterKeys(value === undefined ? await Promise.resolve(studioKeep.get(REPORTER_KEYS_STORE, [])).catch(() => []) : value);
+    reporterKeysOther = list.filter(key => key !== own);
+    if (!list.includes(own)) { try { await Promise.resolve(studioKeep.set(REPORTER_KEYS_STORE, [own, ...list].slice(0, 12))); } catch (_) {   } }
+  }
+  function reporterKeysHeader() { return reporterKeysOther.length ? { 'X-Reporter-Tokens': reporterKeysOther.join(',') } : {}; }
+  if (window.top === window.self) {
+    shareReporterKey().catch(() => {});
+    chrome.storage.onChanged.addListener(items => { if (items[REPORTER_KEYS_STORE]) shareReporterKey(items[REPORTER_KEYS_STORE].newValue).catch(() => {}); });
+  }
   const studioDiscord = (() => {
     const STORE = 'wmeStudio.discord.v1', EVERY = 6 * 3600000, SAVES = 'wmeStudio.saveCountries.v1';
     let saved = {};
@@ -25413,7 +26953,7 @@ ${studioControlsCSS()}
     }
     async function post(path, body) {
       const key = await studioReporterKey().catch(() => '');
-      const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`, headers = { 'Content-Type': 'application/json', ...(key ? { 'X-Reporter-Token': key } : {}) }, data = JSON.stringify(body);
+      const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}${path}`, headers = { 'Content-Type': 'application/json', ...(key ? { 'X-Reporter-Token': key, ...reporterKeysHeader() } : {}) }, data = JSON.stringify(body);
       return new Promise(resolve => {
         const done = (status, text) => { let json = null; try { json = JSON.parse(text); } catch (_) {   } resolve({ status, data: json, text }); };
         try {
@@ -25506,14 +27046,175 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
       };
       setTimeout(start, 3000);
     })();
-    return { verify, who };
+    return { verify, who, post, problem: code => (PROBLEM[code] ? vt(PROBLEM[code]) : '') };
+  })();
+  const studioProfiles = (() => {
+    const TTL = 30 * 60000, NAME = /^[\w.\-]{2,40}$/, cache = new Map(), waiting = new Set(), hovered = new Map();
+    let timer = 0, open = null;
+    const ptl = (text, ...values) => {
+      try { const out = globalThis.WMEStudioI18n?.t?.(text, ...values); if (out != null) return out; } catch (_) {   }
+      return values.reduce((out, value, index) => out.replaceAll(`{${index}}`, value), text);
+    };
+    const lang = () => { try { return globalThis.WMEStudioI18n?.current?.() || 'en'; } catch (_) { return 'en'; } };
+    const known = name => { const hit = cache.get(String(name).toLowerCase()); return hit && Date.now() - hit.at < TTL ? hit : null; };
+    const mark = (el, name) => {
+      if (!el?.isConnected || !known(name)?.card) return;
+      el.setAttribute('data-ws-has-profile', ''); el.title = ptl('Click for {0}’s profile', name);
+    };
+    function lookup(names, then) {
+      const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/profiles?names=${encodeURIComponent(names.join(','))}`;
+      const done = body => {
+        let data = null; try { data = JSON.parse(body); } catch (_) { return; }
+        if (!data?.ok) return;
+        const at = Date.now();
+        for (const name of names) cache.set(name, { card: data.profiles?.[name] && typeof data.profiles[name] === 'object' && NAME.test(String(data.profiles[name].wme_name || '')) ? data.profiles[name] : null, at });
+        for (const [el, name] of hovered) mark(el, name);
+        hovered.clear();
+      };
+      const finish = body => { try { done(body); } finally { then?.(); } };
+      try {
+        if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, timeout: 10000, anonymous: true, onload: response => finish(response.status === 200 ? response.responseText || '' : ''), onerror: () => then?.(), ontimeout: () => then?.() });
+        else fetch(url, { mode: 'cors' }).then(response => (response.ok ? response.text() : '')).then(finish).catch(() => then?.());
+      } catch (_) { then?.(); }
+    }
+    function want(name, el) {
+      name = String(name || '').trim();
+      if (!NAME.test(name) || !/^https:\/\//.test(BUG_REPORT_ENDPOINT)) return;
+      if (known(name)) { mark(el, name); return; }
+      if (el) hovered.set(el, name);
+      waiting.add(name.toLowerCase()); clearTimeout(timer);
+      timer = setTimeout(() => { const names = [...waiting].slice(0, 40); waiting.clear(); if (names.length) lookup(names); }, 120);
+    }
+    const withFlag = card => {
+      if (card && typeof card === 'object' && card.country_name && !card.flag) { const code = studioFlags.forCountry(card.country_name), src = code ? studioFlags.src(code) : ''; if (src) card.flag = src; }
+      return card;
+    };
+    const flagOf = country => new Promise(resolve => {
+      const now = () => { const code = studioFlags.forCountry(country); return code ? studioFlags.src(code) : ''; };
+      const hit = now(); if (hit) { resolve(hit); return; }
+      const on = () => { const src = now(); if (src) { document.removeEventListener(studioFlags.EVENT, on); resolve(src); } };
+      document.addEventListener(studioFlags.EVENT, on);
+      setTimeout(() => { document.removeEventListener(studioFlags.EVENT, on); resolve(''); }, 20000);
+    });
+    async function openWmeChat(card) {
+      const frame = [...document.querySelectorAll('iframe')].find(node => /^https:\/\/(?:www|beta)\.waze\.com\/chat\/embed/.test(node.src || ''));
+      if (!frame?.contentWindow) return false;
+      let id = Number(card.wme_id) || 0;
+      if (!id) {
+        for (const base of ['/row-Descartes', '/Descartes', '/il-Descartes']) {
+          try { const answer = await fetch(`${base}/app/UserProfile/Profile?username=${encodeURIComponent(card.wme_name)}`, { credentials: 'include' }); const p = answer.ok ? await answer.json() : null; id = Number(p?.userID) || 0; } catch (_) { id = 0; }
+          if (id) break;
+        }
+      }
+      if (!id) return false;
+      try { frame.contentWindow.postMessage({ type: 'ChatOpenConversation', userId: id, userName: card.wme_name }, new URL(frame.src).origin); return true; } catch (_) { return false; }
+    }
+    function show(name, anchor) {
+      const hit = known(name); if (!hit?.card) return false;
+      open?.close?.();
+      try { open = studioPart('profileCard', { card: withFlag({ ...hit.card }), anchor, tl: ptl, lang: lang(), self: String(hit.card.wme_name || '').toLowerCase() === String(studioDiscord.who()?.wme_name || '').toLowerCase(), onClose: () => { open = null; }, message: /\/editor(?:\/|$)/.test(location.pathname) ? openWmeChat : null }); } catch (error) { reportStudioError('profile card', error); open = null; }
+      return !!open;
+    }
+    const LINKS = 'a[href*="/user/editor/"], wz-a[href*="/user/editor/"]';
+    const linkName = el => { try { return decodeURIComponent(String(el.getAttribute('href') || '').split('/user/editor/')[1]?.split(/[/?#]/)[0] || ''); } catch (_) { return ''; } };
+    function candidate(target) {
+      if (document.documentElement.getAttribute('data-wme-studio') !== 'on') return null;
+      const path = typeof target?.closest === 'function' ? target : null; if (!path) return null;
+      const el = path.closest(`${LINKS}, .comment-title .username[data-ws-profile]`);
+      if (!el || el.closest('#ws-profile-card, #wme-studio-userscript-ui')) return null;
+      const name = el.hasAttribute('data-ws-profile') ? el.getAttribute('data-ws-profile') : linkName(el);
+      return name && name !== '@reporter' && NAME.test(name) ? { el, name } : null;
+    }
+    if (window.top === window.self) {
+      const look = event => { const hit = candidate(event.target); if (hit) want(hit.name, hit.el); };
+      document.addEventListener('pointerover', look, true); document.addEventListener('focusin', look, true);
+      const pick = event => {
+        if (event.type === 'click' && (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)) return;
+        if (event.type === 'keydown' && event.key !== 'Enter') return;
+        const hit = candidate(event.target); if (!hit) return;
+        const hold = () => { event.preventDefault(); event.stopImmediatePropagation(); };
+        if (known(hit.name)) { if (show(hit.name, hit.el)) hold(); return; }
+        if (!/^https:\/\//.test(BUG_REPORT_ENDPOINT)) return;
+        hold();
+        const href = hit.el.getAttribute('href') || `https://www.waze.com/user/editor/${encodeURIComponent(hit.name)}`;
+        let settled = false;
+        const settle = () => {
+          if (settled) return; settled = true;
+          if (show(hit.name, hit.el)) return;
+          try { window.open(new URL(href, location.href).href, '_blank', 'noopener'); } catch (_) {   }
+        };
+        clearTimeout(timer); waiting.delete(hit.name.toLowerCase());
+        lookup([hit.name.toLowerCase()], settle);
+        setTimeout(settle, 8000);
+      };
+      window.addEventListener('click', pick, true); window.addEventListener('keydown', pick, true);
+      GM_addStyle('[data-ws-has-profile]{cursor:pointer!important;text-decoration-line:underline!important;text-decoration-style:dotted!important;text-underline-offset:3px}');
+    }
+    const PICTURE = /^https:\/\/waze-profile-images\.waze\.com\/[\w-]{8,80}$/, PICTURE_KEY = 'wmeStudio.profilePicture.v1';
+    const picture = () => { const url = document.querySelector('wz-user-box')?.getAttribute('avatar-url') || ''; return PICTURE.test(url) ? url : ''; };
+    async function mine(body = {}) {
+      const me = studioDiscord.who(); if (!me) return 'no-editor';
+      const pic = picture();
+      const answer = await studioDiscord.post('/api/profile/me', { wme_id: me.wme_id, ...(pic ? { picture: pic } : {}), ...body });
+      if (pic && answer.status === 200) { try { localStorage.setItem(PICTURE_KEY, pic); } catch (_) {   } }
+      if (answer.status === 200 && answer.data?.ok) {
+        if (answer.data.linked) { remember(me.wme_name, answer.data.preview || null); cache.set(String(me.wme_name || '').toLowerCase(), { card: answer.data.preview && typeof answer.data.preview === 'object' ? { ...answer.data.preview } : null, at: Date.now() }); }
+        else if (body.profile) cache.delete(String(me.wme_name || '').toLowerCase());
+        withFlag(answer.data.preview); withFlag(answer.data.verified); return answer.data;
+      }
+      return { error: answer.status || 0 };
+    }
+    const OWN_KEY = 'wmeStudio.ownCard.v1', OWN_MS = 15 * 60000;
+    function remember(name, preview) {
+      try { localStorage.setItem(OWN_KEY, JSON.stringify({ name: String(name || '').toLowerCase(), card: preview && typeof preview === 'object' ? preview : null, at: Date.now() })); } catch (_) {   }
+    }
+    function ownCard(name) {
+      try {
+        const kept = JSON.parse(localStorage.getItem(OWN_KEY) || 'null');
+        if (!kept || kept.name !== String(name).toLowerCase() || !(Date.now() - kept.at < OWN_MS)) return undefined;
+        return kept.card && NAME.test(String(kept.card.wme_name || '')) ? kept.card : null;
+      } catch (_) { return undefined; }
+    }
+    const card = name => new Promise(resolve => {
+      name = String(name || '').trim(); if (!NAME.test(name) || !/^https:\/\//.test(BUG_REPORT_ENDPOINT)) { resolve(null); return; }
+      const own = ownCard(name); if (own !== undefined) { resolve(own ? withFlag({ ...own }) : null); return; }
+      const hit = known(name); if (hit) { resolve(hit.card ? withFlag({ ...hit.card }) : null); return; }
+      lookup([name.toLowerCase()], () => { const card = known(name)?.card; resolve(card ? withFlag({ ...card }) : null); });
+    });
+    async function link(code) {
+      code = String(code || '').toUpperCase().replace(/[\s-]+/g, '');
+      if (!code) return { error: ptl('Type the code from the Discord first.') };
+      const answer = await studioDiscord.verify(code);
+      if (answer.status >= 200 && answer.status < 300 && answer.data?.ok) return { ok: true };
+      return { error: studioDiscord.problem(answer.data?.code) || String(answer.data?.error || '').slice(0, 200) || (answer.status ? `${ptl('The server answered')} ${answer.status}` : ptl('Could not reach the server')) };
+    }
+    const api = { want, show, card, link, tl: ptl, read: () => mine(), save: profile => mine({ profile }) };
+    globalThis.WMEStudioProfiles = api;
+    if (!/^(?:\/[^/]+)?\/user\/editor(?:\/|$)/i.test(location.pathname) && window.top === window.self) setTimeout(() => {
+      const pic = picture(); let sent = null;
+      try { sent = localStorage.getItem(PICTURE_KEY); } catch (_) { return; }
+      if (pic && pic !== sent && document.documentElement.getAttribute('data-wme-studio') === 'on' && studioDiscord.who()) mine().catch(() => {});
+    }, 20000);
+    if (/^(?:\/[^/]+)?\/user\/editor(?:\/|$)/i.test(location.pathname) && window.top === window.self) {
+      let started = false;
+      const start = () => {
+        if (started || document.documentElement.getAttribute('data-wme-studio') !== 'on') return;
+        started = true; watch.disconnect();
+        try { studioPart('profilePage', { tl: ptl, lang: lang(), page: typeof unsafeWindow !== 'undefined' ? unsafeWindow : window, cardFor: card, flagOf, report: (where, error) => reportStudioError(where, error) }); } catch (error) { reportStudioError('profile page', error); }
+      };
+      const watch = new MutationObserver(start);
+      watch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-wme-studio'] });
+      setTimeout(() => watch.disconnect(), 15000);
+      start();
+    }
+    return api;
   })();
   let bugFixesChecking = false;
   async function fetchBugUpdates(user) {
     const key = await studioReporterKey();
     return new Promise((resolve, reject) => {
       const url = `${BUG_REPORT_ENDPOINT.replace(/\/+$/, '')}/api/updates?user=${encodeURIComponent(user)}&v=${encodeURIComponent(USERSCRIPT_VERSION)}`;
-      const headers = key ? { 'X-Reporter-Token': key } : {};
+      const headers = key ? { 'X-Reporter-Token': key, ...reporterKeysHeader() } : {};
       const done = (status, text) => { let data = null; try { data = JSON.parse(text); } catch (_) {   } (status >= 200 && status < 300 && data?.ok ? resolve : reject)(data); };
       if (typeof GM_xmlhttpRequest === 'function') GM_xmlhttpRequest({ method: 'GET', url, headers, timeout: 20000, anonymous: true, onload: response => done(response.status, response.responseText || ''), onerror: reject, ontimeout: reject });
       else fetch(url, { mode: 'cors', headers }).then(async response => done(response.status, await response.text())).catch(reject);
@@ -25568,6 +27269,10 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
       if (seen !== STUDIO_BUILD && !waitedForNews) { waitedForNews = true; afterNews(ask); setTimeout(() => { if (newsWaiters.delete(ask)) ask(); }, 120000); return; }
       let data;
       try { data = await fetchLivePolls(); } catch (_) { return; }
+      if (!(Array.isArray(data?.polls) && data.polls.length)) {
+        const stored = await Promise.resolve(studioKeep.get('wmeStudio.polls.v2', {})).catch(() => ({}));
+        if (!Object.values(stored && typeof stored === 'object' ? stored : {}).some(entry => entry?.pending)) return;
+      }
       if (!buildStudioUI() || !studioUI?.poll) return;
       studioUI.poll.retry();
       const state = await studioUI.poll.state();
@@ -25867,12 +27572,7 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
     const showListThumb = list => {
       if (!thumbStyle) {
         thumbStyle = document.createElement('style');
-        thumbStyle.textContent = `html[data-wme-studio="on"] [data-wme-studio-touch-scroll] {
-          touch-action: pan-y !important; -webkit-overflow-scrolling: touch; padding-right: 7px !important; box-sizing: border-box !important;
-          background-image: linear-gradient(color-mix(in srgb, var(--wme-studio-text-muted, #99a4ae) 70%, transparent), color-mix(in srgb, var(--wme-studio-text-muted, #99a4ae) 70%, transparent)) !important;
-          background-repeat: no-repeat !important; background-attachment: scroll !important;
-          background-size: 3px var(--ws-ur-thumb-size, 0px) !important; background-position: right 1px top var(--ws-ur-thumb-top, 0px) !important;
-        }`;
+        thumbStyle.textContent = studioPart('p430L28267');
         (document.head || document.documentElement).append(thumbStyle);
       }
       if (!list.hasAttribute('data-wme-studio-touch-scroll')) list.setAttribute('data-wme-studio-touch-scroll', '');
@@ -25899,33 +27599,13 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
       const at = clean.indexOf(': ');
       return at > 0 && at < 40 ? clean.slice(at + 2).trim() : '';
     };
-    const shortDates = new Map();
-    const shortDate = text => {
-      const clean = String(text || '').trim();
-      if (!clean) return '';
-      const year = new Date().getFullYear(), key = `${year}|${document.documentElement.lang}|${clean}`;
-      let short = shortDates.get(key);
-      if (short === undefined) {
-        const date = /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/.test(clean) ? null : new Date(clean);
-        if (!date || Number.isNaN(date.getTime())) short = '';
-        else {
-          const options = { day: 'numeric', month: 'short' };
-          if (date.getFullYear() !== year) options.year = 'numeric';
-          if (/\d{1,2}[:.]\d{2}/.test(clean)) Object.assign(options, { hour: 'numeric', minute: '2-digit' });
-          try { short = date.toLocaleString(document.documentElement.lang || undefined, options); } catch (_) { reportStudioError("shortDate",_); short = ''; }
-        }
-        if (shortDates.size > 400) shortDates.clear();
-        shortDates.set(key, short);
-      }
-      return short;
-    };
     const shorten = panel => {
       try {
         const reported = panel.querySelector('[class*="reported--"]');
         setShort(reported, reported ? afterLabel(reported.textContent) : '');
         const source = panel.querySelector('[class*="sourceInfo--"]');
         setShort(source, source ? afterLabel(source.textContent) : '');
-        for (const date of panel.querySelectorAll('.conversation-view .comment .date')) setShort(date, shortDate(date.textContent));
+        for (const date of panel.querySelectorAll('.conversation-view .comment .date')) setShort(date, '');
       } catch (_) { reportStudioError("shorten",_);}
     };
     const pins = new Map();
@@ -25988,6 +27668,23 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
     let replyStyle = null;
     const sideLocked = new WeakSet();
     const REPLY_CSS = studioPart('REPLY_CSS');
+    const alignReply = (form, painted, image) => {
+      const box = painted.getBoundingClientRect(), own = form.getBoundingClientRect();
+      const unit = box.width / (painted.offsetWidth || box.width) || form.currentCSSZoom || 1;
+      const values = { '--ws-reply-size': `${painted.clientWidth}px ${painted.clientHeight}px`, '--ws-reply-pos': `${Math.round((box.left - own.left) / unit + painted.clientLeft)}px ${Math.round((box.top - own.top) / unit + painted.clientTop)}px` };
+      if (image) values['--ws-reply-image'] = image;
+      for (const [name, value] of Object.entries(values)) if (form.style.getPropertyValue(name) !== value) form.style.setProperty(name, value);
+    };
+    const replyPaint = new WeakMap();
+    const paintWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
+      for (const { target } of entries) {
+        const form = replyPaint.get(target);
+        try {
+          if (form?.isConnected && target.isConnected && form.style.getPropertyValue('--ws-reply-image')) alignReply(form, target);
+          else { paintWatch.unobserve(target); replyPaint.delete(target); }
+        } catch (_) { reportStudioError('alignReply', _); }
+      }
+    }) : null;
     const stickReply = panel => {
       try {
         const form = panel.querySelector('.new-comment-form');
@@ -26047,10 +27744,8 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
         const solid = image ? (getComputedStyle(painted).getPropertyValue('--ws-island-a').trim() || '') : paint.replace(/^rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)$/, 'rgb($1, $2, $3)');
         if (solid && form.style.getPropertyValue('--ws-reply-bg') !== solid) form.style.setProperty('--ws-reply-bg', solid);
         if (image) {
-          const box = painted.getBoundingClientRect(), own = form.getBoundingClientRect();
-          const unit = box.width / (painted.offsetWidth || box.width) || form.currentCSSZoom || 1;
-          const values = { '--ws-reply-image': image, '--ws-reply-size': `${painted.clientWidth}px ${painted.clientHeight}px`, '--ws-reply-pos': `${Math.round((box.left - own.left) / unit + painted.clientLeft)}px ${Math.round((box.top - own.top) / unit + painted.clientTop)}px` };
-          for (const [name, value] of Object.entries(values)) if (form.style.getPropertyValue(name) !== value) form.style.setProperty(name, value);
+          alignReply(form, painted, image);
+          if (paintWatch && replyPaint.get(painted) !== form) { replyPaint.set(painted, form); paintWatch.observe(painted); }
         } else for (const name of ['--ws-reply-image', '--ws-reply-size', '--ws-reply-pos']) if (form.style.getPropertyValue(name)) form.style.removeProperty(name);
         const bottom = `${-(parseFloat(getComputedStyle(scroller).paddingBottom) || 0)}px`;
         if (form.style.getPropertyValue('--ws-reply-bottom') !== bottom) form.style.setProperty('--ws-reply-bottom', bottom);
@@ -26163,8 +27858,74 @@ button:focus-visible{outline:2px solid var(--wme-studio-accent,#0099ff);outline-
   })();
 };
 
-if (WME_STUDIO_BRIDGE_NEEDED) {
-  try { wmeStudioStartBridge(wmeStudioMain); } catch (error) { wmeStudioBridgeNote(`could not start: ${error?.message || error}`, true); }
-} else if (typeof GM_getValue !== 'function') {
-  wmeStudioBridgeNote('this userscript manager gives Studio no way to keep its settings (no GM_getValue and no GM.getValue). Tap to close.', true);
-} else wmeStudioMain();
+const WME_STUDIO_BETA_STATE = 'wmeStudio.betaState', WME_STUDIO_BETA_MARK = 'wmeStudio.betaInstalled';
+function wmeStudioBetaState() {
+  try { const value = JSON.parse(localStorage.getItem(WME_STUDIO_BETA_STATE) || 'null'); return value && typeof value === 'object' ? value : {}; } catch (_) { return {}; }
+}
+function wmeStudioBetaCheck() {
+  const beta = typeof WME_STUDIO_BETA === 'object' && WME_STUDIO_BETA ? WME_STUDIO_BETA : null;
+  const request = typeof GM_xmlhttpRequest === 'function' ? GM_xmlhttpRequest : typeof GM === 'object' && typeof GM?.xmlHttpRequest === 'function' ? GM.xmlHttpRequest.bind(GM) : null;
+  if (!beta || !request) return Promise.resolve(null);
+  return new Promise(resolve => {
+    const done = (status, text) => {
+      let data = null; try { data = JSON.parse(text); } catch (_) {   }
+      if (status !== 200 || !data?.ok) { resolve(null); return; }
+      const before = wmeStudioBetaState();
+      const state = { base: beta.base, member: data.member === true, status: String(data.status || ''), paused: data.paused === true, ended: data.ended === true, message: String(data.message || '').slice(0, 300), serial: Number(data.serial) || 0,
+        version: String(data.version || ''), notes: String(data.notes || '').slice(0, 4000), notes_auto: data.notes_auto === true, announced: Number(data.announced) || 0, silent: data.silent === true,
+        tests: data.tests && typeof data.tests === 'object' ? data.tests : null, pulled: data.pulled && typeof data.pulled === 'object' ? data.pulled : {}, answers: data.answers && typeof data.answers === 'object' ? data.answers : {}, at: Date.now(), was: { member: before.member, paused: before.paused } };
+      try { localStorage.setItem(WME_STUDIO_BETA_STATE, JSON.stringify(state)); if (!state.member) localStorage.removeItem(WME_STUDIO_BETA_MARK); } catch (_) {   }
+      try { document.dispatchEvent(new CustomEvent('wme-studio-beta-state', { detail: JSON.stringify(state) })); } catch (_) {   }
+      resolve(state);
+    };
+    try { request({ method: 'GET', url: `${beta.base}/status?s=${beta.serial}`, timeout: 15000, anonymous: true, onload: r => done(r.status, r.responseText || ''), onerror: () => done(0, ''), ontimeout: () => done(0, '') }); } catch (_) { resolve(null); }
+  });
+}
+function wmeStudioBetaAside(beta) {
+  if (document.getElementById('wme-studio-beta-aside')) return;
+  const kept = wmeStudioBetaState(), state = kept.base === beta.base ? kept : {};
+  let lang = '';
+  try { lang = String(JSON.parse(localStorage.getItem('wmeStudio.keep.v1') || '{}')?.values?.['wmeStudio.language'] || ''); } catch (_) { lang = ''; }
+  if (!lang || lang === 'auto') lang = (/^\/([a-z]{2})(?:-[A-Za-z]{2})?\/editor/.exec(location.pathname) || [])[1] || navigator.language || 'en';
+  lang = lang.slice(0, 2).toLowerCase();
+  const strings = globalThis.WMEStudioInterface?.strings || {}, t = text => strings[text]?.[lang] || text;
+  const [title, body] = state.ended ? [t('The WME Studio beta has ended'), t('Thanks for testing! Turn WME Studio back on in Tampermonkey (or install it), then remove WME Studio Beta and reload WME.')]
+    : state.member === false ? [t('You’re no longer a beta tester'), t('Turn WME Studio back on in Tampermonkey (or install it), then remove WME Studio Beta and reload WME.')]
+    : [t('WME Studio Beta is paused'), t('Turn WME Studio back on in Tampermonkey to use it meanwhile, then reload WME.')];
+  const part = globalThis.WMEStudioInterface?.parts?.betaAside;
+  if (typeof part === 'function') { try { part({ title, body, message: state.message || '', t }); return; } catch (_) {   } }
+  console.warn(`[WME Studio] ${title}: ${body}`);
+}
+function wmeStudioChannel(start) {
+  const root = document.documentElement, ATTR = 'data-wme-studio-channel';
+  const beta = typeof WME_STUDIO_BETA === 'object' && WME_STUDIO_BETA ? WME_STUDIO_BETA : null;
+  const store = (key, value) => { try { if (value) localStorage.setItem(key, value); else localStorage.removeItem(key); } catch (_) {   } };
+  if (beta) {
+    const kept = wmeStudioBetaState(), state = kept.base === beta.base ? kept : {}, off = state.member === false || state.paused === true || state.ended === true;
+    store(WME_STUDIO_BETA_MARK, state.member === false ? '' : '1');
+    wmeStudioBetaCheck();
+    if (!root || root.getAttribute(ATTR) === 'stable') return;
+    root.setAttribute(ATTR, off ? 'stable-ok' : 'beta');
+    if (!off) start();
+    else setTimeout(() => { if (root.getAttribute(ATTR) === 'stable-ok') wmeStudioBetaAside(beta); }, 5000);
+    return;
+  }
+  const go = () => { if (root?.getAttribute(ATTR) === 'beta') return; root?.setAttribute(ATTR, 'stable'); start(); };
+  let seen = false; try { seen = localStorage.getItem(WME_STUDIO_BETA_MARK) === '1'; } catch (_) { seen = false; }
+  const now = root?.getAttribute(ATTR);
+  if (now === 'beta') return;
+  if (!root || now === 'stable-ok' || !seen) { go(); return; }
+  let timer = 0;
+  const observer = new MutationObserver(() => { const value = root.getAttribute(ATTR); if (value === 'beta' || value === 'stable-ok') finish(value); });
+  const finish = value => { observer.disconnect(); clearTimeout(timer); if (value !== 'beta') go(); };
+  observer.observe(root, { attributes: true, attributeFilter: [ATTR] });
+  timer = setTimeout(() => { store(WME_STUDIO_BETA_MARK, ''); finish('none'); }, 4000);
+}
+
+wmeStudioChannel(() => {
+  if (WME_STUDIO_BRIDGE_NEEDED) {
+    try { wmeStudioStartBridge(wmeStudioMain); } catch (error) { wmeStudioBridgeNote(`could not start: ${error?.message || error}`, true); }
+  } else if (typeof GM_getValue !== 'function') {
+    wmeStudioBridgeNote('this userscript manager gives Studio no way to keep its settings (no GM_getValue and no GM.getValue). Tap to close.', true);
+  } else wmeStudioMain();
+});
