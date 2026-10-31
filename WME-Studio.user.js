@@ -75,7 +75,7 @@ function wmeStudioBridgeNote(text, bad) {
   } catch (_) {   }
 }
 
-const WME_STUDIO_WANTED = { resources: '4.2.1-2026-10-28', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.3.0-2026-10-31z119', cloudSync: '4.3.0-2026-10-29' };
+const WME_STUDIO_WANTED = { resources: '4.2.1-2026-10-28', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.3.0-2026-10-31z120', cloudSync: '4.3.0-2026-10-29' };
 function wmeStudioCompareLibraryBuild(loaded, wanted) {
   if (loaded === wanted) return 0;
   const parse = value => {
@@ -22624,7 +22624,7 @@ html[data-wme-studio-layout-editing="on"] :is(.ws-quick-replies,.ws-reply-detail
     }
     return '';
   }
-  const STUDIO_BUILD = '4.3.0-2026-10-31z119';
+  const STUDIO_BUILD = '4.3.0-2026-10-31z120';
   const STUDIO_CHANGELOG = Object.freeze([
     { version: '4.3.0', groups: [
       { title: 'My reports', items: [
@@ -24291,7 +24291,7 @@ html[data-wme-studio-layout-editing="on"] :is(.ws-quick-replies,.ws-reply-detail
       input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); commit(input.value); input.blur(); } });
       input.addEventListener('paste', event => { const color = hexColor(event.clipboardData?.getData('text')); if (!color) return; event.preventDefault(); commit(color); });
     });
-    q('[data-action="closure-colors-reset"]')?.addEventListener('click', () => change({ closureActiveColor: defaults.closureActiveColor, closureUpcomingColor: defaults.closureUpcomingColor, closureEndedColor: defaults.closureEndedColor }, true));
+    q('[data-action="closure-colors-reset"]')?.addEventListener('click', () => change({ closureActiveColor: config.defaults.closureActiveColor, closureUpcomingColor: config.defaults.closureUpcomingColor, closureEndedColor: config.defaults.closureEndedColor }, true));
     q('[data-id="halloweenOn"]')?.addEventListener('change', e => { const H = globalThis.WMEStudioHalloween; if (H) change(e.target.checked ? { halloweenDay: H.date() } : { halloweenDay: '', halloweenAsked: H.day() }, true); });
     qa('[data-time]').forEach(input => input.addEventListener('change', () => { if (/^\d\d:\d\d$/.test(input.value)) change({ [input.dataset.time]: input.value }); else paintSchedule(); }));
     setInterval(() => { if (studioPanelOpen) paintSchedule(); }, 30000);
