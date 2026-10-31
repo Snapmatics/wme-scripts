@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.3.2
+// @version      4.3.3
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -418,7 +418,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.3.2';
+  const USERSCRIPT_VERSION = '4.3.3';
   const STUDIO_BETA = typeof WME_STUDIO_BETA === 'object' && WME_STUDIO_BETA ? WME_STUDIO_BETA : null;
   const STUDIO_BETA_LABEL = STUDIO_BETA || (() => { try { const version = String(GM_info?.script?.version || ''), build = /-beta\.(\d+)$/.exec(version); return build ? { serial: Number(build[1]), version } : null; } catch (_) { return null; } })();
   const STUDIO_VERIFY_LINK = (() => {
@@ -22624,7 +22624,7 @@ html[data-wme-studio-layout-editing="on"] :is(.ws-quick-replies,.ws-reply-detail
     }
     return '';
   }
-  const STUDIO_BUILD = '4.3.2-2026-10-31z122';
+  const STUDIO_BUILD = '4.3.3-2026-10-31z123';
   const STUDIO_CHANGELOG = Object.freeze([
     { version: '4.3.2', groups: [
       { title: 'My reports', items: [
@@ -25011,7 +25011,7 @@ html[data-wme-studio-layout-editing="on"] :is(.ws-quick-replies,.ws-reply-detail
     setTimeout(() => { checkForUpdate().catch(error => reportStudioError('update check', error)); }, 20000);
     setInterval(() => { if (!document.hidden) checkForUpdate().catch(error => reportStudioError('update check', error)); }, 30 * 60e3);
     studioPart('studioTip', { q, tl, upd, fix, open, reveal });
-    if (studioKeep.fromBeta && !editorProfile && !standaloneSignin) studioPart('betaImport', { q, tl, shadow, keep: studioKeep, settingKeys: Object.keys(config.defaults) });
+    if (studioKeep.fromBeta && !/^(?:\/[^/]+)?\/(?:user\/editor(?:\/|$)|signin\/?$)/i.test(location.pathname)) studioPart('betaImport', { q, tl, shadow, keep: studioKeep, settingKeys: Object.keys(config.defaults) });
     if (STUDIO_BETA) studioPart('betaPop', { q, tl, upd, fix, bug, shadow, openBugDialog, reportStudioError, STUDIO_BETA, betaPop, betaStored, wmeStudioBetaCheck: typeof wmeStudioBetaCheck === 'function' ? wmeStudioBetaCheck : null,
       request: typeof GM_xmlhttpRequest === 'function' ? GM_xmlhttpRequest : typeof GM === 'object' && typeof GM?.xmlHttpRequest === 'function' ? GM.xmlHttpRequest.bind(GM) : null });
     const mine = { backdrop: q('[data-id="mine-backdrop"]'), body: q('[data-id="reports-body"]'), sub: q('[data-id="reports-sub"]'), opener: null, loading: false, focus: null, reports: null, user: '', loadedAt: 0, filter: 'all', kind: 'all' };
