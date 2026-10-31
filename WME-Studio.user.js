@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Studio
 // @namespace    https://www.waze.com/editor
-// @version      4.3.0
+// @version      4.3.1
 // @description  Waze Map Editor redesign with customizable floating compact-mode islands, Light, Dark and Full Black themes, custom accents, add-on styling and map display controls.
 // @author       GreekCaptain
 // @license      MIT
@@ -75,7 +75,7 @@ function wmeStudioBridgeNote(text, bad) {
   } catch (_) {   }
 }
 
-const WME_STUDIO_WANTED = { resources: '4.2.1-2026-10-28', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.3.0-2026-10-31z120', cloudSync: '4.3.0-2026-10-29' };
+const WME_STUDIO_WANTED = { resources: '4.2.1-2026-10-28', screenDisplays: '4.0.0-2026-10-26z50', interface: '4.3.1-2026-10-31z121', cloudSync: '4.3.0-2026-10-29' };
 function wmeStudioCompareLibraryBuild(loaded, wanted) {
   if (loaded === wanted) return 0;
   const parse = value => {
@@ -418,7 +418,7 @@ const wmeStudioMain = () => {
     }
   };
 
-  const USERSCRIPT_VERSION = '4.3.0';
+  const USERSCRIPT_VERSION = '4.3.1';
   const STUDIO_BETA = typeof WME_STUDIO_BETA === 'object' && WME_STUDIO_BETA ? WME_STUDIO_BETA : null;
   const STUDIO_BETA_LABEL = STUDIO_BETA || (() => { try { const version = String(GM_info?.script?.version || ''), build = /-beta\.(\d+)$/.exec(version); return build ? { serial: Number(build[1]), version } : null; } catch (_) { return null; } })();
   const STUDIO_VERIFY_LINK = (() => {
@@ -22624,8 +22624,13 @@ html[data-wme-studio-layout-editing="on"] :is(.ws-quick-replies,.ws-reply-detail
     }
     return '';
   }
-  const STUDIO_BUILD = '4.3.0-2026-10-31z120';
+  const STUDIO_BUILD = '4.3.1-2026-10-31z121';
   const STUDIO_CHANGELOG = Object.freeze([
+    { version: '4.3.1', groups: [
+      { title: 'Map', items: [
+        "Reset colours in Settings › Map puts the road closure colours back to red, orange and blue again."
+      ] }
+    ] },
     { version: '4.3.0', groups: [
       { title: 'My reports', items: [
         "With Cloud Sync on, My reports shows the reports and ideas you sent from all your linked devices, and you can answer them from any of them."
@@ -23110,6 +23115,7 @@ html[data-wme-studio-layout-editing="on"] :is(.ws-quick-replies,.ws-reply-detail
     { version: '1.0.0', items: ['First public release.'] }
   ]);
   const STUDIO_TESTS = Object.freeze({
+    "Reset colours in Settings › Map puts the road closure colours back to red, orange and blue again.": "In Settings › Map, change one of the closure colours (type #00ff00 for Active, say), then press Reset colours: all three should go back to red, orange and blue, the swatches and the codes, and stay that way after a reload.",
     "WME UT Kadastrs: the buttons, field and checkboxes in its tab look like Studio’s.": "Only with WME UT Kadastrs installed: open Scripts › WME UT Kadastrs on Dark, then Light. Evil Mode and Undo should look like Studio’s buttons with the words centred (Undo faded while it can’t be used), the Venue Area Size field like Studio’s fields, and the checkboxes in your accent.",
     "WME Route Checker and WME Omnisearch follow Studio’s theme. In Floating mode, Omnisearch’s search window no longer opens under the header, so you can drag it.": "Only with WME Route Checker or WME Omnisearch installed. Route Checker: select two segments and open its Routes tab on Dark, then Light: the turns should read as text, street names in your accent, and a turn it marks in red should stay red. Omnisearch: press Ctrl+K in Floating mode with the header at the top: the window should show above the header, and dragging it by its top should move it. Its colours and its Scripts tab should follow your theme and accent.",
     "Select a school zone and its schedule is right there in the panel: which days and hours, from when, and whether it is on right now. No need to open the schedule window.": "Click a school zone on the map (a permanent hazard with a schedule). Under WME's schedule card in the panel, Studio's card shows the days and hours grouped (Mon\u2013Fri 07:00\u201317:00, Sat\u2013Sun Closed), the start date, and On right now / Off right now that matches the clock. Zones without a schedule show nothing extra.",
